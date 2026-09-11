@@ -1,0 +1,27 @@
+package api
+
+import (
+	"io/fs"
+
+	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/auth"
+	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/config"
+	"github.com/fonu/fonu/internal/ddns"
+	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/service"
+	"github.com/fonu/fonu/internal/settings"
+)
+
+type Deps struct {
+	Config     config.Config
+	Auth       *auth.Service
+	Proxy      *service.ProxyService
+	DDNS       *ddns.Service
+	ACME       *acme.Service
+	Settings   *settings.Store
+	Backup     *backup.Service
+	Discovery  *discovery.Service
+	StaticFS   fs.FS
+	StartedAt  string
+}

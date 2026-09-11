@@ -1,0 +1,17 @@
+services:
+  fonu:
+    build: .
+    container_name: fonu
+    restart: unless-stopped
+    ports:
+      - "6893:6893"
+      - "18080:80"
+      - "9443:443"
+    volumes:
+      - fonu-data:/data
+    environment:
+      FONU_DATA_DIR: /data
+      FONU_LISTEN: :6893
+
+volumes:
+  fonu-data:

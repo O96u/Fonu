@@ -1,0 +1,184 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/api"
+	"github.com/fonu/fonu/internal/auth"
+	"github.com/fonu/fonu/internal/config"
+	"github.com/fonu/fonu/internal/db"
+	"github.com/fonu/fonu/internal/ddns"
+	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/certificate"
+	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/logstore"
+	"github.com/fonu/fonu/internal/notify"
+	"github.com/fonu/fonu/internal/nginx"
+	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/scheduler"
+	"github.com/fonu/fonu/internal/secret"
+	"github.com/fonu/fonu/internal/service"
+	"github.com/fonu/fonu/internal/settings"
+)
+
+type App struct {
+	cfg        config.Config
+	logger     *slog.Logger
+	server     *http.Server
+	nginx      *nginx.Manager
+	scheduler  *scheduler.Scheduler
+	shutdownFn context.CancelFunc
+	db         interface{ Close() error }
+}
+
+func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) {
+	appLogWriter := logstore.NewAppLogWriter(cfg.LogsDir())
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, appLogWriter), &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	for _, dir := range []string{cfg.DataDir, cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+
+	conn, err := db.Open(cfg.DBPath())
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Migrate(context.Background(), conn, migrationsDir); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	secretBox, err := secret.NewBox(cfg.SessionSecret)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	authSvc := auth.New(conn)
+	proxyStore := proxy.NewStore(conn)
+	settingsStore := settings.NewStore(conn)
+	ddnsStore := ddns.NewStore(conn)
+	certStore := certificate.NewStore(conn)
+	nginxMgr := nginx.NewManager(cfg, logger.With("module", "NGINX"))
+	if err := nginxMgr.EnsureDirs(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	proxySvc := service.NewProxyService(conn, proxyStore, nginxMgr)
+	notifySvc := notify.New(settingsStore)
+	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)
+	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)
+	backupSvc := backup.New(cfg.DataDir)
+	discoverySvc := discovery.New()
+	startedAt := time.Now().UTC().Format(time.RFC3339)
+
+	handler := api.NewRouter(api.Deps{
+		Config:    cfg,
+		Auth:      authSvc,
+		Proxy:     proxySvc,
+		DDNS:      ddnsSvc,
+		ACME:      acmeSvc,
+		Settings:  settingsStore,
+		Backup:    backupSvc,
+		Discovery: discoverySvc,
+		StaticFS:  staticFS,
+		StartedAt: startedAt,
+	})
+	server := &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	intervalMinutes, _ := settingsStore.GetInt(ctx, settings.KeyDDNSCheckInterval)
+	if intervalMinutes <= 0 {
+		intervalMinutes = 5
+	}
+	sched := scheduler.New(
+		scheduler.Job{
+			Name:     "ddns",
+			Interval: time.Duration(intervalMinutes) * time.Minute,
+			Run:      ddnsSvc.Tick,
+		},
+		scheduler.Job{
+			Name:     "acme",
+			Interval: 24 * time.Hour,
+			Run:      acmeSvc.Tick,
+		},
+	)
+	sched.Start(ctx)
+
+	app := &App{
+		cfg:        cfg,
+		logger:     logger,
+		server:     server,
+		nginx:      nginxMgr,
+		scheduler:  sched,
+		shutdownFn: cancel,
+		db:         conn,
+	}
+
+	if err := app.bootstrapNginx(context.Background(), proxySvc); err != nil {
+		cancel()
+		conn.Close()
+		return nil, err
+	}
+
+	logger.Info("application started", "module", "SYSTEM", "listen", cfg.ListenAddr)
+	return app, nil
+}
+
+func (a *App) bootstrapNginx(ctx context.Context, proxySvc *service.ProxyService) error {
+	if err := proxySvc.ReloadAll(ctx); err != nil {
+		a.logger.Warn("initial nginx apply skipped", "module", "NGINX", "error", err.Error())
+	}
+	return nil
+}
+
+func (a *App) Run() error {
+	return a.server.ListenAndServe()
+}
+
+func (a *App) Shutdown(ctx context.Context) error {
+	a.logger.Info("application shutting down", "module", "SYSTEM")
+	if a.shutdownFn != nil {
+		a.shutdownFn()
+	}
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+	if err := a.nginx.Stop(ctx); err != nil {
+		a.logger.Error("nginx stop failed", "module", "NGINX", "error", err.Error())
+	}
+	if a.db != nil {
+		return a.db.Close()
+	}
+	return nil
+}
+
+func ResolveMigrationsDir() (string, error) {
+	candidates := []string{
+		"migrations",
+		filepath.Join("..", "migrations"),
+		filepath.Join("..", "..", "migrations"),
+	}
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && info.IsDir() {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("migrations directory not found")
+}
