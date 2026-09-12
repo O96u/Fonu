@@ -30,7 +30,11 @@ jobs:
       - name: Extract release notes from CHANGELOG
         id: notes
         run: |
-          if bash .github/scripts/extract-changelog.sh "$VERSION" release-body.md; then
+          if awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+            found && /^## \[v/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-body.md && [ -s release-body.md ]; then
             echo "use_changelog=true" >> "$GITHUB_OUTPUT"
           else
             echo "use_changelog=false" >> "$GITHUB_OUTPUT"
