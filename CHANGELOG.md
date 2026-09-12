@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.2] - 2026-09-12
+
+### 修复
+
+- 修复 Nginx PID 文件为空或进程已退出时仍尝试重载，导致反代规则保存失败
+
 ## [v0.1.1] - 2026-09-12
 
 ### 修复

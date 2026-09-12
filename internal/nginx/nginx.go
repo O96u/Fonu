@@ -84,7 +84,12 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, e
 	}
 
 	if err := m.reload(ctx); err != nil {
-		return ApplyResult{}, err
+		m.logger.Warn("nginx reload failed, trying restart", "error", err)
+		removePIDFile(m.cfg.NginxPIDFile)
+		if err := m.start(ctx); err != nil {
+			return ApplyResult{}, err
+		}
+		return ApplyResult{Reloaded: true, Message: "Nginx 已重新启动"}, nil
 	}
 	return ApplyResult{Reloaded: true, Message: "Nginx 已重载"}, nil
 }
@@ -119,6 +124,7 @@ func (m *Manager) validate(ctx context.Context, configPath string) error {
 }
 
 func (m *Manager) start(ctx context.Context) error {
+	removePIDFile(m.cfg.NginxPIDFile)
 	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -161,11 +167,17 @@ func (m *Manager) Stop(ctx context.Context) error {
 }
 
 func (m *Manager) isRunning() (bool, error) {
-	if _, err := os.Stat(m.cfg.NginxPIDFile); err != nil {
+	pid, err := readPIDFile(m.cfg.NginxPIDFile)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, err
+		removePIDFile(m.cfg.NginxPIDFile)
+		return false, nil
+	}
+	if !isPIDAlive(pid) {
+		removePIDFile(m.cfg.NginxPIDFile)
+		return false, nil
 	}
 	return true, nil
 }
