@@ -14,18 +14,18 @@ import (
 func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provider, error) {
 	switch provider {
 	case "dnspod":
-		return dnspod.NewDNSProviderConfig(&dnspod.Config{
-			LoginToken: cred.LoginToken(),
-		})
+		cfg := dnspod.NewDefaultConfig()
+		cfg.LoginToken = cred.LoginToken()
+		return dnspod.NewDNSProviderConfig(cfg)
 	case "alidns":
-		return alidns.NewDNSProviderConfig(&alidns.Config{
-			APIKey:    cred.Token,
-			SecretKey: cred.Secret,
-		})
+		cfg := alidns.NewDefaultConfig()
+		cfg.APIKey = cred.Token
+		cfg.SecretKey = cred.Secret
+		return alidns.NewDNSProviderConfig(cfg)
 	default:
-		return cloudflare.NewDNSProviderConfig(&cloudflare.Config{
-			AuthToken: cred.Token,
-		})
+		cfg := cloudflare.NewDefaultConfig()
+		cfg.AuthToken = cred.Token
+		return cloudflare.NewDNSProviderConfig(cfg)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func TestGenerateHTTPSWithCertIncludesCertificateDirectives(t *testing.T) {
+func TestGenerateHTTPSBlockBeforeHTTPRedirect(t *testing.T) {
 	dir := t.TempDir()
 	certDir := filepath.Join(dir, "certs", "wildcard.example.com")
 	if err := os.MkdirAll(certDir, 0o755); err != nil {
@@ -22,35 +22,40 @@ func TestGenerateHTTPSWithCertIncludesCertificateDirectives(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(certDir, "privatekey.pem"), []byte("key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "mime.types"), []byte("types { text/html html; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.Config{
 		DataDir:        dir,
-		NginxPIDFile:   filepath.Join(dir, "nginx.pid"),
+		NginxPIDFile:   filepath.Join(dir, "nginx", "nginx.pid"),
 		NginxMimeTypes: filepath.Join(dir, "mime.types"),
 	}
 	rules := []proxy.Rule{{
-		ListenPort:   8011,
+		ListenPort:   8017,
 		ListenIPv4:   true,
-		ListenIPv6:   true,
 		Hosts:        []proxy.Host{{Hostname: "app.example.com"}},
-		Upstream:     "http://192.168.8.3:6893",
+		Upstream:     "http://127.0.0.1:1",
 		HTTPSEnabled: true,
 		HTTPRedirect: true,
 		Enabled:      true,
 	}}
-
-	content, err := Generate(cfg, rules, []CertSource{{
-		Domains:  []string{"*.example.com", "example.com"},
+	certs := []CertSource{{
+		Domains:  []string{"*.example.com"},
 		CertPath: filepath.Join(certDir, "fullchain.pem"),
 		KeyPath:  filepath.Join(certDir, "privatekey.pem"),
-	}})
+	}}
+
+	content, err := Generate(cfg, rules, certs)
 	if err != nil {
-		t.Fatalf("generate failed: %v", err)
+		t.Fatalf("generate: %v", err)
 	}
-	if !strings.Contains(content, "listen 8011 ssl;") {
-		t.Fatalf("expected ssl listen:\n%s", content)
+	sslIdx := strings.Index(content, "listen 8017 ssl;")
+	redirectIdx := strings.Index(content, "return 301 https://")
+	if sslIdx < 0 || redirectIdx < 0 {
+		t.Fatalf("missing expected directives:\n%s", content)
 	}
-	if !strings.Contains(content, "ssl_certificate") || !strings.Contains(content, "ssl_certificate_key") {
-		t.Fatalf("expected certificate directives:\n%s", content)
+	if sslIdx > redirectIdx {
+		t.Fatalf("expected ssl server block before http redirect:\n%s", content)
 	}
 }

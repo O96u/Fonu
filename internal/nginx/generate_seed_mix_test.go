@@ -9,7 +9,7 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func TestGenerateSeedLikeRulesWithMuxuiRule(t *testing.T) {
+func TestGenerateMixedRulesWithoutCerts(t *testing.T) {
 	dir := t.TempDir()
 	mimePath := filepath.Join(dir, "mime.types")
 	if err := os.WriteFile(mimePath, []byte("types { text/html html; }\n"), 0o644); err != nil {
@@ -30,7 +30,7 @@ func TestGenerateSeedLikeRulesWithMuxuiRule(t *testing.T) {
 		},
 		{
 			ID: 2, Upstream: "http://192.168.8.3:6893", ListenPort: 8011, ListenIPv4: true, ListenIPv6: true,
-			Hosts: []proxy.Host{{Hostname: "s.muxui.com"}},
+			Hosts: []proxy.Host{{Hostname: "app.example.com"}},
 			HTTPSEnabled: true, HTTPRedirect: true, Enabled: true,
 		},
 	}

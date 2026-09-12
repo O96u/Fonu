@@ -74,7 +74,7 @@ func (a *AliDNS) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 			"RR":         subDomain,
 			"Type":       recordType,
 			"Value":      ip,
-			"TTL":        "120",
+			"TTL":        "600",
 		})
 		return err
 	}
@@ -84,7 +84,7 @@ func (a *AliDNS) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 		"RR":       subDomain,
 		"Type":     recordType,
 		"Value":    ip,
-		"TTL":      "120",
+		"TTL":      "600",
 	})
 	return err
 }

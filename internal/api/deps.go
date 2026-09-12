@@ -2,6 +2,7 @@ package api
 
 import (
 	"io/fs"
+	"log/slog"
 
 	"github.com/fonu/fonu/internal/acme"
 	"github.com/fonu/fonu/internal/auth"
@@ -15,6 +16,7 @@ import (
 
 type Deps struct {
 	Config     config.Config
+	Logger     *slog.Logger
 	Auth       *auth.Service
 	Proxy      *service.ProxyService
 	DDNS       *ddns.Service

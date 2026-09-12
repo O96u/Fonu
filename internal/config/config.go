@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -15,7 +16,10 @@ type Config struct {
 }
 
 func Load() Config {
-	dataDir := envOr("FONU_DATA_DIR", "/data")
+	dataDir := envOr("FONU_DATA_DIR", defaultDataDir())
+	if abs, err := filepath.Abs(dataDir); err == nil {
+		dataDir = abs
+	}
 	return Config{
 		ListenAddr:    envOr("FONU_LISTEN", ":6893"),
 		DataDir:       dataDir,
@@ -44,6 +48,16 @@ func (c Config) LogsDir() string {
 
 func (c Config) CertsDir() string {
 	return c.DataDir + "/certs"
+}
+
+func defaultDataDir() string {
+	if _, err := os.Stat("/data"); err == nil {
+		return "/data"
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return filepath.Join(cwd, ".data")
+	}
+	return "/data"
 }
 
 func envOr(key, fallback string) string {

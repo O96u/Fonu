@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -23,14 +22,6 @@ func readPIDFile(path string) (int, error) {
 		return 0, fmt.Errorf("invalid pid: %q", pidStr)
 	}
 	return pid, nil
-}
-
-func isPIDAlive(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 func removePIDFile(path string) {

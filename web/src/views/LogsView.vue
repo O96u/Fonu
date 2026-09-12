@@ -31,7 +31,7 @@
         <EmptyState
           v-if="!loadingAccess && accessLogs.length === 0"
           title="暂无访问日志"
-          description="产生访问请求后，日志会显示在这里。"
+          description="此处记录经 Nginx 反向代理的访问（非 Fonu 管理界面本身）。请通过代理域名访问后刷新。"
         />
       </n-tab-pane>
 
@@ -379,7 +379,9 @@ function toggleStream() {
     streaming.value = false
     return
   }
-  eventSource = new EventSource(`/api/logs/stream?type=${streamType.value}`)
+  eventSource = new EventSource(`/api/logs/stream?type=${streamType.value}&tail=100`, {
+    withCredentials: true,
+  })
   eventSource.addEventListener('log', (event) => {
     streamLines.value.push(event.data)
     if (streamLines.value.length > 500) streamLines.value = streamLines.value.slice(-400)
@@ -433,6 +435,12 @@ watch(
     tab.value = resolveTab(queryTab)
   },
 )
+
+watch(tab, (name) => {
+  if (name === 'access') loadAccess()
+  else if (name === 'error') loadErrorLogs()
+  else if (name === 'system') loadSystemLogs()
+})
 
 onMounted(() => {
   tab.value = resolveTab(route.query.tab)

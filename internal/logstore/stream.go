@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
-func StreamFile(ctx context.Context, path string, w io.Writer, flush func() error) error {
+func StreamFile(ctx context.Context, path string, w io.Writer, flush func() error, tail int) error {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -20,6 +21,22 @@ func StreamFile(ctx context.Context, path string, w io.Writer, flush func() erro
 		return err
 	}
 	defer file.Close()
+
+	if tail > 0 {
+		lines, err := tailLines(path, tail)
+		if err != nil {
+			return err
+		}
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			fmt.Fprintf(w, "event: log\ndata: %s\n\n", trimSSE(line+"\n"))
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
 
 	if _, err := file.Seek(0, io.SeekEnd); err != nil {
 		return err

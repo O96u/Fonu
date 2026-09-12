@@ -29,8 +29,16 @@ func HasCertificateForHosts(certsDir string, hostnames []string, certs []CertSou
 func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSource) *certFiles {
 	for _, hostname := range hostnames {
 		for _, source := range certs {
-			if cert := certFromSource(source); cert != nil && hostCoveredByCert(hostname, source.Domains) {
+			if !hostCoveredByCert(hostname, source.Domains) {
+				continue
+			}
+			if cert := certFromSource(source); cert != nil {
 				return cert
+			}
+			for _, domain := range source.Domains {
+				if cert := certAt(certsDir, storageDirName(domain)); cert != nil && certUsable(cert) {
+					return cert
+				}
 			}
 		}
 		if cert := findCertificate(certsDir, hostname); cert != nil && certUsable(cert) {
@@ -40,8 +48,19 @@ func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSo
 	return scanCertDirectories(certsDir, hostnames)
 }
 
+func storageDirName(domain string) string {
+	domain = strings.TrimSpace(domain)
+	if strings.HasPrefix(domain, "*.") {
+		return "wildcard." + strings.TrimPrefix(domain, "*.")
+	}
+	return domain
+}
+
 func certFromSource(source CertSource) *certFiles {
-	cert := &certFiles{CertPath: source.CertPath, KeyPath: source.KeyPath}
+	cert := &certFiles{
+		CertPath: absNginxPath(source.CertPath),
+		KeyPath:  absNginxPath(source.KeyPath),
+	}
 	if !certUsable(cert) {
 		return nil
 	}

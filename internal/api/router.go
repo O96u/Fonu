@@ -70,7 +70,11 @@ func NewRouter(deps Deps) http.Handler {
 		mux.Handle("/", r.spaHandler())
 	}
 
-	return loggingMiddleware(SessionMiddleware(deps.Auth)(mux))
+	logger := deps.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return loggingMiddleware(logger, SessionMiddleware(deps.Auth)(mux))
 }
 
 type Router struct {
@@ -107,16 +111,27 @@ func (r *Router) spaHandler() http.Handler {
 	})
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
-	logger := slog.Default()
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusRecorder) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func loggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/logs/stream" {
 			logger.Info("api request",
-				"module", "SYSTEM",
+				"module", "HTTP",
 				"method", r.Method,
 				"path", r.URL.Path,
+				"status", rec.status,
 				"duration_ms", time.Since(start).Milliseconds(),
 			)
 		}

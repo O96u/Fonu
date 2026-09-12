@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	nginxCmdTimeout      = 8 * time.Second
-	nginxTerminateWait   = 3 * time.Second
+	nginxCmdTimeout    = 8 * time.Second
+	nginxStartWait     = 5 * time.Second
+	nginxTerminateWait = 3 * time.Second
 )
 
 type Manager struct {
@@ -41,7 +42,34 @@ func (m *Manager) EnsureDirs() error {
 			return err
 		}
 	}
+	workDirs := []string{
+		"logs",
+		"client_body_temp",
+		"proxy_temp",
+		"fastcgi_temp",
+		"uwsgi_temp",
+		"scgi_temp",
+		filepath.Join("temp", "client_body_temp"),
+		filepath.Join("temp", "proxy_temp"),
+		filepath.Join("temp", "fastcgi_temp"),
+		filepath.Join("temp", "uwsgi_temp"),
+		filepath.Join("temp", "scgi_temp"),
+	}
+	for _, name := range workDirs {
+		if err := os.MkdirAll(filepath.Join(m.cfg.NginxDir(), name), 0o755); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (m *Manager) nginxGlobalArgs() []string {
+	prefix := absNginxPath(m.cfg.NginxDir())
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	errorLog := absNginxPath(filepath.Join(m.cfg.LogsDir(), "error.log"))
+	return []string{"-p", prefix, "-e", errorLog}
 }
 
 func (m *Manager) available() bool {
@@ -135,15 +163,19 @@ func (m *Manager) validate(ctx context.Context, configPath string) error {
 }
 
 func (m *Manager) start(ctx context.Context) error {
-	removePIDFile(m.cfg.NginxPIDFile)
-	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath()}, "Nginx 启动失败"); err != nil {
+	running, err := m.isRunning()
+	if err != nil {
 		return err
 	}
-	if running, err := m.isRunning(); err == nil && running {
-		m.logger.Info("nginx started")
-		return nil
+	if running {
+		return m.reload(ctx)
 	}
-	return fmt.Errorf("Nginx 启动失败：未检测到运行中的进程")
+	prepareStartPlatform(m, ctx)
+	if err := m.runNginxStart(ctx, []string{"-c", m.cfg.NginxConfigPath()}, "Nginx 启动失败"); err != nil {
+		return err
+	}
+	m.logger.Info("nginx started")
+	return nil
 }
 
 func (m *Manager) reload(ctx context.Context) error {
@@ -168,6 +200,7 @@ func (m *Manager) reload(ctx context.Context) error {
 func (m *Manager) forceRestart(ctx context.Context) error {
 	m.terminateMaster()
 	removePIDFile(m.cfg.NginxPIDFile)
+	prepareStartPlatform(m, ctx)
 	return m.start(ctx)
 }
 
@@ -199,7 +232,8 @@ func (m *Manager) runNginx(ctx context.Context, args []string, prefix string) er
 	ctx, cancel := context.WithTimeout(ctx, nginxCmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, args...)
+	fullArgs := append(m.nginxGlobalArgs(), args...)
+	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, fullArgs...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -210,10 +244,60 @@ func (m *Manager) runNginx(ctx context.Context, args []string, prefix string) er
 		if ctx.Err() == context.DeadlineExceeded {
 			msg = "操作超时"
 		}
-		m.logger.Error("nginx command failed", "args", strings.Join(args, " "), "error", msg)
+		m.logger.Error("nginx command failed", "args", strings.Join(fullArgs, " "), "error", msg)
 		return fmt.Errorf("%s：%s", prefix, sanitizeNginxError(msg))
 	}
 	return nil
+}
+
+// runNginxStart launches nginx without waiting for the master process to exit.
+// On Windows the master stays in the foreground and would block cmd.Run().
+func (m *Manager) runNginxStart(ctx context.Context, args []string, prefix string) error {
+	fullArgs := append(m.nginxGlobalArgs(), args...)
+	cmd := exec.Command(m.cfg.NginxBin, fullArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("%s：%s", prefix, err.Error())
+	}
+
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- cmd.Wait() }()
+
+	deadline := time.Now().Add(nginxStartWait)
+	for time.Now().Before(deadline) {
+		if running, err := m.isRunning(); err == nil && running {
+			return nil
+		}
+		select {
+		case err := <-waitDone:
+			if running, checkErr := m.isRunning(); checkErr == nil && running {
+				return nil
+			}
+			msg := strings.TrimSpace(stderr.String())
+			if msg == "" && err != nil {
+				msg = err.Error()
+			}
+			if msg == "" {
+				msg = "进程已退出"
+			}
+			m.logger.Error("nginx start failed", "args", strings.Join(fullArgs, " "), "error", msg)
+			return fmt.Errorf("%s：%s", prefix, sanitizeNginxError(msg))
+		default:
+		}
+		if ctx.Err() != nil {
+			return fmt.Errorf("%s：%s", prefix, "操作超时")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if running, err := m.isRunning(); err == nil && running {
+		return nil
+	}
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" {
+		msg = "未检测到运行中的进程"
+	}
+	return fmt.Errorf("%s：%s", prefix, sanitizeNginxError(msg))
 }
 
 func (m *Manager) isRunning() (bool, error) {

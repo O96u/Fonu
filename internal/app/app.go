@@ -43,6 +43,7 @@ type App struct {
 func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) {
 	appLogWriter := logstore.NewAppLogWriter(cfg.LogsDir())
 	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, appLogWriter), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 
 	for _, dir := range []string{cfg.DataDir, cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -86,6 +87,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 
 	handler := api.NewRouter(api.Deps{
 		Config:    cfg,
+		Logger:    logger,
 		Auth:      authSvc,
 		Proxy:     proxySvc,
 		DDNS:      ddnsSvc,

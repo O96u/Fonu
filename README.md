@@ -14,11 +14,16 @@ cd web && npm ci && npm run dev
 # 后端（需要先构建前端到 cmd/fonu/web/dist）
 make build
 
-# 本地模拟数据（反向代理 / DDNS / 证书 / 日志样本）
-# Windows PowerShell:
-$env:FONU_DATA_DIR = ".\.data"
-$env:FONU_SESSION_SECRET = "dev-secret-change-me"
-go run ./cmd/seed
+# 本地开发（Windows PowerShell，使用本机 Nginx）
+. .\scripts\dev.ps1
+go run ./cmd/fonu
+# 首次访问 http://localhost:6893/setup 创建管理员
+
+# 清空本地数据（勿用 seed，直接录入真实配置）
+. .\scripts\clean-data.ps1
+
+# 可选：写入模拟数据（仅调试 UI）
+# go run ./cmd/seed
 
 # 测试
 make test
@@ -54,17 +59,17 @@ FONU_VERSION=0.1.0 FONU_SESSION_SECRET=your-secret docker compose -f docker-comp
 FONU_VERSION=0.1.0-arm64 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
 
 # 若 Docker Hub 用户名不是默认值
-DOCKERHUB_USERNAME=muxui FONU_VERSION=0.1.0-arm64 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+DOCKERHUB_USERNAME=your-dockerhub-username FONU_VERSION=0.1.0-arm64 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
 ```
 
 ### 发版
 
 在 **GitHub 仓库 Secrets** 配置（仅 CI 构建推送时使用，不写死在代码里）：
 
-- `DOCKERHUB_USERNAME`：Docker Hub 用户名（如 `muxui`）
+- `DOCKERHUB_USERNAME`：Docker Hub 用户名
 - `DOCKERHUB_TOKEN`：Docker Hub Access Token
 
-本地 `docker compose` 拉镜像时，通过环境变量 `DOCKERHUB_USERNAME` 指定用户名（默认 `muxui`）。
+本地 `docker compose` 拉镜像时，通过环境变量 `DOCKERHUB_USERNAME` 指定用户名（必填）。
 
 本地打标签并推送（由你本人提交，不要用 Cursor 自动提交）：
 

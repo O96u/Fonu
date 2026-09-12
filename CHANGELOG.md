@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.10] - 2026-09-12
+
+### 修复
+
+- Windows 本地 Nginx：证书/日志使用绝对路径，HTTPS 块先于 HTTP 重定向，修复 `ssl_certificate` 校验失败
+- Windows 进程检测与启动：修复 `isPIDAlive` 误判、启动阻塞及重复拉起 Nginx 导致端口冲突
+- 系统日志写入 `app.log`，API 请求记录状态码；实时日志连接时预载最近条目
+- 未设置 `FONU_DATA_DIR` 时默认使用当前目录 `.data`
+
+### 改进
+
+- 新增 `scripts/dev.ps1`、`scripts/clean-data.ps1` 便于 Windows 本地开发
+- 测试与文档示例域名统一为 `example.com`，移除个人域名硬编码
+
 ## [v0.1.9] - 2026-09-12
 
 ### 修复

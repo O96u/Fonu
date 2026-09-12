@@ -74,10 +74,11 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "SSE 不可用")
 		return
 	}
+	tail := queryInt(r, "tail", 100)
 	_ = logstore.StreamFile(r.Context(), path, w, func() error {
 		flusher.Flush()
 		return nil
-	})
+	}, tail)
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {

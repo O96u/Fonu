@@ -18,7 +18,7 @@ func TestGenerateHTTPSWithoutCertUsesHTTPOnly(t *testing.T) {
 		ListenPort:   8011,
 		ListenIPv4:   true,
 		ListenIPv6:   true,
-		Hosts:        []proxy.Host{{Hostname: "s.muxui.com"}},
+		Hosts:        []proxy.Host{{Hostname: "app.example.com"}},
 		Upstream:     "http://192.168.8.3:6893",
 		HTTPSEnabled: true,
 		HTTPRedirect: true,
