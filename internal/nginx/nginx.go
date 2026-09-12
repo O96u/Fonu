@@ -9,13 +9,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-const nginxCmdTimeout = 15 * time.Second
+const (
+	nginxCmdTimeout      = 8 * time.Second
+	nginxTerminateWait   = 3 * time.Second
+)
 
 type Manager struct {
 	cfg    config.Config
@@ -101,9 +105,7 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 
 	if err := m.reload(ctx); err != nil {
 		m.logger.Warn("nginx reload failed, trying restart", "error", err)
-		removePIDFile(m.cfg.NginxPIDFile)
-		_ = m.Stop(ctx)
-		if err := m.start(ctx); err != nil {
+		if err := m.forceRestart(ctx); err != nil {
 			return ApplyResult{}, err
 		}
 		return ApplyResult{Reloaded: true, Message: "Nginx 已重新启动"}, nil
@@ -145,11 +147,41 @@ func (m *Manager) start(ctx context.Context) error {
 }
 
 func (m *Manager) reload(ctx context.Context) error {
+	pid, err := readPIDFile(m.cfg.NginxPIDFile)
+	if err == nil && isPIDAlive(pid) {
+		if err := reloadProcess(pid); err == nil {
+			m.logger.Info("nginx reloaded")
+			return nil
+		}
+		m.logger.Warn("nginx signal reload failed, falling back to cli", "pid", pid, "error", err)
+	} else if err != nil && !os.IsNotExist(err) {
+		removePIDFile(m.cfg.NginxPIDFile)
+	}
+
 	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "reload"}, "Nginx 重载失败"); err != nil {
 		return err
 	}
 	m.logger.Info("nginx reloaded")
 	return nil
+}
+
+func (m *Manager) forceRestart(ctx context.Context) error {
+	m.terminateMaster()
+	removePIDFile(m.cfg.NginxPIDFile)
+	return m.start(ctx)
+}
+
+func (m *Manager) terminateMaster() {
+	pid, err := readPIDFile(m.cfg.NginxPIDFile)
+	if err != nil || !isPIDAlive(pid) {
+		return
+	}
+	_ = terminateProcess(pid, syscall.SIGTERM)
+	waitProcessExit(pid, nginxTerminateWait)
+	if isPIDAlive(pid) {
+		_ = terminateProcess(pid, syscall.SIGKILL)
+		waitProcessExit(pid, time.Second)
+	}
 }
 
 func (m *Manager) Stop(ctx context.Context) error {

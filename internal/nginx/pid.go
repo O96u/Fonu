@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func readPIDFile(path string) (int, error) {
@@ -34,4 +35,14 @@ func isPIDAlive(pid int) bool {
 
 func removePIDFile(path string) {
 	_ = os.Remove(path)
+}
+
+func waitProcessExit(pid int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isPIDAlive(pid) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }

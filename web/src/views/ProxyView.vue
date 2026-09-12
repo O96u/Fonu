@@ -356,7 +356,14 @@ async function save() {
     showModal.value = false
     await load()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存失败')
+    const msg = error instanceof Error ? error.message : '保存失败'
+    if (msg.startsWith('规则已保存')) {
+      message.warning(msg)
+      showModal.value = false
+      await load()
+    } else {
+      message.error(msg)
+    }
   } finally {
     saving.value = false
   }
@@ -376,9 +383,15 @@ function confirmDelete(rule: ProxyRule) {
           message.success('规则已删除')
           await load()
         })
-        .catch((error: unknown) => {
-          message.error(error instanceof Error ? error.message : '删除失败')
-          return false
+        .catch(async (error: unknown) => {
+          const msg = error instanceof Error ? error.message : '删除失败'
+          if (msg.startsWith('规则已删除')) {
+            message.warning(msg)
+            await load()
+          } else {
+            message.error(msg)
+            return false
+          }
         }),
   })
 }

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.9] - 2026-09-12
+
+### 修复
+
+- 反代保存/删除不再因 Nginx 重载卡住 30 秒：优先 SIGHUP 信号重载，失败时快速强制重启
+- 保存/更新规则先落库再重载 Nginx，避免超时后规则未写入
+- 部分成功（规则已保存但 Nginx 失败）时前端仍关闭弹窗并刷新列表
+
 ## [v0.1.8] - 2026-09-12
 
 ### 修复

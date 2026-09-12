@@ -38,31 +38,12 @@ func (s *ProxyService) Create(ctx context.Context, in proxy.CreateInput) (proxy.
 		return proxy.Rule{}, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	rule, err := s.store.Create(ctx, in)
 	if err != nil {
 		return proxy.Rule{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	store := proxy.NewStoreWithTx(tx)
-	rule, err := store.Create(ctx, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rules, err := store.ListEnabled(ctx)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	certs, err := s.loadCertSources(ctx)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if _, err := s.nginx.Apply(ctx, rules, certs); err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return proxy.Rule{}, err
+	if err := s.applyNginx(ctx); err != nil {
+		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
 	}
 	return rule, nil
 }
@@ -84,31 +65,12 @@ func (s *ProxyService) Update(ctx context.Context, id int64, in proxy.UpdateInpu
 		return proxy.Rule{}, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	rule, err := s.store.Update(ctx, id, in)
 	if err != nil {
 		return proxy.Rule{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	store := proxy.NewStoreWithTx(tx)
-	rule, err := store.Update(ctx, id, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rules, err := store.ListEnabled(ctx)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	certs, err := s.loadCertSources(ctx)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if _, err := s.nginx.Apply(ctx, rules, certs); err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return proxy.Rule{}, err
+	if err := s.applyNginx(ctx); err != nil {
+		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
 	}
 	return rule, nil
 }
@@ -117,22 +79,17 @@ func (s *ProxyService) Delete(ctx context.Context, id int64) error {
 	if err := s.store.Delete(ctx, id); err != nil {
 		return err
 	}
-
-	rules, err := s.store.ListEnabled(ctx)
-	if err != nil {
-		return err
-	}
-	certs, err := s.loadCertSources(ctx)
-	if err != nil {
-		return err
-	}
-	if _, err := s.nginx.Apply(ctx, rules, certs); err != nil {
+	if err := s.applyNginx(ctx); err != nil {
 		return fmt.Errorf("规则已删除，但 Nginx 重载失败：%w", err)
 	}
 	return nil
 }
 
 func (s *ProxyService) ReloadAll(ctx context.Context) error {
+	return s.applyNginx(ctx)
+}
+
+func (s *ProxyService) applyNginx(ctx context.Context) error {
 	rules, err := s.store.ListEnabled(ctx)
 	if err != nil {
 		return err
