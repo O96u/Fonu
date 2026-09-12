@@ -9,10 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
 )
+
+const nginxCmdTimeout = 15 * time.Second
 
 type Manager struct {
 	cfg    config.Config
@@ -99,6 +102,7 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 	if err := m.reload(ctx); err != nil {
 		m.logger.Warn("nginx reload failed, trying restart", "error", err)
 		removePIDFile(m.cfg.NginxPIDFile)
+		_ = m.Stop(ctx)
 		if err := m.start(ctx); err != nil {
 			return ApplyResult{}, err
 		}
@@ -125,47 +129,24 @@ func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []
 }
 
 func (m *Manager) validate(ctx context.Context, configPath string) error {
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-t", "-c", configPath)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		m.logger.Error("nginx validate failed", "error", msg)
-		return fmt.Errorf("Nginx 配置校验失败：%s", sanitizeNginxError(msg))
-	}
-	m.logger.Info("nginx validate succeeded")
-	return nil
+	return m.runNginx(ctx, []string{"-t", "-c", configPath}, "Nginx 配置校验失败")
 }
 
 func (m *Manager) start(ctx context.Context) error {
 	removePIDFile(m.cfg.NginxPIDFile)
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath())
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("Nginx 启动失败：%s", sanitizeNginxError(msg))
+	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath()}, "Nginx 启动失败"); err != nil {
+		return err
 	}
-	m.logger.Info("nginx started")
-	return nil
+	if running, err := m.isRunning(); err == nil && running {
+		m.logger.Info("nginx started")
+		return nil
+	}
+	return fmt.Errorf("Nginx 启动失败：未检测到运行中的进程")
 }
 
 func (m *Manager) reload(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath(), "-s", "reload")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("Nginx 重载失败：%s", sanitizeNginxError(msg))
+	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "reload"}, "Nginx 重载失败"); err != nil {
+		return err
 	}
 	m.logger.Info("nginx reloaded")
 	return nil
@@ -175,11 +156,31 @@ func (m *Manager) Stop(ctx context.Context) error {
 	if !m.isRunningQuick() {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath(), "-s", "quit")
-	if err := cmd.Run(); err != nil {
+	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "quit"}, "Nginx 停止失败"); err != nil {
 		return err
 	}
 	m.logger.Info("nginx stopped")
+	return nil
+}
+
+func (m *Manager) runNginx(ctx context.Context, args []string, prefix string) error {
+	ctx, cancel := context.WithTimeout(ctx, nginxCmdTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			msg = "操作超时"
+		}
+		m.logger.Error("nginx command failed", "args", strings.Join(args, " "), "error", msg)
+		return fmt.Errorf("%s：%s", prefix, sanitizeNginxError(msg))
+	}
 	return nil
 }
 

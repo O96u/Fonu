@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.6] - 2026-09-12
+
+### 修复
+
+- 为 Nginx 校验/重载/启动命令增加 15 秒超时，避免反代保存时无限转圈
+- 前端 API 请求增加 30 秒超时，超时后显示明确错误提示
+- Nginx 重载失败时先尝试优雅停止再重启，降低端口占用导致的卡死
+
 ## [v0.1.5] - 2026-09-12
 
 ### 修复

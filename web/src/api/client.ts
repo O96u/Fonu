@@ -19,9 +19,27 @@ export function asList<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : []
 }
 
+const REQUEST_TIMEOUT_MS = 30_000
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await requestWithSignal<T>(path, init, controller.signal)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('请求超时，请检查 Fonu 服务或 Nginx 状态')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
