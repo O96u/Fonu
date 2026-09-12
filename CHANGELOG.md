@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.8] - 2026-09-12
+
+### 修复
+
+- 修复反代规则删除无反应：删除失败时显示错误提示；Nginx 重载失败时不再回滚已删除的规则
+
 ## [v0.1.7] - 2026-09-12
 
 ### 改进

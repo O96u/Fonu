@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 
 	"github.com/fonu/fonu/internal/certificate"
@@ -113,18 +114,11 @@ func (s *ProxyService) Update(ctx context.Context, id int64, in proxy.UpdateInpu
 }
 
 func (s *ProxyService) Delete(ctx context.Context, id int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	store := proxy.NewStoreWithTx(tx)
-	if err := store.Delete(ctx, id); err != nil {
+	if err := s.store.Delete(ctx, id); err != nil {
 		return err
 	}
 
-	rules, err := store.ListEnabled(ctx)
+	rules, err := s.store.ListEnabled(ctx)
 	if err != nil {
 		return err
 	}
@@ -133,9 +127,9 @@ func (s *ProxyService) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if _, err := s.nginx.Apply(ctx, rules, certs); err != nil {
-		return err
+		return fmt.Errorf("规则已删除，但 Nginx 重载失败：%w", err)
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *ProxyService) ReloadAll(ctx context.Context) error {

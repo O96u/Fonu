@@ -368,11 +368,18 @@ function confirmDelete(rule: ProxyRule) {
     content: '删除后相关域名将停止反向代理。',
     positiveText: '删除',
     negativeText: '取消',
-    onPositiveClick: async () => {
-      await api.deleteProxy(rule.id)
-      message.success('规则已删除')
-      await load()
-    },
+    onPositiveClick: () =>
+      api
+        .deleteProxy(rule.id)
+        .then(async () => {
+          rules.value = rules.value.filter((r) => r.id !== rule.id)
+          message.success('规则已删除')
+          await load()
+        })
+        .catch((error: unknown) => {
+          message.error(error instanceof Error ? error.message : '删除失败')
+          return false
+        }),
   })
 }
 
