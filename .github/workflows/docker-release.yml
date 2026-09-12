@@ -4,16 +4,21 @@ on:
   push:
     tags:
       - 'v*'
-
-concurrency:
-  group: docker-release-${{ github.ref }}-${{ matrix.arch }}
-  cancel-in-progress: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        default: v0.1.0
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    concurrency:
+      group: docker-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}-${{ matrix.arch }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -27,10 +32,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Resolve version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare image tags
         id: tags
@@ -39,6 +48,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           ARCH: ${{ matrix.arch }}
         run: |
+          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "DOCKERHUB_USERNAME secret is not set" >&2
+            exit 1
+          fi
           TAGS="${IMAGE}:${VERSION}-${ARCH}"
           if [ "${{ matrix.publish_default_tags }}" = "true" ]; then
             TAGS="${TAGS},${IMAGE}:${VERSION},${IMAGE}:latest"
