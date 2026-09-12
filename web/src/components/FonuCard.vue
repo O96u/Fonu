@@ -1,8 +1,11 @@
 <template>
   <div class="fonu-card" :class="{ 'fonu-card--flush': flush }">
-    <div v-if="title || $slots.header" class="fonu-card__header">
+    <div v-if="title || $slots.title || $slots.header" class="fonu-card__header">
       <div>
         <h3 v-if="title" class="fonu-card__title">{{ title }}</h3>
+        <div v-else-if="$slots.title" class="fonu-card__title fonu-card__title-row">
+          <slot name="title" />
+        </div>
         <p v-if="subtitle" class="fonu-card__subtitle">{{ subtitle }}</p>
       </div>
       <div v-if="$slots.header" class="fonu-card__header-extra">
@@ -45,6 +48,12 @@ defineProps<{
   font-size: 16px;
   font-weight: 600;
   color: var(--fonu-text);
+}
+
+.fonu-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--fonu-space-2);
 }
 
 .fonu-card__subtitle {

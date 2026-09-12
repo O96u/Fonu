@@ -1,6 +1,6 @@
 <template>
 
-  <PageHeader title="反向代理" description="管理通过域名访问的 NAS 服务">
+  <PageHeader title="反代" description="管理通过域名访问的 NAS 服务">
 
     <template #actions>
 
@@ -168,8 +168,6 @@ import {
 
   NDataTable,
 
-  NDropdown,
-
   NForm,
 
   NFormItem,
@@ -181,8 +179,6 @@ import {
   NModal,
 
   NSelect,
-
-  NSpace,
 
   NSwitch,
 
@@ -211,6 +207,8 @@ import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 
 import StatusBadge from '../components/StatusBadge.vue'
+
+import { renderTableRowActions } from '../utils/tableActions'
 
 
 
@@ -364,24 +362,12 @@ const columns: DataTableColumns<ProxyRule> = [
 
     key: 'actions',
 
-    width: 130,
+    width: 132,
 
     render: (row) =>
-
-      h(NSpace, { size: 4 }, () => [
-
-        h(NButton, { size: 'small', quaternary: true, type: 'primary', onClick: () => openEdit(row) }, () => '编辑'),
-
-        h(
-
-          NDropdown,
-
-          { options: [{ label: '删除', key: 'delete' }], onSelect: () => confirmDelete(row) },
-
-          () => h(NButton, { size: 'small', quaternary: true }, () => '···'),
-
-        ),
-
+      renderTableRowActions([
+        { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
+        { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
       ]),
 
   },

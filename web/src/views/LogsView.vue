@@ -3,8 +3,8 @@
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 
-  <FonuCard v-else flush>
-    <n-tabs v-model:value="tab" type="line" animated>
+  <FonuCard v-else flush class="logs-card">
+    <n-tabs v-model:value="tab" type="line" animated class="logs-tabs">
       <n-tab-pane name="access" tab="访问日志">
         <LogToolbar
           v-model:keyword="accessKeyword"
@@ -16,12 +16,17 @@
           @toggle-auto="autoRefresh = !autoRefresh"
         />
         <n-data-table
-          v-if="accessLogs.length > 0"
+          v-if="filteredAccessLogs.length > 0"
           :columns="accessColumns"
-          :data="filteredAccessLogs"
+          :data="pagedAccessLogs"
           :loading="loadingAccess"
           :bordered="false"
           :scroll-x="1000"
+        />
+        <LogPagination
+          v-if="filteredAccessLogs.length > 0"
+          v-model:page="accessPage"
+          :item-count="filteredAccessLogs.length"
         />
         <EmptyState
           v-if="!loadingAccess && accessLogs.length === 0"
@@ -33,11 +38,16 @@
       <n-tab-pane name="error" tab="错误日志">
         <LogToolbar v-model:keyword="errorKeyword" @refresh="loadErrorLogs" />
         <n-data-table
-          v-if="errorLogs.length > 0"
+          v-if="filteredErrorLogs.length > 0"
           :columns="errorColumns"
-          :data="filteredErrorLogs"
+          :data="pagedErrorLogs"
           :loading="loadingError"
           :bordered="false"
+        />
+        <LogPagination
+          v-if="filteredErrorLogs.length > 0"
+          v-model:page="errorPage"
+          :item-count="filteredErrorLogs.length"
         />
         <EmptyState
           v-if="!loadingError && errorLogs.length === 0"
@@ -54,11 +64,16 @@
           @refresh="loadSystemLogs"
         />
         <n-data-table
-          v-if="systemLogs.length > 0"
+          v-if="filteredSystemLogs.length > 0"
           :columns="systemColumns"
-          :data="filteredSystemLogs"
+          :data="pagedSystemLogs"
           :loading="loadingSystem"
           :bordered="false"
+        />
+        <LogPagination
+          v-if="filteredSystemLogs.length > 0"
+          v-model:page="systemPage"
+          :item-count="filteredSystemLogs.length"
         />
         <EmptyState
           v-if="!loadingSystem && systemLogs.length === 0"
@@ -75,7 +90,7 @@
         </div>
         <div ref="streamBox" class="stream-box" :class="{ paused: !streaming }">
           <div v-for="(line, i) in streamLines" :key="i" class="stream-line" :class="lineClass(line)">
-            {{ line }}
+            {{ formatLogLine(line) }}
           </div>
           <div v-if="streamLines.length === 0" class="stream-empty text-muted">等待日志输出…</div>
         </div>
@@ -86,10 +101,12 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NButton,
   NDataTable,
   NInput,
+  NPagination,
   NSelect,
   NTabPane,
   NTabs,
@@ -103,8 +120,31 @@ import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
-import { formatMs } from '../utils/format'
+import { formatLogLine, formatLogTime, formatMs } from '../utils/format'
 import { httpStatusKind } from '../utils/status'
+
+const PAGE_SIZE = 20
+
+const LogPagination = defineComponent({
+  name: 'LogPagination',
+  props: {
+    page: { type: Number, required: true },
+    itemCount: { type: Number, required: true },
+  },
+  emits: ['update:page'],
+  setup(props, { emit }) {
+    return () =>
+      h('div', { class: 'log-pagination' }, [
+        h(NPagination, {
+          page: props.page,
+          pageSize: PAGE_SIZE,
+          itemCount: props.itemCount,
+          showSizePicker: false,
+          'onUpdate:page': (p: number) => emit('update:page', p),
+        }),
+      ])
+  },
+})
 
 const LogToolbar = defineComponent({
   name: 'LogToolbar',
@@ -159,7 +199,17 @@ const LogToolbar = defineComponent({
 })
 
 const message = useMessage()
-const tab = ref('access')
+const route = useRoute()
+const LOG_TABS = ['access', 'error', 'system', 'stream'] as const
+
+function resolveTab(queryTab: unknown) {
+  if (typeof queryTab === 'string' && (LOG_TABS as readonly string[]).includes(queryTab)) {
+    return queryTab
+  }
+  return 'access'
+}
+
+const tab = ref(resolveTab(route.query.tab))
 const pageError = ref('')
 const autoRefresh = ref(false)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -176,6 +226,10 @@ const accessStatus = ref<number | null>(null)
 const errorKeyword = ref('')
 const systemKeyword = ref('')
 const systemLevel = ref('')
+
+const accessPage = ref(1)
+const errorPage = ref(1)
+const systemPage = ref(1)
 
 const streamType = ref('system')
 const streamLines = ref<string[]>([])
@@ -214,6 +268,15 @@ const filteredSystemLogs = computed(() => {
   })
 })
 
+function paginate<T>(items: T[], page: number) {
+  const start = (page - 1) * PAGE_SIZE
+  return items.slice(start, start + PAGE_SIZE)
+}
+
+const pagedAccessLogs = computed(() => paginate(filteredAccessLogs.value, accessPage.value))
+const pagedErrorLogs = computed(() => paginate(filteredErrorLogs.value, errorPage.value))
+const pagedSystemLogs = computed(() => paginate(filteredSystemLogs.value, systemPage.value))
+
 const methodTagType = (method: string) => {
   const map: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
     GET: 'success',
@@ -232,8 +295,11 @@ const statusTagType = (code: number) => {
   return 'info'
 }
 
+const logTimeCell = (time: string) =>
+  h('span', { style: 'white-space: nowrap' }, formatLogTime(time))
+
 const accessColumns: DataTableColumns<AccessLogEntry> = [
-  { title: '时间', key: 'time', width: 180 },
+  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time) },
   { title: '域名', key: 'domain' },
   {
     title: '方法',
@@ -253,11 +319,11 @@ const accessColumns: DataTableColumns<AccessLogEntry> = [
 ]
 
 const errorColumns: DataTableColumns<{ line: string }> = [
-  { title: '内容', key: 'line', ellipsis: { tooltip: true } },
+  { title: '内容', key: 'line', ellipsis: { tooltip: true }, render: (row) => formatLogLine(row.line) },
 ]
 
 const systemColumns: DataTableColumns<SystemLogEntry> = [
-  { title: '时间', key: 'time', width: 180 },
+  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time) },
   { title: '级别', key: 'level', width: 80 },
   { title: '模块', key: 'module', width: 100 },
   { title: '消息', key: 'message', ellipsis: { tooltip: true } },
@@ -337,6 +403,18 @@ function lineClass(line: string) {
   return ''
 }
 
+watch([accessKeyword, accessStatus], () => {
+  accessPage.value = 1
+})
+
+watch(errorKeyword, () => {
+  errorPage.value = 1
+})
+
+watch([systemKeyword, systemLevel], () => {
+  systemPage.value = 1
+})
+
 watch(streamType, () => {
   if (streaming.value) {
     eventSource?.close()
@@ -349,7 +427,17 @@ watch(autoRefresh, (on) => {
   if (on) refreshTimer = setInterval(() => loadAccess(), 10000)
 })
 
-onMounted(loadAll)
+watch(
+  () => route.query.tab,
+  (queryTab) => {
+    tab.value = resolveTab(queryTab)
+  },
+)
+
+onMounted(() => {
+  tab.value = resolveTab(route.query.tab)
+  loadAll()
+})
 onUnmounted(() => {
   eventSource?.close()
   if (refreshTimer) clearInterval(refreshTimer)
@@ -357,6 +445,25 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.logs-card :deep(.n-tabs-nav) {
+  padding: var(--fonu-space-4) var(--fonu-space-5) 0;
+}
+
+.logs-card :deep(.n-tabs-tab) {
+  font-size: 14px;
+}
+
+.logs-card :deep(.n-tab-pane) {
+  padding-top: var(--fonu-space-2);
+}
+
+.log-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--fonu-space-4) var(--fonu-space-5);
+  border-top: 1px solid var(--fonu-border);
+}
+
 .stream-box {
   margin-top: var(--fonu-space-4);
   background: #0f172a;

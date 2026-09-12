@@ -14,6 +14,7 @@ const (
 	KeyCertRenewThreshold    = "cert_renew_threshold_days"
 	KeyRootDomain            = "root_domain"
 	KeyACMEEmail             = "acme_email"
+	KeyACMECA                = "acme_ca"
 	KeyNotifyWebhookURL      = "notify_webhook_url"
 	KeyNotifyOnDDNSError     = "notify_on_ddns_error"
 	KeyNotifyOnCertError     = "notify_on_cert_error"
@@ -26,6 +27,7 @@ var Defaults = map[string]string{
 	KeyLogRetentionDays:   "30",
 	KeyDDNSCheckInterval:  "5",
 	KeyCertRenewThreshold: "30",
+	KeyACMECA:             "letsencrypt",
 }
 
 type Store struct {

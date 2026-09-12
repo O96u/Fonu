@@ -26,9 +26,44 @@ make test
 
 ## Docker
 
+### 本地构建
+
 ```bash
 docker compose up -d --build
 ```
+
+### 从 Docker Hub 拉取（发版后）
+
+GitHub 推送 `v*` 标签（如 `v0.1.0`）后，Actions 会用 Secrets 里的账号推送到 Docker Hub（镜像名：`{DOCKERHUB_USERNAME}/fonu`）。
+
+```bash
+# 使用最新版（默认拉取 muxui/fonu，可用环境变量覆盖）
+FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+
+# 指定版本
+FONU_VERSION=v0.1.0 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+
+# 若 Docker Hub 用户名不是默认值
+DOCKERHUB_USERNAME=muxui FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+```
+
+### 发版
+
+在 **GitHub 仓库 Secrets** 配置（仅 CI 构建推送时使用，不写死在代码里）：
+
+- `DOCKERHUB_USERNAME`：Docker Hub 用户名（如 `muxui`）
+- `DOCKERHUB_TOKEN`：Docker Hub Access Token
+
+本地 `docker compose` 拉镜像时，通过环境变量 `DOCKERHUB_USERNAME` 指定用户名（默认 `muxui`）。
+
+本地打标签并推送（由你本人提交，不要用 Cursor 自动提交）：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+推送标签后 GitHub Actions 会自动构建镜像，不会向仓库产生新的 commit。
 
 管理后台：`http://NAS-IP:6893`
 

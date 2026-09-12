@@ -10,6 +10,17 @@ import (
 
 var domainRe = regexp.MustCompile(`^(?i:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?i:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$`)
 
+func CertDomain(domain string) error {
+	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	if domain == "" {
+		return fmt.Errorf("域名不能为空")
+	}
+	if strings.HasPrefix(domain, "*.") {
+		return Domain(strings.TrimPrefix(domain, "*."))
+	}
+	return Domain(domain)
+}
+
 func Domain(domain string) error {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {

@@ -2,6 +2,7 @@ import type {
   AccessLogEntry,
   ApiError,
   AuthStatus,
+  CertificateCAOption,
   CertificateRecord,
   DashboardStatus,
   DDNSConfig,
@@ -69,22 +70,48 @@ export const api = {
     request<ProxyRule>(`/api/proxies/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
 
-  getDDNS: () => request<DDNSConfig>('/api/ddns'),
-  saveDDNS: (payload: DDNSSavePayload) =>
-    request<DDNSConfig>('/api/ddns', { method: 'PUT', body: JSON.stringify(payload) }),
+  listDDNS: () => request<DDNSConfig[]>('/api/ddns'),
+  createDDNS: (payload: DDNSSavePayload) =>
+    request<DDNSConfig>('/api/ddns', { method: 'POST', body: JSON.stringify(payload) }),
+  updateDDNS: (id: number, payload: DDNSSavePayload) =>
+    request<DDNSConfig>(`/api/ddns/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteDDNS: (id: number) => request<void>(`/api/ddns/${id}`, { method: 'DELETE' }),
   testDDNS: (payload: DDNSTestPayload) =>
     request<{ message: string }>('/api/ddns/test', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  updateDDNS: () => request<DDNSConfig>('/api/ddns/update', { method: 'POST' }),
+  updateAllDDNS: () => request<DDNSConfig[]>('/api/ddns/update', { method: 'POST' }),
+  updateDDNSOne: (id: number) => request<DDNSConfig>(`/api/ddns/${id}/update`, { method: 'POST' }),
 
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
-  applyCertificate: () => request<CertificateRecord[]>('/api/certificates/apply', { method: 'POST' }),
-  renewCertificate: (domain?: string) =>
+  listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
+  applyCertificate: (payload: { dns_zone: string; domains: string[]; ca?: string; email?: string }) =>
+    request<CertificateRecord[]>('/api/certificates/apply', {
+      method: 'POST',
+      body: JSON.stringify({
+        dns_zone: payload.dns_zone,
+        domains: payload.domains,
+        ca: payload.ca ?? '',
+        email: payload.email ?? '',
+      }),
+    }),
+  importCertificate: (payload: {
+    certificate?: string
+    private_key?: string
+    cert_path?: string
+    key_path?: string
+  }) =>
+    request<CertificateRecord>('/api/certificates/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteCertificate: (domain: string) =>
+    request<{ message: string }>(`/api/certificates/${encodeURIComponent(domain)}`, { method: 'DELETE' }),
+  renewCertificate: (domain?: string, ca?: string) =>
     request<CertificateRecord>('/api/certificates/renew', {
       method: 'POST',
-      body: JSON.stringify({ domain: domain ?? '' }),
+      body: JSON.stringify({ domain: domain ?? '', ca: ca ?? '' }),
     }),
 
   getSettings: () => request<SettingsMap>('/api/settings'),

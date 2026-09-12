@@ -1,102 +1,75 @@
 <template>
-  <div class="donut-wrap">
-    <svg viewBox="0 0 120 120" class="donut">
-      <circle cx="60" cy="60" r="44" fill="none" stroke="#f3f4f6" stroke-width="16" />
-      <circle
-        v-for="(seg, i) in segments"
-        :key="i"
-        cx="60"
-        cy="60"
-        r="44"
-        fill="none"
-        :stroke="seg.color"
-        stroke-width="16"
-        :stroke-dasharray="`${seg.len} ${circumference}`"
-        :stroke-dashoffset="seg.offset"
-        transform="rotate(-90 60 60)"
-      />
-    </svg>
-    <div class="donut-legend">
-      <div v-for="item in legend" :key="item.label" class="legend-row">
-        <span class="legend-dot" :style="{ background: item.color }" />
-        <span class="legend-label">{{ item.label }}</span>
-        <span class="legend-value">{{ item.pct }}%</span>
-      </div>
-    </div>
-  </div>
+  <VChart class="chart" :option="option" autoresize />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { use } from 'echarts/core'
+import { PieChart } from 'echarts/charts'
+import { LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import VChart from 'vue-echarts'
+import { useTheme } from '../composables/useTheme'
+
+use([CanvasRenderer, PieChart, LegendComponent, TooltipComponent])
 
 const props = defineProps<{
   segments: { label: string; value: number; color: string }[]
 }>()
 
-const circumference = 2 * Math.PI * 44
+const { isDark } = useTheme()
 
-const total = computed(() => props.segments.reduce((s, x) => s + x.value, 0) || 1)
+const option = computed(() => {
+  const textColor = isDark.value ? '#94a3b8' : '#6b7280'
 
-const legend = computed(() =>
-  props.segments.map((s) => ({
-    label: s.label,
-    color: s.color,
-    pct: Math.round((s.value / total.value) * 100),
-  })),
-)
-
-const segments = computed(() => {
-  let offset = 0
-  return props.segments.map((s) => {
-    const len = (s.value / total.value) * circumference
-    const seg = { color: s.color, len, offset: -offset }
-    offset += len
-    return seg
-  })
+  return {
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: isDark.value ? '#1e293b' : '#fff',
+      borderColor: isDark.value ? '#334155' : '#e5e7eb',
+      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      formatter: '{b}: {c} ({d}%)',
+    },
+    legend: {
+      orient: 'vertical',
+      right: 0,
+      top: 'center',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 12,
+      textStyle: { color: textColor, fontSize: 13 },
+      formatter: (name: string) => {
+        const seg = props.segments.find((s) => s.label === name)
+        const total = props.segments.reduce((sum, s) => sum + s.value, 0) || 1
+        const pct = seg ? Math.round((seg.value / total) * 100) : 0
+        return `${name}  ${pct}%`
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '72%'],
+        center: ['32%', '50%'],
+        avoidLabelOverlap: false,
+        label: { show: false },
+        emphasis: {
+          scale: true,
+          scaleSize: 4,
+        },
+        data: props.segments.map((s) => ({
+          name: s.label,
+          value: s.value,
+          itemStyle: { color: s.color },
+        })),
+      },
+    ],
+  }
 })
 </script>
 
 <style scoped>
-.donut-wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-5);
-}
-
-.donut {
-  width: 120px;
-  height: 120px;
-  flex-shrink: 0;
-}
-
-.donut-legend {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.legend-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.legend-label {
-  flex: 1;
-  color: var(--fonu-text-secondary);
-}
-
-.legend-value {
-  font-weight: 600;
-  color: var(--fonu-text);
+.chart {
+  width: 100%;
+  height: 200px;
 }
 </style>

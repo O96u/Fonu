@@ -1,14 +1,16 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/fonu/fonu/internal/acme"
+	certstore "github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/ddns"
-	"github.com/fonu/fonu/internal/acme"
 	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/publicip"
 	"github.com/fonu/fonu/internal/service"
@@ -38,9 +40,12 @@ type statusResponse struct {
 	PublicIPv4        string  `json:"public_ipv4"`
 	PublicIPv6        string  `json:"public_ipv6"`
 	DDNSStatus        string  `json:"ddns_status"`
+	DDNSCount         int     `json:"ddns_count"`
 	DDNSLastUpdated   string  `json:"ddns_last_updated,omitempty"`
-	CertificateStatus string  `json:"certificate_status"`
-	CertificateDays   int     `json:"certificate_days"`
+	CertificateStatus  string `json:"certificate_status"`
+	CertificateDays    int    `json:"certificate_days"`
+	CertificateCount   int    `json:"certificate_count"`
+	CertificateSummary string `json:"certificate_summary,omitempty"`
 	ProxyCount        int     `json:"proxy_count"`
 	NginxStatus       string  `json:"nginx_status"`
 	RequestToday      int     `json:"request_today"`
@@ -66,31 +71,10 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	ipv4, ipv6, _ := publicip.Detect(r.Context())
 
-	ddnsStatus := "disabled"
-	ddnsLastUpdated := ""
-	if cfg, err := h.ddnsSvc.Get(r.Context()); err == nil {
-		ddnsStatus = cfg.LastStatus
-		if cfg.LastUpdatedAt != nil {
-			ddnsLastUpdated = cfg.LastUpdatedAt.Format(time.RFC3339)
-		}
-		if !cfg.Enabled {
-			ddnsStatus = "disabled"
-		}
-	}
+	ddnsStatus, ddnsLastUpdated, ddnsCount := h.ddnsSvc.Summary(r.Context())
 
-	certStatus := "none"
-	certDays := 0
-	if records, err := h.acmeSvc.List(r.Context()); err == nil && len(records) > 0 {
-		rec := records[0]
-		certStatus = rec.Status
-		certDays = rec.DaysLeft
-		if certDays <= 30 && certDays > 0 {
-			certStatus = "warning"
-		}
-		if certDays <= 0 && rec.Status == "ok" {
-			certStatus = "error"
-		}
-	}
+	records, _ := h.acmeSvc.List(r.Context())
+	certStatus, certDays, certCount, certSummary := summarizeCertificates(records)
 
 	total, errors, avgMs := logstore.CountTodayAccess(filepath.Join(h.cfg.LogsDir(), "access.log"))
 
@@ -98,18 +82,47 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(started).Seconds()
 
 	writeJSON(w, http.StatusOK, statusResponse{
-		PublicIPv4:        ipv4,
+		PublicIPv4: ipv4,
 		PublicIPv6:        ipv6,
 		DDNSStatus:        ddnsStatus,
+		DDNSCount:         ddnsCount,
 		DDNSLastUpdated:   ddnsLastUpdated,
-		CertificateStatus: certStatus,
-		CertificateDays:   certDays,
+		CertificateStatus:  certStatus,
+		CertificateDays:    certDays,
+		CertificateCount:   certCount,
+		CertificateSummary: certSummary,
 		ProxyCount:        len(rules),
 		NginxStatus:       nginxStatus,
 		RequestToday:      total,
 		ErrorToday:        errors,
 		AvgResponseMs:     avgMs,
 		StartedAt:         h.startedAt,
-		UptimeSeconds:     int64(uptime),
+		UptimeSeconds: int64(uptime),
 	})
+}
+
+func summarizeCertificates(records []certstore.Record) (status string, days int, count int, summary string) {
+	if len(records) == 0 {
+		return "none", 0, 0, ""
+	}
+	count = len(records)
+	status = "ok"
+	days = records[0].DaysLeft
+	for _, rec := range records {
+		if rec.DaysLeft < days {
+			days = rec.DaysLeft
+		}
+		switch {
+		case rec.Status == "error" || rec.DaysLeft <= 0:
+			status = "error"
+		case rec.DaysLeft <= 30 && status != "error":
+			status = "warning"
+		}
+	}
+	if count == 1 {
+		summary = "*." + records[0].Domain
+	} else {
+		summary = fmt.Sprintf("%d 张证书", count)
+	}
+	return status, days, count, summary
 }

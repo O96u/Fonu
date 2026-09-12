@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/publicip"
@@ -36,16 +37,20 @@ func NewService(store *Store, settings *settings.Store, secretBox *secret.Box, l
 	}
 }
 
-func (s *Service) Get(ctx context.Context) (Config, error) {
-	return s.store.Get(ctx)
+func (s *Service) List(ctx context.Context) ([]Config, error) {
+	return s.store.List(ctx)
 }
 
-func (s *Service) Credentials(ctx context.Context) (string, Credentials, error) {
-	cfg, err := s.store.Get(ctx)
+func (s *Service) Get(ctx context.Context, id int64) (Config, error) {
+	return s.store.GetByID(ctx, id)
+}
+
+func (s *Service) CredentialsForDomain(ctx context.Context, rootDomain string) (string, Credentials, error) {
+	cfg, err := s.store.GetByRootDomain(ctx, rootDomain)
 	if err != nil {
 		return "", Credentials{}, err
 	}
-	cred, err := s.loadCredentials(ctx)
+	cred, err := s.loadCredentialsByID(ctx, cfg.ID)
 	if err != nil {
 		return cfg.Provider, Credentials{}, err
 	}
@@ -53,29 +58,47 @@ func (s *Service) Credentials(ctx context.Context) (string, Credentials, error) 
 	return cfg.Provider, cred, nil
 }
 
-func (s *Service) Save(ctx context.Context, in SaveInput) (Config, error) {
+func (s *Service) Create(ctx context.Context, in SaveInput) (Config, error) {
 	if err := validateSaveInput(in); err != nil {
 		return Config{}, err
 	}
-	tokenEnc := ""
-	if in.HasCredentialUpdate() {
-		cred := CredentialsFromSave(in)
-		if err := cred.Validate(in.Provider); err != nil {
-			return Config{}, err
-		}
-		raw, err := cred.Marshal()
-		if err != nil {
-			return Config{}, err
-		}
-		tokenEnc, err = s.secretBox.Encrypt(string(raw))
-		if err != nil {
-			return Config{}, err
-		}
+	if !in.HasCredentialUpdate() {
+		return Config{}, fmt.Errorf("请填写 DNS API 凭证")
 	}
-	return s.store.Save(ctx, in, tokenEnc)
+	tokenEnc, err := s.encryptCredentials(in)
+	if err != nil {
+		return Config{}, err
+	}
+	return s.store.Create(ctx, in, tokenEnc)
+}
+
+func (s *Service) Update(ctx context.Context, id int64, in SaveInput) (Config, error) {
+	if err := validateSaveInput(in); err != nil {
+		return Config{}, err
+	}
+	existing, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return Config{}, err
+	}
+	tokenEnc := ""
+	updateToken := in.HasCredentialUpdate()
+	if updateToken {
+		tokenEnc, err = s.encryptCredentials(in)
+		if err != nil {
+			return Config{}, err
+		}
+	} else if !existing.HasToken {
+		return Config{}, fmt.Errorf("请填写 DNS API 凭证")
+	}
+	return s.store.Update(ctx, id, in, tokenEnc, updateToken)
+}
+
+func (s *Service) Delete(ctx context.Context, id int64) error {
+	return s.store.Delete(ctx, id)
 }
 
 type TestInput struct {
+	ConfigID   int64
 	Provider   string
 	APIToken   string
 	APITokenID string
@@ -83,59 +106,131 @@ type TestInput struct {
 }
 
 func (s *Service) Test(ctx context.Context, in TestInput) error {
-	cfg, err := s.store.Get(ctx)
 	providerName := strings.TrimSpace(in.Provider)
-	if providerName == "" && err == nil {
-		providerName = cfg.Provider
-	}
-	if providerName == "" {
-		providerName = "cloudflare"
-	}
-
 	cred := CredentialsFromSave(SaveInput{
 		Provider:   providerName,
 		APIToken:   in.APIToken,
 		APITokenID: in.APITokenID,
 		APISecret:  in.APISecret,
 	})
-	if !cred.HasValues() {
-		cred, err = s.loadCredentials(ctx)
+
+	if cred.HasValues() {
+		if providerName == "" {
+			providerName = "cloudflare"
+		}
+		cred.Provider = providerName
+		return s.providerFor(providerName).Verify(ctx, cred)
+	}
+
+	if in.ConfigID > 0 {
+		cfg, err := s.store.GetByID(ctx, in.ConfigID)
 		if err != nil {
 			return err
 		}
+		cred, err = s.loadCredentialsByID(ctx, in.ConfigID)
+		if err != nil {
+			return err
+		}
+		cred.Provider = cfg.Provider
+		return s.providerFor(cfg.Provider).Verify(ctx, cred)
 	}
-	cred.Provider = providerName
-	return s.providerFor(providerName).Verify(ctx, cred)
+
+	return fmt.Errorf("请填写 DNS API 凭证")
 }
 
-func (s *Service) UpdateNow(ctx context.Context) error {
-	cfg, err := s.store.Get(ctx)
+func (s *Service) UpdateNow(ctx context.Context, id int64) (Config, error) {
+	cfg, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return Config{}, err
 	}
 	if !cfg.Enabled {
-		return fmt.Errorf("DDNS 未启用")
+		return Config{}, fmt.Errorf("该 DDNS 配置未启用")
 	}
-	return s.runUpdate(ctx, cfg)
+	if err := s.runUpdate(ctx, cfg); err != nil {
+		return Config{}, err
+	}
+	return s.store.GetByID(ctx, id)
+}
+
+func (s *Service) UpdateAll(ctx context.Context) ([]Config, error) {
+	configs, err := s.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
+		if err := s.runUpdate(ctx, cfg); err != nil {
+			lastErr = err
+			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
+		}
+	}
+	list, listErr := s.store.List(ctx)
+	if listErr != nil {
+		return nil, listErr
+	}
+	if lastErr != nil {
+		return list, lastErr
+	}
+	return list, nil
 }
 
 func (s *Service) Tick(ctx context.Context) {
-	cfg, err := s.store.Get(ctx)
-	if err != nil || !cfg.Enabled {
+	configs, err := s.store.List(ctx)
+	if err != nil {
 		return
 	}
-	if err := s.runUpdate(ctx, cfg); err != nil {
-		s.logger.Error("ddns update failed", "error", err.Error())
-		if s.notify != nil {
-			s.notify.Alert(ctx, notify.EventDDNSError, "DDNS 更新失败", err.Error())
+	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
+		if err := s.runUpdate(ctx, cfg); err != nil {
+			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
+			if s.notify != nil {
+				s.notify.Alert(ctx, notify.EventDDNSError, "DDNS 更新失败", cfg.RootDomain+": "+err.Error())
+			}
 		}
 	}
 }
 
+func (s *Service) Summary(ctx context.Context) (status string, lastUpdated string, count int) {
+	configs, err := s.store.List(ctx)
+	if err != nil || len(configs) == 0 {
+		return "disabled", "", 0
+	}
+	count = len(configs)
+	status = "ok"
+	hasEnabled := false
+	var latest *Config
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			hasEnabled = true
+		}
+		if latest == nil || (cfg.LastUpdatedAt != nil && (latest.LastUpdatedAt == nil || cfg.LastUpdatedAt.After(*latest.LastUpdatedAt))) {
+			latest = &cfg
+		}
+		if cfg.LastStatus == "error" {
+			status = "error"
+		}
+	}
+	if !hasEnabled {
+		return "disabled", "", count
+	}
+	if latest != nil && latest.LastUpdatedAt != nil {
+		lastUpdated = latest.LastUpdatedAt.UTC().Format(time.RFC3339)
+	}
+	if status != "error" && latest != nil && latest.LastStatus != "" {
+		status = latest.LastStatus
+	}
+	return status, lastUpdated, count
+}
+
 func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
-	cred, err := s.loadCredentials(ctx)
+	cred, err := s.loadCredentialsByID(ctx, cfg.ID)
 	if err != nil {
-		_ = s.store.UpdateStatus(ctx, cfg.LastIPv4, cfg.LastIPv6, "error", err.Error())
+		_ = s.store.UpdateStatus(ctx, cfg.ID, cfg.LastIPv4, cfg.LastIPv6, "error", err.Error())
 		return err
 	}
 	cred.Provider = cfg.Provider
@@ -143,7 +238,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 
 	ipv4, ipv6, err := publicip.Detect(ctx)
 	if err != nil {
-		_ = s.store.UpdateStatus(ctx, cfg.LastIPv4, cfg.LastIPv6, "error", err.Error())
+		_ = s.store.UpdateStatus(ctx, cfg.ID, cfg.LastIPv4, cfg.LastIPv6, "error", err.Error())
 		return err
 	}
 
@@ -152,22 +247,22 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 		current, _ := provider.GetRecordIP(ctx, cred, cfg.RootDomain, cfg.RecordName, "A")
 		if current != ipv4 {
 			if err := provider.UpdateRecord(ctx, cred, cfg.RootDomain, cfg.RecordName, "A", ipv4); err != nil {
-				_ = s.store.UpdateStatus(ctx, ipv4, ipv6, "error", err.Error())
+				_ = s.store.UpdateStatus(ctx, cfg.ID, ipv4, ipv6, "error", err.Error())
 				return err
 			}
 			changed = true
-			s.logger.Info("ddns ipv4 updated", "ip", ipv4)
+			s.logger.Info("ddns ipv4 updated", "domain", cfg.RootDomain, "ip", ipv4)
 		}
 	}
 	if cfg.IPv6Enabled && ipv6 != "" && ipv6 != cfg.LastIPv6 {
 		current, _ := provider.GetRecordIP(ctx, cred, cfg.RootDomain, cfg.RecordName, "AAAA")
 		if current != ipv6 {
 			if err := provider.UpdateRecord(ctx, cred, cfg.RootDomain, cfg.RecordName, "AAAA", ipv6); err != nil {
-				_ = s.store.UpdateStatus(ctx, ipv4, ipv6, "error", err.Error())
+				_ = s.store.UpdateStatus(ctx, cfg.ID, ipv4, ipv6, "error", err.Error())
 				return err
 			}
 			changed = true
-			s.logger.Info("ddns ipv6 updated", "ip", ipv6)
+			s.logger.Info("ddns ipv6 updated", "domain", cfg.RootDomain, "ip", ipv6)
 		}
 	}
 
@@ -175,12 +270,24 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	if !changed {
 		status = "ok"
 	}
-	_ = s.store.UpdateStatus(ctx, ipv4, ipv6, status, "")
+	_ = s.store.UpdateStatus(ctx, cfg.ID, ipv4, ipv6, status, "")
 	return nil
 }
 
-func (s *Service) loadCredentials(ctx context.Context) (Credentials, error) {
-	enc, err := s.store.GetToken(ctx)
+func (s *Service) encryptCredentials(in SaveInput) (string, error) {
+	cred := CredentialsFromSave(in)
+	if err := cred.Validate(in.Provider); err != nil {
+		return "", err
+	}
+	raw, err := cred.Marshal()
+	if err != nil {
+		return "", err
+	}
+	return s.secretBox.Encrypt(string(raw))
+}
+
+func (s *Service) loadCredentialsByID(ctx context.Context, id int64) (Credentials, error) {
+	enc, err := s.store.GetTokenByID(ctx, id)
 	if err != nil || enc == "" {
 		return Credentials{}, fmt.Errorf("DNS API 凭证未配置")
 	}

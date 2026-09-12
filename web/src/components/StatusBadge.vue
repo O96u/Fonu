@@ -56,7 +56,7 @@ const label = computed(() => props.text ?? statusLabel(props.value))
 
 .status-badge.pill.disabled,
 .status-badge.pill.unknown {
-  background: #f3f4f6;
+  background: var(--fonu-bg-muted);
   color: var(--fonu-text-secondary);
 }
 

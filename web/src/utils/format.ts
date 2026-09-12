@@ -36,3 +36,50 @@ export function formatDate(iso?: string): string {
     minute: '2-digit',
   })
 }
+
+/** Normalize log timestamps to YYYY-MM-DD HH:mm:ss */
+export function formatLogTime(value?: string): string {
+  if (!value) return '-'
+
+  const trimmed = value.trim()
+
+  const standard = trimmed.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)
+  if (standard) return standard[1]
+
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]} ${iso[4]}:${iso[5]}:${iso[6]}`
+
+  const nginx = trimmed.match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
+  if (nginx) return `${nginx[1]}-${nginx[2]}-${nginx[3]} ${nginx[4]}:${nginx[5]}:${nginx[6]}`
+
+  const date = new Date(trimmed)
+  if (!Number.isNaN(date.getTime())) {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  }
+
+  return trimmed
+}
+
+/** Normalize leading timestamp in a raw log line */
+export function formatLogLine(line: string): string {
+  const trimmed = line.trim()
+  if (!trimmed) return line
+
+  const nginx = trimmed.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})(.*)$/)
+  if (nginx) return formatLogTime(nginx[1]) + nginx[2]
+
+  const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2}|Z)?)(.*)$/)
+  if (iso) return formatLogTime(iso[1]) + iso[2]
+
+  if (trimmed.startsWith('{')) {
+    try {
+      const raw = JSON.parse(trimmed) as { time?: string }
+      if (raw.time) return trimmed.replace(raw.time, formatLogTime(raw.time))
+    } catch {
+      // not JSON
+    }
+  }
+
+  return trimmed
+}

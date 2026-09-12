@@ -1,0 +1,1 @@
+ALTER TABLE certificates ADD COLUMN domains TEXT NOT NULL DEFAULT '';

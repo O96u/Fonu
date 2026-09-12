@@ -1,67 +1,94 @@
 <template>
-  <div class="bar-chart">
-    <div v-for="(bar, i) in bars" :key="i" class="bar-col">
-      <div class="bar-track">
-        <div class="bar-fill" :style="{ height: `${bar.pct}%` }" />
-      </div>
-      <span class="bar-label">{{ bar.label }}</span>
-    </div>
-  </div>
+  <VChart class="chart" :option="option" autoresize />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { use } from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import VChart from 'vue-echarts'
+import { useTheme } from '../composables/useTheme'
+
+use([CanvasRenderer, BarChart, GridComponent, TooltipComponent])
 
 const props = defineProps<{
   values: number[]
   labels?: string[]
 }>()
 
-const bars = computed(() => {
-  const max = Math.max(...props.values, 1)
-  const defaultLabels = ['00', '04', '08', '12', '16', '20']
-  return props.values.map((v, i) => ({
-    pct: Math.max(8, (v / max) * 100),
-    label: props.labels?.[i] ?? defaultLabels[i] ?? '',
-  }))
+const { isDark } = useTheme()
+
+const option = computed(() => {
+  const labels = props.labels ?? ['00', '04', '08', '12', '16', '20']
+  const textColor = isDark.value ? '#94a3b8' : '#6b7280'
+  const splitColor = isDark.value ? '#334155' : '#e5e7eb'
+
+  return {
+    grid: { left: 8, right: 8, top: 12, bottom: 28, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: isDark.value ? '#1e293b' : '#fff',
+      borderColor: isDark.value ? '#334155' : '#e5e7eb',
+      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+    },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: textColor, fontSize: 11 },
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: splitColor, type: 'dashed' } },
+      axisLabel: { color: textColor, fontSize: 11 },
+    },
+    series: [
+      {
+        type: 'bar',
+        data: props.values,
+        barMaxWidth: 28,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: '#93c5fd' },
+              { offset: 1, color: '#3b82f6' },
+            ],
+          },
+        },
+        emphasis: {
+          itemStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: '#bfdbfe' },
+                { offset: 1, color: '#2563eb' },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  }
 })
 </script>
 
 <style scoped>
-.bar-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 140px;
-  padding-top: 8px;
-}
-
-.bar-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.bar-track {
+.chart {
   width: 100%;
-  height: 120px;
-  display: flex;
-  align-items: flex-end;
-}
-
-.bar-fill {
-  width: 100%;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
-  min-height: 4px;
-  transition: height 0.3s ease;
-}
-
-.bar-label {
-  font-size: 11px;
-  color: var(--fonu-text-muted);
+  height: 200px;
 }
 </style>

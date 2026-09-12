@@ -10,8 +10,12 @@
   --fonu-error: #ef4444;
   --fonu-disabled: #94a3b8;
   --fonu-info: #3b82f6;
+  --fonu-info-soft: rgba(59, 130, 246, 0.1);
 
   --fonu-bg: #f8fafc;
+  --fonu-bg-muted: #f3f4f6;
+  --fonu-banner-bg: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 40%, #a7f3d0 100%);
+  --fonu-banner-border: rgba(16, 185, 129, 0.2);
   --fonu-surface: #ffffff;
   --fonu-border: #e5e7eb;
   --fonu-text: #111827;
@@ -25,8 +29,7 @@
 
   --fonu-sidebar-width: 240px;
   --fonu-topbar-height: 56px;
-  --fonu-content-max: 1440px;
-  --fonu-form-max: 840px;
+  --fonu-form-max: 720px;
 
   --fonu-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --fonu-mono: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
@@ -43,13 +46,17 @@ html.dark,
 [data-theme='dark'] {
   --fonu-brand-soft: rgba(16, 185, 129, 0.18);
   --fonu-brand-text: #6ee7b7;
+  --fonu-info-soft: rgba(59, 130, 246, 0.16);
 
   --fonu-bg: #0f172a;
+  --fonu-bg-muted: #1e293b;
   --fonu-surface: #1e293b;
   --fonu-border: #334155;
   --fonu-text: #f1f5f9;
   --fonu-text-secondary: #94a3b8;
   --fonu-text-muted: #64748b;
+  --fonu-banner-bg: linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%);
+  --fonu-banner-border: rgba(52, 211, 153, 0.25);
 
   --fonu-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --fonu-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);

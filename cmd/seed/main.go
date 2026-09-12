@@ -67,7 +67,7 @@ func main() {
 	fmt.Println("本地模拟数据已写入：", cfg.DataDir)
 	fmt.Println()
 	fmt.Println("登录账号：admin / password123")
-	fmt.Println("主域名：example.com（模拟）")
+	fmt.Println("DDNS 域名：example.com、example.org（模拟）")
 	fmt.Println()
 	fmt.Println("已包含：")
 	fmt.Println("  - 5 条反向代理规则")
@@ -168,16 +168,24 @@ func seedDDNS(ctx context.Context, conn *sql.DB, cfg config.Config) error {
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO ddns_configs(
-			provider, root_domain, record_name, ipv4_enabled, ipv6_enabled, enabled,
-			api_token_enc, last_ipv4, last_ipv6, last_status, last_updated_at, updated_at
-		) VALUES (?, ?, ?, 1, 0, 1, ?, ?, ?, 'ok', ?, datetime('now'))
-	`, "cloudflare", "example.com", "*", tokenEnc, "123.45.67.89", "", now)
-	if err != nil {
-		return err
+	domains := []struct {
+		provider, rootDomain, ipv4, ipv6 string
+	}{
+		{"cloudflare", "example.com", "123.45.67.89", ""},
+		{"dnspod", "example.org", "123.45.67.89", ""},
 	}
-	log.Println("ddns_configs: 已写入（Token 为本地假数据）")
+	for _, d := range domains {
+		_, err = conn.ExecContext(ctx, `
+			INSERT INTO ddns_configs(
+				provider, root_domain, record_name, ipv4_enabled, ipv6_enabled, enabled,
+				api_token_enc, last_ipv4, last_ipv6, last_status, last_updated_at, updated_at
+			) VALUES (?, ?, '*', 1, 0, 1, ?, ?, ?, 'ok', ?, datetime('now'))
+		`, d.provider, d.rootDomain, tokenEnc, d.ipv4, d.ipv6, now)
+		if err != nil {
+			return err
+		}
+	}
+	log.Println("ddns_configs: 已写入 2 条（Token 为本地假数据）")
 	return nil
 }
 
@@ -198,10 +206,11 @@ func seedCertificates(ctx context.Context, conn *sql.DB, cfg config.Config) erro
 	}
 
 	_, err := conn.ExecContext(ctx, `
-		INSERT INTO certificates(domain, wildcard, cert_path, key_path, expires_at, last_renew_at, status, updated_at)
-		VALUES (?, 1, ?, ?, ?, ?, 'ok', datetime('now'))
+		INSERT INTO certificates(domain, wildcard, acme_ca, cert_path, key_path, expires_at, last_renew_at, status, updated_at)
+		VALUES (?, 1, 'imported', ?, ?, ?, ?, 'ok', datetime('now'))
 		ON CONFLICT(domain) DO UPDATE SET
 			wildcard = excluded.wildcard,
+			acme_ca = excluded.acme_ca,
 			cert_path = excluded.cert_path,
 			key_path = excluded.key_path,
 			expires_at = excluded.expires_at,

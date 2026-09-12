@@ -40,9 +40,15 @@ body {
   color: var(--fonu-text-muted);
 }
 
+.page-shell,
 .page-content {
-  max-width: var(--fonu-content-max);
-  margin: 0 auto;
+  width: 100%;
+}
+
+.page-narrow {
+  width: 100%;
+  max-width: var(--fonu-form-max);
+  margin-inline: auto;
 }
 
 .form-narrow {
@@ -55,18 +61,13 @@ body {
   gap: var(--fonu-space-3);
   flex-wrap: wrap;
   margin-bottom: var(--fonu-space-4);
-  padding: var(--fonu-space-4) var(--fonu-space-5) 0;
+  padding-top: var(--fonu-space-4);
 }
 
 .n-data-table .n-data-table-th {
-  background: #f9fafb !important;
+  background: var(--fonu-bg-muted) !important;
   font-weight: 500;
   font-size: 13px;
   color: var(--fonu-text-secondary);
-}
-
-html[data-theme='dark'] .n-data-table .n-data-table-th,
-html.dark .n-data-table .n-data-table-th {
-  background: #1e293b !important;
 }
 </style>

@@ -22,9 +22,12 @@ export interface DashboardStatus {
   public_ipv4: string
   public_ipv6: string
   ddns_status: string
+  ddns_count: number
   ddns_last_updated?: string
   certificate_status: string
   certificate_days: number
+  certificate_count: number
+  certificate_summary?: string
   proxy_count: number
   nginx_status: string
   request_today: number
@@ -35,7 +38,7 @@ export interface DashboardStatus {
 }
 
 export interface DDNSConfig {
-  id?: number
+  id: number
   provider: string
   root_domain: string
   record_name: string
@@ -48,13 +51,19 @@ export interface DDNSConfig {
   last_status?: string
   last_error?: string
   last_updated_at?: string
-  configured?: boolean
+}
+
+export interface CertificateCAOption {
+  value: string
+  label: string
 }
 
 export interface CertificateRecord {
   id: number
   domain: string
+  domains?: string[]
   wildcard: boolean
+  acme_ca?: string
   status: string
   days_left: number
   last_error?: string
@@ -106,6 +115,7 @@ export interface DDNSSavePayload {
 }
 
 export interface DDNSTestPayload {
+  config_id?: number
   provider?: string
   api_token?: string
   api_token_id?: string

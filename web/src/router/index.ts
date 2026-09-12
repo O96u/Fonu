@@ -28,12 +28,6 @@ const router = createRouter({
           meta: { title: '仪表盘', description: '查看 Fonu 运行状态与关键指标' },
         },
         {
-          path: 'proxies',
-          name: 'proxies',
-          component: ProxyView,
-          meta: { title: '反向代理', description: '管理通过域名访问的 NAS 服务' },
-        },
-        {
           path: 'ddns',
           name: 'ddns',
           component: DdnsView,
@@ -44,6 +38,12 @@ const router = createRouter({
           name: 'certificates',
           component: CertificatesView,
           meta: { title: 'HTTPS 证书', description: '通过 ACME 自动申请和续签证书' },
+        },
+        {
+          path: 'proxies',
+          name: 'proxies',
+          component: ProxyView,
+          meta: { title: '反代', description: '管理通过域名访问的 NAS 服务' },
         },
         {
           path: 'logs',
