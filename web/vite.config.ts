@@ -1,22 +1,27 @@
-import { readFileSync } from 'node:fs'
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import { readFileSync } from "node:fs";
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }
+const pkg = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf-8"),
+) as { version: string };
 
 export default defineConfig({
   plugins: [vue()],
   define: {
-    __APP_VERSION__: JSON.stringify(process.env.VITE_APP_VERSION || pkg.version),
+    __APP_VERSION__: JSON.stringify(
+      process.env.VITE_APP_VERSION || pkg.version,
+    ),
   },
   server: {
     port: 5173,
+    allowedHosts: true,
     proxy: {
-      '/api': 'http://localhost:6893',
+      "/api": "http://localhost:6893",
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: "dist",
     emptyOutDir: true,
   },
-})
+});

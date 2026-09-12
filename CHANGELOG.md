@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.11] - 2026-09-12
+
+### 修复
+
+- Vite 开发服务器允许经 Nginx 反代用自定义域名访问（`server.allowedHosts`）
+
 ## [v0.1.10] - 2026-09-12
 
 ### 修复
