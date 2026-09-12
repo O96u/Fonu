@@ -44,6 +44,26 @@ func (r Rule) PrimaryHost() string {
 	return ""
 }
 
+func (r Rule) Hostnames() []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, host := range r.Hosts {
+		name := strings.ToLower(strings.TrimSpace(host.Hostname))
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		domain := strings.ToLower(strings.TrimSpace(r.Domain))
+		if domain != "" {
+			names = append(names, domain)
+		}
+	}
+	return names
+}
+
 func (r Rule) PortGroups() []PortGroup {
 	groups := map[int][]string{}
 	ports := make([]int, 0)

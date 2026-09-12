@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -49,12 +50,36 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	if dnsZone == "" && len(domains) > 0 {
 		dnsZone = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(domains[0])), "*.")
 	}
-	records, err := h.svc.Apply(r.Context(), dnsZone, domains, req.CA, req.Email)
+	jobID, err := h.svc.StartApply(r.Context(), dnsZone, domains, req.CA, req.Email)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, records)
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+}
+
+func (h *CertHandler) ApplyJobStream(w http.ResponseWriter, r *http.Request) {
+	jobID := strings.TrimSpace(r.PathValue("id"))
+	if jobID == "" {
+		writeError(w, http.StatusBadRequest, "无效的任务 ID")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "SSE 不可用")
+		return
+	}
+	if err := h.svc.StreamJob(r.Context(), w, jobID, func() error {
+		flusher.Flush()
+		return nil
+	}); err != nil {
+		return
+	}
 }
 
 func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +99,25 @@ func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
+}
+
+func (h *CertHandler) Download(w http.ResponseWriter, r *http.Request) {
+	domain := strings.TrimSpace(r.PathValue("domain"))
+	if domain == "" {
+		writeError(w, http.StatusBadRequest, "域名不能为空")
+		return
+	}
+	part := r.URL.Query().Get("part")
+	filename, contentType, data, err := h.svc.Download(r.Context(), domain, part)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (h *CertHandler) Delete(w http.ResponseWriter, r *http.Request) {

@@ -25,6 +25,16 @@ func TestDomainsUnderZone(t *testing.T) {
 	}
 }
 
+func TestDomainsUnderZonesMultiRoot(t *testing.T) {
+	zones := []string{"roven.cc", "chiak.cc"}
+	if err := DomainsUnderZones([]string{"chiak.cc", "*.chiak.cc"}, zones); err != nil {
+		t.Fatal(err)
+	}
+	if err := DomainsUnderZones([]string{"other.com"}, zones); err == nil {
+		t.Fatal("expected zone mismatch error")
+	}
+}
+
 func TestDecodeCertDomainsLegacy(t *testing.T) {
 	got := DecodeCertDomains("", "example.com", true)
 	if len(got) != 2 || got[1] != "*.example.com" {

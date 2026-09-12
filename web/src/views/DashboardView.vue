@@ -20,19 +20,22 @@
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
-          <template #extra><StatusBadge v-if="status?.public_ipv4" value="ok" text="正常" /></template>
+          <template #extra><StatusBadge v-if="publicIPv4Label" value="ok" text="正常" /></template>
           <template #value>
             <div class="kv-list">
               <div class="kv-row">
                 <span class="kv-row__k">IPv4</span>
-                <span class="kv-row__v mono">{{ status?.public_ipv4 || '-' }}</span>
+                <span class="kv-row__v mono">{{ publicIPv4Label }}</span>
               </div>
               <div class="kv-row">
                 <span class="kv-row__k">IPv6</span>
-                <span class="kv-row__v mono kv-row__v--sub">{{ status?.public_ipv6 || '-' }}</span>
+                <span class="kv-row__v mono kv-row__v--sub">{{ publicIPv6Label }}</span>
               </div>
             </div>
           </template>
+          <div class="stat-foot">
+            <div class="stat-foot__muted">{{ publicIPSourceLabel }}</div>
+          </div>
         </StatCard>
 
         <StatCard label="DDNS" tone="green">
@@ -47,6 +50,11 @@
           <template v-else #value>{{ ddnsLabel }}</template>
           <div v-if="primaryDdns" class="stat-foot">
             <div class="stat-foot__line">{{ ddnsRecordLabel }}</div>
+            <div v-if="primaryDdns.ipv4_enabled || primaryDdns.ipv6_enabled" class="stat-foot__line mono">
+              <span v-if="primaryDdns.ipv4_enabled">v4 {{ primaryDdns.last_ipv4 || '-' }}</span>
+              <span v-if="primaryDdns.ipv4_enabled && primaryDdns.ipv6_enabled"> · </span>
+              <span v-if="primaryDdns.ipv6_enabled">v6 {{ primaryDdns.last_ipv6 || '未获取' }}</span>
+            </div>
             <div class="stat-foot__muted">上次更新 {{ formatRelativeTime(status?.ddns_last_updated) }}</div>
           </div>
         </StatCard>
@@ -56,8 +64,8 @@
           <template #extra><StatusBadge :value="status?.certificate_status" text="正常" /></template>
           <template v-if="primaryCert" #value>
             <div class="cert-stack">
-              <span class="cert-domain">{{ primaryCert.domain }}</span>
-              <span v-if="certWildcard" class="cert-wildcard mono">{{ certWildcard }}</span>
+              <span class="cert-domain">{{ certDisplayName }}</span>
+              <span v-if="certWildcard && certWildcard !== certDisplayName" class="cert-wildcard mono">{{ primaryCert.domain }}</span>
             </div>
           </template>
           <template v-else #value>未申请</template>
@@ -247,6 +255,25 @@ const certWildcard = computed(() => {
   const domains = primaryCert.value?.domains ?? []
   return domains.find((d) => d.startsWith('*.')) ?? (primaryCert.value?.wildcard ? `*.${primaryCert.value.domain}` : '')
 })
+const certDisplayName = computed(() => certWildcard.value || primaryCert.value?.domain || '')
+
+const publicIPv4Label = computed(() => status.value?.public_ipv4 || '-')
+const publicIPv6Label = computed(() => {
+  if (status.value?.public_ip_source === 'ddns' && !status.value?.public_ipv6) return '未获取'
+  return status.value?.public_ipv6 || '-'
+})
+const publicIPSourceLabel = computed(() => {
+  switch (status.value?.public_ip_source) {
+    case 'ddns':
+      return status.value?.public_ipv4 || status.value?.public_ipv6
+        ? '来源：DDNS 已同步记录'
+        : '来源：DDNS 已配置，等待同步'
+    case 'detect':
+      return '来源：出口 IP 探测（未配置 DDNS）'
+    default:
+      return '来源：暂无'
+  }
+})
 
 const ddnsLabel = computed(() => {
   const count = status.value?.ddns_count ?? 0
@@ -259,8 +286,18 @@ const ddnsProviderName = computed(() => {
 })
 const ddnsRecordLabel = computed(() => {
   if (!primaryDdns.value) return ''
-  const name = primaryDdns.value.record_name || '@'
-  return name === '@' ? primaryDdns.value.root_domain : `${name}.${primaryDdns.value.root_domain}`
+  const root = primaryDdns.value.root_domain
+  const names = primaryDdns.value.record_names?.length
+    ? primaryDdns.value.record_names
+    : [primaryDdns.value.record_name || '@']
+  return names
+    .map((name) => {
+      if (!name || name === '@') return root
+      if (name === '*') return `*.${root}`
+      if (name.includes('.')) return name
+      return `${name}.${root}`
+    })
+    .join(', ')
 })
 
 const proxyEnabled = computed(() => proxies.value.filter((p) => p.enabled).length)
@@ -352,20 +389,23 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [s, access, system, proxyList, ddns, certs] = await Promise.all([
+    const [s, access, system, proxyList, certs] = await Promise.all([
       api.getStatus(),
       api.getAccessLogs({ limit: 10 }),
       api.getSystemLogs({ limit: 10 }),
       api.listProxies(),
-      api.listDDNS(),
       api.listCertificates(),
     ])
     status.value = s
     accessLogs.value = asList(access)
     systemLogs.value = asList(system)
     proxies.value = asList(proxyList)
-    ddnsConfigs.value = asList(ddns)
     certificates.value = asList(certs)
+    api.listDDNSLite()
+      .then((ddns) => {
+        ddnsConfigs.value = asList(ddns)
+      })
+      .catch(() => {})
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
     message.error('加载仪表盘失败')

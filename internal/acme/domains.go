@@ -68,17 +68,44 @@ func normalizeCertDomain(domain string) (string, error) {
 }
 
 func DomainsUnderZone(domains []string, zone string) error {
-	zone = strings.ToLower(strings.TrimSpace(zone))
-	if zone == "" {
-		return fmt.Errorf("请选择 DNS 凭证对应的根域名")
+	return DomainsUnderZones(domains, []string{zone})
+}
+
+func DomainsUnderZones(domains []string, zones []string) error {
+	normalized := normalizeManagedZones(zones)
+	if len(normalized) == 0 {
+		return fmt.Errorf("请选择 DNS 凭证")
 	}
 	for _, domain := range domains {
 		base := strings.TrimPrefix(domain, "*.")
-		if base != zone && !strings.HasSuffix(base, "."+zone) {
-			return fmt.Errorf("域名 %s 不在 %s 的 DNS 管理范围内", domain, zone)
+		if !domainUnderAnyZone(base, normalized) {
+			return fmt.Errorf("域名 %s 不在所选 DNS 凭证的管理范围内（%s）", domain, strings.Join(normalized, "、"))
 		}
 	}
 	return nil
+}
+
+func normalizeManagedZones(zones []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(zones))
+	for _, zone := range zones {
+		zone = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(zone, "*.")))
+		if zone == "" || seen[zone] {
+			continue
+		}
+		seen[zone] = true
+		out = append(out, zone)
+	}
+	return out
+}
+
+func domainUnderAnyZone(domain string, zones []string) bool {
+	for _, zone := range zones {
+		if domain == zone || strings.HasSuffix(domain, "."+zone) {
+			return true
+		}
+	}
+	return false
 }
 
 func PrimaryCertDomain(domains []string) string {

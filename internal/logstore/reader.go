@@ -11,14 +11,16 @@ import (
 )
 
 type AccessEntry struct {
-	Time         string  `json:"time"`
-	Domain       string  `json:"domain"`
-	Method       string  `json:"method"`
-	Path         string  `json:"path"`
-	Status       int     `json:"status"`
-	ResponseTime float64 `json:"response_time"`
-	ClientIP     string  `json:"client_ip"`
-	Upstream     string  `json:"upstream"`
+	Time          string  `json:"time"`
+	Domain        string  `json:"domain"`
+	Method        string  `json:"method"`
+	Path          string  `json:"path"`
+	Status        int     `json:"status"`
+	ResponseTime  float64 `json:"response_time"`
+	ClientIP      string  `json:"client_ip"`
+	Upstream      string  `json:"upstream"`
+	RequestLength int64   `json:"request_length,omitempty"`
+	BytesSent     int64   `json:"bytes_sent,omitempty"`
 }
 
 type SystemEntry struct {
@@ -29,6 +31,11 @@ type SystemEntry struct {
 }
 
 var accessRe = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)$`)
+var accessReWithBytes = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d+)$`)
+
+func ParseAccess(line string) (AccessEntry, bool) {
+	return parseAccess(line)
+}
 
 func ReadAccess(path string, limit int, keyword string, status int) ([]AccessEntry, error) {
 	lines, err := tailLines(path, limit*4)
@@ -52,8 +59,51 @@ func ReadAccess(path string, limit int, keyword string, status int) ([]AccessEnt
 	return out, nil
 }
 
+func AccessHostFilter(hosts []string) LineFilter {
+	if len(hosts) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(hosts))
+	for _, host := range hosts {
+		host = strings.ToLower(strings.TrimSpace(host))
+		if host == "" {
+			continue
+		}
+		set[host] = true
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return func(line string) bool {
+		entry, ok := parseAccess(line)
+		if !ok {
+			return false
+		}
+		return set[strings.ToLower(entry.Domain)]
+	}
+}
+
 func parseAccess(line string) (AccessEntry, bool) {
-	m := accessRe.FindStringSubmatch(strings.TrimSpace(line))
+	line = strings.TrimSpace(line)
+	if m := accessReWithBytes.FindStringSubmatch(line); len(m) == 11 {
+		status, _ := strconv.Atoi(m[5])
+		rt, _ := strconv.ParseFloat(m[6], 64)
+		reqLen, _ := strconv.ParseInt(m[9], 10, 64)
+		bytesSent, _ := strconv.ParseInt(m[10], 10, 64)
+		return AccessEntry{
+			Time:          m[1],
+			Domain:        m[2],
+			Method:        m[3],
+			Path:          m[4],
+			Status:        status,
+			ResponseTime:  rt,
+			ClientIP:      m[7],
+			Upstream:      m[8],
+			RequestLength: reqLen,
+			BytesSent:     bytesSent,
+		}, true
+	}
+	m := accessRe.FindStringSubmatch(line)
 	if len(m) != 9 {
 		return AccessEntry{}, false
 	}
@@ -90,8 +140,12 @@ func ReadError(path string, limit int, keyword string) ([]string, error) {
 	return out, nil
 }
 
+func isNoiseSystemEntry(entry SystemEntry) bool {
+	return entry.Module == "HTTP" && strings.EqualFold(entry.Level, "INFO")
+}
+
 func ReadSystem(path string, limit int, level string, keyword string) ([]SystemEntry, error) {
-	lines, err := tailLines(path, limit*2)
+	lines, err := tailLines(path, limit*20)
 	if err != nil {
 		return nil, err
 	}
@@ -101,10 +155,13 @@ func ReadSystem(path string, limit int, level string, keyword string) ([]SystemE
 		if !ok {
 			continue
 		}
+		if isNoiseSystemEntry(entry) {
+			continue
+		}
 		if level != "" && !strings.EqualFold(entry.Level, level) {
 			continue
 		}
-		if keyword != "" && !strings.Contains(strings.ToLower(entry.Message), strings.ToLower(keyword)) {
+		if keyword != "" && !strings.Contains(strings.ToLower(entry.Message+" "+entry.Module), strings.ToLower(keyword)) {
 			continue
 		}
 		out = append(out, entry)

@@ -31,17 +31,19 @@
     </FonuCard>
 
     <FonuCard title="证书列表" flush>
-      <div v-if="records.length > 0" class="cert-table-wrap">
+      <div v-if="loading" class="cert-loading">
+        <n-spin size="medium" />
+      </div>
+      <div v-else-if="records.length > 0" class="cert-table-wrap">
         <n-data-table
           class="cert-table"
           :columns="columns"
           :data="records"
-          :loading="loading"
           :bordered="false"
         />
       </div>
       <EmptyState
-        v-if="!loading && records.length === 0"
+        v-else
         title="还没有证书"
         description="先在 DDNS 配置 DNS 凭证，再申请 Let's Encrypt 证书；本地测试可直接导入自签证书。"
       >
@@ -115,12 +117,77 @@
           </n-alert>
         </div>
       </n-form-item>
+
+      <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </n-form>
 
     <template #footer>
       <n-space justify="end">
         <n-button @click="showApply = false">取消</n-button>
         <n-button type="primary" :loading="applying" @click="submitApply">开始申请</n-button>
+      </n-space>
+    </template>
+  </n-modal>
+
+  <n-modal
+    v-model:show="showApplyProgress"
+    preset="card"
+    :mask-closable="applyFinished"
+    :close-on-esc="applyFinished"
+    :style="{ width: 'min(720px, 96vw)' }"
+    :segmented="{ content: true, footer: 'soft' }"
+    :content-style="{ paddingTop: '8px' }"
+    @after-leave="resetApplyProgress"
+  >
+    <template #header>
+      <div class="modal-header">
+        <div class="modal-header__title">{{ applyFinished ? (applyResult?.ok ? '申请成功' : '申请失败') : '正在申请证书' }}</div>
+        <div class="modal-header__desc">
+          {{ applyFinished ? '以下是本次申请的详细结果' : 'DNS 验证与证书签发可能需要 1～3 分钟，请保持窗口打开' }}
+        </div>
+      </div>
+    </template>
+
+    <div ref="applyLogBox" class="apply-log-box" :class="{ paused: !applyStreaming }">
+      <div
+        v-for="(line, i) in applyLogLines"
+        :key="i"
+        class="apply-log-line"
+        :class="`apply-log-line--${line.level}`"
+      >
+        {{ line.text }}
+      </div>
+      <div v-if="applyLogLines.length === 0 && !applyFinished" class="apply-log-empty">等待日志输出…</div>
+    </div>
+
+    <n-result
+      v-if="applyFinished && applyResult?.ok"
+      status="success"
+      title="证书申请成功"
+      class="apply-result"
+    >
+      <template #footer>
+        <div class="apply-result-detail">
+          <div><span class="apply-result-k">证书目录</span><code>{{ applyResult.cert_dir || '-' }}</code></div>
+          <div><span class="apply-result-k">证书文件</span><code>{{ applyResult.cert_path || '-' }}</code></div>
+          <div><span class="apply-result-k">私钥文件</span><code>{{ applyResult.key_path || '-' }}</code></div>
+          <div><span class="apply-result-k">到期时间</span>{{ formatDate(applyResult.expires_at) }}</div>
+        </div>
+      </template>
+    </n-result>
+
+    <n-result
+      v-else-if="applyFinished && applyResult && !applyResult.ok"
+      status="error"
+      title="证书申请失败"
+      :description="applyResult.error || '未知错误'"
+      class="apply-result"
+    />
+
+    <template #footer>
+      <n-space justify="end">
+        <n-button v-if="!applyFinished" :loading="true" disabled>申请进行中…</n-button>
+        <n-button v-else type="primary" @click="closeApplyProgress">关闭</n-button>
       </n-space>
     </template>
   </n-modal>
@@ -231,25 +298,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
   NDataTable,
+  NDropdown,
   NForm,
   NFormItem,
   NInput,
   NRadioButton,
   NRadioGroup,
+  NResult,
   NSelect,
   NSpace,
+  NSpin,
   NTag,
   useDialog,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import { api, asList } from '../api/client'
-import type { CertificateCAOption, CertificateRecord, DDNSConfig } from '../api/types'
+import type {
+  CertificateCAOption,
+  CertificateJobDone,
+  CertificateJobEvent,
+  CertificateRecord,
+  DDNSConfig,
+} from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
@@ -257,7 +333,6 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatDate } from '../utils/format'
 import { statusLabel } from '../utils/status'
-import { renderTableRowActions } from '../utils/tableActions'
 
 type ImportMode = 'paste' | 'path'
 
@@ -265,6 +340,7 @@ const message = useMessage()
 const dialog = useDialog()
 const records = ref<CertificateRecord[]>([])
 const loading = ref(false)
+const downloadingDomain = ref('')
 const loadError = ref('')
 const applying = ref(false)
 const renewing = ref(false)
@@ -277,6 +353,14 @@ const applyCA = ref('letsencrypt')
 const applyEmail = ref('')
 const applyDnsZone = ref('')
 const applyDomainsText = ref('')
+const applyError = ref('')
+const showApplyProgress = ref(false)
+const applyLogLines = ref<{ level: string; text: string }[]>([])
+const applyResult = ref<CertificateJobDone | null>(null)
+const applyFinished = ref(false)
+const applyStreaming = ref(false)
+const applyLogBox = ref<HTMLElement | null>(null)
+let applyEventSource: EventSource | null = null
 const renewCA = ref('letsencrypt')
 const renewDomain = ref('')
 const ddnsConfigs = ref<DDNSConfig[]>([])
@@ -296,17 +380,39 @@ const providerLabels: Record<string, string> = {
   alidns: '阿里云',
 }
 
+function ddnsManagedZones(cfg: DDNSConfig): string[] {
+  const zones = new Set<string>()
+  const add = (zone?: string) => {
+    const value = zone?.trim().toLowerCase().replace(/^\*\./, '')
+    if (value) zones.add(value)
+  }
+  add(cfg.root_domain)
+  for (const name of cfg.record_names ?? []) {
+    add(name)
+  }
+  if (zones.size === 0 && cfg.record_name) {
+    add(cfg.record_name)
+  }
+  return [...zones]
+}
+
 const ddnsDomainOptions = computed(() =>
-  ddnsConfigs.value.map((c) => ({
-    label: `${c.root_domain} · ${providerLabels[c.provider] ?? c.provider}`,
-    value: c.root_domain,
-  })),
+  ddnsConfigs.value.map((c) => {
+    const zones = ddnsManagedZones(c)
+    const zoneLabel = zones.length > 1 ? zones.join('、') : zones[0] ?? c.root_domain
+    return {
+      label: `${zoneLabel} · ${providerLabels[c.provider] ?? c.provider}`,
+      value: c.root_domain,
+    }
+  }),
 )
 
 const applyDnsHint = computed(() => {
   const cfg = ddnsConfigs.value.find((c) => c.root_domain === applyDnsZone.value)
   if (!cfg) return ''
-  return `将使用 ${providerLabels[cfg.provider] ?? cfg.provider} API 完成 DNS-01 验证`
+  const zones = ddnsManagedZones(cfg)
+  const zoneText = zones.length > 1 ? `覆盖 ${zones.join('、')}` : zones[0] ?? cfg.root_domain
+  return `将使用 ${providerLabels[cfg.provider] ?? cfg.provider} API 完成 DNS-01 验证（${zoneText}）`
 })
 
 const primaryCert = computed(() => {
@@ -345,19 +451,81 @@ const columns: DataTableColumns<CertificateRecord> = [
     width: 96,
     render: (row) => h(StatusBadge, { value: row.status, text: statusLabel(row.status) }),
   },
-  { title: '剩余', key: 'days_left', width: 72, render: (row) => `${row.days_left} 天` },
+  {
+    title: '错误信息',
+    key: 'last_error',
+    minWidth: 200,
+    ellipsis: { tooltip: true },
+    render: (row) => row.last_error || '-',
+  },
+  {
+    title: '剩余',
+    key: 'days_left',
+    width: 72,
+    render: (row) => (row.status === 'error' && !row.expires_at ? '-' : `${row.days_left} 天`),
+  },
   { title: '到期', key: 'expires_at', minWidth: 140, render: (row) => formatDate(row.expires_at) },
   {
     title: '操作',
     key: 'actions',
-    width: 132,
-    render: (row) =>
-      renderTableRowActions([
-        { label: '续签', type: 'primary', show: row.acme_ca !== 'imported', onClick: () => openRenewFor(row.domain) },
-        { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
-      ]),
+    width: 168,
+    render: (row) => {
+      const canDownload = row.status !== 'error' || !!row.expires_at
+      const buttons = []
+      if (canDownload) {
+        buttons.push(
+          h(
+            NDropdown,
+            {
+              trigger: 'click',
+              options: [
+                { label: '打包下载 (ZIP)', key: 'zip' },
+                { label: '证书 (fullchain.pem)', key: 'cert' },
+                { label: '私钥 (privatekey.pem)', key: 'key' },
+              ],
+              onSelect: (key: string) => downloadCert(row, key as 'zip' | 'cert' | 'key'),
+            },
+            () =>
+              h(
+                NButton,
+                { size: 'small', quaternary: true, loading: downloadingDomain === row.domain },
+                () => '下载',
+              ),
+          ),
+        )
+      }
+      if (row.acme_ca !== 'imported') {
+        buttons.push(
+          h(
+            NButton,
+            { size: 'small', quaternary: true, type: 'primary', onClick: () => openRenewFor(row.domain) },
+            () => '续签',
+          ),
+        )
+      }
+      buttons.push(
+        h(
+          NButton,
+          { size: 'small', quaternary: true, type: 'error', onClick: () => confirmDelete(row) },
+          () => '删除',
+        ),
+      )
+      return h(NSpace, { size: 4, wrap: false, align: 'center', inline: true }, () => buttons)
+    },
   },
 ]
+
+async function downloadCert(row: CertificateRecord, part: 'zip' | 'cert' | 'key') {
+  downloadingDomain.value = row.domain
+  try {
+    await api.downloadCertificate(row.domain, part)
+    message.success(part === 'zip' ? '证书包已下载' : '文件已下载')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '下载失败')
+  } finally {
+    downloadingDomain.value = ''
+  }
+}
 
 function confirmDelete(row: CertificateRecord) {
   dialog.warning({
@@ -405,7 +573,7 @@ async function loadCAOptions() {
   const [options, settings, ddns] = await Promise.all([
     api.listCertificateCAOptions(),
     api.getSettings(),
-    api.listDDNS(),
+    api.listDDNSLite(),
   ])
   caOptions.value = options
   ddnsConfigs.value = ddns
@@ -419,25 +587,101 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    await loadCAOptions()
     records.value = asList(await api.listCertificates())
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
     loading.value = false
   }
+  loadCAOptions().catch(() => {})
 }
 
-function openApply() {
+async function openApply() {
+  if (ddnsDomainOptions.value.length === 0) {
+    try {
+      await loadCAOptions()
+    } catch {
+      message.error('加载 DNS 凭证失败')
+      return
+    }
+  }
   if (ddnsDomainOptions.value.length === 0) {
     message.warning('请先在 DDNS 页面添加域名配置')
     return
   }
+  applyError.value = ''
   resetApplyForm()
   showApply.value = true
 }
 
+function stopApplyStream() {
+  applyEventSource?.close()
+  applyEventSource = null
+  applyStreaming.value = false
+}
+
+function appendApplyLog(level: string, text: string) {
+  applyLogLines.value.push({ level, text })
+  if (applyLogLines.value.length > 300) {
+    applyLogLines.value = applyLogLines.value.slice(-250)
+  }
+  requestAnimationFrame(() => {
+    applyLogBox.value?.scrollTo({ top: applyLogBox.value.scrollHeight })
+  })
+}
+
+function handleApplyJobEvent(ev: CertificateJobEvent) {
+  if (ev.type === 'log' && ev.message) {
+    appendApplyLog(ev.level || 'info', ev.message)
+    return
+  }
+  if (ev.type === 'done' && ev.result) {
+    applyResult.value = ev.result
+    applyFinished.value = true
+    stopApplyStream()
+    if (ev.result.ok) {
+      message.success('证书申请成功')
+      api.listCertificates().then((list) => {
+        records.value = asList(list)
+      })
+    } else {
+      message.error(ev.result.error || '证书申请失败')
+      api.listCertificates().then((list) => {
+        records.value = asList(list)
+      })
+    }
+  }
+}
+
+function startApplyStream(jobId: string) {
+  stopApplyStream()
+  applyEventSource = new EventSource(api.certificateApplyStreamURL(jobId), { withCredentials: true })
+  const onEvent = (event: Event) => {
+    try {
+      const ev = JSON.parse((event as MessageEvent).data) as CertificateJobEvent
+      handleApplyJobEvent(ev)
+    } catch {
+      // ignore malformed events
+    }
+  }
+  applyEventSource.addEventListener('log', onEvent)
+  applyEventSource.addEventListener('done', onEvent)
+  applyStreaming.value = true
+}
+
+function resetApplyProgress() {
+  stopApplyStream()
+  applyLogLines.value = []
+  applyResult.value = null
+  applyFinished.value = false
+}
+
+function closeApplyProgress() {
+  showApplyProgress.value = false
+}
+
 async function submitApply() {
+  applyError.value = ''
   if (!applyDnsZone.value) {
     message.warning('请选择 DNS 凭证')
     return
@@ -453,16 +697,20 @@ async function submitApply() {
   }
   applying.value = true
   try {
-    records.value = await api.applyCertificate({
+    const { job_id } = await api.applyCertificate({
       dns_zone: applyDnsZone.value,
       domains,
       ca: applyCA.value,
       email: applyEmail.value.trim(),
     })
     showApply.value = false
-    message.success('证书申请成功')
+    resetApplyProgress()
+    showApplyProgress.value = true
+    startApplyStream(job_id)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '申请失败')
+    const text = error instanceof Error ? error.message : '申请失败'
+    applyError.value = text
+    message.error(text)
   } finally {
     applying.value = false
   }
@@ -556,9 +804,68 @@ async function submitImport() {
 }
 
 onMounted(load)
+onUnmounted(stopApplyStream)
 </script>
 
 <style scoped>
+.apply-log-box {
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 220px;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--fonu-space-4);
+  border-radius: var(--fonu-radius);
+  border: 1px solid var(--fonu-border);
+  font-family: var(--fonu-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  margin-bottom: var(--fonu-space-4);
+}
+
+html[data-theme='dark'] .apply-log-box,
+html.dark .apply-log-box {
+  background: #020617;
+}
+
+.apply-log-line--warn {
+  color: #fbbf24;
+}
+
+.apply-log-line--error {
+  color: #f87171;
+}
+
+.apply-log-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: var(--fonu-space-5) 0;
+}
+
+.apply-result {
+  margin-top: var(--fonu-space-2);
+}
+
+.apply-result-detail {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 100%;
+}
+
+.apply-result-detail code {
+  word-break: break-all;
+}
+
+.apply-result-k {
+  display: inline-block;
+  min-width: 72px;
+  color: var(--fonu-text-muted);
+  margin-right: 8px;
+}
+
 .cert-overview {
   margin-bottom: var(--fonu-space-5);
 }
@@ -567,6 +874,12 @@ onMounted(load)
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--fonu-space-4);
+}
+
+.cert-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--fonu-space-6) 0;
 }
 
 .cert-table-wrap {

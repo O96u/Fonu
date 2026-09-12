@@ -11,14 +11,15 @@ import (
 )
 
 func NewRouter(deps Deps) http.Handler {
+	logsHandler := NewLogsHandler(deps.Config)
 	r := &Router{
 		authHandler:     NewAuthHandler(deps.Auth),
-		proxyHandler:    NewProxyHandler(deps.Proxy),
+		proxyHandler:    NewProxyHandler(deps.Proxy, logsHandler, deps.Traffic),
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME),
 		settingsHandler:  NewSettingsHandler(deps.Settings),
-		logsHandler:      NewLogsHandler(deps.Config),
+		logsHandler:      logsHandler,
 		backupHandler:    NewBackupHandler(deps.Backup),
 		discoveryHandler: NewDiscoveryHandler(deps.Discovery),
 		authSvc:         deps.Auth,
@@ -29,7 +30,6 @@ func NewRouter(deps Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/version", Version)
 	mux.HandleFunc("GET /api/auth/status", r.authHandler.Status)
-	mux.HandleFunc("POST /api/auth/setup", r.authHandler.Setup)
 	mux.HandleFunc("POST /api/auth/login", r.authHandler.Login)
 	mux.HandleFunc("POST /api/auth/logout", r.authHandler.Logout)
 
@@ -40,9 +40,12 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
 	protect("GET /api/status", r.statusHandler.Get)
 	protect("GET /api/proxies", r.proxyHandler.List)
+	protect("GET /api/proxies/traffic", r.proxyHandler.Traffic)
 	protect("POST /api/proxies", r.proxyHandler.Create)
 	protect("PUT /api/proxies/{id}", r.proxyHandler.Update)
 	protect("DELETE /api/proxies/{id}", r.proxyHandler.Delete)
+	protect("GET /api/proxies/{id}/logs/stream", r.proxyHandler.StreamLogs)
+	protect("GET /api/proxies/{id}/clients", r.proxyHandler.Clients)
 	protect("GET /api/ddns", r.ddnsHandler.List)
 	protect("POST /api/ddns", r.ddnsHandler.Create)
 	protect("PUT /api/ddns/{id}", r.ddnsHandler.Update)
@@ -53,8 +56,10 @@ func NewRouter(deps Deps) http.Handler {
 	protect("GET /api/certificates", r.certHandler.List)
 	protect("GET /api/certificates/ca-options", r.certHandler.Options)
 	protect("POST /api/certificates/apply", r.certHandler.Apply)
+	protect("GET /api/certificates/jobs/{id}/stream", r.certHandler.ApplyJobStream)
 	protect("POST /api/certificates/import", r.certHandler.Import)
 	protect("POST /api/certificates/renew", r.certHandler.Renew)
+	protect("GET /api/certificates/{domain}/download", r.certHandler.Download)
 	protect("DELETE /api/certificates/{domain}", r.certHandler.Delete)
 	protect("GET /api/settings", r.settingsHandler.Get)
 	protect("PUT /api/settings", r.settingsHandler.Put)
@@ -121,13 +126,22 @@ func (w *statusRecorder) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+func (w *statusRecorder) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func loggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/logs/stream" {
-			logger.Info("api request",
+		if strings.HasPrefix(r.URL.Path, "/api/") &&
+			!strings.Contains(r.URL.Path, "/logs/stream") &&
+			!strings.Contains(r.URL.Path, "/certificates/jobs/") &&
+			rec.status >= 500 {
+			logger.Error("api request failed",
 				"module", "HTTP",
 				"method", r.Method,
 				"path", r.URL.Path,

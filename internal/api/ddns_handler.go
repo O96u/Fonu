@@ -17,10 +17,12 @@ func NewDDNSHandler(svc *ddns.Service) *DDNSHandler {
 }
 
 type ddnsRequest struct {
-	Provider    string `json:"provider"`
-	RootDomain  string `json:"root_domain"`
-	RecordName  string `json:"record_name"`
-	IPv4Enabled *bool  `json:"ipv4_enabled"`
+	Provider    string   `json:"provider"`
+	RootDomain  string   `json:"root_domain"`
+	RecordName  string   `json:"record_name"`
+	RecordNames []string `json:"record_names"`
+	Domains     []string `json:"domains"`
+	IPv4Enabled *bool    `json:"ipv4_enabled"`
 	IPv6Enabled *bool  `json:"ipv6_enabled"`
 	Enabled     *bool  `json:"enabled"`
 	APIToken    string `json:"api_token"`
@@ -33,6 +35,8 @@ func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
 		Provider:    req.Provider,
 		RootDomain:  req.RootDomain,
 		RecordName:  req.RecordName,
+		RecordNames: req.RecordNames,
+		Domains:     req.Domains,
 		IPv4Enabled: boolDefault(req.IPv4Enabled, true),
 		IPv6Enabled: boolDefault(req.IPv6Enabled, false),
 		Enabled:     boolDefault(req.Enabled, true),
@@ -43,7 +47,13 @@ func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
 }
 
 func (h *DDNSHandler) List(w http.ResponseWriter, r *http.Request) {
-	configs, err := h.svc.List(r.Context())
+	var configs []ddns.Config
+	var err error
+	if r.URL.Query().Get("lite") == "1" {
+		configs, err = h.svc.ListLite(r.Context())
+	} else {
+		configs, err = h.svc.List(r.Context())
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "读取 DDNS 配置失败")
 		return

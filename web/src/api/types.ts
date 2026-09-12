@@ -19,6 +19,20 @@ export interface ProxyRule {
   updated_at: string
 }
 
+export interface ProxyTraffic {
+  rule_id: number
+  upload_total: number
+  download_total: number
+  upload_rate: number
+  download_rate: number
+  connections: number
+}
+
+export interface ProxyClientConn {
+  ip: string
+  last_seen: string
+}
+
 export interface ProxySavePayload {
   upstream: string
   listen_port?: number
@@ -46,6 +60,7 @@ export interface ApiError {
 export interface DashboardStatus {
   public_ipv4: string
   public_ipv6: string
+  public_ip_source?: 'ddns' | 'detect' | 'none'
   ddns_status: string
   ddns_count: number
   ddns_last_updated?: string
@@ -62,11 +77,20 @@ export interface DashboardStatus {
   uptime_seconds: number
 }
 
+export interface DDNSDomainRecord {
+  domain: string
+  ipv4?: string
+  ipv6?: string
+  status: string
+  message?: string
+}
+
 export interface DDNSConfig {
   id: number
   provider: string
   root_domain: string
   record_name: string
+  record_names?: string[]
   ipv4_enabled: boolean
   ipv6_enabled: boolean
   enabled: boolean
@@ -75,12 +99,30 @@ export interface DDNSConfig {
   last_ipv6?: string
   last_status?: string
   last_error?: string
+  domain_records?: DDNSDomainRecord[]
   last_updated_at?: string
 }
 
 export interface CertificateCAOption {
   value: string
   label: string
+}
+
+export interface CertificateJobDone {
+  ok: boolean
+  error?: string
+  domain?: string
+  cert_path?: string
+  key_path?: string
+  cert_dir?: string
+  expires_at?: string
+}
+
+export interface CertificateJobEvent {
+  type: 'log' | 'done'
+  level?: string
+  message?: string
+  result?: CertificateJobDone
 }
 
 export interface CertificateRecord {
@@ -131,6 +173,8 @@ export interface DDNSSavePayload {
   provider?: string
   root_domain?: string
   record_name?: string
+  record_names?: string[]
+  domains?: string[]
   ipv4_enabled?: boolean
   ipv6_enabled?: boolean
   enabled?: boolean

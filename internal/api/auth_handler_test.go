@@ -50,18 +50,22 @@ func TestAuthSetupAndLoginFlow(t *testing.T) {
 		t.Fatalf("status code: %d", statusRec.Code)
 	}
 
-	setupBody, _ := json.Marshal(map[string]string{
+	if err := authSvc.Setup(context.Background(), "admin", "password123"); err != nil {
+		t.Fatalf("setup admin: %v", err)
+	}
+
+	loginBody, _ := json.Marshal(map[string]string{
 		"username": "admin",
 		"password": "password123",
 	})
-	setupReq := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
-	setupRec := httptest.NewRecorder()
-	handler.ServeHTTP(setupRec, setupReq)
-	if setupRec.Code != http.StatusCreated {
-		t.Fatalf("setup status: %d body=%s", setupRec.Code, setupRec.Body.String())
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status: %d body=%s", loginRec.Code, loginRec.Body.String())
 	}
 
-	cookie := setupRec.Result().Cookies()[0]
+	cookie := loginRec.Result().Cookies()[0]
 	if cookie.Name != "fonu_session" || cookie.HttpOnly == false {
 		t.Fatal("expected httponly session cookie")
 	}

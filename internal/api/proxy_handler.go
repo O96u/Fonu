@@ -7,14 +7,17 @@ import (
 
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
+	"github.com/fonu/fonu/internal/traffic"
 )
 
 type ProxyHandler struct {
-	svc *service.ProxyService
+	svc     *service.ProxyService
+	logs    *LogsHandler
+	traffic *traffic.Collector
 }
 
-func NewProxyHandler(svc *service.ProxyService) *ProxyHandler {
-	return &ProxyHandler{svc: svc}
+func NewProxyHandler(svc *service.ProxyService, logs *LogsHandler, collector *traffic.Collector) *ProxyHandler {
+	return &ProxyHandler{svc: svc, logs: logs, traffic: collector}
 }
 
 type proxyRequest struct {
@@ -116,6 +119,56 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rule)
+}
+
+func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {
+	if h.traffic == nil {
+		writeJSON(w, http.StatusOK, []traffic.RuleTraffic{})
+		return
+	}
+	rules, err := h.svc.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "读取反向代理规则失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.traffic.SnapshotForRules(rules))
+}
+
+func (h *ProxyHandler) Clients(w http.ResponseWriter, r *http.Request) {
+	if h.traffic == nil {
+		writeJSON(w, http.StatusOK, []traffic.ClientConn{})
+		return
+	}
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		return
+	}
+	rule, err := h.svc.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "规则不存在")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.traffic.ClientsForRule(rule))
+}
+
+func (h *ProxyHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		return
+	}
+	rule, err := h.svc.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "规则不存在")
+		return
+	}
+	hosts := rule.Hostnames()
+	if len(hosts) == 0 {
+		writeError(w, http.StatusBadRequest, "该规则没有前端域名")
+		return
+	}
+	h.logs.StreamAccessForHosts(w, r, hosts)
 }
 
 func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {

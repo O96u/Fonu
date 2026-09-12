@@ -25,7 +25,7 @@ http {
     include       ` + absNginxPath(cfg.NginxMimeTypes) + `;
     default_type  application/octet-stream;
 
-    log_format fonu_access '$time_iso8601 $host $request_method $request_uri $status $request_time $remote_addr $upstream_addr';
+    log_format fonu_access '$time_iso8601 $host $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent';
     access_log ` + absNginxPath(filepath.Join(cfg.LogsDir(), "access.log")) + ` fonu_access;
 
     sendfile on;

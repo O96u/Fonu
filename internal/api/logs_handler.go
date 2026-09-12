@@ -55,14 +55,17 @@ func (h *LogsHandler) System(w http.ResponseWriter, r *http.Request) {
 func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("type")
 	if kind == "" {
-		kind = "system"
+		kind = "error"
 	}
-	path := filepath.Join(h.cfg.LogsDir(), "app.log")
+	var path string
 	switch kind {
 	case "access":
 		path = filepath.Join(h.cfg.LogsDir(), "access.log")
 	case "error":
 		path = filepath.Join(h.cfg.LogsDir(), "error.log")
+	default:
+		writeError(w, http.StatusBadRequest, "实时日志仅支持 Nginx 访问/错误日志")
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -75,10 +78,33 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tail := queryInt(r, "tail", 100)
+	var filter logstore.LineFilter
+	if kind == "access" {
+		filter = logstore.AccessHostFilter(r.URL.Query()["host"])
+	}
 	_ = logstore.StreamFile(r.Context(), path, w, func() error {
 		flusher.Flush()
 		return nil
-	}, tail)
+	}, tail, filter)
+}
+
+func (h *LogsHandler) StreamAccessForHosts(w http.ResponseWriter, r *http.Request, hosts []string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "SSE 不可用")
+		return
+	}
+	path := filepath.Join(h.cfg.LogsDir(), "access.log")
+	tail := queryInt(r, "tail", 100)
+	filter := logstore.AccessHostFilter(hosts)
+	_ = logstore.StreamFile(r.Context(), path, w, func() error {
+		flusher.Flush()
+		return nil
+	}, tail, filter)
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {

@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-func StreamFile(ctx context.Context, path string, w io.Writer, flush func() error, tail int) error {
+type LineFilter func(line string) bool
+
+func StreamFile(ctx context.Context, path string, w io.Writer, flush func() error, tail int, filter LineFilter) error {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -29,6 +31,9 @@ func StreamFile(ctx context.Context, path string, w io.Writer, flush func() erro
 		}
 		for _, line := range lines {
 			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if filter != nil && !filter(line) {
 				continue
 			}
 			fmt.Fprintf(w, "event: log\ndata: %s\n\n", trimSSE(line+"\n"))
@@ -53,6 +58,9 @@ func StreamFile(ctx context.Context, path string, w io.Writer, flush func() erro
 				continue
 			}
 			return err
+		}
+		if filter != nil && !filter(strings.TrimRight(line, "\r\n")) {
+			continue
 		}
 		fmt.Fprintf(w, "event: log\ndata: %s\n\n", trimSSE(line))
 		if err := flush(); err != nil {

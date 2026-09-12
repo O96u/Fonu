@@ -1,5 +1,5 @@
 <template>
-  <PageHeader title="日志" description="查看访问、错误与系统运行日志" />
+  <PageHeader title="日志" description="Nginx 访问与错误日志；运行日志记录 DDNS、证书、Nginx 等业务事件" />
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 
@@ -56,13 +56,14 @@
         />
       </n-tab-pane>
 
-      <n-tab-pane name="system" tab="系统日志">
+      <n-tab-pane name="system" tab="运行日志">
         <LogToolbar
           v-model:keyword="systemKeyword"
           v-model:level="systemLevel"
           :show-level="true"
           @refresh="loadSystemLogs"
         />
+        <p class="tab-hint">记录 DDNS 同步、证书申请、Nginx 重载、启动初始化等事件，不含页面轮询请求。</p>
         <n-data-table
           v-if="filteredSystemLogs.length > 0"
           :columns="systemColumns"
@@ -77,22 +78,29 @@
         />
         <EmptyState
           v-if="!loadingSystem && systemLogs.length === 0"
-          title="暂无系统日志"
-          description="应用运行后会产生系统日志。"
+          title="暂无运行日志"
+          description="DDNS 更新、证书操作或 Nginx 状态变化时会记录在这里。"
         />
       </n-tab-pane>
 
       <n-tab-pane name="stream" tab="实时日志">
+        <p class="tab-hint">
+          打开时会先加载最近 100 条 Nginx 日志，之后实时追加。完整历史请查看「访问日志 / 错误日志」分页列表。
+        </p>
         <div class="toolbar">
-          <n-select v-model:value="streamType" :options="streamOptions" style="width: 180px" />
-          <n-button @click="toggleStream">{{ streaming ? '暂停' : '开始' }}</n-button>
+          <n-radio-group v-model:value="streamType" size="small">
+            <n-radio-button value="error">Nginx 错误</n-radio-button>
+            <n-radio-button value="access">Nginx 访问</n-radio-button>
+          </n-radio-group>
           <n-button quaternary @click="clearStream">清空视图</n-button>
         </div>
-        <div ref="streamBox" class="stream-box" :class="{ paused: !streaming }">
+        <div ref="streamBox" class="stream-box">
           <div v-for="(line, i) in streamLines" :key="i" class="stream-line" :class="lineClass(line)">
             {{ formatLogLine(line) }}
           </div>
-          <div v-if="streamLines.length === 0" class="stream-empty text-muted">等待日志输出…</div>
+          <div v-if="streamLines.length === 0" class="stream-empty text-muted">
+            暂无日志。经反代域名产生访问后会出现；若刚打开，请稍等或切换「访问日志」查看历史。
+          </div>
         </div>
       </n-tab-pane>
     </n-tabs>
@@ -107,6 +115,8 @@ import {
   NDataTable,
   NInput,
   NPagination,
+  NRadioButton,
+  NRadioGroup,
   NSelect,
   NTabPane,
   NTabs,
@@ -231,17 +241,10 @@ const accessPage = ref(1)
 const errorPage = ref(1)
 const systemPage = ref(1)
 
-const streamType = ref('system')
+const streamType = ref('error')
 const streamLines = ref<string[]>([])
-const streaming = ref(false)
 const streamBox = ref<HTMLElement | null>(null)
 let eventSource: EventSource | null = null
-
-const streamOptions = [
-  { label: '系统日志', value: 'system' },
-  { label: '访问日志', value: 'access' },
-  { label: '错误日志', value: 'error' },
-]
 
 const filteredAccessLogs = computed(() => {
   return accessLogs.value.filter((log) => {
@@ -372,26 +375,30 @@ async function loadAll() {
   }
 }
 
-function toggleStream() {
-  if (streaming.value) {
-    eventSource?.close()
-    eventSource = null
-    streaming.value = false
-    return
-  }
+function stopStream() {
+  eventSource?.close()
+  eventSource = null
+}
+
+function startStream() {
+  if (eventSource) return
   eventSource = new EventSource(`/api/logs/stream?type=${streamType.value}&tail=100`, {
     withCredentials: true,
   })
   eventSource.addEventListener('log', (event) => {
     streamLines.value.push(event.data)
     if (streamLines.value.length > 500) streamLines.value = streamLines.value.slice(-400)
-    if (streaming.value) {
-      requestAnimationFrame(() => {
-        streamBox.value?.scrollTo({ top: streamBox.value.scrollHeight })
-      })
-    }
+    requestAnimationFrame(() => {
+      streamBox.value?.scrollTo({ top: streamBox.value.scrollHeight })
+    })
   })
-  streaming.value = true
+  eventSource.addEventListener('info', (event) => {
+    streamLines.value.push(event.data)
+  })
+  eventSource.onerror = () => {
+    message.warning('实时日志连接中断，请刷新页面重试')
+    stopStream()
+  }
 }
 
 function clearStream() {
@@ -399,9 +406,11 @@ function clearStream() {
 }
 
 function lineClass(line: string) {
-  if (line.includes('ERROR')) return 'level-error'
-  if (line.includes('WARN')) return 'level-warn'
-  if (line.includes('INFO')) return 'level-info'
+  const lower = line.toLowerCase()
+  if (lower.includes('[error]') || lower.includes(' emerg ') || lower.includes(' alert ') || lower.includes(' crit ')) {
+    return 'level-error'
+  }
+  if (lower.includes('[warn]') || lower.includes(' warning ')) return 'level-warn'
   return ''
 }
 
@@ -418,10 +427,9 @@ watch([systemKeyword, systemLevel], () => {
 })
 
 watch(streamType, () => {
-  if (streaming.value) {
-    eventSource?.close()
-    streaming.value = false
-  }
+  if (tab.value !== 'stream') return
+  stopStream()
+  startStream()
 })
 
 watch(autoRefresh, (on) => {
@@ -440,14 +448,17 @@ watch(tab, (name) => {
   if (name === 'access') loadAccess()
   else if (name === 'error') loadErrorLogs()
   else if (name === 'system') loadSystemLogs()
+  else if (name === 'stream') startStream()
+  else stopStream()
 })
 
 onMounted(() => {
   tab.value = resolveTab(route.query.tab)
   loadAll()
+  if (tab.value === 'stream') startStream()
 })
 onUnmounted(() => {
-  eventSource?.close()
+  stopStream()
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
@@ -463,6 +474,12 @@ onUnmounted(() => {
 
 .logs-card :deep(.n-tab-pane) {
   padding-top: var(--fonu-space-2);
+}
+
+.tab-hint {
+  margin: 0 var(--fonu-space-5) var(--fonu-space-3);
+  font-size: 13px;
+  color: var(--fonu-text-muted);
 }
 
 .log-pagination {
@@ -490,10 +507,6 @@ onUnmounted(() => {
 html[data-theme='dark'] .stream-box,
 html.dark .stream-box {
   background: #020617;
-}
-
-.stream-box.paused {
-  opacity: 0.85;
 }
 
 .stream-line {

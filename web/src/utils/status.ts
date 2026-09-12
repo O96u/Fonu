@@ -3,7 +3,7 @@ export type StatusKind = 'success' | 'warning' | 'error' | 'disabled' | 'unknown
 const LABELS: Record<string, string> = {
   ok: '正常',
   running: '运行中',
-  warning: '警告',
+  warning: '部分异常',
   error: '异常',
   disabled: '停用',
   none: '未配置',

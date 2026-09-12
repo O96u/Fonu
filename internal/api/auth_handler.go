@@ -17,11 +17,6 @@ func NewAuthHandler(authSvc *auth.Service) *AuthHandler {
 	return &AuthHandler{auth: authSvc}
 }
 
-type setupRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -48,28 +43,6 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 		Initialized:   initialized,
 		Authenticated: authenticated,
 	})
-}
-
-func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
-	var req setupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
-		return
-	}
-	if req.Username == "" {
-		req.Username = "admin"
-	}
-	if err := h.auth.Setup(r.Context(), req.Username, req.Password); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	sessionID, err := h.auth.Login(r.Context(), req.Username, req.Password)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "创建会话失败")
-		return
-	}
-	setSessionCookie(w, sessionID)
-	writeJSON(w, http.StatusCreated, map[string]string{"message": "管理员已创建"})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {

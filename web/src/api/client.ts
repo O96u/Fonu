@@ -10,8 +10,10 @@ import type {
   DDNSSavePayload,
   DDNSTestPayload,
   DiscoveredService,
+  ProxyClientConn,
   ProxyRule,
   ProxySavePayload,
+  ProxyTraffic,
   SettingsMap,
   SystemLogEntry,
 } from './types'
@@ -21,15 +23,20 @@ export function asList<T>(value: T[] | null | undefined): T[] {
 }
 
 const REQUEST_TIMEOUT_MS = 30_000
+const CERT_REQUEST_TIMEOUT_MS = 10 * 60_000
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await requestWithSignal<T>(path, init, controller.signal)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('请求超时，请检查 Fonu 服务或 Nginx 状态')
+      throw new Error(
+        timeoutMs > REQUEST_TIMEOUT_MS
+          ? '证书操作超时，请稍后在证书列表查看状态，或在「日志 → 实时日志」查看 Nginx 输出'
+          : '请求超时，请检查 Fonu 服务或 Nginx 状态',
+      )
     }
     throw error
   } finally {
@@ -70,11 +77,6 @@ async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: A
 export const api = {
   getVersion: () => request<AppVersion>('/api/version'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
-  setup: (username: string, password: string) =>
-    request<{ message: string }>('/api/auth/setup', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
   login: (username: string, password: string) =>
     request<{ message: string }>('/api/auth/login', {
       method: 'POST',
@@ -94,8 +96,11 @@ export const api = {
   updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>
     request<ProxyRule>(`/api/proxies/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
+  getProxyTraffic: () => request<ProxyTraffic[]>('/api/proxies/traffic'),
+  getProxyClients: (id: number) => request<ProxyClientConn[]>(`/api/proxies/${id}/clients`),
 
   listDDNS: () => request<DDNSConfig[]>('/api/ddns'),
+  listDDNSLite: () => request<DDNSConfig[]>('/api/ddns?lite=1'),
   createDDNS: (payload: DDNSSavePayload) =>
     request<DDNSConfig>('/api/ddns', { method: 'POST', body: JSON.stringify(payload) }),
   updateDDNS: (id: number, payload: DDNSSavePayload) =>
@@ -112,7 +117,7 @@ export const api = {
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
   applyCertificate: (payload: { dns_zone: string; domains: string[]; ca?: string; email?: string }) =>
-    request<CertificateRecord[]>('/api/certificates/apply', {
+    request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
       body: JSON.stringify({
         dns_zone: payload.dns_zone,
@@ -121,6 +126,7 @@ export const api = {
         email: payload.email ?? '',
       }),
     }),
+  certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,
   importCertificate: (payload: {
     certificate?: string
     private_key?: string
@@ -131,13 +137,43 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  async downloadCertificate(domain: string, part: 'zip' | 'cert' | 'key' = 'zip') {
+    const response = await fetch(
+      `/api/certificates/${encodeURIComponent(domain)}/download?part=${part}`,
+      { credentials: 'include' },
+    )
+    if (!response.ok) {
+      let message = '下载证书失败'
+      try {
+        const body = (await response.json()) as ApiError
+        if (body.error) message = body.error
+      } catch {
+        // ignore
+      }
+      throw new Error(message)
+    }
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename="?([^";\n]+)"?/)
+    const filename = match?.[1] ?? `${domain}.zip`
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  },
   deleteCertificate: (domain: string) =>
     request<{ message: string }>(`/api/certificates/${encodeURIComponent(domain)}`, { method: 'DELETE' }),
   renewCertificate: (domain?: string, ca?: string) =>
-    request<CertificateRecord>('/api/certificates/renew', {
-      method: 'POST',
-      body: JSON.stringify({ domain: domain ?? '', ca: ca ?? '' }),
-    }),
+    request<CertificateRecord>(
+      '/api/certificates/renew',
+      {
+        method: 'POST',
+        body: JSON.stringify({ domain: domain ?? '', ca: ca ?? '' }),
+      },
+      CERT_REQUEST_TIMEOUT_MS,
+    ),
 
   getSettings: () => request<SettingsMap>('/api/settings'),
   saveSettings: (payload: SettingsMap) =>

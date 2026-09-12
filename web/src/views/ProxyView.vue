@@ -26,7 +26,7 @@
       :data="filteredRules"
       :loading="loading"
       :bordered="false"
-      :scroll-x="1100"
+      :scroll-x="1280"
       :row-key="(r: ProxyRule) => r.id"
     />
 
@@ -93,10 +93,61 @@
       </div>
     </div>
   </n-modal>
+
+  <n-modal
+    v-model:show="showLogModal"
+    preset="card"
+    :style="{ width: 'min(960px, 96vw)' }"
+    :segmented="{ content: true }"
+    :content-style="{ padding: 0 }"
+    @after-leave="stopLogStream"
+  >
+    <template #header>
+      <div class="log-modal-header">
+        <div>
+          <div class="log-modal-title">访问日志</div>
+          <div class="log-modal-sub">{{ logRuleTitle }}</div>
+        </div>
+        <n-button size="small" quaternary @click="clearLogLines">清空</n-button>
+      </div>
+    </template>
+    <div ref="logBox" class="proxy-log-box">
+      <div v-for="(line, i) in logLines" :key="i" class="proxy-log-line" :class="logLineClass(line)">
+        {{ formatAccessLine(line) }}
+      </div>
+      <div v-if="logLines.length === 0" class="proxy-log-empty">
+        暂无记录。打开时会加载该域名最近 100 条访问日志，之后实时追加。请通过反代域名访问（非 Fonu 管理页）；完整历史见「日志 → 访问日志」。
+      </div>
+    </div>
+  </n-modal>
+
+  <n-modal
+    v-model:show="showClientsModal"
+    preset="card"
+    :style="{ width: 'min(520px, 96vw)' }"
+    :segmented="{ content: true }"
+    @after-leave="stopClientsPoll"
+  >
+    <template #header>
+      <div>
+        <div class="log-modal-title">当前连接</div>
+        <div class="log-modal-sub">{{ clientsRuleTitle }}</div>
+      </div>
+    </template>
+    <n-spin :show="clientsLoading">
+      <div v-if="clientRows.length > 0" class="clients-list">
+        <div v-for="row in clientRows" :key="row.ip" class="clients-row">
+          <span class="mono">{{ row.ip }}</span>
+          <span class="text-muted">{{ formatRelativeTime(row.last_seen) }}</span>
+        </div>
+      </div>
+      <div v-else class="clients-empty">最近 65 秒内暂无访问客户端</div>
+    </n-spin>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NCheckbox,
@@ -108,6 +159,7 @@ import {
   NInputNumber,
   NModal,
   NSelect,
+  NSpin,
   NSwitch,
   NTag,
   useDialog,
@@ -116,12 +168,13 @@ import {
 } from 'naive-ui'
 import { AddOutline, SearchOutline } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
-import type { ProxyRule, ProxySavePayload } from '../api/types'
+import type { ProxyClientConn, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { formatBytes, formatRate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
 const message = useMessage()
@@ -136,6 +189,21 @@ const search = ref('')
 const statusFilter = ref<string | null>(null)
 const httpsFilter = ref<string | null>(null)
 const scanning = ref(false)
+const showLogModal = ref(false)
+const logRule = ref<ProxyRule | null>(null)
+const logLines = ref<string[]>([])
+const logBox = ref<HTMLElement | null>(null)
+let logEventSource: EventSource | null = null
+const trafficByRule = ref<Record<number, ProxyTraffic>>({})
+const showClientsModal = ref(false)
+const clientsRule = ref<ProxyRule | null>(null)
+const clientRows = ref<ProxyClientConn[]>([])
+const clientsLoading = ref(false)
+let trafficTimer: ReturnType<typeof setInterval> | null = null
+let clientsTimer: ReturnType<typeof setInterval> | null = null
+
+const logRuleTitle = computed(() => (logRule.value ? ruleTitle(logRule.value) : ''))
+const clientsRuleTitle = computed(() => (clientsRule.value ? ruleTitle(clientsRule.value) : ''))
 
 const statusOptions = [
   { label: '运行中', value: 'enabled' },
@@ -247,16 +315,171 @@ const columns: DataTableColumns<ProxyRule> = [
     render: (row) => h(StatusBadge, { value: row.enabled ? 'ok' : 'disabled', text: row.enabled ? '运行中' : '已停用' }),
   },
   {
+    title: '流量',
+    key: 'traffic',
+    width: 200,
+    render: (row) => {
+      const stats = trafficByRule.value[row.id]
+      if (!stats) {
+        return h('span', { class: 'text-muted' }, '-')
+      }
+      return h('div', { class: 'traffic-cell' }, [
+        h('div', { class: 'traffic-line' }, [
+          h('span', { class: 'traffic-dir' }, '↓'),
+          h('span', { class: 'mono' }, formatBytes(stats.download_total)),
+          h('span', { class: 'traffic-rate' }, formatRate(stats.download_rate)),
+        ]),
+        h('div', { class: 'traffic-line' }, [
+          h('span', { class: 'traffic-dir' }, '↑'),
+          h('span', { class: 'mono' }, formatBytes(stats.upload_total)),
+          h('span', { class: 'traffic-rate' }, formatRate(stats.upload_rate)),
+        ]),
+        h(
+          NButton,
+          {
+            size: 'tiny',
+            quaternary: true,
+            type: stats.connections > 0 ? 'info' : 'default',
+            class: 'traffic-conn-btn',
+            onClick: () => openClients(row),
+          },
+          () => `${stats.connections} 连接`,
+        ),
+      ])
+    },
+  },
+  {
     title: '操作',
     key: 'actions',
-    width: 132,
+    width: 196,
     render: (row) =>
       renderTableRowActions([
+        { label: '日志', onClick: () => openLogs(row) },
         { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
         { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
       ]),
   },
 ]
+
+const accessLineRe =
+  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)$/
+
+function formatAccessLine(line: string): string {
+  const m = line.match(accessLineRe)
+  if (!m) return line
+  const [, time, , method, path, status, rt, client, upstream] = m
+  const shortTime = time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, '')
+  const ms = (parseFloat(rt) * 1000).toFixed(1)
+  return `${shortTime}  ${method} ${path}  ${status}  ${ms}ms  ${client}  → ${upstream}`
+}
+
+function logLineClass(line: string): string {
+  const m = line.match(accessLineRe)
+  if (!m) return ''
+  const status = Number(m[5])
+  if (status >= 500) return 'is-error'
+  if (status >= 400) return 'is-warn'
+  return ''
+}
+
+function openLogs(row: ProxyRule) {
+  logRule.value = row
+  logLines.value = []
+  showLogModal.value = true
+}
+
+function stopLogStream() {
+  logEventSource?.close()
+  logEventSource = null
+}
+
+function startLogStream() {
+  if (!logRule.value || logEventSource) return
+  logEventSource = new EventSource(`/api/proxies/${logRule.value.id}/logs/stream?tail=100`, {
+    withCredentials: true,
+  })
+  logEventSource.addEventListener('log', (event) => {
+    logLines.value.push(event.data)
+    if (logLines.value.length > 500) logLines.value = logLines.value.slice(-400)
+    requestAnimationFrame(() => {
+      logBox.value?.scrollTo({ top: logBox.value.scrollHeight })
+    })
+  })
+  logEventSource.onerror = () => {
+    message.warning('日志连接中断，请关闭后重新打开')
+    stopLogStream()
+  }
+}
+
+function clearLogLines() {
+  logLines.value = []
+}
+
+watch(showLogModal, (open) => {
+  if (open) startLogStream()
+  else stopLogStream()
+})
+
+async function refreshTraffic() {
+  try {
+    const rows = asList(await api.getProxyTraffic())
+    const next: Record<number, ProxyTraffic> = {}
+    for (const row of rows) {
+      next[row.rule_id] = row
+    }
+    trafficByRule.value = next
+  } catch {
+    // ignore polling errors
+  }
+}
+
+function startTrafficPoll() {
+  stopTrafficPoll()
+  trafficTimer = setInterval(refreshTraffic, 2000)
+}
+
+function stopTrafficPoll() {
+  if (trafficTimer) {
+    clearInterval(trafficTimer)
+    trafficTimer = null
+  }
+}
+
+async function loadClients() {
+  if (!clientsRule.value) return
+  clientsLoading.value = true
+  try {
+    clientRows.value = asList(await api.getProxyClients(clientsRule.value.id))
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '读取连接失败')
+  } finally {
+    clientsLoading.value = false
+  }
+}
+
+function openClients(row: ProxyRule) {
+  clientsRule.value = row
+  clientRows.value = []
+  showClientsModal.value = true
+}
+
+function startClientsPoll() {
+  stopClientsPoll()
+  void loadClients()
+  clientsTimer = setInterval(loadClients, 2000)
+}
+
+function stopClientsPoll() {
+  if (clientsTimer) {
+    clearInterval(clientsTimer)
+    clientsTimer = null
+  }
+}
+
+watch(showClientsModal, (open) => {
+  if (open) startClientsPoll()
+  else stopClientsPoll()
+})
 
 async function load() {
   loading.value = true
@@ -396,7 +619,16 @@ function confirmDelete(rule: ProxyRule) {
   })
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  await refreshTraffic()
+  startTrafficPoll()
+})
+onUnmounted(() => {
+  stopLogStream()
+  stopTrafficPoll()
+  stopClientsPoll()
+})
 </script>
 
 <style scoped>
@@ -492,5 +724,112 @@ onMounted(load)
     border-left: none;
     border-top: 1px solid var(--fonu-border);
   }
+}
+
+.log-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fonu-space-4);
+  width: 100%;
+}
+
+.log-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.log-modal-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--fonu-text-muted);
+}
+
+.proxy-log-box {
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 420px;
+  max-height: min(68vh, 560px);
+  overflow: auto;
+  padding: var(--fonu-space-4);
+  font-family: var(--fonu-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+html[data-theme='dark'] .proxy-log-box,
+html.dark .proxy-log-box {
+  background: #020617;
+}
+
+.proxy-log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.proxy-log-line.is-warn {
+  color: #fbbf24;
+}
+
+.proxy-log-line.is-error {
+  color: #f87171;
+}
+
+.proxy-log-empty {
+  padding: var(--fonu-space-6);
+  text-align: center;
+  color: #94a3b8;
+}
+
+.traffic-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.traffic-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.traffic-dir {
+  width: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.traffic-rate {
+  color: var(--fonu-text-muted);
+  font-size: 11px;
+}
+
+.traffic-conn-btn {
+  margin-top: 2px;
+  padding: 0 4px !important;
+  height: 22px !important;
+}
+
+.clients-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clients-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fonu-bg);
+}
+
+.clients-empty {
+  padding: var(--fonu-space-6);
+  text-align: center;
+  color: var(--fonu-text-muted);
 }
 </style>

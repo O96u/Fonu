@@ -31,8 +31,21 @@ func Detect(ctx context.Context) (ipv4, ipv6 string, err error) {
 	return ipv4, ipv6, nil
 }
 
+func detectClient() *http.Client {
+	return &http.Client{
+		Timeout: 8 * time.Second,
+		Transport: &http.Transport{
+			Proxy: nil,
+			DialContext: (&net.Dialer{
+				Timeout:   8 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+		},
+	}
+}
+
 func detectIPv4(ctx context.Context) (string, error) {
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := detectClient()
 	var lastErr error
 	for _, url := range ipv4Providers {
 		ip, err := fetchIP(ctx, client, url, false)
@@ -45,7 +58,7 @@ func detectIPv4(ctx context.Context) (string, error) {
 }
 
 func detectIPv6(ctx context.Context) (string, error) {
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := detectClient()
 	for _, url := range ipv6Providers {
 		ip, err := fetchIP(ctx, client, url, true)
 		if err == nil {
@@ -83,5 +96,27 @@ func fetchIP(ctx context.Context, client *http.Client, url string, wantV6 bool) 
 	if !wantV6 && parsed.To4() == nil {
 		return "", fmt.Errorf("no ipv4")
 	}
+	if !wantV6 && !IsPublicIPv4(ip) {
+		return "", fmt.Errorf("private ipv4")
+	}
+	if wantV6 && !IsPublicIPv6(ip) {
+		return "", fmt.Errorf("private ipv6")
+	}
 	return ip, nil
+}
+
+func IsPublicIPv4(ip string) bool {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil || parsed.To4() == nil {
+		return false
+	}
+	return !parsed.IsPrivate() && !parsed.IsLoopback() && !parsed.IsLinkLocalUnicast() && !parsed.IsUnspecified()
+}
+
+func IsPublicIPv6(ip string) bool {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil || parsed.To4() != nil {
+		return false
+	}
+	return !parsed.IsPrivate() && !parsed.IsLoopback() && !parsed.IsLinkLocalUnicast() && !parsed.IsUnspecified()
 }

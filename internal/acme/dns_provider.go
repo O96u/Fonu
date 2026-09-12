@@ -2,6 +2,7 @@ package acme
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
@@ -36,6 +37,34 @@ func dnsProviderName(provider string) string {
 	default:
 		return "cloudflare"
 	}
+}
+
+type loggingDNSProvider struct {
+	inner challenge.Provider
+	job   *Job
+}
+
+func wrapDNSProvider(inner challenge.Provider, job *Job) challenge.Provider {
+	if job == nil {
+		return inner
+	}
+	return &loggingDNSProvider{inner: inner, job: job}
+}
+
+func (p *loggingDNSProvider) Present(domain, token, keyAuth string) error {
+	record := strings.TrimSuffix(domain, ".")
+	p.job.Info(fmt.Sprintf("添加 DNS TXT 记录: _acme-challenge.%s", record))
+	if err := p.inner.Present(domain, token, keyAuth); err != nil {
+		p.job.Error(fmt.Sprintf("添加 DNS TXT 记录失败: %v", err))
+		return err
+	}
+	p.job.Info("DNS TXT 记录已添加，等待 DNS 传播…")
+	return nil
+}
+
+func (p *loggingDNSProvider) CleanUp(domain, token, keyAuth string) error {
+	p.job.Info("清理 DNS TXT 验证记录…")
+	return p.inner.CleanUp(domain, token, keyAuth)
 }
 
 func validateDNSCredentials(provider string, cred ddns.Credentials) error {

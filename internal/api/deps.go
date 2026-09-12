@@ -12,6 +12,7 @@ import (
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
+	"github.com/fonu/fonu/internal/traffic"
 )
 
 type Deps struct {
@@ -24,6 +25,7 @@ type Deps struct {
 	Settings   *settings.Store
 	Backup     *backup.Service
 	Discovery  *discovery.Service
+	Traffic    *traffic.Collector
 	StaticFS   fs.FS
 	StartedAt  string
 }

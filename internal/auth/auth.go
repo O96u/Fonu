@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +32,34 @@ func (s *Service) IsInitialized(ctx context.Context) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM admins`).Scan(&count)
 	return count > 0, err
+}
+
+const defaultAdminUsername = "admin"
+
+func (s *Service) EnsureDefaultAdmin(ctx context.Context, log *slog.Logger) error {
+	initialized, err := s.IsInitialized(ctx)
+	if err != nil {
+		return err
+	}
+	if initialized {
+		return nil
+	}
+
+	password, err := generatePassword(16)
+	if err != nil {
+		return err
+	}
+	if err := s.Setup(ctx, defaultAdminUsername, password); err != nil {
+		return err
+	}
+
+	log.Info(
+		"首次启动已创建管理员账户，请使用以下凭据登录，并在「设置」中尽快修改密码",
+		"module", "SYSTEM",
+		"username", defaultAdminUsername,
+		"password", password,
+	)
+	return nil
 }
 
 func (s *Service) Setup(ctx context.Context, username, password string) error {
@@ -156,4 +185,20 @@ func randomToken(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func generatePassword(length int) (string, error) {
+	const letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	if length < 8 {
+		length = 8
+	}
+	out := make([]byte, length)
+	randBytes := make([]byte, length)
+	if _, err := rand.Read(randBytes); err != nil {
+		return "", err
+	}
+	for i := range out {
+		out[i] = letters[int(randBytes[i])%len(letters)]
+	}
+	return string(out), nil
 }

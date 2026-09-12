@@ -159,7 +159,11 @@ func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []
 }
 
 func (m *Manager) validate(ctx context.Context, configPath string) error {
-	return m.runNginx(ctx, []string{"-t", "-c", configPath}, "Nginx 配置校验失败")
+	tmpErr := filepath.Join(m.cfg.NginxDir(), "validate.error.log")
+	args := []string{"-e", absNginxPath(tmpErr), "-t", "-c", configPath}
+	err := m.runNginx(ctx, args, "Nginx 配置校验失败")
+	_ = os.Remove(tmpErr)
+	return err
 }
 
 func (m *Manager) start(ctx context.Context) error {
@@ -170,12 +174,29 @@ func (m *Manager) start(ctx context.Context) error {
 	if running {
 		return m.reload(ctx)
 	}
+	if m.trySilentReload(ctx) {
+		m.logger.Info("nginx reloaded existing master")
+		return nil
+	}
 	prepareStartPlatform(m, ctx)
 	if err := m.runNginxStart(ctx, []string{"-c", m.cfg.NginxConfigPath()}, "Nginx 启动失败"); err != nil {
+		if strings.Contains(err.Error(), "conflicting server name") && m.trySilentReload(ctx) {
+			m.logger.Warn("nginx start skipped duplicate master, reloaded instead")
+			return nil
+		}
 		return err
 	}
 	m.logger.Info("nginx started")
 	return nil
+}
+
+func (m *Manager) trySilentReload(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, nginxCmdTimeout)
+	defer cancel()
+
+	fullArgs := append(m.nginxGlobalArgs(), "-c", m.cfg.NginxConfigPath(), "-s", "reload")
+	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, fullArgs...)
+	return cmd.Run() == nil
 }
 
 func (m *Manager) reload(ctx context.Context) error {

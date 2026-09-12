@@ -17,7 +17,7 @@ make build
 # 本地开发（Windows PowerShell，使用本机 Nginx）
 . .\scripts\dev.ps1
 go run ./cmd/fonu
-# 首次访问 http://localhost:6893/setup 创建管理员
+# 首次启动会在系统日志中输出 admin 初始密码，访问 http://localhost:6893/login 登录后在设置中修改
 
 # 清空本地数据（勿用 seed，直接录入真实配置）
 . .\scripts\clean-data.ps1

@@ -28,6 +28,7 @@ import (
 	"github.com/fonu/fonu/internal/secret"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
+	"github.com/fonu/fonu/internal/traffic"
 )
 
 type App struct {
@@ -67,6 +68,10 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	}
 
 	authSvc := auth.New(conn)
+	if err := authSvc.EnsureDefaultAdmin(context.Background(), logger); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("bootstrap admin: %w", err)
+	}
 	proxyStore := proxy.NewStore(conn)
 	settingsStore := settings.NewStore(conn)
 	ddnsStore := ddns.NewStore(conn)
@@ -84,6 +89,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	backupSvc := backup.New(cfg.DataDir)
 	discoverySvc := discovery.New()
 	startedAt := time.Now().UTC().Format(time.RFC3339)
+	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"))
 
 	handler := api.NewRouter(api.Deps{
 		Config:    cfg,
@@ -95,6 +101,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		Settings:  settingsStore,
 		Backup:    backupSvc,
 		Discovery: discoverySvc,
+		Traffic:   trafficCollector,
 		StaticFS:  staticFS,
 		StartedAt: startedAt,
 	})
@@ -122,6 +129,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		},
 	)
 	sched.Start(ctx)
+	trafficCollector.Start(ctx)
 
 	app := &App{
 		cfg:        cfg,

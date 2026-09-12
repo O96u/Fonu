@@ -10,9 +10,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +37,7 @@ type Service struct {
 	proxySvc *service.ProxyService
 	logger   *slog.Logger
 	notify   *notify.Service
+	jobs     *JobManager
 }
 
 func NewService(cfg config.Config, store *certstore.Store, ddnsSvc *ddns.Service, settings *settings.Store, proxySvc *service.ProxyService, logger *slog.Logger, notifySvc *notify.Service) *Service {
@@ -48,6 +49,7 @@ func NewService(cfg config.Config, store *certstore.Store, ddnsSvc *ddns.Service
 		proxySvc: proxySvc,
 		logger:   logger.With("module", "ACME"),
 		notify:   notifySvc,
+		jobs:     NewJobManager(),
 	}
 }
 
@@ -55,34 +57,86 @@ func (s *Service) List(ctx context.Context) ([]certstore.Record, error) {
 	return s.store.List(ctx)
 }
 
-func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]certstore.Record, error) {
+func (s *Service) StartApply(ctx context.Context, dnsZone string, domains []string, ca, email string) (string, error) {
+	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, dnsZone, domains, ca, email)
+	if err != nil {
+		return "", err
+	}
+	job := s.jobs.Create()
+	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred)
+	return job.ID(), nil
+}
+
+func (s *Service) StreamJob(ctx context.Context, w http.ResponseWriter, jobID string, flush func() error) error {
+	return s.jobs.Stream(ctx, w, jobID, flush)
+}
+
+func (s *Service) prepareApply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]string, string, string, string, string, string, ddns.Credentials, error) {
 	domains, err := NormalizeCertDomains(domains)
 	if err != nil {
-		return nil, err
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
 	dnsZone = strings.ToLower(strings.TrimSpace(dnsZone))
-	if err := DomainsUnderZone(domains, dnsZone); err != nil {
-		return nil, err
+	ddnsCfg, err := s.ddnsSvc.ConfigForDNSZone(ctx, dnsZone)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	if err := DomainsUnderZones(domains, ddnsCfg.ManagedDNSZones()); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
 	primary := PrimaryCertDomain(domains)
 	if primary == "" {
-		return nil, fmt.Errorf("请填写至少一个域名")
+		return nil, "", "", "", "", "", ddns.Credentials{}, fmt.Errorf("请填写至少一个域名")
 	}
 	email, err = s.resolveACMEEmail(ctx, email)
 	if err != nil {
-		return nil, err
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
 	ca, err = s.resolveCA(ctx, ca)
 	if err != nil {
-		return nil, err
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
 	provider, cred, err := s.dnsCredentialsForDomain(ctx, dnsZone)
 	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	return domains, ca, email, primary, dnsZone, provider, cred, nil
+}
+
+func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials) {
+	ctx := context.Background()
+	job.Info("开始申请证书…")
+	job.Info(fmt.Sprintf("主域名: %s", primary))
+	job.Info(fmt.Sprintf("覆盖域名: %s", strings.Join(domains, ", ")))
+	job.Info(fmt.Sprintf("DNS 凭证: %s (%s)", dnsZone, provider))
+
+	rec, err := s.obtain(ctx, job, ca, email, provider, cred, primary, domains)
+	if err != nil {
+		s.markCertError(ctx, primary, domains, ca, err)
+		job.Error(err.Error())
+		job.Finish(JobDonePayload{OK: false, Error: err.Error(), Domain: primary})
+		return
+	}
+	if err := s.settings.Set(ctx, settings.KeyACMECA, ca); err != nil {
+		job.Warn("保存 ACME 颁发机构设置失败: " + err.Error())
+	}
+	if err := s.proxySvc.ReloadAll(ctx); err != nil {
+		job.Warn("Nginx 重载失败: " + err.Error())
+	} else {
+		job.Info("Nginx 已重载")
+	}
+	job.Info("证书申请完成")
+	job.Finish(jobDoneFromRecord(rec, nil))
+}
+
+func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]certstore.Record, error) {
+	domains, ca, email, primary, _, provider, cred, err := s.prepareApply(ctx, dnsZone, domains, ca, email)
+	if err != nil {
 		return nil, err
 	}
-
-	if err := s.obtain(ctx, ca, email, provider, cred, primary, domains); err != nil {
-		_ = s.store.UpdateStatus(ctx, primary, "error", err.Error())
+	rec, err := s.obtain(ctx, nil, ca, email, provider, cred, primary, domains)
+	if err != nil {
+		s.markCertError(ctx, primary, domains, ca, err)
 		return nil, err
 	}
 	if err := s.settings.Set(ctx, settings.KeyACMECA, ca); err != nil {
@@ -91,6 +145,7 @@ func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, c
 	if err := s.proxySvc.ReloadAll(ctx); err != nil {
 		s.logger.Error("nginx reload after cert apply failed", "error", err.Error())
 	}
+	_ = rec
 	return s.store.List(ctx)
 }
 
@@ -189,8 +244,8 @@ func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstor
 	if err != nil {
 		return certstore.Record{}, err
 	}
-	if err := s.obtain(ctx, ca, email, provider, cred, existing.Domain, domains); err != nil {
-		_ = s.store.UpdateStatus(ctx, rootDomain, "error", err.Error())
+	if _, err := s.obtain(ctx, nil, ca, email, provider, cred, existing.Domain, domains); err != nil {
+		s.markCertError(ctx, rootDomain, domains, ca, err)
 		return certstore.Record{}, err
 	}
 	if err := s.proxySvc.ReloadAll(ctx); err != nil {
@@ -226,6 +281,18 @@ func (s *Service) Tick(ctx context.Context) {
 	}
 }
 
+func (s *Service) markCertError(ctx context.Context, primary string, domains []string, ca string, err error) {
+	if err == nil {
+		return
+	}
+	errMsg := err.Error()
+	s.logger.Error("certificate operation failed", "domain", primary, "error", errMsg)
+	_, upsertErr := s.store.Upsert(ctx, primary, HasWildcardDomain(domains), EncodeCertDomains(domains), ca, "", "", time.Time{}, "error", errMsg)
+	if upsertErr != nil {
+		s.logger.Error("save cert error status failed", "domain", primary, "error", upsertErr.Error())
+	}
+}
+
 func (s *Service) resolveCA(ctx context.Context, ca string) (string, error) {
 	if strings.TrimSpace(ca) == "" {
 		ca, err := s.settings.Get(ctx, settings.KeyACMECA)
@@ -240,14 +307,20 @@ func (s *Service) resolveCA(ctx context.Context, ca string) (string, error) {
 	return ca, nil
 }
 
-func (s *Service) obtain(ctx context.Context, ca, email, provider string, cred ddns.Credentials, rootDomain string, domains []string) error {
+func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider string, cred ddns.Credentials, rootDomain string, domains []string) (certstore.Record, error) {
+	logStep := func(msg string) {
+		if job != nil {
+			job.Info(msg)
+		}
+	}
 	caDir, err := DirectoryURL(ca)
 	if err != nil {
-		return err
+		return certstore.Record{}, err
 	}
+	logStep(fmt.Sprintf("连接 ACME 服务器 (%s)", CALabel(ca)))
 	user, err := newUser(email)
 	if err != nil {
-		return err
+		return certstore.Record{}, err
 	}
 	config := lego.NewConfig(user)
 	config.CADirURL = caDir
@@ -255,50 +328,57 @@ func (s *Service) obtain(ctx context.Context, ca, email, provider string, cred d
 
 	client, err := lego.NewClient(config)
 	if err != nil {
-		return err
+		return certstore.Record{}, err
 	}
 
 	dnsProvider, err := newDNS01Provider(provider, cred)
 	if err != nil {
-		return fmt.Errorf("初始化 DNS Provider 失败：%w", err)
+		return certstore.Record{}, fmt.Errorf("初始化 DNS Provider 失败：%w", err)
 	}
+	dnsProvider = wrapDNSProvider(dnsProvider, job)
 	if err := client.Challenge.SetDNS01Provider(dnsProvider); err != nil {
-		return err
+		return certstore.Record{}, err
 	}
 
+	logStep("检查 ACME 账户…")
 	reg, err := client.Registration.ResolveAccountByKey()
 	if err != nil {
+		logStep("注册 ACME 账户…")
 		reg, err = client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 		if err != nil {
-			return fmt.Errorf("ACME 注册失败：%w", err)
+			return certstore.Record{}, fmt.Errorf("ACME 注册失败：%w", err)
 		}
 	}
 	user.registration = reg
 
+	logStep("开始 DNS-01 验证并申请证书（可能需要 1～3 分钟）…")
 	request := legocert.ObtainRequest{
 		Domains: domains,
 		Bundle:  true,
 	}
 	cert, err := client.Certificate.Obtain(request)
 	if err != nil {
-		return fmt.Errorf("证书申请失败：%w", err)
+		return certstore.Record{}, fmt.Errorf("证书申请失败：%w", err)
 	}
 
 	certPath, keyPath, err := writeCertFiles(s.cfg.CertsDir(), domains, cert.Certificate, cert.PrivateKey)
 	if err != nil {
-		return err
+		return certstore.Record{}, err
 	}
+	logStep(fmt.Sprintf("证书已保存: %s", certPath))
+	logStep(fmt.Sprintf("私钥已保存: %s", keyPath))
 
 	expiresAt, err := parseCertExpiry(cert.Certificate)
 	if err != nil {
 		expiresAt = time.Now().Add(90 * 24 * time.Hour)
 	}
-	_, err = s.store.Upsert(ctx, rootDomain, HasWildcardDomain(domains), EncodeCertDomains(domains), ca, certPath, keyPath, expiresAt, "ok", "")
+	logStep(fmt.Sprintf("到期时间: %s", expiresAt.Local().Format("2006-01-02 15:04:ss")))
+	rec, err := s.store.Upsert(ctx, rootDomain, HasWildcardDomain(domains), EncodeCertDomains(domains), ca, certPath, keyPath, expiresAt, "ok", "")
 	if err != nil {
-		return err
+		return certstore.Record{}, err
 	}
 	s.logger.Info("certificate obtained", "domain", rootDomain, "ca", ca, "expires_at", expiresAt.Format(time.RFC3339))
-	return nil
+	return rec, nil
 }
 
 func (s *Service) resolveACMEEmail(ctx context.Context, email string) (string, error) {
@@ -317,29 +397,13 @@ func (s *Service) resolveACMEEmail(ctx context.Context, email string) (string, e
 }
 
 func (s *Service) resolveDNSZone(ctx context.Context, domains []string) (string, error) {
-	seen := map[string]bool{}
-	var candidates []string
 	for _, domain := range domains {
-		base := strings.TrimPrefix(domain, "*.")
-		parts := strings.Split(base, ".")
-		for i := 0; i < len(parts)-1; i++ {
-			zone := strings.Join(parts[i:], ".")
-			if seen[zone] {
-				continue
-			}
-			seen[zone] = true
-			candidates = append(candidates, zone)
+		cfg, err := s.ddnsSvc.ConfigForAnyDomain(ctx, domain)
+		if err == nil {
+			return cfg.RootDomain, nil
 		}
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		return len(candidates[i]) > len(candidates[j])
-	})
-	for _, zone := range candidates {
-		if _, _, err := s.ddnsSvc.CredentialsForDomain(ctx, zone); err == nil {
-			return zone, nil
-		}
-	}
-	return "", fmt.Errorf("请先在 DDNS 页面配置对应根域名的 DNS 凭证")
+	return "", fmt.Errorf("请先在 DDNS 页面配置对应域名的 DNS 凭证")
 }
 
 func (s *Service) dnsCredentialsForDomain(ctx context.Context, rootDomain string) (string, ddns.Credentials, error) {

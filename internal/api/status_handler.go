@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fonu/fonu/internal/acme"
@@ -39,6 +41,7 @@ func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc
 type statusResponse struct {
 	PublicIPv4        string  `json:"public_ipv4"`
 	PublicIPv6        string  `json:"public_ipv6"`
+	PublicIPSource    string  `json:"public_ip_source"`
 	DDNSStatus        string  `json:"ddns_status"`
 	DDNSCount         int     `json:"ddns_count"`
 	DDNSLastUpdated   string  `json:"ddns_last_updated,omitempty"`
@@ -69,9 +72,8 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 		nginxStatus = "stopped"
 	}
 
-	ipv4, ipv6, _ := publicip.Detect(r.Context())
-
 	ddnsStatus, ddnsLastUpdated, ddnsCount := h.ddnsSvc.Summary(r.Context())
+	ipv4, ipv6, ipSource := h.resolvePublicIPs(r.Context())
 
 	records, _ := h.acmeSvc.List(r.Context())
 	certStatus, certDays, certCount, certSummary := summarizeCertificates(records)
@@ -82,8 +84,9 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(started).Seconds()
 
 	writeJSON(w, http.StatusOK, statusResponse{
-		PublicIPv4: ipv4,
+		PublicIPv4:        ipv4,
 		PublicIPv6:        ipv6,
+		PublicIPSource:    ipSource,
 		DDNSStatus:        ddnsStatus,
 		DDNSCount:         ddnsCount,
 		DDNSLastUpdated:   ddnsLastUpdated,
@@ -99,6 +102,19 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 		StartedAt:         h.startedAt,
 		UptimeSeconds: int64(uptime),
 	})
+}
+
+func (h *StatusHandler) resolvePublicIPs(ctx context.Context) (ipv4, ipv6, source string) {
+	ddnsStatus, _, ddnsCount := h.ddnsSvc.Summary(ctx)
+	if ddnsCount > 0 && ddnsStatus != "disabled" {
+		ipv4, ipv6, _ := h.ddnsSvc.PublicIPs(ctx)
+		return ipv4, ipv6, "ddns"
+	}
+	ipv4, ipv6, err := publicip.Detect(ctx)
+	if err != nil {
+		return "", ipv6, "none"
+	}
+	return ipv4, ipv6, "detect"
 }
 
 func summarizeCertificates(records []certstore.Record) (status string, days int, count int, summary string) {
@@ -120,9 +136,21 @@ func summarizeCertificates(records []certstore.Record) (status string, days int,
 		}
 	}
 	if count == 1 {
-		summary = "*." + records[0].Domain
+		summary = certificateSummaryName(records[0])
 	} else {
 		summary = fmt.Sprintf("%d 张证书", count)
 	}
 	return status, days, count, summary
+}
+
+func certificateSummaryName(rec certstore.Record) string {
+	for _, domain := range rec.Domains {
+		if strings.HasPrefix(domain, "*.") {
+			return domain
+		}
+	}
+	if rec.Wildcard {
+		return "*." + rec.Domain
+	}
+	return rec.Domain
 }
