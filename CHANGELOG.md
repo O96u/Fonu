@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - **证书多域名**：申请/续签支持多域名与通配符（`*.example.com`）
 - **ACME 颁发机构**：申请与续签时可选择 Let's Encrypt 正式/测试环境
 - **证书导入**：支持粘贴 PEM 或指定文件路径导入自签/已有证书
-- **Docker 发版**：推送 `v*` 标签自动构建并推送 `linux/amd64`、`linux/arm64` 镜像到 Docker Hub
+- **Docker 发版**：推送 `v*` 标签自动分架构推送镜像（`latest` / `0.1.0` / `0.1.0-amd64` / `0.1.0-arm64`）
 - **表格操作规范**：所有列表操作按钮平铺展示（`renderTableRowActions`）
 
 ### 改进

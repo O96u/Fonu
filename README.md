@@ -34,17 +34,27 @@ docker compose up -d --build
 
 ### 从 Docker Hub 拉取（发版后）
 
-GitHub 推送 `v*` 标签（如 `v0.1.0`）后，Actions 会用 Secrets 里的账号推送到 Docker Hub（镜像名：`{DOCKERHUB_USERNAME}/fonu`）。
+GitHub 推送 `v*` 标签（如 `v0.1.0`）后，Actions 会分架构推送到 Docker Hub（镜像名：`{DOCKERHUB_USERNAME}/fonu`）。
+
+| 标签 | 架构 | 说明 |
+|------|------|------|
+| `latest` | amd64 | 最新版（x86） |
+| `0.1.0` | amd64 | 指定版本（x86） |
+| `0.1.0-amd64` | amd64 | 显式架构标签 |
+| `0.1.0-arm64` | arm64 | ARM 设备专用 |
 
 ```bash
-# 使用最新版（默认拉取 muxui/fonu，可用环境变量覆盖）
+# x86 / amd64（默认 latest）
 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
 
-# 指定版本
-FONU_VERSION=v0.1.0 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+# 指定版本（amd64）
+FONU_VERSION=0.1.0 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+
+# ARM64 设备
+FONU_VERSION=0.1.0-arm64 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
 
 # 若 Docker Hub 用户名不是默认值
-DOCKERHUB_USERNAME=muxui FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
+DOCKERHUB_USERNAME=muxui FONU_VERSION=0.1.0-arm64 FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
 ```
 
 ### 发版
