@@ -1,6 +1,7 @@
 import type {
   AccessLogEntry,
   ApiError,
+  AppVersion,
   AuthStatus,
   CertificateCAOption,
   CertificateRecord,
@@ -67,6 +68,7 @@ async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: A
 }
 
 export const api = {
+  getVersion: () => request<AppVersion>('/api/version'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   setup: (username: string, password: string) =>
     request<{ message: string }>('/api/auth/setup', {

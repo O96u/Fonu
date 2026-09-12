@@ -6,8 +6,10 @@ web:
 	mkdir -p cmd/fonu/web/dist
 	cp -r web/dist/* cmd/fonu/web/dist/
 
+VERSION ?= $(shell tr -d '\r\n' < VERSION 2>/dev/null || echo dev)
+
 build: web
-	go build -o bin/fonu ./cmd/fonu
+	go build -ldflags "-X github.com/fonu/fonu/internal/version.Version=$(VERSION)" -o bin/fonu ./cmd/fonu
 
 test:
 	go test ./...

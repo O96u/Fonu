@@ -29,7 +29,7 @@
       />
 
       <div v-if="!collapsed" class="sider-footer">
-        <div class="sider-footer__version">Fonu v0.1.0</div>
+        <div class="sider-footer__version">Fonu v{{ appVersion }}</div>
         <div class="sider-footer__status">
           <span class="status-dot" />
           <span>运行中</span>
@@ -102,7 +102,19 @@ const message = useMessage()
 const { isDark, toggleTheme } = useTheme()
 const collapsed = ref(false)
 const datetime = ref('')
+const appVersion = ref(__APP_VERSION__)
 let clockTimer: number | undefined
+
+async function loadVersion() {
+  try {
+    const { version } = await api.getVersion()
+    if (version) {
+      appVersion.value = version
+    }
+  } catch {
+    // keep build-time fallback
+  }
+}
 
 const menuDefs = [
   { label: '仪表盘', key: 'dashboard', icon: GridOutline },
@@ -153,6 +165,7 @@ async function handleUserMenu(key: string) {
 }
 
 onMounted(() => {
+  loadVersion()
   updateClock()
   clockTimer = window.setInterval(updateClock, 30_000)
 })

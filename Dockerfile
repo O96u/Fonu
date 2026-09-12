@@ -1,17 +1,24 @@
+ARG VERSION=dev
+
 FROM node:22-alpine AS web-builder
+ARG VERSION
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json* ./
 RUN npm ci
 COPY web/ ./
+ENV VITE_APP_VERSION=$VERSION
 RUN npm run build
 
 FROM golang:1.23-bookworm AS go-builder
+ARG VERSION
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /src/web/dist ./cmd/fonu/web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -o /fonu ./cmd/fonu
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X github.com/fonu/fonu/internal/version.Version=${VERSION}" \
+    -o /fonu ./cmd/fonu
 
 FROM debian:bookworm-slim
 RUN apt-get update \

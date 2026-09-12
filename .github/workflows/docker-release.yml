@@ -77,6 +77,8 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
             org.opencontainers.image.source=${{ github.repositoryUrl }}

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.7] - 2026-09-12
+
+### 改进
+
+- 界面左下角版本号随发版标签注入，与 Docker 镜像版本一致（不再固定显示 v0.1.0）
+- 新增 `GET /api/version` 接口；发版时更新根目录 `VERSION` 文件
+
 ## [v0.1.6] - 2026-09-12
 
 ### 修复

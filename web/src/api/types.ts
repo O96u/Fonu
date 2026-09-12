@@ -35,6 +35,10 @@ export interface AuthStatus {
   authenticated: boolean
 }
 
+export interface AppVersion {
+  version: string
+}
+
 export interface ApiError {
   error: string
 }
