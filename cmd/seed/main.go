@@ -124,28 +124,38 @@ func seedSettings(ctx context.Context, conn *sql.DB) error {
 
 func seedProxies(ctx context.Context, conn *sql.DB) error {
 	rules := []struct {
-		domain, upstream       string
+		upstream                 string
+		listenPort               int
+		hosts                    []string
 		https, redirect, enabled int
 	}{
-		{"nas.example.com", "http://192.168.1.10:5666", 1, 1, 1},
-		{"alist.example.com", "http://192.168.1.10:5244", 1, 1, 1},
-		{"jellyfin.example.com", "http://192.168.1.10:8096", 1, 1, 1},
-		{"photos.example.com", "http://192.168.1.20:2342", 1, 0, 1},
-		{"dev.example.com", "http://127.0.0.1:3000", 0, 0, 0},
+		{"http://192.168.1.10:5666", 443, []string{"nas.example.com"}, 1, 1, 1},
+		{"http://192.168.1.10:5244", 443, []string{"alist.example.com"}, 1, 1, 1},
+		{"http://192.168.1.10:8096", 443, []string{"jellyfin.example.com"}, 1, 1, 1},
+		{"http://192.168.1.20:2342", 443, []string{"photos.example.com"}, 1, 0, 1},
+		{"http://127.0.0.1:3000", 80, []string{"dev.example.com"}, 0, 0, 0},
 	}
 	for _, r := range rules {
-		_, err := conn.ExecContext(ctx, `
-			INSERT INTO proxy_rules(domain, upstream, https_enabled, http_redirect, enabled, updated_at)
-			VALUES (?, ?, ?, ?, ?, datetime('now'))
-			ON CONFLICT(domain) DO UPDATE SET
-				upstream = excluded.upstream,
-				https_enabled = excluded.https_enabled,
-				http_redirect = excluded.http_redirect,
-				enabled = excluded.enabled,
-				updated_at = datetime('now')
-		`, r.domain, r.upstream, r.https, r.redirect, r.enabled)
+		res, err := conn.ExecContext(ctx, `
+			INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, updated_at)
+			VALUES (?, ?, 1, 0, ?, ?, ?, datetime('now'))
+		`, r.upstream, r.listenPort, r.https, r.redirect, r.enabled)
 		if err != nil {
 			return err
+		}
+		ruleID, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		for _, host := range r.hosts {
+			_, err := conn.ExecContext(ctx, `
+				INSERT INTO proxy_hosts(rule_id, hostname, listen_port)
+				VALUES (?, ?, NULL)
+				ON CONFLICT(hostname) DO UPDATE SET rule_id = excluded.rule_id
+			`, ruleID, host)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	log.Println("proxy_rules: 已写入 5 条")

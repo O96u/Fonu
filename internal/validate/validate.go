@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,40 @@ func Domain(domain string) error {
 		return fmt.Errorf("域名格式无效")
 	}
 	return nil
+}
+
+func ListenPort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("监听端口无效")
+	}
+	return nil
+}
+
+// FrontendAddress parses a frontend binding like "example.com" or "example.com:8011".
+// A zero port means the rule-level default should be used.
+func FrontendAddress(raw string) (hostname string, port int, err error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", 0, fmt.Errorf("前端地址不能为空")
+	}
+
+	host := raw
+	port = 0
+	if strings.Count(raw, ":") == 1 && !strings.Contains(raw, "]") {
+		parts := strings.SplitN(raw, ":", 2)
+		host = parts[0]
+		p, parseErr := strconv.Atoi(parts[1])
+		if parseErr != nil || p < 1 || p > 65535 {
+			return "", 0, fmt.Errorf("前端地址端口无效")
+		}
+		port = p
+	}
+
+	host = strings.ToLower(strings.TrimSpace(host))
+	if err := Domain(host); err != nil {
+		return "", 0, err
+	}
+	return host, port, nil
 }
 
 func Upstream(raw string) (string, error) {

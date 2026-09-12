@@ -52,43 +52,50 @@ http {
 }
 
 func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule) error {
-	cert := findCertificate(cfg.CertsDir(), rule.Domain)
-	hasCert := cert != nil
+	for _, group := range rule.PortGroups() {
+		serverNames := strings.Join(group.Hostnames, " ")
+		cert := findCertificateForHosts(cfg.CertsDir(), group.Hostnames)
+		hasCert := cert != nil
 
-	if rule.HTTPRedirect && rule.HTTPSEnabled && hasCert {
-		b.WriteString(fmt.Sprintf(`
-server {
-    listen 80;
-    server_name %s;
-    return 301 https://$host$request_uri;
-}
-`, rule.Domain))
-	} else {
-		b.WriteString(fmt.Sprintf(`
-server {
-    listen 80;
-    server_name %s;
-`, rule.Domain))
-		writeProxyLocation(b, rule.Upstream)
-		b.WriteString("}\n")
+		if rule.HTTPRedirect && rule.HTTPSEnabled && hasCert {
+			b.WriteString("server {\n")
+			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
+			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
+			b.WriteString("    return 301 https://$host:$server_port$request_uri;\n")
+			b.WriteString("}\n")
+		} else if !rule.HTTPSEnabled || !hasCert {
+			b.WriteString("server {\n")
+			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
+			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
+			writeProxyLocation(b, rule.Upstream)
+			b.WriteString("}\n")
+		}
+
+		if rule.HTTPSEnabled && hasCert {
+			b.WriteString("server {\n")
+			writeListenDirectives(b, group.Port, true, rule.ListenIPv4, rule.ListenIPv6)
+			b.WriteString(fmt.Sprintf("    server_name %s;\n\n", serverNames))
+			b.WriteString(fmt.Sprintf("    ssl_certificate %s;\n", filepath.ToSlash(cert.CertPath)))
+			b.WriteString(fmt.Sprintf("    ssl_certificate_key %s;\n", filepath.ToSlash(cert.KeyPath)))
+			b.WriteString("    ssl_protocols TLSv1.2 TLSv1.3;\n\n")
+			writeProxyLocation(b, rule.Upstream)
+			b.WriteString("}\n")
+		}
 	}
-
-	if rule.HTTPSEnabled && hasCert {
-		b.WriteString(fmt.Sprintf(`
-server {
-    listen 443 ssl;
-    server_name %s;
-
-    ssl_certificate %s;
-    ssl_certificate_key %s;
-    ssl_protocols TLSv1.2 TLSv1.3;
-
-`, rule.Domain, filepath.ToSlash(cert.CertPath), filepath.ToSlash(cert.KeyPath)))
-		writeProxyLocation(b, rule.Upstream)
-		b.WriteString("}\n")
-	}
-
 	return nil
+}
+
+func writeListenDirectives(b *strings.Builder, port int, ssl bool, ipv4 bool, ipv6 bool) {
+	sslSuffix := ""
+	if ssl {
+		sslSuffix = " ssl"
+	}
+	if ipv4 {
+		b.WriteString(fmt.Sprintf("    listen %d%s;\n", port, sslSuffix))
+	}
+	if ipv6 {
+		b.WriteString(fmt.Sprintf("    listen [::]:%d%s;\n", port, sslSuffix))
+	}
 }
 
 func writeProxyLocation(b *strings.Builder, upstream string) {
@@ -110,6 +117,15 @@ func writeProxyLocation(b *strings.Builder, upstream string) {
 type certFiles struct {
 	CertPath string
 	KeyPath  string
+}
+
+func findCertificateForHosts(certsDir string, hostnames []string) *certFiles {
+	for _, hostname := range hostnames {
+		if cert := findCertificate(certsDir, hostname); cert != nil {
+			return cert
+		}
+	}
+	return nil
 }
 
 func findCertificate(certsDir, domain string) *certFiles {

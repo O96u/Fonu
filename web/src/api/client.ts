@@ -10,6 +10,7 @@ import type {
   DDNSTestPayload,
   DiscoveredService,
   ProxyRule,
+  ProxySavePayload,
   SettingsMap,
   SystemLogEntry,
 } from './types'
@@ -68,9 +69,9 @@ export const api = {
 
   getStatus: () => request<DashboardStatus>('/api/status'),
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
-  createProxy: (payload: Partial<ProxyRule> & { domain: string; upstream: string }) =>
+  createProxy: (payload: ProxySavePayload) =>
     request<ProxyRule>('/api/proxies', { method: 'POST', body: JSON.stringify(payload) }),
-  updateProxy: (id: number, payload: Partial<ProxyRule>) =>
+  updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>
     request<ProxyRule>(`/api/proxies/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
 

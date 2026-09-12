@@ -1,12 +1,33 @@
+export interface ProxyHost {
+  id: number
+  hostname: string
+  listen_port?: number | null
+}
+
 export interface ProxyRule {
   id: number
   domain: string
   upstream: string
+  listen_port: number
+  listen_ipv4: boolean
+  listen_ipv6: boolean
+  hosts: ProxyHost[]
   https_enabled: boolean
   http_redirect: boolean
   enabled: boolean
   created_at: string
   updated_at: string
+}
+
+export interface ProxySavePayload {
+  upstream: string
+  listen_port?: number
+  listen_ipv4?: boolean
+  listen_ipv6?: boolean
+  hosts: string[]
+  https_enabled?: boolean
+  http_redirect?: boolean
+  enabled?: boolean
 }
 
 export interface AuthStatus {

@@ -37,6 +37,11 @@ func (m *Manager) EnsureDirs() error {
 	return nil
 }
 
+func (m *Manager) available() bool {
+	_, err := exec.LookPath(m.cfg.NginxBin)
+	return err == nil
+}
+
 func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, error) {
 	if err := m.EnsureDirs(); err != nil {
 		return ApplyResult{}, err
@@ -52,9 +57,13 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, e
 		return ApplyResult{}, err
 	}
 
-	if err := m.validate(ctx, tmpPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return ApplyResult{}, err
+	if m.available() {
+		if err := m.validate(ctx, tmpPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return ApplyResult{}, err
+		}
+	} else {
+		m.logger.Warn("nginx binary not found, skipping validation", "bin", m.cfg.NginxBin)
 	}
 
 	currentPath := m.cfg.NginxConfigPath()
@@ -69,6 +78,10 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, e
 	if err := os.Rename(tmpPath, currentPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return ApplyResult{}, err
+	}
+
+	if !m.available() {
+		return ApplyResult{Message: "Nginx 未安装，配置已保存"}, nil
 	}
 
 	running, err := m.isRunning()
@@ -98,6 +111,10 @@ func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule) error {
 	content, err := Generate(m.cfg, rules)
 	if err != nil {
 		return err
+	}
+	if !m.available() {
+		m.logger.Warn("nginx binary not found, skipping validation", "bin", m.cfg.NginxBin)
+		return nil
 	}
 	tmpPath := filepath.Join(m.cfg.NginxDir(), "validate.tmp.conf")
 	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {

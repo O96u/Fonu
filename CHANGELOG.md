@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.3] - 2026-09-12
+
+### 新增
+
+- **反代多域名**：一条规则支持多个前端域名、自定义监听端口，以及 IPv4/IPv6 监听开关
+- **单域名独立端口**：前端地址可写 `example.com:6893` 覆盖规则默认端口
+
+### 改进
+
+- 本地开发未安装 Nginx 时，保存反代规则仍写入配置并跳过校验，便于调试 UI
+
+### 数据库迁移
+
+- `006_proxy_multi_host.sql` — 反代规则多域名与监听配置
+
 ## [v0.1.2] - 2026-09-12
 
 ### 修复

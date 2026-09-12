@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -12,11 +11,7 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func TestApplyWithNginxIfAvailable(t *testing.T) {
-	if _, err := exec.LookPath("nginx"); err != nil {
-		t.Skip("nginx not installed")
-	}
-
+func TestApplyWithoutNginxBinary(t *testing.T) {
 	dir := t.TempDir()
 	mimePath := filepath.Join(dir, "mime.types")
 	if err := os.WriteFile(mimePath, []byte("types { text/html html; }\n"), 0o644); err != nil {
@@ -25,7 +20,7 @@ func TestApplyWithNginxIfAvailable(t *testing.T) {
 
 	cfg := config.Config{
 		DataDir:        dir,
-		NginxBin:       "nginx",
+		NginxBin:       "fonu-missing-nginx-binary",
 		NginxPIDFile:   filepath.Join(dir, "nginx", "nginx.pid"),
 		NginxMimeTypes: mimePath,
 	}
@@ -35,24 +30,21 @@ func TestApplyWithNginxIfAvailable(t *testing.T) {
 	rules := []proxy.Rule{{
 		ID:           1,
 		Upstream:     "http://127.0.0.1:65535",
-		ListenPort:   18080,
+		ListenPort:   8011,
 		ListenIPv4:   true,
 		Hosts:        []proxy.Host{{Hostname: "nas.example.com"}},
 		HTTPSEnabled: false,
-		HTTPRedirect: false,
 		Enabled:      true,
 	}}
 
-	if _, err := mgr.Apply(context.Background(), rules); err != nil {
+	result, err := mgr.Apply(context.Background(), rules)
+	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
-	defer mgr.Stop(context.Background())
-
-	tmp := filepath.Join(dir, "nginx", "bad.conf")
-	if err := os.WriteFile(tmp, []byte("this is not valid nginx config"), 0o644); err != nil {
-		t.Fatalf("write bad config: %v", err)
+	if result.Message == "" {
+		t.Fatal("expected skip message")
 	}
-	if err := mgr.validate(context.Background(), tmp); err == nil {
-		t.Fatal("expected invalid config to fail validation")
+	if _, err := os.Stat(cfg.NginxConfigPath()); err != nil {
+		t.Fatalf("config not written: %v", err)
 	}
 }

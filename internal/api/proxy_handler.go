@@ -18,11 +18,15 @@ func NewProxyHandler(svc *service.ProxyService) *ProxyHandler {
 }
 
 type proxyRequest struct {
-	Domain       string `json:"domain"`
-	Upstream     string `json:"upstream"`
-	HTTPSEnabled *bool  `json:"https_enabled"`
-	HTTPRedirect *bool  `json:"http_redirect"`
-	Enabled      *bool  `json:"enabled"`
+	Domain       string   `json:"domain"`
+	Upstream     string   `json:"upstream"`
+	ListenPort   *int     `json:"listen_port"`
+	ListenIPv4   *bool    `json:"listen_ipv4"`
+	ListenIPv6   *bool    `json:"listen_ipv6"`
+	Hosts        []string `json:"hosts"`
+	HTTPSEnabled *bool    `json:"https_enabled"`
+	HTTPRedirect *bool    `json:"http_redirect"`
+	Enabled      *bool    `json:"enabled"`
 }
 
 func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -41,9 +45,19 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hosts := req.hosts()
+	if len(hosts) == 0 {
+		writeError(w, http.StatusBadRequest, "至少需要一个前端域名")
+		return
+	}
+
+	listenPort := intDefault(req.ListenPort, defaultListenPort(boolDefault(req.HTTPSEnabled, true)))
 	in := proxy.CreateInput{
-		Domain:       req.Domain,
 		Upstream:     req.Upstream,
+		ListenPort:   listenPort,
+		ListenIPv4:   boolDefault(req.ListenIPv4, true),
+		ListenIPv6:   boolDefault(req.ListenIPv6, false),
+		Hosts:        hosts,
 		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
 		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
 		Enabled:      boolDefault(req.Enabled, true),
@@ -71,11 +85,20 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := proxy.UpdateInput{}
-	if req.Domain != "" {
-		in.Domain = &req.Domain
-	}
 	if req.Upstream != "" {
 		in.Upstream = &req.Upstream
+	}
+	if req.ListenPort != nil {
+		in.ListenPort = req.ListenPort
+	}
+	if req.ListenIPv4 != nil {
+		in.ListenIPv4 = req.ListenIPv4
+	}
+	if req.ListenIPv6 != nil {
+		in.ListenIPv6 = req.ListenIPv6
+	}
+	if hosts := req.hosts(); len(hosts) > 0 {
+		in.Hosts = &hosts
 	}
 	if req.HTTPSEnabled != nil {
 		in.HTTPSEnabled = req.HTTPSEnabled
@@ -106,6 +129,30 @@ func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (req proxyRequest) hosts() []string {
+	if len(req.Hosts) > 0 {
+		return req.Hosts
+	}
+	if req.Domain != "" {
+		return []string{req.Domain}
+	}
+	return nil
+}
+
+func defaultListenPort(httpsEnabled bool) int {
+	if httpsEnabled {
+		return 443
+	}
+	return 80
+}
+
+func intDefault(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }
 
 func parseID(raw string) (int64, error) {

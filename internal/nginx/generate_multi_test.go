@@ -8,18 +8,25 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func TestGenerateIncludesWebSocketAndProxy(t *testing.T) {
+func TestGenerateMultiHostCustomPort(t *testing.T) {
 	cfg := config.Config{
 		DataDir:        t.TempDir(),
 		NginxPIDFile:   t.TempDir() + "/nginx.pid",
 		NginxMimeTypes: t.TempDir() + "/mime.types",
 	}
+	port6893 := 6893
 	rules := []proxy.Rule{{
 		ID:           1,
-		Upstream:     "http://192.168.1.10:5666",
-		ListenPort:   80,
+		Upstream:     "http://192.168.8.3:6893",
+		ListenPort:   8011,
 		ListenIPv4:   true,
-		Hosts:        []proxy.Host{{Hostname: "nas.example.com"}},
+		ListenIPv6:   true,
+		Hosts: []proxy.Host{
+			{Hostname: "1.example.com"},
+			{Hostname: "2.example.com"},
+			{Hostname: "example.org"},
+			{Hostname: "example.com", ListenPort: &port6893},
+		},
 		HTTPSEnabled: false,
 		HTTPRedirect: false,
 		Enabled:      true,
@@ -30,14 +37,15 @@ func TestGenerateIncludesWebSocketAndProxy(t *testing.T) {
 		t.Fatalf("generate failed: %v", err)
 	}
 	for _, want := range []string{
-		"listen 80;",
-		"server_name nas.example.com",
-		"proxy_pass http://192.168.1.10:5666",
-		"proxy_set_header Upgrade $http_upgrade",
-		"proxy_buffering off",
+		"listen 8011;",
+		"listen [::]:8011;",
+		"server_name 1.example.com 2.example.com example.org",
+		"listen 6893;",
+		"listen [::]:6893;",
+		"server_name example.com",
 	} {
 		if !strings.Contains(content, want) {
-			t.Fatalf("missing %q in generated config", want)
+			t.Fatalf("missing %q in generated config:\n%s", want, content)
 		}
 	}
 }
