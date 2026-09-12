@@ -63,7 +63,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-推送标签后 GitHub Actions 会自动构建镜像，不会向仓库产生新的 commit。
+推送标签后 GitHub Actions 会自动构建镜像并创建 [GitHub Release](https://github.com/O96u/Fonu/releases)，不会向仓库产生新的 commit。版本记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
 管理后台：`http://NAS-IP:6893`
 
