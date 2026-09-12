@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.4] - 2026-09-12
+
+### 修复
+
+- 修复启用 HTTPS 但证书文件不可用时，Nginx 生成 `listen ... ssl` 却缺少 `ssl_certificate` 导致反代保存失败
+- 仅在证书文件完整存在时生成 HTTPS 配置，否则自动降级为 HTTP
+
 ## [v0.1.3] - 2026-09-12
 
 ### 新增
