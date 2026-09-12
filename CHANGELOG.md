@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.5] - 2026-09-12
+
+### 修复
+
+- 反代证书匹配改为读取证书库记录与磁盘文件，导入证书可正确用于 Nginx HTTPS
+- 启用 HTTPS 但域名未匹配证书时，返回明确错误（含当前证书覆盖范围）而非 Nginx 校验失败
+- 修复 HTTPS 配置生成时可能遗漏 HTTP 回退的问题
+
 ## [v0.1.4] - 2026-09-12
 
 ### 修复

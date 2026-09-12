@@ -37,7 +37,7 @@ func TestApplyWithoutNginxBinary(t *testing.T) {
 		Enabled:      true,
 	}}
 
-	result, err := mgr.Apply(context.Background(), rules)
+	result, err := mgr.Apply(context.Background(), rules, nil)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}

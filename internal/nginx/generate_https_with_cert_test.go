@@ -39,7 +39,11 @@ func TestGenerateHTTPSWithCertIncludesCertificateDirectives(t *testing.T) {
 		Enabled:      true,
 	}}
 
-	content, err := Generate(cfg, rules)
+	content, err := Generate(cfg, rules, []CertSource{{
+		Domains:  []string{"*.muxui.com", "muxui.com"},
+		CertPath: filepath.Join(certDir, "fullchain.pem"),
+		KeyPath:  filepath.Join(certDir, "privatekey.pem"),
+	}})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}

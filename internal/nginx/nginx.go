@@ -42,12 +42,12 @@ func (m *Manager) available() bool {
 	return err == nil
 }
 
-func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, error) {
+func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSource) (ApplyResult, error) {
 	if err := m.EnsureDirs(); err != nil {
 		return ApplyResult{}, err
 	}
 
-	content, err := Generate(m.cfg, rules)
+	content, err := Generate(m.cfg, rules, certs)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -107,8 +107,8 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule) (ApplyResult, e
 	return ApplyResult{Reloaded: true, Message: "Nginx 已重载"}, nil
 }
 
-func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule) error {
-	content, err := Generate(m.cfg, rules)
+func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []CertSource) error {
+	content, err := Generate(m.cfg, rules, certs)
 	if err != nil {
 		return err
 	}

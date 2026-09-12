@@ -10,7 +10,7 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func Generate(cfg config.Config, rules []proxy.Rule) (string, error) {
+func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource) (string, error) {
 	var b strings.Builder
 
 	b.WriteString(`worker_processes auto;
@@ -42,7 +42,7 @@ http {
 		if !rule.Enabled {
 			continue
 		}
-		if err := writeRuleBlocks(&b, cfg, rule); err != nil {
+		if err := writeRuleBlocks(&b, cfg, rule, certs); err != nil {
 			return "", err
 		}
 	}
@@ -55,28 +55,33 @@ http {
 	return content, nil
 }
 
-func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule) error {
+func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource) error {
 	for _, group := range rule.PortGroups() {
 		serverNames := strings.Join(group.Hostnames, " ")
-		cert := findCertificateForHosts(cfg.CertsDir(), group.Hostnames)
+		cert := findCertificateForHosts(cfg.CertsDir(), group.Hostnames, certs)
 		useHTTPS := rule.HTTPSEnabled && certUsable(cert)
 
+		wroteBlock := false
 		if rule.HTTPRedirect && useHTTPS {
 			b.WriteString("server {\n")
 			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
 			b.WriteString("    return 301 https://$host:$server_port$request_uri;\n")
 			b.WriteString("}\n")
-		} else if !useHTTPS {
+			wroteBlock = true
+		}
+
+		if useHTTPS && certUsable(cert) {
+			writeSSLServerBlock(b, group.Port, serverNames, cert, rule.Upstream, rule.ListenIPv4, rule.ListenIPv6)
+			wroteBlock = true
+		}
+
+		if !wroteBlock {
 			b.WriteString("server {\n")
 			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
 			writeProxyLocation(b, rule.Upstream)
 			b.WriteString("}\n")
-		}
-
-		if useHTTPS {
-			writeSSLServerBlock(b, group.Port, serverNames, cert, rule.Upstream, rule.ListenIPv4, rule.ListenIPv6)
 		}
 	}
 	return nil
@@ -128,15 +133,6 @@ func writeProxyLocation(b *strings.Builder, upstream string) {
 type certFiles struct {
 	CertPath string
 	KeyPath  string
-}
-
-func findCertificateForHosts(certsDir string, hostnames []string) *certFiles {
-	for _, hostname := range hostnames {
-		if cert := findCertificate(certsDir, hostname); cert != nil {
-			return cert
-		}
-	}
-	return nil
 }
 
 func findCertificate(certsDir, domain string) *certFiles {

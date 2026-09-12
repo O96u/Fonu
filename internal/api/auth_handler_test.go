@@ -15,6 +15,7 @@ import (
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
 )
@@ -30,9 +31,9 @@ func TestAuthSetupAndLoginFlow(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	authSvc := auth.New(conn)
-	proxySvc := service.NewProxyService(conn, proxy.NewStore(conn), nil)
 	tmpDir := t.TempDir()
+	authSvc := auth.New(conn)
+	proxySvc := service.NewProxyService(config.Config{DataDir: tmpDir, NginxPIDFile: tmpDir + "/nginx.pid"}, conn, proxy.NewStore(conn), certificate.NewStore(conn), nil)
 	handler := NewRouter(Deps{
 		Config:    config.Config{DataDir: tmpDir, NginxPIDFile: tmpDir + "/nginx.pid"},
 		Auth:      authSvc,

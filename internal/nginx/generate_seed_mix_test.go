@@ -35,7 +35,7 @@ func TestGenerateSeedLikeRulesWithMuxuiRule(t *testing.T) {
 		},
 	}
 
-	content, err := Generate(cfg, rules)
+	content, err := Generate(cfg, rules, nil)
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}

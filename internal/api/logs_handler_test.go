@@ -14,6 +14,7 @@ import (
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
 )
@@ -41,7 +42,7 @@ func TestLogsAccessRoute(t *testing.T) {
 	handler := NewRouter(Deps{
 		Config:    config.Config{DataDir: dir, NginxPIDFile: filepath.Join(dir, "nginx.pid")},
 		Auth:      authSvc,
-		Proxy:     service.NewProxyService(conn, proxy.NewStore(conn), nil),
+		Proxy:     service.NewProxyService(config.Config{DataDir: dir, NginxPIDFile: filepath.Join(dir, "nginx.pid")}, conn, proxy.NewStore(conn), certificate.NewStore(conn), nil),
 		Backup:    backup.New(dir),
 		Discovery: discovery.New(),
 		StartedAt: time.Now().UTC().Format(time.RFC3339),

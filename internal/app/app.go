@@ -76,7 +76,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 
-	proxySvc := service.NewProxyService(conn, proxyStore, nginxMgr)
+	proxySvc := service.NewProxyService(cfg, conn, proxyStore, certStore, nginxMgr)
 	notifySvc := notify.New(settingsStore)
 	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)

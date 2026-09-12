@@ -43,7 +43,7 @@ func TestApplyWithNginxIfAvailable(t *testing.T) {
 		Enabled:      true,
 	}}
 
-	if _, err := mgr.Apply(context.Background(), rules); err != nil {
+	if _, err := mgr.Apply(context.Background(), rules, nil); err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
 	defer mgr.Stop(context.Background())
