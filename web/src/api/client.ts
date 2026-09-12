@@ -14,6 +14,10 @@ import type {
   SystemLogEntry,
 } from './types'
 
+export function asList<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include',

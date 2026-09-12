@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.1] - 2026-09-12
+
+### 修复
+
+- 修复全新部署时 API 返回 `null` 导致仪表盘/日志等页面空白、`map` 报错
+- 修复 Nginx 重载使用错误 PID 路径（`/run/nginx.pid`）导致反代保存失败
+- 公网 IP 检测增加多个备用服务，降低 Docker 环境下单点失败概率
+- 修复 SPA 路由刷新时未正确回退到 `index.html`
+
 ## [v0.1.0] - 2026-09-12
 
 ### 新增

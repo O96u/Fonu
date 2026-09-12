@@ -93,12 +93,14 @@ func (r *Router) spaHandler() http.Handler {
 			http.NotFound(w, req)
 			return
 		}
+
 		path := strings.TrimPrefix(req.URL.Path, "/")
 		if path == "" {
 			path = "index.html"
 		}
 		if _, err := fs.Stat(r.staticFS, path); err != nil {
-			req.URL.Path = "/"
+			// SPA fallback: unknown routes serve index.html
+			req.URL.Path = "/index.html"
 		}
 		fileServer.ServeHTTP(w, req)
 	})

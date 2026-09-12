@@ -194,7 +194,7 @@ import {
 
 import { AddOutline, SearchOutline } from '@vicons/ionicons5'
 
-import { api } from '../api/client'
+import { api, asList } from '../api/client'
 
 import type { ProxyRule } from '../api/types'
 
@@ -384,7 +384,7 @@ async function load() {
 
   try {
 
-    rules.value = await api.listProxies()
+    rules.value = asList(await api.listProxies())
 
   } catch (error) {
 

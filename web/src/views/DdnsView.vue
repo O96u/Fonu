@@ -111,7 +111,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { AddOutline, InformationCircleOutline } from '@vicons/ionicons5'
-import { api } from '../api/client'
+import { api, asList } from '../api/client'
 import type { DDNSConfig } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
@@ -232,7 +232,7 @@ function openEdit(row: DDNSConfig) {
 
 async function load() {
   const [list, settings] = await Promise.all([api.listDDNS(), api.getSettings()])
-  configs.value = list
+  configs.value = asList(list)
   updateInterval.value = Number(settings.ddns_check_interval_minutes ?? 5)
 }
 

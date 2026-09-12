@@ -204,7 +204,7 @@ import {
   ShieldCheckmarkOutline,
   WifiOutline,
 } from '@vicons/ionicons5'
-import { api } from '../api/client'
+import { api, asList } from '../api/client'
 import type {
   AccessLogEntry,
   CertificateRecord,
@@ -361,11 +361,11 @@ async function load() {
       api.listCertificates(),
     ])
     status.value = s
-    accessLogs.value = access
-    systemLogs.value = system
-    proxies.value = proxyList
-    ddnsConfigs.value = ddns
-    certificates.value = certs
+    accessLogs.value = asList(access)
+    systemLogs.value = asList(system)
+    proxies.value = asList(proxyList)
+    ddnsConfigs.value = asList(ddns)
+    certificates.value = asList(certs)
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
     message.error('加载仪表盘失败')

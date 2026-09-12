@@ -114,7 +114,7 @@ import {
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
-import { api } from '../api/client'
+import { api, asList } from '../api/client'
 import type { AccessLogEntry, SystemLogEntry } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
@@ -332,7 +332,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
 async function loadAccess() {
   loadingAccess.value = true
   try {
-    accessLogs.value = await api.getAccessLogs({ limit: 100 })
+    accessLogs.value = asList(await api.getAccessLogs({ limit: 100 }))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载访问日志失败')
   } finally {
@@ -343,7 +343,7 @@ async function loadAccess() {
 async function loadErrorLogs() {
   loadingError.value = true
   try {
-    const errors = await api.getErrorLogs({ limit: 100 })
+    const errors = asList(await api.getErrorLogs({ limit: 100 }))
     errorLogs.value = errors.map((line) => ({ line }))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载错误日志失败')
@@ -355,7 +355,7 @@ async function loadErrorLogs() {
 async function loadSystemLogs() {
   loadingSystem.value = true
   try {
-    systemLogs.value = await api.getSystemLogs({ limit: 100 })
+    systemLogs.value = asList(await api.getSystemLogs({ limit: 100 }))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载系统日志失败')
   } finally {

@@ -134,7 +134,7 @@ func (m *Manager) start(ctx context.Context) error {
 }
 
 func (m *Manager) reload(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-s", "reload")
+	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath(), "-s", "reload")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -152,7 +152,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 	if !m.isRunningQuick() {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-s", "quit")
+	cmd := exec.CommandContext(ctx, m.cfg.NginxBin, "-c", m.cfg.NginxConfigPath(), "-s", "quit")
 	if err := cmd.Run(); err != nil {
 		return err
 	}

@@ -248,7 +248,7 @@ import {
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
-import { api } from '../api/client'
+import { api, asList } from '../api/client'
 import type { CertificateCAOption, CertificateRecord, DDNSConfig } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
@@ -420,7 +420,7 @@ async function load() {
   loadError.value = ''
   try {
     await loadCAOptions()
-    records.value = await api.listCertificates()
+    records.value = asList(await api.listCertificates())
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
