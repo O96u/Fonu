@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strings"
@@ -448,16 +449,27 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 func (s *Service) resolveACMEEmail(ctx context.Context, email string) (string, error) {
 	email = strings.TrimSpace(email)
 	if email == "" {
-		email, err := s.settings.Get(ctx, settings.KeyACMEEmail)
-		if err != nil || strings.TrimSpace(email) == "" {
-			return "", fmt.Errorf("请填写 ACME 邮箱")
+		stored, err := s.settings.Get(ctx, settings.KeyACMEEmail)
+		if err != nil || strings.TrimSpace(stored) == "" {
+			return "", fmt.Errorf("请先填写 ACME 邮箱，用于注册 ACME 账户（首次申请必填）")
 		}
-		return email, nil
+		email = strings.TrimSpace(stored)
+	}
+	if err := validateACMEEmail(email); err != nil {
+		return "", err
 	}
 	if err := s.settings.Set(ctx, settings.KeyACMEEmail, email); err != nil {
 		s.logger.Warn("save acme email failed", "error", err.Error())
 	}
 	return email, nil
+}
+
+func validateACMEEmail(email string) error {
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return fmt.Errorf("ACME 邮箱格式不正确，请填写类似 admin@example.com 的地址")
+	}
+	return nil
 }
 
 func (s *Service) resolveDNSZone(ctx context.Context, domains []string) (string, error) {

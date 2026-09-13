@@ -97,21 +97,26 @@
       </div>
 
       <EmptyState
-        v-else
-        :title="records.length === 0 ? '还没有证书' : '没有匹配的证书'"
-        :description="
-          records.length === 0
-            ? '申请证书时选择 DNS API 完成验证即可；本地测试也可直接导入已有证书。'
-            : '试试调整搜索关键词或筛选条件。'
-        "
+        v-else-if="records.length === 0"
+        title="还没有证书"
+        description="申请证书时选择 DNS API 完成验证即可；本地测试也可直接导入已有证书。"
       >
-        <template v-if="records.length === 0" #action>
-          <n-space>
+        <template #action>
+          <div class="cert-empty-actions">
             <n-button @click="openImport">导入证书</n-button>
-            <n-button type="primary" @click="openApply">申请证书</n-button>
-          </n-space>
+            <n-button type="primary" @click="openApply">
+              <template #icon><n-icon :component="AddOutline" /></template>
+              申请证书
+            </n-button>
+          </div>
         </template>
       </EmptyState>
+
+      <EmptyState
+        v-else
+        title="没有匹配的证书"
+        description="试试调整搜索关键词或筛选条件。"
+      />
     </FonuCard>
 
     <div class="tip-box">
@@ -157,6 +162,16 @@
         <span class="apply-step__label">申请完成</span>
       </div>
     </div>
+
+    <n-alert
+      v-if="applyStep === 1 && !applyEmailConfigured"
+      type="warning"
+      :bordered="false"
+      class="form-alert apply-email-alert"
+      title="请先填写 ACME 邮箱"
+    >
+      首次申请证书需要注册 ACME 账户，请填写有效邮箱（如 admin@example.com），用于账户注册与到期提醒，保存后下次无需重复填写。
+    </n-alert>
 
     <n-form v-if="applyStep === 1" label-placement="top" class="cert-form">
       <n-form-item label="证书名称" feedback="仅用于本地识别，可自定义" :show-feedback="true" required>
@@ -218,7 +233,7 @@
       <n-form-item
         v-if="!applyEmailConfigured"
         label="ACME 邮箱"
-        feedback="用于账户注册与到期提醒，保存后记住"
+        feedback="填写标准邮箱地址，不要包含空格或 mailto: 前缀"
         :show-feedback="true"
         required
       >
@@ -704,6 +719,17 @@ function issuerTone(ca?: string) {
 
 const applyEmailConfigured = computed(() => applyEmail.value.trim().length > 0)
 
+function validateApplyEmail() {
+  const email = applyEmail.value.trim()
+  if (!email) {
+    return '请先填写 ACME 邮箱，用于注册 ACME 账户（首次申请必填）'
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return 'ACME 邮箱格式不正确，请填写类似 admin@example.com 的地址'
+  }
+  return ''
+}
+
 function validateApplyCA(domains: string[]) {
   if (applyCA.value === 'buypass') {
     if (domains.some((d) => d.startsWith('*.'))) {
@@ -913,8 +939,10 @@ function goApplyStep2() {
     applyError.value = '请填写至少一个域名'
     return
   }
-  if (!applyEmail.value.trim()) {
-    applyError.value = '请填写 ACME 邮箱'
+  const emailError = validateApplyEmail()
+  if (emailError) {
+    applyError.value = emailError
+    message.warning(emailError)
     return
   }
   const caError = validateApplyCA(domains)
@@ -1042,8 +1070,10 @@ async function submitApply() {
     applyError.value = '请填写至少一个域名'
     return
   }
-  if (!applyEmail.value.trim()) {
-    applyError.value = '请填写 ACME 邮箱'
+  const emailError = validateApplyEmail()
+  if (emailError) {
+    applyError.value = emailError
+    message.warning(emailError)
     return
   }
   const caError = validateApplyCA(domains)
@@ -1292,6 +1322,13 @@ html.dark .apply-log-box {
   padding: var(--fonu-space-6) 0;
 }
 
+.cert-empty-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
 .cert-table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -1472,6 +1509,10 @@ html.dark .apply-log-box {
   font-family: var(--fonu-mono);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.apply-email-alert {
+  margin-bottom: 12px;
 }
 
 .form-alert {

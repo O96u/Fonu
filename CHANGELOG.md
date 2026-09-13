@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.16] - 2026-09-13
+
+### 改进
+
+- 证书申请：首次未配置 ACME 邮箱时提示填写，前后端校验邮箱格式
+- 证书列表空状态与反代/DDNS 页风格统一
+
 ## [v0.1.15] - 2026-09-13
 
 ### 修复
