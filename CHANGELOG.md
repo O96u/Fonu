@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.15] - 2026-09-13
+
+### 修复
+
+- Docker 发版：amd64/arm64 均构建完成后再推送 `latest` 与版本多架构 manifest
+- 补全 `web/assets/image` 品牌图片资源，同步仪表盘 banner
+
+### 改进
+
+- arm64 镜像构建：前端与 Go 在 BUILDPLATFORM 编译，缩短 QEMU 构建时间
+
 ## [v0.1.14] - 2026-09-13
 
 ### 新增
