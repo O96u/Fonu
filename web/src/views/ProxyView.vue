@@ -57,7 +57,7 @@
       </div>
     </div>
 
-    <div class="proxy-layout" :class="{ 'proxy-layout--with-detail': showDetailPanel && selectedRule }">
+    <div class="proxy-layout">
       <FonuCard flush class="proxy-panel">
         <div class="proxy-toolbar">
           <n-input
@@ -127,108 +127,127 @@
           description="试试调整搜索关键词或筛选条件。"
         />
       </FonuCard>
+    </div>
+  </template>
 
-      <aside v-if="showDetailPanel && selectedRule" class="proxy-detail">
-        <div class="proxy-detail__head">
-          <div>
-            <div class="proxy-detail__title">{{ ruleName(selectedRule) }}</div>
-            <StatusBadge
-              :value="selectedRule.enabled ? 'ok' : 'disabled'"
-              :text="selectedRule.enabled ? '运行中' : '已停止'"
-            />
-          </div>
+  <n-modal v-model:show="showDetailPanel" :mask-closable="true" transform-origin="center">
+    <div v-if="selectedRule" class="proxy-detail-modal">
+      <div class="proxy-detail-modal__header">
+        <div class="proxy-detail-modal__intro">
+          <h3 class="proxy-detail-modal__title">{{ ruleName(selectedRule) }}</h3>
+          <StatusBadge
+            :value="selectedRule.enabled ? 'ok' : 'disabled'"
+            :text="selectedRule.enabled ? '运行中' : '已停止'"
+          />
+          <span class="proxy-detail-modal__conn" :class="{ 'is-active': (selectedTraffic?.connections ?? 0) > 0 }">
+            <n-icon :component="PeopleOutline" />
+            {{ selectedTraffic?.connections ?? 0 }} 连接
+          </span>
+        </div>
+        <n-space :size="4" align="center">
+          <n-button size="small" quaternary @click="openDuplicate(selectedRule)">复制</n-button>
+          <n-button size="small" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
+          <n-button size="small" quaternary type="error" @click="confirmDelete(selectedRule)">删除</n-button>
           <n-button size="small" quaternary @click="closeDetail">
             <template #icon><n-icon :component="CloseOutline" /></template>
           </n-button>
-        </div>
+        </n-space>
+      </div>
 
-        <n-tabs v-model:value="detailTab" type="line" size="small" class="proxy-detail__tabs">
-          <n-tab-pane name="overview" tab="概览">
-            <div class="proxy-detail__body">
-          <section class="detail-section">
-            <div class="detail-section__head">
-              <h4>基础信息</h4>
-              <n-space :size="4">
-                <n-button size="tiny" quaternary @click="openDuplicate(selectedRule)">复制</n-button>
-                <n-button size="tiny" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
-                <n-button size="tiny" quaternary type="error" @click="confirmDelete(selectedRule)">删除</n-button>
-              </n-space>
+      <n-tabs v-model:value="detailTab" type="line" size="small" class="proxy-detail__tabs">
+        <n-tab-pane name="overview" tab="概览">
+          <div class="proxy-detail__body proxy-detail__body--overview">
+            <div class="overview-strip">
+              <div class="overview-strip__item">
+                <span class="overview-strip__label">域名</span>
+                <span class="overview-strip__value" :title="ruleHosts(selectedRule).join('、')">
+                  {{ ruleHosts(selectedRule).join('、') }}
+                </span>
+              </div>
+              <div class="overview-strip__item">
+                <span class="overview-strip__label">监听</span>
+                <span class="overview-strip__value">{{ listenLabel(selectedRule) }}</span>
+              </div>
+              <div class="overview-strip__item overview-strip__item--wide">
+                <span class="overview-strip__label">目标</span>
+                <span class="overview-strip__value mono" :title="selectedRule.upstream">{{ selectedRule.upstream }}</span>
+              </div>
+              <div class="overview-strip__item">
+                <span class="overview-strip__label">协议</span>
+                <span class="overview-strip__value">
+                  <n-tag size="small" :type="selectedRule.https_enabled ? 'success' : 'default'" :bordered="false" round>
+                    {{ selectedRule.https_enabled ? 'HTTPS' : 'HTTP' }}
+                  </n-tag>
+                </span>
+              </div>
             </div>
-            <dl class="detail-kv">
-              <div><dt>名称</dt><dd>{{ selectedRule.name || '—' }}</dd></div>
-              <div><dt>域名</dt><dd>{{ ruleHosts(selectedRule).join('、') }}</dd></div>
-              <div><dt>监听端口</dt><dd>{{ listenLabel(selectedRule) }}</dd></div>
-              <div><dt>目标地址</dt><dd class="mono">{{ selectedRule.upstream }}</dd></div>
-              <div><dt>协议</dt><dd>{{ selectedRule.https_enabled ? 'HTTPS' : 'HTTP' }}</dd></div>
-              <div><dt>状态</dt><dd>{{ selectedRule.enabled ? '运行中' : '已停止' }}</dd></div>
-            </dl>
-          </section>
 
-          <section class="detail-section">
-            <div class="detail-section__head">
-              <h4>
-                实时数据
-                <span class="detail-section__sub">（最近 5 分钟）</span>
-              </h4>
-              <span class="live-badge"><span class="live-badge__dot" />实时</span>
-            </div>
-            <div class="traffic-live-legend">
-              <span class="traffic-live-legend__item traffic-live-legend__item--up">
-                <span class="traffic-live-legend__dot" />
-                上传 {{ formatRate(selectedTraffic?.upload_rate ?? 0) }}
-              </span>
-              <span class="traffic-live-legend__item traffic-live-legend__item--down">
-                <span class="traffic-live-legend__dot" />
-                下载 {{ formatRate(selectedTraffic?.download_rate ?? 0) }}
-              </span>
-            </div>
-            <MiniTrafficChart
-              :labels="trafficChart.labels"
-              :upload="trafficChart.upload"
-              :download="trafficChart.download"
-            />
-          </section>
+            <div class="overview-main">
+              <section class="overview-card overview-card--chart">
+                <div class="overview-card__head">
+                  <h4>实时流量 <span class="overview-card__sub">最近 5 分钟</span></h4>
+                  <span class="live-badge"><span class="live-badge__dot" />实时</span>
+                </div>
+                <div class="traffic-live-legend traffic-live-legend--compact">
+                  <span class="traffic-live-legend__item traffic-live-legend__item--up">
+                    <span class="traffic-live-legend__dot" />
+                    上传 {{ formatRate(selectedTraffic?.upload_rate ?? 0) }}
+                  </span>
+                  <span class="traffic-live-legend__item traffic-live-legend__item--down">
+                    <span class="traffic-live-legend__dot" />
+                    下载 {{ formatRate(selectedTraffic?.download_rate ?? 0) }}
+                  </span>
+                </div>
+                <MiniTrafficChart
+                  class="overview-chart"
+                  :labels="trafficChart.labels"
+                  :upload="trafficChart.upload"
+                  :download="trafficChart.download"
+                />
+              </section>
 
-          <section class="detail-section">
-            <h4>流量统计</h4>
-            <div class="traffic-mini-grid">
-              <div class="traffic-mini">
-                <div class="traffic-mini__label">总上传</div>
-                <div class="traffic-mini__value">{{ formatBytes(selectedTraffic?.upload_total ?? 0) }}</div>
-              </div>
-              <div class="traffic-mini">
-                <div class="traffic-mini__label">总下载</div>
-                <div class="traffic-mini__value">{{ formatBytes(selectedTraffic?.download_total ?? 0) }}</div>
-              </div>
-              <div class="traffic-mini">
-                <div class="traffic-mini__label">当前上传</div>
-                <div class="traffic-mini__value">{{ formatRate(selectedTraffic?.upload_rate ?? 0) }}</div>
-              </div>
-              <div class="traffic-mini">
-                <div class="traffic-mini__label">当前下载</div>
-                <div class="traffic-mini__value">{{ formatRate(selectedTraffic?.download_rate ?? 0) }}</div>
-              </div>
-            </div>
-          </section>
+              <aside class="overview-side">
+                <section class="overview-metrics">
+                  <div class="overview-metric">
+                    <div class="overview-metric__label">总上传</div>
+                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.upload_total ?? 0) }}</div>
+                  </div>
+                  <div class="overview-metric">
+                    <div class="overview-metric__label">总下载</div>
+                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.download_total ?? 0) }}</div>
+                  </div>
+                  <div class="overview-metric">
+                    <div class="overview-metric__label">当前上传</div>
+                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.upload_rate ?? 0) }}</div>
+                  </div>
+                  <div class="overview-metric">
+                    <div class="overview-metric__label">当前下载</div>
+                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.download_rate ?? 0) }}</div>
+                  </div>
+                </section>
 
-          <section class="detail-section">
-            <div class="detail-section__head">
-              <h4>连接信息</h4>
-              <n-button size="tiny" quaternary @click="loadClients">刷新</n-button>
+                <section class="overview-card overview-card--clients">
+                  <div class="overview-card__head">
+                    <h4>
+                      最近访问
+                      <span class="overview-card__sub">65 秒内 · {{ clientRows.length }} 个</span>
+                    </h4>
+                    <n-button size="tiny" quaternary :loading="clientsLoading" @click="loadClients">刷新</n-button>
+                  </div>
+                  <div class="overview-client-list">
+                    <template v-if="clientRows.length > 0">
+                      <div v-for="row in clientRows" :key="row.ip" class="overview-client-row">
+                        <span class="mono">{{ row.ip }}</span>
+                        <span class="overview-client-row__time">{{ formatRelativeTime(row.last_seen) }}</span>
+                      </div>
+                    </template>
+                    <p v-else class="overview-empty">暂无访问记录</p>
+                  </div>
+                </section>
+              </aside>
             </div>
-            <div class="detail-kv">
-              <div><dt>当前连接</dt><dd>{{ selectedTraffic?.connections ?? 0 }}</dd></div>
-            </div>
-            <div v-if="clientRows.length > 0" class="clients-list clients-list--compact">
-              <div v-for="row in clientRows" :key="row.ip" class="clients-row">
-                <span class="mono">{{ row.ip }}</span>
-                <span class="text-muted">{{ formatRelativeTime(row.last_seen) }}</span>
-              </div>
-            </div>
-            <p v-else class="detail-empty">最近 65 秒内暂无访问客户端</p>
-          </section>
-            </div>
-          </n-tab-pane>
+          </div>
+        </n-tab-pane>
 
           <n-tab-pane name="logs" tab="日志">
             <div class="proxy-detail__body proxy-detail__body--logs">
@@ -242,22 +261,33 @@
                 :class="{ 'is-empty': logLines.length === 0 }"
                 @scroll="onLogBoxScroll"
               >
-                <div
-                  v-for="(line, i) in logLines"
-                  :key="i"
-                  class="proxy-log-line"
-                  :class="logLineClass(line)"
-                >
-                  {{ formatAccessLine(line) }}
-                </div>
+                <template v-for="(item, i) in parsedLogLines" :key="i">
+                  <div
+                    v-if="item.parsed"
+                    class="proxy-log-entry"
+                    :class="logEntryStatusClass(item.parsed.status)"
+                  >
+                    <time class="proxy-log-entry__time">{{ item.parsed.time }}</time>
+                    <span class="proxy-log-entry__method" :class="`is-${item.parsed.method.toLowerCase()}`">
+                      {{ item.parsed.method }}
+                    </span>
+                    <span class="proxy-log-entry__path" :title="item.parsed.path">{{ item.parsed.path }}</span>
+                    <span class="proxy-log-entry__status">{{ item.parsed.status }}</span>
+                    <span class="proxy-log-entry__ms">{{ item.parsed.ms }}ms</span>
+                    <span class="proxy-log-entry__client mono">{{ item.parsed.client }}</span>
+                    <span class="proxy-log-entry__upstream mono" :title="item.parsed.upstream">
+                      → {{ item.parsed.upstream }}
+                    </span>
+                  </div>
+                  <div v-else class="proxy-log-line proxy-log-line--raw">{{ item.raw }}</div>
+                </template>
                 <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
               </div>
             </div>
           </n-tab-pane>
         </n-tabs>
-      </aside>
     </div>
-  </template>
+  </n-modal>
 
   <n-modal v-model:show="showModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-modal">
@@ -604,6 +634,7 @@ function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' = 'overview') {
 
 function closeDetail() {
   showDetailPanel.value = false
+  detailTab.value = 'overview'
   clearRateHistory()
 }
 
@@ -854,22 +885,41 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
   return cols
 })
 
-const accessLineRe =
-  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)$/
-
-function formatAccessLine(line: string): string {
-  const m = line.match(accessLineRe)
-  if (!m) return line
-  const [, time, , method, path, status, rt, client, upstream] = m
-  const shortTime = time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, '')
-  const ms = (parseFloat(rt) * 1000).toFixed(1)
-  return `${shortTime}  ${method} ${path}  ${status}  ${ms}ms  ${client}  → ${upstream}`
+type AccessLogEntry = {
+  time: string
+  host: string
+  method: string
+  path: string
+  status: number
+  ms: string
+  client: string
+  upstream: string
 }
 
-function logLineClass(line: string): string {
+const accessLineRe =
+  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+\S+\s+\S+)?$/
+
+function parseAccessLog(line: string): AccessLogEntry | null {
   const m = line.match(accessLineRe)
-  if (!m) return ''
-  const status = Number(m[5])
+  if (!m) return null
+  const [, time, host, method, path, status, rt, client, upstream] = m
+  return {
+    time: time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, ''),
+    host,
+    method,
+    path,
+    status: Number(status),
+    ms: (parseFloat(rt) * 1000).toFixed(1),
+    client,
+    upstream,
+  }
+}
+
+const parsedLogLines = computed(() =>
+  logLines.value.map((raw) => ({ raw, parsed: parseAccessLog(raw) })),
+)
+
+function logEntryStatusClass(status: number): string {
   if (status >= 500) return 'is-error'
   if (status >= 400) return 'is-warn'
   return ''
@@ -1113,6 +1163,7 @@ async function toggleRuleEnabled(row: ProxyRule, enabled: boolean) {
 }
 
 function openDuplicate(rule: ProxyRule) {
+  closeDetail()
   editing.value = null
   Object.assign(form, {
     listen_port: rule.listen_port || defaultListenPort(rule.https_enabled),
@@ -1130,6 +1181,7 @@ function openDuplicate(rule: ProxyRule) {
 }
 
 function openEdit(rule: ProxyRule) {
+  closeDetail()
   editing.value = rule
   selectedRuleId.value = rule.id
   Object.assign(form, {
@@ -1330,11 +1382,6 @@ onUnmounted(() => {
   align-items: start;
 }
 
-.proxy-layout--with-detail {
-  grid-template-columns: minmax(0, 1fr) 360px;
-  align-items: stretch;
-}
-
 .proxy-panel {
   min-width: 0;
 }
@@ -1424,87 +1471,300 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.proxy-detail {
+.proxy-detail-modal {
+  width: min(920px, 96vw);
+  height: min(720px, 88vh);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
   background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
   border-radius: var(--fonu-radius);
-  box-shadow: var(--fonu-shadow);
-  min-height: 520px;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--fonu-shadow-md);
 }
 
-.proxy-detail__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-3);
-  padding: var(--fonu-space-4) var(--fonu-space-4) 0;
-}
-
-.proxy-detail__title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.proxy-detail__tabs {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0 var(--fonu-space-4) var(--fonu-space-4);
-}
-
-.proxy-detail__tabs :deep(.n-tabs-pane-wrapper) {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.proxy-detail__tabs :deep(.n-tab-pane) {
-  height: 100%;
-  padding-top: var(--fonu-space-2);
-}
-
-.proxy-detail__body {
-  flex: 1;
-  overflow: auto;
-  padding: var(--fonu-space-4);
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.proxy-detail__body--logs {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  padding: var(--fonu-space-3) 0 0;
-  overflow: hidden;
-}
-
-.detail-section {
-  margin-bottom: var(--fonu-space-5);
-}
-
-.detail-section__head {
+.proxy-detail-modal__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--fonu-space-3);
+  gap: var(--fonu-space-4);
+  padding: var(--fonu-space-5) var(--fonu-space-5) 0;
+  flex-shrink: 0;
 }
 
-.detail-section h4 {
+.proxy-detail-modal__intro {
+  display: flex;
+  align-items: center;
+  gap: var(--fonu-space-3);
+  min-width: 0;
+}
+
+.proxy-detail-modal__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.proxy-detail-modal__conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fonu-text-muted);
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+}
+
+.proxy-detail-modal__conn.is-active {
+  color: var(--fonu-brand-text);
+  background: var(--fonu-brand-soft);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.proxy-detail__tabs {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--fonu-space-5) var(--fonu-space-5);
+}
+
+.proxy-detail__tabs :deep(.n-tabs-nav) {
+  flex-shrink: 0;
+}
+
+/* naive-ui 默认非 animated 时 tab-pane 直接挂在 .n-tabs 下，无 pane-wrapper */
+.proxy-detail__tabs :deep(.n-tabs-pane-wrapper),
+.proxy-detail__tabs :deep(.n-tab-pane) {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.proxy-detail__body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--fonu-space-4) var(--fonu-space-1);
+  box-sizing: border-box;
+}
+
+.proxy-detail__body--overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fonu-space-4);
+  padding-top: var(--fonu-space-2);
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.overview-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 12px 16px;
+  padding: 12px 14px;
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+  border-radius: 10px;
+}
+
+.overview-strip__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.overview-strip__label {
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.overview-strip__value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fonu-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: var(--fonu-space-4);
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.overview-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.overview-card {
+  border: 1px solid var(--fonu-border);
+  border-radius: 10px;
+  background: var(--fonu-surface);
+  padding: 14px 16px;
+}
+
+.overview-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  margin-bottom: 10px;
+}
+
+.overview-card__head h4 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
 }
 
-.detail-section__sub {
+.overview-card__sub {
+  margin-left: 6px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--fonu-text-muted);
+}
+
+.overview-card--chart {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.overview-chart {
+  flex: 1;
+  min-height: 180px;
+}
+
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.overview-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+}
+
+.overview-metric__label {
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.overview-metric__value {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fonu-text);
+}
+
+.overview-card--clients {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding-bottom: 12px;
+}
+
+.overview-client-list {
+  flex: 1 1 0;
+  min-height: 72px;
+  overflow-y: auto;
+  margin: 0 -2px;
+  padding: 0 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+.overview-client-list:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) var(--fonu-bg-muted);
+}
+
+.overview-client-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overview-client-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+}
+
+.overview-client-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.overview-client-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.overview-client-row + .overview-client-row {
+  margin-top: 2px;
+}
+
+.overview-client-row:hover {
+  background: var(--fonu-bg);
+}
+
+.overview-client-row__time {
+  flex-shrink: 0;
+  color: var(--fonu-text-muted);
+  font-size: 11px;
+}
+
+.overview-empty {
+  margin: 0;
+  height: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--fonu-text-muted);
+}
+
+.traffic-live-legend--compact {
+  margin-bottom: 6px;
+}
+
+.proxy-detail__body--logs {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--fonu-space-3) 0 0;
+  overflow: hidden;
 }
 
 .live-badge {
@@ -1556,60 +1816,6 @@ onUnmounted(() => {
 
 .traffic-live-legend__item--down .traffic-live-legend__dot {
   background: #3b82f6;
-}
-
-.detail-kv {
-  margin: 0;
-  display: grid;
-  gap: 10px;
-}
-
-.detail-kv div {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.detail-kv dt {
-  color: var(--fonu-text-muted);
-}
-
-.detail-kv dd {
-  margin: 0;
-  color: var(--fonu-text);
-  word-break: break-all;
-}
-
-.traffic-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.traffic-mini {
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--fonu-bg);
-  border: 1px solid var(--fonu-border);
-}
-
-.traffic-mini__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.traffic-mini__value {
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.detail-empty,
-.detail-hint {
-  font-size: 13px;
-  color: var(--fonu-text-muted);
-  line-height: 1.6;
 }
 
 .log-panel-head {
@@ -1872,8 +2078,9 @@ onUnmounted(() => {
 }
 
 .proxy-log-box--embedded {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .proxy-log-box--embedded.is-empty {
@@ -1882,13 +2089,102 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.proxy-log-entry {
+  display: grid;
+  grid-template-columns: 132px 52px minmax(0, 1fr) 44px 56px 108px minmax(80px, auto);
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+
+.proxy-log-entry + .proxy-log-entry {
+  margin-top: 4px;
+}
+
+.proxy-log-entry:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(148, 163, 184, 0.12);
+}
+
+.proxy-log-entry__time {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.proxy-log-entry__method {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+
+.proxy-log-entry__method.is-get { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+.proxy-log-entry__method.is-post { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+.proxy-log-entry__method.is-put,
+.proxy-log-entry__method.is-patch { background: rgba(245, 158, 11, 0.18); color: #fcd34d; }
+.proxy-log-entry__method.is-delete { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+
+.proxy-log-entry__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e2e8f0;
+}
+
+.proxy-log-entry__status {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #86efac;
+}
+
+.proxy-log-entry.is-warn .proxy-log-entry__status { color: #fbbf24; }
+.proxy-log-entry.is-error .proxy-log-entry__status { color: #f87171; }
+
+.proxy-log-entry__ms {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.proxy-log-entry__client {
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-log-entry__upstream {
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
 .proxy-log-line {
   white-space: pre-wrap;
   word-break: break-all;
+  padding: 6px 10px;
+  color: #cbd5e1;
 }
 
-.proxy-log-line.is-warn { color: #fbbf24; }
-.proxy-log-line.is-error { color: #f87171; }
+.proxy-log-line--raw + .proxy-log-entry,
+.proxy-log-entry + .proxy-log-line--raw {
+  margin-top: 4px;
+}
 
 .proxy-log-empty {
   padding: var(--fonu-space-5);
@@ -1921,15 +2217,6 @@ onUnmounted(() => {
 .text-muted { color: var(--fonu-text-muted); }
 .text-secondary { color: var(--fonu-text-secondary); }
 
-@media (max-width: 1399px) {
-  .proxy-layout--with-detail {
-    grid-template-columns: 1fr;
-  }
-  .proxy-detail {
-    min-height: auto;
-  }
-}
-
 @media (max-width: 1199px) {
   .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -1937,6 +2224,25 @@ onUnmounted(() => {
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .proxy-toolbar__filter { width: 100%; }
+  .proxy-detail-modal__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .overview-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+  .overview-main {
+    grid-template-columns: 1fr;
+  }
+  .overview-card--clients {
+    min-height: 100px;
+  }
+  .proxy-log-entry {
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+  }
+  .proxy-log-entry__path { grid-column: 1 / -1; }
+  .proxy-log-entry__upstream { grid-column: 1 / -1; }
 }
 
 @media (max-width: 640px) {

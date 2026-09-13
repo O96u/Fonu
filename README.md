@@ -97,27 +97,14 @@ docker run -d \
   muxui/fonu:latest
 ```
 
-| 入口               | 地址                   |
-| ------------------ | ---------------------- |
-| 管理后台           | `http://<NAS-IP>:6893` |
-| HTTP 反代（默认）  | `http://<NAS-IP>:80`   |
-| HTTPS 反代（默认） | `https://<NAS-IP>:443` |
+| 入口               | 地址                    |
+| ------------------ | ----------------------- |
+| 管理后台           | `http://<NAS-IP>:6893`  |
+| HTTP 反代（默认）  | `http://<NAS-IP>:18080` |
+| HTTPS 反代（默认） | `https://<NAS-IP>:9443` |
 
 - `./data` 挂载后自动作为数据目录，存放数据库、Nginx 配置、证书与日志
-- 飞牛系统已占用 80/443 时，建议额外设置反代端口，例如：
-
-```bash
-docker run -d \
-  --name fonu \
-  --net=host \
-  -v ./data:/data \
-  -e FONU_NGINX_HTTP_PORT=18080 \
-  -e FONU_NGINX_HTTPS_PORT=9443 \
-  --restart unless-stopped \
-  muxui/fonu:latest
-```
-
-指定版本或架构时，将镜像标签改为 `0.1.13` 或 `0.1.13-arm64` 即可。
+- 飞牛系统已占用 80/443，容器默认反代端口为 `18080`、`9443`，可通过环境变量修改
 
 ### 其他部署方式
 
