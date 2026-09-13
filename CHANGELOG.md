@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.13] - 2026-09-13
+
+### 修复
+
+- 修复证书页 TypeScript 类型错误导致 Docker 构建失败
+
 ## [v0.1.12] - 2026-09-12
 
 ### 新增

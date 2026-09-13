@@ -298,7 +298,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, type VNode } from 'vue'
 import {
   NAlert,
   NButton,
@@ -471,7 +471,7 @@ const columns: DataTableColumns<CertificateRecord> = [
     width: 168,
     render: (row) => {
       const canDownload = row.status !== 'error' || !!row.expires_at
-      const buttons = []
+      const buttons: VNode[] = []
       if (canDownload) {
         buttons.push(
           h(
@@ -488,7 +488,7 @@ const columns: DataTableColumns<CertificateRecord> = [
             () =>
               h(
                 NButton,
-                { size: 'small', quaternary: true, loading: downloadingDomain === row.domain },
+                { size: 'small', quaternary: true, loading: downloadingDomain.value === row.domain },
                 () => '下载',
               ),
           ),
