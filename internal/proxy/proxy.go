@@ -28,6 +28,7 @@ type Rule struct {
 	HTTPSEnabled bool      `json:"https_enabled"`
 	HTTPRedirect bool      `json:"http_redirect"`
 	Enabled      bool      `json:"enabled"`
+	Remark       string    `json:"remark"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -94,6 +95,7 @@ type CreateInput struct {
 	HTTPSEnabled bool
 	HTTPRedirect bool
 	Enabled      bool
+	Remark       string
 }
 
 type UpdateInput struct {
@@ -105,6 +107,7 @@ type UpdateInput struct {
 	HTTPSEnabled *bool
 	HTTPRedirect *bool
 	Enabled      *bool
+	Remark       *string
 }
 
 type Store struct {
@@ -132,9 +135,12 @@ func (s *Store) querier() interface {
 }
 
 func (s *Store) List(ctx context.Context) ([]Rule, error) {
+	if err := s.cleanupOrphanRules(ctx); err != nil {
+		return nil, err
+	}
 	q := s.querier()
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
 		FROM proxy_rules
 		ORDER BY id ASC
 	`)
@@ -159,7 +165,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 	row := s.querier().QueryRowContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
 		FROM proxy_rules WHERE id = ?
 	`, id)
 	rule, err := scanRule(row)
@@ -181,11 +187,19 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 	if err != nil {
 		return Rule{}, err
 	}
+	if err := s.ensureHostsAvailable(ctx, hosts, in.ListenPort, 0); err != nil {
+		return Rule{}, err
+	}
+
+	remark, err := normalizeRemark(in.Remark)
+	if err != nil {
+		return Rule{}, err
+	}
 
 	res, err := s.querier().ExecContext(ctx, `
-		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled))
+		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), remark)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -193,7 +207,8 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 	if err != nil {
 		return Rule{}, err
 	}
-	if err := s.replaceHosts(ctx, id, hosts); err != nil {
+	if err := s.replaceHosts(ctx, id, in.ListenPort, hosts); err != nil {
+		_, _ = s.querier().ExecContext(ctx, `DELETE FROM proxy_rules WHERE id = ?`, id)
 		return Rule{}, err
 	}
 	return s.Get(ctx, id)
@@ -205,6 +220,7 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 		return Rule{}, err
 	}
 
+	oldListenPort := current.ListenPort
 	upstream := current.Upstream
 	listenPort := current.ListenPort
 	listenIPv4 := current.ListenIPv4
@@ -212,6 +228,7 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	httpsEnabled := current.HTTPSEnabled
 	httpRedirect := current.HTTPRedirect
 	enabled := current.Enabled
+	remark := current.Remark
 	hosts := current.Hosts
 
 	if in.Upstream != nil {
@@ -244,8 +261,14 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
+	if in.Remark != nil {
+		remark, err = normalizeRemark(*in.Remark)
+		if err != nil {
+			return Rule{}, err
+		}
+	}
 	if in.Hosts != nil {
-		hosts, err = parseHosts(*in.Hosts)
+		hosts, err = parseHosts(*in.Hosts, listenPort)
 		if err != nil {
 			return Rule{}, err
 		}
@@ -254,16 +277,37 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 		}
 	}
 
+	if in.ListenPort != nil && *in.ListenPort != oldListenPort && in.Hosts == nil {
+		for _, host := range current.Hosts {
+			if hostEffectivePort(host, oldListenPort) != oldListenPort {
+				continue
+			}
+			if err := s.ensureHostAvailable(ctx, host.Hostname, listenPort, id); err != nil {
+				return Rule{}, err
+			}
+		}
+	}
+
 	_, err = s.querier().ExecContext(ctx, `
 		UPDATE proxy_rules
-		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, updated_at = datetime('now')
+		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, remark = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), id)
+	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), remark, id)
 	if err != nil {
 		return Rule{}, err
 	}
+	if in.ListenPort != nil && *in.ListenPort != oldListenPort && in.Hosts == nil {
+		if _, err := s.querier().ExecContext(ctx, `
+			UPDATE proxy_hosts SET listen_port = ? WHERE rule_id = ? AND listen_port = ?
+		`, listenPort, id, oldListenPort); err != nil {
+			return Rule{}, err
+		}
+	}
 	if in.Hosts != nil {
-		if err := s.replaceHosts(ctx, id, hosts); err != nil {
+		if err := s.ensureHostsAvailable(ctx, hosts, listenPort, id); err != nil {
+			return Rule{}, err
+		}
+		if err := s.replaceHosts(ctx, id, listenPort, hosts); err != nil {
 			return Rule{}, err
 		}
 	}
@@ -287,7 +331,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
 	rows, err := s.querier().QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
 		FROM proxy_rules WHERE enabled = 1 ORDER BY id ASC
 	`)
 	if err != nil {
@@ -320,7 +364,7 @@ func validateCreateInput(in CreateInput) (string, []Host, error) {
 	if !in.ListenIPv4 && !in.ListenIPv6 {
 		return "", nil, fmt.Errorf("至少需要启用 IPv4 或 IPv6 监听")
 	}
-	hosts, err := parseHosts(in.Hosts)
+	hosts, err := parseHosts(in.Hosts, in.ListenPort)
 	if err != nil {
 		return "", nil, err
 	}
@@ -330,7 +374,22 @@ func validateCreateInput(in CreateInput) (string, []Host, error) {
 	return upstream, hosts, nil
 }
 
-func parseHosts(raw []string) ([]Host, error) {
+func (s *Store) cleanupOrphanRules(ctx context.Context) error {
+	_, err := s.querier().ExecContext(ctx, `
+		DELETE FROM proxy_rules
+		WHERE id NOT IN (SELECT rule_id FROM proxy_hosts)
+	`)
+	return err
+}
+
+func hostEffectivePort(host Host, ruleListenPort int) int {
+	if host.ListenPort != nil && *host.ListenPort > 0 {
+		return *host.ListenPort
+	}
+	return ruleListenPort
+}
+
+func parseHosts(raw []string, ruleListenPort int) ([]Host, error) {
 	seen := make(map[string]struct{})
 	hosts := make([]Host, 0, len(raw))
 	for _, item := range raw {
@@ -338,10 +397,15 @@ func parseHosts(raw []string) ([]Host, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := seen[hostname]; ok {
-			return nil, fmt.Errorf("前端域名 %s 重复", hostname)
+		effectivePort := ruleListenPort
+		if port > 0 {
+			effectivePort = port
 		}
-		seen[hostname] = struct{}{}
+		key := fmt.Sprintf("%s:%d", strings.ToLower(hostname), effectivePort)
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("前端域名 %s:%d 重复", hostname, effectivePort)
+		}
+		seen[key] = struct{}{}
 		host := Host{Hostname: hostname}
 		if port > 0 {
 			host.ListenPort = &port
@@ -351,22 +415,46 @@ func parseHosts(raw []string) ([]Host, error) {
 	return hosts, nil
 }
 
-func (s *Store) replaceHosts(ctx context.Context, ruleID int64, hosts []Host) error {
+func (s *Store) ensureHostAvailable(ctx context.Context, hostname string, port int, excludeRuleID int64) error {
+	var ownerID int64
+	err := s.querier().QueryRowContext(ctx, `
+		SELECT rule_id FROM proxy_hosts WHERE hostname = ? COLLATE NOCASE AND listen_port = ? LIMIT 1
+	`, hostname, port).Scan(&ownerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if ownerID != excludeRuleID {
+		return fmt.Errorf("前端域名 %s:%d 已被其他规则使用", hostname, port)
+	}
+	return nil
+}
+
+func (s *Store) ensureHostsAvailable(ctx context.Context, hosts []Host, ruleListenPort int, excludeRuleID int64) error {
+	for _, host := range hosts {
+		port := hostEffectivePort(host, ruleListenPort)
+		if err := s.ensureHostAvailable(ctx, host.Hostname, port, excludeRuleID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) replaceHosts(ctx context.Context, ruleID int64, ruleListenPort int, hosts []Host) error {
 	if _, err := s.querier().ExecContext(ctx, `DELETE FROM proxy_hosts WHERE rule_id = ?`, ruleID); err != nil {
 		return err
 	}
 	for _, host := range hosts {
-		var listenPort any
-		if host.ListenPort != nil {
-			listenPort = *host.ListenPort
-		}
+		port := hostEffectivePort(host, ruleListenPort)
 		_, err := s.querier().ExecContext(ctx, `
 			INSERT INTO proxy_hosts(rule_id, hostname, listen_port)
 			VALUES (?, ?, ?)
-		`, ruleID, host.Hostname, listenPort)
+		`, ruleID, host.Hostname, port)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") {
-				return fmt.Errorf("前端域名 %s 已被其他规则使用", host.Hostname)
+				return fmt.Errorf("前端域名 %s:%d 已被其他规则使用", host.Hostname, port)
 			}
 			return err
 		}
@@ -444,6 +532,7 @@ func scanRule(row rowScanner) (Rule, error) {
 		&httpsEnabled,
 		&httpRedirect,
 		&enabled,
+		&rule.Remark,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -472,4 +561,12 @@ func boolInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizeRemark(raw string) (string, error) {
+	remark := strings.TrimSpace(raw)
+	if len(remark) > 100 {
+		return "", fmt.Errorf("备注不能超过 100 个字符")
+	}
+	return remark, nil
 }

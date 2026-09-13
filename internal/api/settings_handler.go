@@ -39,6 +39,7 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		settings.KeyRootDomain:         true,
 		settings.KeyACMEEmail:          true,
 		settings.KeyACMECA:             true,
+		settings.KeyZeroSSLAPIKey:      true,
 		settings.KeyNotifyWebhookURL:   true,
 		settings.KeyNotifyOnDDNSError:    true,
 		settings.KeyNotifyOnCertError:    true,

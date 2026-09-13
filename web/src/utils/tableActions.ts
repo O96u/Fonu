@@ -21,7 +21,10 @@ export function renderTableRowActions(actions: TableRowAction[]): VNode {
           size: 'small',
           quaternary: true,
           type: action.type,
-          onClick: action.onClick,
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation()
+            action.onClick()
+          },
         },
         () => action.label,
       ),

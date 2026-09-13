@@ -1,0 +1,1 @@
+ALTER TABLE proxy_rules ADD COLUMN remark TEXT NOT NULL DEFAULT '';

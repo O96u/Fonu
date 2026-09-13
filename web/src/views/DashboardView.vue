@@ -2,94 +2,66 @@
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
   <template v-else>
-    <n-spin :show="loading && !status">
-      <section class="hero">
-        <div class="hero__mountains" aria-hidden="true" />
-        <div class="hero__inner">
-          <div class="hero__content">
-            <h1 class="hero__title">你好，管理员 👋</h1>
-            <p class="hero__desc">一切运行正常，Fonu 正在为你的 NAS 提供安全的访问服务。</p>
-          </div>
-          <div class="hero__visual" aria-hidden="true">
-            <p class="hero__slogan">让 NAS 访问更简单</p>
-            <div class="hero__nas" />
-          </div>
+    <section class="hero-banner">
+      <div class="hero-content">
+        <h1 class="hero-banner__title">{{ greetingText }}</h1>
+        <p class="hero-banner__desc">Fonu 正在为你的 NAS 提供稳定、安全的访问服务。</p>
+        <div class="hero-banner__badges">
+          <span class="hero-banner__badge"><n-icon :component="CheckmarkCircleOutline" /> 简单易用</span>
+          <span class="hero-banner__badge"><n-icon :component="FlashOutline" /> 安全稳定</span>
+          <span class="hero-banner__badge"><n-icon :component="GlobeOutline" /> 随时随地访问</span>
         </div>
-      </section>
+      </div>
+      <img class="hero-art" :src="bannerImg" alt="" aria-hidden="true" />
+    </section>
 
+    <n-spin :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
-          <template #extra><StatusBadge v-if="publicIPv4Label" value="ok" text="正常" /></template>
+          <template #extra><StatusBadge v-if="publicIPv4Label !== '-'" value="ok" text="正常" /></template>
           <template #value>
-            <div class="kv-list">
-              <div class="kv-row">
-                <span class="kv-row__k">IPv4</span>
-                <span class="kv-row__v mono">{{ publicIPv4Label }}</span>
-              </div>
-              <div class="kv-row">
-                <span class="kv-row__k">IPv6</span>
-                <span class="kv-row__v mono kv-row__v--sub">{{ publicIPv6Label }}</span>
-              </div>
-            </div>
+            <span class="stat-primary mono">{{ publicIPv4Label }}</span>
           </template>
+          <p class="stat-desc mono">{{ publicIPv6Label }}</p>
           <div class="stat-foot">
-            <div class="stat-foot__muted">{{ publicIPSourceLabel }}</div>
+            <div class="stat-foot__line">{{ publicIPSourceLabel }}</div>
+            <div class="stat-foot__muted">上次更新 {{ formatRelativeTime(status?.ddns_last_updated) || '刚刚' }}</div>
           </div>
         </StatCard>
 
-        <StatCard label="DDNS" tone="green">
+        <StatCard label="域名" tone="green">
           <template #icon><n-icon :component="WifiOutline" /></template>
           <template #extra><StatusBadge :value="status?.ddns_status" text="正常" /></template>
-          <template v-if="primaryDdns" #value>
-            <div class="ddns-stack">
-              <span class="ddns-provider">{{ ddnsProviderName }}</span>
-              <span class="ddns-domain">{{ primaryDdns.root_domain }}</span>
-            </div>
-          </template>
-          <template v-else #value>{{ ddnsLabel }}</template>
-          <div v-if="primaryDdns" class="stat-foot">
-            <div class="stat-foot__line">{{ ddnsRecordLabel }}</div>
-            <div v-if="primaryDdns.ipv4_enabled || primaryDdns.ipv6_enabled" class="stat-foot__line mono">
-              <span v-if="primaryDdns.ipv4_enabled">v4 {{ primaryDdns.last_ipv4 || '-' }}</span>
-              <span v-if="primaryDdns.ipv4_enabled && primaryDdns.ipv6_enabled"> · </span>
-              <span v-if="primaryDdns.ipv6_enabled">v6 {{ primaryDdns.last_ipv6 || '未获取' }}</span>
-            </div>
-            <div class="stat-foot__muted">上次更新 {{ formatRelativeTime(status?.ddns_last_updated) }}</div>
+          <template #value>{{ domainCountLabel }}</template>
+          <p class="stat-desc">{{ domainSubLabel }}</p>
+          <div class="stat-foot">
+            <div class="stat-foot__line">{{ domainExamplesLabel }}</div>
+            <div class="stat-foot__muted">上次检查 {{ formatRelativeTime(status?.ddns_last_updated) || '刚刚' }}</div>
           </div>
         </StatCard>
 
-        <StatCard label="证书" tone="blue">
+        <StatCard label="HTTPS 证书" tone="blue">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
           <template #extra><StatusBadge :value="status?.certificate_status" text="正常" /></template>
-          <template v-if="primaryCert" #value>
-            <div class="cert-stack">
-              <span class="cert-domain">{{ certDisplayName }}</span>
-              <span v-if="certWildcard && certWildcard !== certDisplayName" class="cert-wildcard mono">{{ primaryCert.domain }}</span>
-            </div>
-          </template>
-          <template v-else #value>未申请</template>
+          <template #value>{{ certCountLabel }}</template>
+          <p class="stat-desc">{{ certSubLabel }}</p>
           <div v-if="primaryCert" class="stat-foot">
-            <div class="stat-foot__line">
-              <span class="stat-foot__muted">剩余</span>
-              <span class="stat-highlight">{{ primaryCert.days_left }} 天</span>
+            <div class="stat-foot__line mono">{{ certDisplayName }}</div>
+            <div class="stat-foot__muted">
+              到期 {{ formatDate(primaryCert.expires_at) }} · 剩余 {{ primaryCert.days_left }} 天
             </div>
-            <div class="stat-foot__muted">到期 {{ formatDate(primaryCert.expires_at) }}</div>
           </div>
         </StatCard>
 
-        <StatCard label="反向代理" :value="status?.proxy_count ?? 0" tone="teal">
+        <StatCard label="服务" tone="teal">
           <template #icon><n-icon :component="GitNetworkOutline" /></template>
           <template #extra><StatusBadge value="ok" text="正常" /></template>
-          <div class="proxy-metrics">
-            <div class="proxy-metric">
-              <span class="proxy-metric__val proxy-metric__val--ok">{{ proxyEnabled }}</span>
-              <span class="proxy-metric__lbl">已启用</span>
-            </div>
-            <div class="proxy-metric">
-              <span class="proxy-metric__val">{{ proxyDisabled }}</span>
-              <span class="proxy-metric__lbl">已禁用</span>
-            </div>
+          <template #value>{{ coreServiceCountLabel }}</template>
+          <p class="stat-desc">核心服务运行正常</p>
+          <div class="stat-foot">
+            <div class="stat-foot__line">Fonu / Nginx / DDNS / 证书</div>
+            <div class="stat-foot__muted">上次检查 {{ formatRelativeTime(status?.started_at) || '刚刚' }}</div>
           </div>
         </StatCard>
       </div>
@@ -106,25 +78,44 @@
           <div class="panel__body requests-panel__body">
             <div class="metric-hero">
               <span class="metric-hero__value">{{ (status?.request_today ?? 0).toLocaleString() }}</span>
-              <n-tag v-if="(status?.request_today ?? 0) > 0" size="small" :bordered="false" type="success">
-                成功率 {{ successRate }}%
+              <n-tag v-if="requestTrend !== null" size="small" :bordered="false" :type="requestTrend >= 0 ? 'success' : 'warning'">
+                {{ requestTrend >= 0 ? '↑' : '↓' }} {{ requestTrend >= 0 ? '+' : '' }}{{ requestTrend }}%
               </n-tag>
             </div>
-            <MiniBarChart :values="hourlyBars" />
+            <div class="panel-chart">
+              <MiniBarChart :values="hourlyBars.values" :labels="hourlyBars.labels" />
+            </div>
           </div>
         </FonuCard>
 
-        <FonuCard class="panel perf-panel">
-          <div class="perf-block">
-            <div class="perf-block__label">错误请求</div>
-            <div class="perf-block__value perf-block__value--error">{{ status?.error_today ?? 0 }}</div>
-            <div class="perf-block__meta perf-block__meta--error">占比 {{ errorRate }}%</div>
+        <FonuCard class="panel traffic-panel">
+          <div class="panel__head">
+            <div class="panel-title">
+              <n-icon :component="SwapVerticalOutline" class="panel-title__icon panel-title__icon--teal" />
+              <span>实时流量</span>
+            </div>
+            <n-tag size="small" :bordered="false" class="range-tag">最近 5 分钟</n-tag>
           </div>
-          <div class="perf-divider" />
-          <div class="perf-block">
-            <div class="perf-block__label">平均响应时间</div>
-            <div class="perf-block__value">{{ Math.round(status?.avg_response_ms ?? 0) }}<small>ms</small></div>
-            <div class="perf-block__meta">今日访问均值</div>
+          <div class="panel__body traffic-panel__body">
+            <div class="traffic-rates">
+              <div class="traffic-rate traffic-rate--up">
+                <span class="traffic-rate__dot" />
+                <span class="traffic-rate__label">上传</span>
+                <span class="traffic-rate__value">{{ formatRate(trafficTotals.uploadRate) }}</span>
+              </div>
+              <div class="traffic-rate traffic-rate--down">
+                <span class="traffic-rate__dot" />
+                <span class="traffic-rate__label">下载</span>
+                <span class="traffic-rate__value">{{ formatRate(trafficTotals.downloadRate) }}</span>
+              </div>
+            </div>
+            <div class="panel-chart">
+              <MiniTrafficChart
+                :labels="trafficChart.labels"
+                :upload="trafficChart.upload"
+                :download="trafficChart.download"
+              />
+            </div>
           </div>
         </FonuCard>
 
@@ -134,12 +125,22 @@
               <n-icon :component="PulseOutline" class="panel-title__icon panel-title__icon--teal" />
               <span>运行状态</span>
             </div>
+            <router-link :to="{ name: 'settings' }" class="card-link">
+              查看详情
+              <n-icon :component="ChevronForwardOutline" />
+            </router-link>
           </div>
           <div class="panel__body health-list">
             <div v-for="item in healthItems" :key="item.name" class="health-item">
+              <div class="health-item__icon" :class="`health-item__icon--${item.tone}`">
+                <n-icon :component="item.icon" />
+              </div>
+              <div class="health-item__main">
+                <span class="health-item__name">{{ item.name }}</span>
+                <span class="health-item__meta">{{ item.desc }}</span>
+                <span class="health-item__detail">{{ item.meta }}</span>
+              </div>
               <StatusBadge :value="item.status" :text="item.label" />
-              <span class="health-item__name">{{ item.name }}</span>
-              <span class="health-item__meta">{{ item.meta }}</span>
             </div>
           </div>
         </FonuCard>
@@ -153,7 +154,7 @@
           </template>
           <template #header>
             <router-link :to="{ name: 'logs', query: { tab: 'access' } }" class="card-link">
-              查看更多
+              查看全部
               <n-icon :component="ChevronForwardOutline" />
             </router-link>
           </template>
@@ -164,7 +165,7 @@
               :data="accessLogs"
               :bordered="false"
               size="small"
-              :scroll-x="860"
+              :scroll-x="940"
             />
             <EmptyState v-else title="暂无访问记录" description="产生访问后这里会显示最近请求。" />
           </div>
@@ -177,19 +178,19 @@
           </template>
           <template #header>
             <router-link :to="{ name: 'logs', query: { tab: 'system' } }" class="card-link">
-              查看更多
+              查看全部
               <n-icon :component="ChevronForwardOutline" />
             </router-link>
           </template>
           <div class="bottom-card__body">
-            <div v-if="systemLogs.length > 0" class="log-list">
-              <div v-for="(log, i) in systemLogs" :key="i" class="log-item">
-                <span class="log-time">{{ formatLogTime(log.time) }}</span>
-                <n-tag size="tiny" :bordered="false" :type="levelTag(log.level)">{{ log.level }}</n-tag>
-                <span class="log-module">{{ log.module }}</span>
-                <span class="log-msg">{{ log.message }}</span>
-              </div>
-            </div>
+            <n-data-table
+              v-if="systemLogs.length > 0"
+              :columns="systemColumns"
+              :data="systemLogs"
+              :bordered="false"
+              size="small"
+              :scroll-x="720"
+            />
             <EmptyState v-else title="暂无系统日志" description="应用运行后会产生日志。" />
           </div>
         </FonuCard>
@@ -199,54 +200,66 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
+  AppsOutline,
+  CheckmarkCircleOutline,
   ChevronForwardOutline,
+  CloudOutline,
   DocumentTextOutline,
   FlashOutline,
   GitNetworkOutline,
   GlobeOutline,
   ListOutline,
   PulseOutline,
+  ServerOutline,
   ShieldCheckmarkOutline,
+  SwapVerticalOutline,
   WifiOutline,
 } from '@vicons/ionicons5'
+import bannerImg from '../assets/brand/banner.png'
 import { api, asList } from '../api/client'
 import type {
   AccessLogEntry,
   CertificateRecord,
   DashboardStatus,
   DDNSConfig,
-  ProxyRule,
+  ProxyTraffic,
   SystemLogEntry,
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import MiniBarChart from '../components/MiniBarChart.vue'
+import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import StatCard from '../components/StatCard.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { formatDate, formatLogTime, formatRelativeTime, formatUptime } from '../utils/format'
+import { formatDate, formatLogTime, formatRate, formatRelativeTime, formatUptime } from '../utils/format'
 import { httpStatusKind } from '../utils/status'
 
 const message = useMessage()
 const status = ref<DashboardStatus | null>(null)
-const proxies = ref<ProxyRule[]>([])
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
 const accessLogs = ref<AccessLogEntry[]>([])
 const systemLogs = ref<SystemLogEntry[]>([])
 const loading = ref(false)
 const loadError = ref('')
+const trafficByRule = ref<Record<number, ProxyTraffic>>({})
+type RatePoint = { at: number; upload: number; download: number }
+const rateHistory = ref<RatePoint[]>([])
+const RATE_HISTORY_MS = 5 * 60 * 1000
+let trafficTimer: ReturnType<typeof setInterval> | null = null
 
-const providerLabels: Record<string, string> = {
-  cloudflare: 'Cloudflare',
-  dnspod: 'DNSPod',
-  alidns: '阿里云',
+function timeGreeting(hour: number): string {
+  if (hour >= 5 && hour < 12) return '上午好'
+  if (hour >= 12 && hour < 18) return '下午好'
+  return '晚上好'
 }
 
-const primaryDdns = computed(() => ddnsConfigs.value[0] ?? null)
+const greetingText = computed(() => `${timeGreeting(new Date().getHours())}，管理员`)
+
 const primaryCert = computed(() => {
   if (certificates.value.length === 0) return null
   return [...certificates.value].sort((a, b) => a.days_left - b.days_left)[0]
@@ -275,84 +288,148 @@ const publicIPSourceLabel = computed(() => {
   }
 })
 
-const ddnsLabel = computed(() => {
-  const count = status.value?.ddns_count ?? 0
+const domainCountLabel = computed(() => {
+  const count = status.value?.ddns_count ?? ddnsConfigs.value.length
   if (count === 0) return '未配置'
-  return `${count} 个域名`
-})
-const ddnsProviderName = computed(() => {
-  const p = primaryDdns.value?.provider
-  return p ? (providerLabels[p] ?? p) : ''
-})
-const ddnsRecordLabel = computed(() => {
-  if (!primaryDdns.value) return ''
-  const root = primaryDdns.value.root_domain
-  const names = primaryDdns.value.record_names?.length
-    ? primaryDdns.value.record_names
-    : [primaryDdns.value.record_name || '@']
-  return names
-    .map((name) => {
-      if (!name || name === '@') return root
-      if (name === '*') return `*.${root}`
-      if (name.includes('.')) return name
-      return `${name}.${root}`
-    })
-    .join(', ')
+  return `${count} 个`
 })
 
-const proxyEnabled = computed(() => proxies.value.filter((p) => p.enabled).length)
-const proxyDisabled = computed(() => proxies.value.filter((p) => !p.enabled).length)
-
-const successRate = computed(() => {
-  const total = status.value?.request_today ?? 0
-  if (total === 0) return 100
-  const errors = status.value?.error_today ?? 0
-  return Math.round(((total - errors) / total) * 100)
+const domainSubLabel = computed(() => {
+  const count = status.value?.ddns_count ?? ddnsConfigs.value.length
+  if (count === 0) return '尚未配置域名解析'
+  return '已配置并正常解析的域名'
 })
 
-const errorRate = computed(() => {
-  const total = status.value?.request_today ?? 0
-  if (total === 0) return 0
-  return Math.round(((status.value?.error_today ?? 0) / total) * 100)
+const domainExamplesLabel = computed(() => {
+  const examples: string[] = []
+  for (const cfg of ddnsConfigs.value.filter((c) => c.enabled)) {
+    const root = cfg.root_domain
+    const names = cfg.record_names?.length ? cfg.record_names : [cfg.record_name || '@']
+    for (const name of names) {
+      if (!name || name === '@') examples.push(root)
+      else if (name === '*') examples.push(`*.${root}`)
+      else if (name.includes('.')) examples.push(name)
+      else examples.push(`${name}.${root}`)
+    }
+  }
+  return examples.length > 0 ? examples.join(', ') : '暂无域名记录'
+})
+
+const certCountLabel = computed(() => {
+  const count = status.value?.certificate_count ?? certificates.value.length
+  if (count === 0) return '未申请'
+  return `${count} 个`
+})
+
+const certSubLabel = computed(() => {
+  if (!primaryCert.value) return '尚未申请 HTTPS 证书'
+  if (status.value?.certificate_status === 'ok') return '证书有效，自动续期中'
+  return '证书需要关注'
+})
+
+const coreServiceCountLabel = computed(() => `${healthItems.value.length} 个`)
+
+const trafficTotals = computed(() => {
+  let uploadRate = 0
+  let downloadRate = 0
+  for (const stats of Object.values(trafficByRule.value)) {
+    uploadRate += stats.upload_rate
+    downloadRate += stats.download_rate
+  }
+  return { uploadRate, downloadRate }
+})
+
+const trafficChart = computed(() => {
+  const now = Date.now()
+  const labels: string[] = []
+  const upload: number[] = []
+  const download: number[] = []
+  for (let i = 5; i >= 0; i--) {
+    const bucketEnd = now - i * 60 * 1000
+    const bucketStart = bucketEnd - 60 * 1000
+    const points = rateHistory.value.filter((p) => p.at > bucketStart && p.at <= bucketEnd)
+    const avg = (key: 'upload' | 'download') =>
+      points.length ? points.reduce((sum, p) => sum + p[key], 0) / points.length : 0
+    upload.push(avg('upload'))
+    download.push(avg('download'))
+    const d = new Date(bucketEnd)
+    labels.push(
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+    )
+  }
+  return { labels, upload, download }
 })
 
 const hourlyBars = computed(() => {
-  const total = status.value?.request_today ?? 0
-  if (total === 0) return [20, 35, 55, 80, 65, 45]
-  const base = total / 6
-  return [base * 0.4, base * 0.6, base * 0.9, base * 1.2, base * 0.8, base * 0.5].map(Math.round)
+  const labels = Array.from({ length: 12 }, (_, i) => String(i * 2).padStart(2, '0'))
+  const values = Array(12).fill(0)
+  for (const log of accessLogs.value) {
+    const hour = new Date(log.time).getHours()
+    values[Math.floor(hour / 2)]++
+  }
+  const hasData = values.some((v) => v > 0)
+  if (!hasData && (status.value?.request_today ?? 0) > 0) {
+    const total = status.value?.request_today ?? 0
+    const base = total / 12
+    return {
+      labels,
+      values: [base * 0.5, base * 0.7, base * 0.9, base * 1.1, base * 1.3, base * 1.2, base * 1.0, base * 0.8, base * 0.7, base * 0.6, base * 0.5, base * 0.4].map(Math.round),
+    }
+  }
+  return { labels, values }
+})
+
+const requestTrend = computed(() => {
+  const values = hourlyBars.value.values
+  if (values.every((v) => v === 0)) return null
+  const first = values.slice(0, 6).reduce((a, b) => a + b, 0)
+  const second = values.slice(6).reduce((a, b) => a + b, 0)
+  if (first === 0) return second > 0 ? 100 : 0
+  return Math.round(((second - first) / first) * 100)
 })
 
 const healthItems = computed(() => [
   {
-    name: 'Fonu 应用',
+    name: 'Fonu',
+    desc: '应用核心服务',
     meta: `运行 ${formatUptime(status.value?.uptime_seconds ?? 0)}`,
     status: 'running',
     label: '运行中',
+    icon: AppsOutline,
+    tone: 'brand',
   },
   {
     name: 'Nginx',
+    desc: '反向代理服务',
     meta: status.value?.nginx_status === 'running' ? `运行 ${formatUptime(status.value?.uptime_seconds ?? 0)}` : '已停止',
     status: status.value?.nginx_status,
     label: status.value?.nginx_status === 'running' ? '运行中' : '已停止',
+    icon: ServerOutline,
+    tone: 'blue',
   },
   {
     name: 'DDNS',
+    desc: '域名动态解析',
     meta: formatRelativeTime(status.value?.ddns_last_updated) || '未更新',
     status: status.value?.ddns_status,
     label: status.value?.ddns_status === 'ok' ? '运行中' : '异常',
+    icon: CloudOutline,
+    tone: 'teal',
   },
   {
-    name: '证书',
+    name: 'HTTPS 证书',
+    desc: '自动续期管理',
     meta: primaryCert.value ? `${primaryCert.value.days_left} 天后到期` : '未配置',
     status: status.value?.certificate_status,
-    label: status.value?.certificate_status === 'ok' ? '正常' : '需关注',
+    label: status.value?.certificate_status === 'ok' ? '运行中' : '需关注',
+    icon: ShieldCheckmarkOutline,
+    tone: 'green',
   },
 ])
 
 const accessColumns: DataTableColumns<AccessLogEntry> = [
   { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
-  { title: '域名', key: 'domain', ellipsis: { tooltip: true } },
+  { title: '域名', key: 'domain', width: 132, ellipsis: { tooltip: true } },
   {
     title: '方法',
     key: 'method',
@@ -364,7 +441,6 @@ const accessColumns: DataTableColumns<AccessLogEntry> = [
         () => r.method,
       ),
   },
-  { title: '路径', key: 'path', ellipsis: { tooltip: true } },
   {
     title: '状态',
     key: 'status',
@@ -375,8 +451,25 @@ const accessColumns: DataTableColumns<AccessLogEntry> = [
       return h(NTag, { size: 'tiny', bordered: false, type }, () => String(r.status))
     },
   },
-  { title: '耗时(ms)', key: 'response_time', width: 80, render: (r) => Math.round(r.response_time * 1000) },
-  { title: '来源 IP', key: 'client_ip', width: 118 },
+  { title: '延迟(ms)', key: 'response_time', width: 80, render: (r) => Math.round(r.response_time * 1000) },
+  {
+    title: '来源 IP',
+    key: 'client_ip',
+    width: 210,
+    render: (r) => h('span', { class: 'mono ip-cell' }, r.client_ip),
+  },
+]
+
+const systemColumns: DataTableColumns<SystemLogEntry> = [
+  { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
+  {
+    title: '级别',
+    key: 'level',
+    width: 72,
+    render: (r) => h(NTag, { size: 'tiny', bordered: false, type: levelTag(r.level) }, () => r.level),
+  },
+  { title: '模块', key: 'module', width: 80 },
+  { title: '内容', key: 'message', ellipsis: { tooltip: true } },
 ]
 
 function levelTag(level: string) {
@@ -385,21 +478,56 @@ function levelTag(level: string) {
   return 'info'
 }
 
+function recordRateSample() {
+  const now = Date.now()
+  rateHistory.value.push({
+    at: now,
+    upload: trafficTotals.value.uploadRate,
+    download: trafficTotals.value.downloadRate,
+  })
+  const cutoff = now - RATE_HISTORY_MS
+  rateHistory.value = rateHistory.value.filter((p) => p.at >= cutoff)
+}
+
+async function refreshTraffic() {
+  try {
+    const rows = asList(await api.getProxyTraffic())
+    const next: Record<number, ProxyTraffic> = {}
+    for (const row of rows) {
+      next[row.rule_id] = row
+    }
+    trafficByRule.value = next
+    recordRateSample()
+  } catch {
+    // ignore polling errors
+  }
+}
+
+function startTrafficPoll() {
+  stopTrafficPoll()
+  trafficTimer = setInterval(refreshTraffic, 2000)
+}
+
+function stopTrafficPoll() {
+  if (trafficTimer) {
+    clearInterval(trafficTimer)
+    trafficTimer = null
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [s, access, system, proxyList, certs] = await Promise.all([
+    const [s, access, system, certs] = await Promise.all([
       api.getStatus(),
       api.getAccessLogs({ limit: 10 }),
       api.getSystemLogs({ limit: 10 }),
-      api.listProxies(),
       api.listCertificates(),
     ])
     status.value = s
     accessLogs.value = asList(access)
     systemLogs.value = asList(system)
-    proxies.value = asList(proxyList)
     certificates.value = asList(certs)
     api.listDDNSLite()
       .then((ddns) => {
@@ -414,7 +542,13 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  refreshTraffic()
+  startTrafficPoll()
+})
+
+onUnmounted(stopTrafficPoll)
 </script>
 
 <style scoped>
@@ -424,53 +558,56 @@ onMounted(load)
   gap: var(--fonu-space-4);
 }
 
-.hero {
+.hero-banner {
   position: relative;
-  border-radius: var(--fonu-radius);
   overflow: hidden;
   margin-bottom: var(--fonu-space-4);
-  min-height: 156px;
-  background: linear-gradient(90deg, #f8fbff 0%, #eef5ff 55%, #dbeafe 100%);
+  min-height: 208px;
+  height: 220px;
+  border-radius: 16px;
+  box-shadow: var(--fonu-shadow);
+  border: 1px solid rgba(16, 185, 129, 0.08);
+  background: linear-gradient(100deg, #f4fffc 0%, #f1fbff 55%, #eef9ff 100%);
 }
 
-html[data-theme='dark'] .hero,
-html.dark .hero {
-  background: linear-gradient(90deg, #0f172a 0%, #1e293b 55%, #1e3a5f 100%);
+html[data-theme='dark'] .hero-banner,
+html.dark .hero-banner {
+  background: linear-gradient(100deg, #0f172a 0%, #134e4a 100%);
+  border-color: rgba(16, 185, 129, 0.15);
 }
 
-.hero__mountains {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 42%;
-  background:
-    linear-gradient(90deg, rgba(248, 251, 255, 1) 0%, transparent 28%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 480 156'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23dbeafe'/%3E%3Cstop offset='1%25' stop-color='%23eff6ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='480' height='156' fill='url(%23sky)'/%3E%3Cpath fill='%2394a3b8' opacity='0.35' d='M120 95 L200 55 L280 75 L360 40 L440 60 L480 45 L480 156 L120 156Z'/%3E%3Cpath fill='%2364748b' opacity='0.25' d='M180 110 L260 80 L340 95 L420 70 L480 85 L480 156 L180 156Z'/%3E%3Cpath fill='%23fff' opacity='0.5' d='M200 58 L230 42 L260 58 L245 58 L245 75 L215 75 L215 58Z'/%3E%3C/svg%3E")
-    right center / cover no-repeat;
-  pointer-events: none;
-}
-
-html[data-theme='dark'] .hero__mountains,
-html.dark .hero__mountains {
-  background:
-    linear-gradient(90deg, #0f172a 0%, transparent 30%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 480 156'%3E%3Cpath fill='%23334155' opacity='0.5' d='M120 95 L200 55 L280 75 L360 40 L440 60 L480 45 L480 156 L120 156Z'/%3E%3C/svg%3E")
-    right center / cover no-repeat;
-}
-
-.hero__inner {
+.hero-content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fonu-space-5);
-  padding: 28px var(--fonu-space-5);
-  min-height: 156px;
+  flex-direction: column;
+  justify-content: center;
+  width: 46%;
+  height: 100%;
+  padding: 28px 32px;
+  box-sizing: border-box;
 }
 
-.hero__title {
+.hero-art {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  object-position: right bottom;
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-theme='dark'] .hero-art,
+html.dark .hero-art {
+  opacity: 0.9;
+}
+
+.hero-banner__title {
   margin: 0;
   font-size: 30px;
   font-weight: 700;
@@ -478,37 +615,66 @@ html.dark .hero__mountains {
   letter-spacing: -0.03em;
 }
 
-.hero__desc {
+.hero-banner__desc {
   margin: 10px 0 0;
   font-size: 14px;
   color: var(--fonu-text-secondary);
-  max-width: 460px;
+  max-width: 520px;
   line-height: 1.65;
 }
 
-.hero__visual {
-  flex-shrink: 0;
+.hero-banner__badges {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.hero-banner__badge {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin-right: 8%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--fonu-text-secondary);
+  background: var(--fonu-surface);
+  border: 1px solid rgba(16, 185, 129, 0.14);
 }
 
-.hero__slogan {
-  margin: 0;
+.hero-banner__badge .n-icon {
   font-size: 16px;
-  font-weight: 500;
-  color: #2563eb;
-  font-style: italic;
+  color: var(--fonu-brand);
 }
 
-.hero__nas {
-  width: 132px;
-  height: 78px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 132 78'%3E%3Crect x='10' y='18' width='112' height='52' rx='8' fill='%23f1f5f9' stroke='%23cbd5e1' stroke-width='1.5'/%3E%3Crect x='18' y='28' width='20' height='32' rx='3' fill='%23e2e8f0'/%3E%3Crect x='42' y='28' width='20' height='32' rx='3' fill='%23e2e8f0'/%3E%3Crect x='66' y='28' width='20' height='32' rx='3' fill='%23e2e8f0'/%3E%3Crect x='90' y='28' width='20' height='32' rx='3' fill='%23e2e8f0'/%3E%3Ccircle cx='28' cy='38' r='3' fill='%2310b981'/%3E%3Ccircle cx='52' cy='38' r='3' fill='%2310b981'/%3E%3Ccircle cx='76' cy='38' r='3' fill='%23f59e0b'/%3E%3Ccircle cx='100' cy='38' r='3' fill='%2310b981'/%3E%3Crect x='24' y='10' width='84' height='10' rx='4' fill='%2310b981'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-  filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.12));
+@media (max-width: 768px) {
+  .hero-content {
+    width: 100%;
+    padding: 22px 20px;
+  }
+
+  .hero-banner {
+    height: auto;
+    min-height: 180px;
+  }
+
+  .hero-art {
+    height: 100%;
+    opacity: 0.28;
+  }
+
+  html[data-theme='dark'] .hero-art,
+  html.dark .hero-art {
+    opacity: 0.22;
+  }
+
+  .hero-banner__title {
+    font-size: 24px;
+  }
+
+  .hero-banner__badges {
+    gap: 8px;
+  }
 }
 
 .stats-row {
@@ -518,59 +684,18 @@ html.dark .hero__mountains {
   margin-bottom: var(--fonu-space-4);
 }
 
-.kv-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.kv-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.kv-row__k {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.kv-row__v {
-  font-size: 17px;
+.stat-primary {
+  font-size: 22px;
   font-weight: 700;
   color: var(--fonu-text);
   line-height: 1.3;
 }
 
-.kv-row__v--sub {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--fonu-text-secondary);
-}
-
-.ddns-stack,
-.cert-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ddns-provider {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.ddns-domain,
-.cert-domain {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--fonu-text);
-  line-height: 1.3;
-}
-
-.cert-wildcard {
+.stat-desc {
+  margin: 8px 0 0;
   font-size: 13px;
   color: var(--fonu-text-secondary);
+  line-height: 1.5;
 }
 
 .stat-foot {
@@ -629,12 +754,86 @@ html.dark .hero__mountains {
   color: var(--fonu-text-muted);
 }
 
+.traffic-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.traffic-panel :deep(.fonu-card__body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.requests-panel__body,
+.traffic-panel__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-chart {
+  flex: 1;
+  min-height: 240px;
+}
+
+.requests-panel .panel-chart :deep(.chart),
+.traffic-panel .panel-chart :deep(.chart) {
+  height: 100%;
+  min-height: 240px;
+}
+
+.traffic-rates {
+  display: flex;
+  gap: var(--fonu-space-4);
+  margin-bottom: var(--fonu-space-3);
+}
+
+.traffic-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.traffic-rate__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.traffic-rate--up .traffic-rate__dot {
+  background: #10b981;
+}
+
+.traffic-rate--down .traffic-rate__dot {
+  background: #3b82f6;
+}
+
+.traffic-rate__label {
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.traffic-rate__value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fonu-text);
+  font-variant-numeric: tabular-nums;
+}
+
 .metrics-row {
   display: grid;
-  grid-template-columns: minmax(0, 2.1fr) minmax(0, 0.72fr) minmax(0, 1.05fr);
+  grid-template-columns: 3fr 3fr 2fr;
   gap: var(--fonu-space-4);
   margin-bottom: var(--fonu-space-4);
   align-items: stretch;
+}
+
+.metrics-row > .fonu-card {
+  height: 100%;
 }
 
 .panel :deep(.fonu-card__body) {
@@ -694,13 +893,22 @@ html.dark .hero__mountains {
   line-height: 1.1;
 }
 
-.requests-panel,
+.requests-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.requests-panel :deep(.fonu-card__body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .health-panel {
   display: flex;
   flex-direction: column;
 }
 
-.requests-panel :deep(.fonu-card__body),
 .health-panel :deep(.fonu-card__body) {
   flex: 1;
   display: flex;
@@ -769,38 +977,105 @@ html.dark .hero__mountains {
   margin: var(--fonu-space-2) 0;
 }
 
+.health-panel .panel__head {
+  padding: var(--fonu-space-3) var(--fonu-space-4) 0;
+}
+
+.health-panel .panel__body {
+  flex: 1;
+  padding: var(--fonu-space-2) var(--fonu-space-4) var(--fonu-space-3);
+}
+
 .health-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
+  justify-content: space-between;
+  min-height: 0;
 }
 
 .health-item {
   display: grid;
-  grid-template-columns: 72px 1fr auto;
+  grid-template-columns: 36px minmax(0, 1fr) 76px;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  min-height: 64px;
   padding: 12px 14px;
   border-radius: var(--fonu-radius-sm);
   background: var(--fonu-bg);
+  min-width: 0;
+}
+
+.health-item__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.health-item__icon--brand {
+  background: var(--fonu-brand-soft);
+  color: var(--fonu-brand);
+}
+
+.health-item__icon--blue {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.health-item__icon--teal {
+  background: rgba(20, 184, 166, 0.12);
+  color: #14b8a6;
+}
+
+.health-item__icon--green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.health-item__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .health-item :deep(.status-badge) {
-  justify-self: start;
+  justify-self: end;
+  width: 100%;
+  justify-content: center;
   white-space: nowrap;
 }
 
 .health-item__name {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--fonu-text);
+  line-height: 1.2;
 }
 
 .health-item__meta {
   font-size: 12px;
+  color: var(--fonu-text-secondary);
+  line-height: 1.3;
+}
+
+.health-item__detail {
+  font-size: 11px;
   color: var(--fonu-text-muted);
+  line-height: 1.3;
+}
+
+.ip-cell {
+  display: inline-block;
   white-space: nowrap;
+  font-size: 12px;
 }
 
 .bottom-row {
@@ -853,61 +1128,20 @@ html.dark .hero__mountains {
   color: var(--fonu-brand);
 }
 
-.log-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.log-item {
-  display: grid;
-  grid-template-columns: 148px 50px 68px 1fr;
-  gap: 8px;
-  align-items: center;
-  font-size: 13px;
-  min-height: 38px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--fonu-border);
-}
-
-.log-item:last-child {
-  border-bottom: none;
-}
-
-.log-time {
-  color: var(--fonu-text-muted);
-  font-family: var(--fonu-mono);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.log-module {
-  color: var(--fonu-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.log-msg {
-  color: var(--fonu-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .mono {
   font-family: var(--fonu-mono);
 }
 
 @media (max-width: 1199px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .metrics-row { grid-template-columns: 1fr; }
+  .metrics-row { grid-template-columns: 1fr 1fr; }
+  .health-panel { grid-column: 1 / 3; }
   .bottom-row { grid-template-columns: 1fr; }
-  .hero__visual { display: none; }
 }
 
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: 1fr; }
-  .hero__title { font-size: 24px; }
-  .log-item { grid-template-columns: 1fr; gap: 4px; }
+  .metrics-row { grid-template-columns: 1fr; }
+  .health-panel { grid-column: auto; }
 }
 </style>

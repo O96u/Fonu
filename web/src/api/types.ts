@@ -15,6 +15,7 @@ export interface ProxyRule {
   https_enabled: boolean
   http_redirect: boolean
   enabled: boolean
+  remark: string
   created_at: string
   updated_at: string
 }
@@ -42,6 +43,7 @@ export interface ProxySavePayload {
   https_enabled?: boolean
   http_redirect?: boolean
   enabled?: boolean
+  remark?: string
 }
 
 export interface AuthStatus {
@@ -51,6 +53,8 @@ export interface AuthStatus {
 
 export interface AppVersion {
   version: string
+  nginx_http_port: number
+  nginx_https_port: number
 }
 
 export interface ApiError {

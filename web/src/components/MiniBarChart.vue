@@ -33,6 +33,11 @@ const option = computed(() => {
       backgroundColor: isDark.value ? '#1e293b' : '#fff',
       borderColor: isDark.value ? '#334155' : '#e5e7eb',
       textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      formatter: (params: { name: string; value: number }[]) => {
+        const p = params[0]
+        if (!p) return ''
+        return `${p.name}:00<br/>请求数 ${p.value}`
+      },
     },
     xAxis: {
       type: 'category',
@@ -60,8 +65,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#93c5fd' },
-              { offset: 1, color: '#3b82f6' },
+              { offset: 0, color: '#6ee7b7' },
+              { offset: 1, color: '#10b981' },
             ],
           },
         },
@@ -74,8 +79,8 @@ const option = computed(() => {
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: '#bfdbfe' },
-                { offset: 1, color: '#2563eb' },
+                { offset: 0, color: '#a7f3d0' },
+                { offset: 1, color: '#059669' },
               ],
             },
           },

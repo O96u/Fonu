@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 var ErrEmpty = errors.New("secret is empty")
@@ -63,4 +64,21 @@ func (b *Box) Decrypt(encoded string) (string, error) {
 		return "", err
 	}
 	return string(plain), nil
+}
+
+func IsDecryptFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "message authentication failed")
+}
+
+func DecryptHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	if IsDecryptFailure(err) {
+		return fmt.Errorf("DNS API 凭据无法解密，请在 DDNS 页面重新保存 API Token（服务加密密钥可能已变更）")
+	}
+	return err
 }

@@ -14,7 +14,7 @@ func NewRouter(deps Deps) http.Handler {
 	logsHandler := NewLogsHandler(deps.Config)
 	r := &Router{
 		authHandler:     NewAuthHandler(deps.Auth),
-		proxyHandler:    NewProxyHandler(deps.Proxy, logsHandler, deps.Traffic),
+		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME),
@@ -28,7 +28,7 @@ func NewRouter(deps Deps) http.Handler {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /api/version", Version)
+	mux.HandleFunc("GET /api/version", Version(deps.Config))
 	mux.HandleFunc("GET /api/auth/status", r.authHandler.Status)
 	mux.HandleFunc("POST /api/auth/login", r.authHandler.Login)
 	mux.HandleFunc("POST /api/auth/logout", r.authHandler.Logout)

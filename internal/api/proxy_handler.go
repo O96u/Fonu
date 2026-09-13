@@ -5,19 +5,21 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/traffic"
 )
 
 type ProxyHandler struct {
+	cfg     config.Config
 	svc     *service.ProxyService
 	logs    *LogsHandler
 	traffic *traffic.Collector
 }
 
-func NewProxyHandler(svc *service.ProxyService, logs *LogsHandler, collector *traffic.Collector) *ProxyHandler {
-	return &ProxyHandler{svc: svc, logs: logs, traffic: collector}
+func NewProxyHandler(cfg config.Config, svc *service.ProxyService, logs *LogsHandler, collector *traffic.Collector) *ProxyHandler {
+	return &ProxyHandler{cfg: cfg, svc: svc, logs: logs, traffic: collector}
 }
 
 type proxyRequest struct {
@@ -30,6 +32,7 @@ type proxyRequest struct {
 	HTTPSEnabled *bool    `json:"https_enabled"`
 	HTTPRedirect *bool    `json:"http_redirect"`
 	Enabled      *bool    `json:"enabled"`
+	Remark       *string  `json:"remark"`
 }
 
 func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +57,11 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	listenPort := intDefault(req.ListenPort, defaultListenPort(boolDefault(req.HTTPSEnabled, true)))
+	listenPort := intDefault(req.ListenPort, h.cfg.DefaultListenPort(boolDefault(req.HTTPSEnabled, true)))
+	remark := ""
+	if req.Remark != nil {
+		remark = *req.Remark
+	}
 	in := proxy.CreateInput{
 		Upstream:     req.Upstream,
 		ListenPort:   listenPort,
@@ -64,6 +71,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
 		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
 		Enabled:      boolDefault(req.Enabled, true),
+		Remark:       remark,
 	}
 
 	rule, err := h.svc.Create(r.Context(), in)
@@ -111,6 +119,9 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Enabled != nil {
 		in.Enabled = req.Enabled
+	}
+	if req.Remark != nil {
+		in.Remark = req.Remark
 	}
 
 	rule, err := h.svc.Update(r.Context(), id, in)
@@ -192,13 +203,6 @@ func (req proxyRequest) hosts() []string {
 		return []string{req.Domain}
 	}
 	return nil
-}
-
-func defaultListenPort(httpsEnabled bool) int {
-	if httpsEnabled {
-		return 443
-	}
-	return 80
 }
 
 func intDefault(v *int, fallback int) int {

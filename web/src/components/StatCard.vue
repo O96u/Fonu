@@ -103,9 +103,9 @@ withDefaults(
 
 .stat-card__value,
 .stat-card__value-slot {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
   color: var(--fonu-text);
   word-break: break-all;
   letter-spacing: -0.02em;

@@ -11,13 +11,13 @@
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <div class="brand" :class="{ 'brand--collapsed': collapsed }">
-        <div class="brand__logo">F</div>
+      <router-link class="brand" :class="{ 'brand--collapsed': collapsed }" :to="{ name: 'dashboard' }">
+        <img class="brand__logo" :src="logoImg" alt="Fonu" />
         <div v-if="!collapsed" class="brand__text">
           <div class="brand__name">Fonu</div>
-          <div class="brand__tagline">Simple Access for Your NAS</div>
+          <div class="brand__tagline">让 NAS 访问更简单</div>
         </div>
-      </div>
+      </router-link>
 
       <n-menu
         class="app-menu"
@@ -29,11 +29,38 @@
       />
 
       <div v-if="!collapsed" class="sider-footer">
-        <div class="sider-footer__version">Fonu v{{ appVersion }}</div>
+        <div class="sider-footer__version-row">
+          <div class="sider-footer__title">
+            <span class="sider-footer__brand">Fonu</span>
+            <span class="sider-footer__version">v{{ appVersion }}</span>
+          </div>
+          <a
+            v-if="hasUpdate"
+            class="sider-footer__update"
+            :href="latestReleaseUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <n-icon :component="ArrowUpOutline" />
+            有新版本
+            <n-icon :component="OpenOutline" />
+          </a>
+        </div>
+
         <div class="sider-footer__status">
-          <span class="status-dot" />
+          <n-icon :component="Ellipse" class="sider-footer__status-icon" />
           <span>运行中</span>
         </div>
+
+        <a
+          class="sider-footer__github"
+          :href="GITHUB_REPO_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <n-icon :component="LogoGithub" />
+          <span>{{ GITHUB_REPO }}</span>
+        </a>
       </div>
     </n-layout-sider>
 
@@ -41,7 +68,6 @@
       <header class="topbar">
         <span class="topbar__datetime">{{ datetime }}</span>
         <div class="topbar__right">
-          <n-tag size="small" :bordered="false" class="demo-tag">演示模式</n-tag>
           <n-button quaternary circle @click="toggleTheme">
             <template #icon>
               <n-icon :component="isDark ? MoonOutline : SunnyOutline" />
@@ -49,9 +75,9 @@
           </n-button>
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
             <n-button quaternary class="user-btn">
-              <n-avatar round :size="32" class="user-avatar">{{ avatarText }}</n-avatar>
+              <n-icon :component="PersonOutline" class="user-btn__icon" />
               <span class="user-name">管理员</span>
-              <n-icon :component="ChevronDownOutline" />
+              <n-icon :component="ChevronDownOutline" class="user-btn__chevron" />
             </n-button>
           </n-dropdown>
         </div>
@@ -70,7 +96,6 @@
 import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  NAvatar,
   NButton,
   NDropdown,
   NIcon,
@@ -78,23 +103,30 @@ import {
   NLayoutContent,
   NLayoutSider,
   NMenu,
-  NTag,
   useMessage,
   type MenuOption,
 } from 'naive-ui'
 import {
+  ArrowUpOutline,
   ChevronDownOutline,
   CloudOutline,
   CogOutline,
   DocumentTextOutline,
+  Ellipse,
   GridOutline,
   LockClosedOutline,
+  LogoGithub,
   MoonOutline,
+  OpenOutline,
+  PersonOutline,
   SunnyOutline,
   SwapHorizontalOutline,
 } from '@vicons/ionicons5'
 import { api } from '../api/client'
+import { GITHUB_REPO, GITHUB_REPO_URL } from '../constants/app'
 import { useTheme } from '../composables/useTheme'
+import { fetchLatestRelease, isNewerVersion } from '../utils/version'
+import logoImg from '../assets/brand/logo.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -103,7 +135,21 @@ const { isDark, toggleTheme } = useTheme()
 const collapsed = ref(false)
 const datetime = ref('')
 const appVersion = ref(__APP_VERSION__)
+const latestVersion = ref('')
+const latestReleaseUrl = ref('')
+const hasUpdate = ref(false)
 let clockTimer: number | undefined
+
+async function checkForUpdate() {
+  const release = await fetchLatestRelease()
+  if (!release) {
+    return
+  }
+
+  latestVersion.value = release.version
+  latestReleaseUrl.value = release.url
+  hasUpdate.value = isNewerVersion(release.version, appVersion.value)
+}
 
 async function loadVersion() {
   try {
@@ -114,6 +160,8 @@ async function loadVersion() {
   } catch {
     // keep build-time fallback
   }
+
+  await checkForUpdate()
 }
 
 const menuDefs = [
@@ -138,18 +186,18 @@ const activeKey = computed(() => {
   return typeof name === 'string' ? name : 'dashboard'
 })
 
-const avatarText = '管'
 const userMenuOptions = [{ label: '退出登录', key: 'logout' }]
 
 function updateClock() {
   const now = new Date()
-  datetime.value = now.toLocaleString('zh-CN', {
+  const date = now.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
   })
+  const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
+  datetime.value = `${date} ${time} · ${weekday}`
 }
 
 function handleMenu(key: string) {
@@ -203,6 +251,14 @@ onUnmounted(() => {
   gap: var(--fonu-space-3);
   padding: var(--fonu-space-5) var(--fonu-space-4);
   border-bottom: 1px solid var(--fonu-border);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.brand:hover {
+  background: var(--fonu-bg-muted);
 }
 
 .brand--collapsed {
@@ -211,17 +267,12 @@ onUnmounted(() => {
 }
 
 .brand__logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--fonu-brand);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 700;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  object-fit: cover;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
 .brand__name {
@@ -276,26 +327,83 @@ onUnmounted(() => {
   border-top: 1px solid var(--fonu-border);
 }
 
+.sider-footer__version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: var(--fonu-space-4);
+}
+
+.sider-footer__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sider-footer__brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
 .sider-footer__version {
   font-size: 12px;
   color: var(--fonu-text-muted);
-  margin-bottom: var(--fonu-space-2);
+}
+
+.sider-footer__update {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fonu-brand);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.sider-footer__update:hover {
+  opacity: 0.8;
+}
+
+.sider-footer__update :deep(.n-icon) {
+  font-size: 12px;
 }
 
 .sider-footer__status {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: var(--fonu-space-4);
   font-size: 12px;
   color: var(--fonu-success);
   font-weight: 500;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--fonu-success);
+.sider-footer__status-icon {
+  font-size: 8px;
+  color: var(--fonu-success);
+}
+
+.sider-footer__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.sider-footer__github:hover {
+  color: var(--fonu-text);
+}
+
+.sider-footer__github :deep(.n-icon) {
+  font-size: 15px;
 }
 
 .app-main {
@@ -325,25 +433,20 @@ onUnmounted(() => {
 .topbar__right {
   display: flex;
   align-items: center;
-  gap: var(--fonu-space-2);
-}
-
-.demo-tag {
-  background: var(--fonu-info-soft) !important;
-  color: var(--fonu-info) !important;
+  gap: var(--fonu-space-4);
 }
 
 .user-btn {
   display: flex;
   align-items: center;
-  gap: var(--fonu-space-2);
+  gap: var(--fonu-space-3);
+  padding: 0 var(--fonu-space-2);
 }
 
-.user-avatar {
-  background: var(--fonu-brand-soft) !important;
-  color: var(--fonu-brand) !important;
-  font-size: 13px;
-  font-weight: 600;
+.user-btn__icon,
+.user-btn__chevron {
+  font-size: 18px;
+  color: var(--fonu-text-secondary);
 }
 
 .user-name {

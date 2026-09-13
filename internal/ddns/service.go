@@ -81,8 +81,27 @@ func (s *Service) CredentialsForDomain(ctx context.Context, rootDomain string) (
 	return s.credentialsForConfig(ctx, cfg)
 }
 
+func (s *Service) CredentialsForConfigID(ctx context.Context, id int64) (Config, string, Credentials, error) {
+	cfg, err := s.Get(ctx, id)
+	if err != nil {
+		return Config{}, "", Credentials{}, fmt.Errorf("未找到所选 DNS 配置")
+	}
+	provider, cred, err := s.credentialsForConfig(ctx, cfg)
+	if err != nil {
+		return Config{}, "", Credentials{}, err
+	}
+	return cfg, provider, cred, nil
+}
+
 func (s *Service) ConfigForDNSZone(ctx context.Context, dnsZone string) (Config, error) {
-	return s.store.GetByRootDomain(ctx, dnsZone)
+	cfg, err := s.store.GetByRootDomain(ctx, dnsZone)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := requireEnabled(cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
 func (s *Service) ConfigForAnyDomain(ctx context.Context, domain string) (Config, error) {
@@ -92,6 +111,9 @@ func (s *Service) ConfigForAnyDomain(ctx context.Context, domain string) (Config
 		return Config{}, err
 	}
 	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
 		if cfg.CoversDomain(domain) {
 			return cfg, nil
 		}
@@ -107,7 +129,17 @@ func (s *Service) CredentialsForAnyDomain(ctx context.Context, domain string) (s
 	return s.credentialsForConfig(ctx, cfg)
 }
 
+func requireEnabled(cfg Config) error {
+	if !cfg.Enabled {
+		return fmt.Errorf("DNS 任务 %s 未启用，请先在 DDNS 页面开启", cfg.RootDomain)
+	}
+	return nil
+}
+
 func (s *Service) credentialsForConfig(ctx context.Context, cfg Config) (string, Credentials, error) {
+	if err := requireEnabled(cfg); err != nil {
+		return cfg.Provider, Credentials{}, err
+	}
 	cred, err := s.loadCredentialsByID(ctx, cfg.ID)
 	if err != nil {
 		return cfg.Provider, Credentials{}, err
@@ -259,13 +291,23 @@ func (s *Service) Tick(ctx context.Context) {
 
 // PublicIPs returns the most recently synced public IPs from enabled DDNS configs.
 func (s *Service) PublicIPs(ctx context.Context) (ipv4, ipv6 string, ok bool) {
+	return s.latestStoredPublicIPs(ctx, true)
+}
+
+// LastKnownPublicIPs returns stored public IPs from the most recently updated config,
+// including paused tasks. Used to avoid live IP detection when DDNS is temporarily disabled.
+func (s *Service) LastKnownPublicIPs(ctx context.Context) (ipv4, ipv6 string, ok bool) {
+	return s.latestStoredPublicIPs(ctx, false)
+}
+
+func (s *Service) latestStoredPublicIPs(ctx context.Context, enabledOnly bool) (ipv4, ipv6 string, ok bool) {
 	configs, err := s.store.List(ctx)
 	if err != nil || len(configs) == 0 {
 		return "", "", false
 	}
 	var latest *Config
 	for _, cfg := range configs {
-		if !cfg.Enabled {
+		if enabledOnly && !cfg.Enabled {
 			continue
 		}
 		if latest == nil || (cfg.LastUpdatedAt != nil && (latest.LastUpdatedAt == nil || cfg.LastUpdatedAt.After(*latest.LastUpdatedAt))) {
@@ -273,6 +315,9 @@ func (s *Service) PublicIPs(ctx context.Context) (ipv4, ipv6 string, ok bool) {
 		}
 	}
 	if latest == nil {
+		return "", "", false
+	}
+	if latest.LastIPv4 == "" && latest.LastIPv6 == "" {
 		return "", "", false
 	}
 	return latest.LastIPv4, latest.LastIPv6, true
@@ -551,7 +596,7 @@ func (s *Service) loadCredentialsByID(ctx context.Context, id int64) (Credential
 	}
 	raw, err := s.secretBox.Decrypt(enc)
 	if err != nil {
-		return Credentials{}, err
+		return Credentials{}, secret.DecryptHint(err)
 	}
 	return ParseCredentials(raw)
 }

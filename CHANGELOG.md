@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.14] - 2026-09-13
+
+### 新增
+
+- ZeroSSL 证书申请支持
+- 反代规则备注字段；域名+端口唯一约束
+- 可配置默认反代监听端口（`FONU_NGINX_HTTP_PORT` / `FONU_NGINX_HTTPS_PORT`），适配飞牛 host 部署
+- `docker-compose.host.yml` 飞牛 host 模式部署示例
+- 全新 Web UI：品牌视觉、仪表盘、证书/DDNS/反代/设置页重构
+
+### 改进
+
+- README 重写：飞牛 fnOS 部署说明、界面截图、Docker Hub 徽章
+- `/api/version` 返回默认反代端口配置
+- 移除仓库内 `scripts/`、`cmd/seed` 本地开发辅助
+
 ## [v0.1.13] - 2026-09-13
 
 ### 修复

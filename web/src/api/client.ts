@@ -116,11 +116,18 @@ export const api = {
 
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
-  applyCertificate: (payload: { dns_zone: string; domains: string[]; ca?: string; email?: string }) =>
+  applyCertificate: (payload: {
+    dns_zone?: string
+    ddns_config_id?: number
+    domains: string[]
+    ca?: string
+    email?: string
+  }) =>
     request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
       body: JSON.stringify({
-        dns_zone: payload.dns_zone,
+        dns_zone: payload.dns_zone ?? '',
+        ddns_config_id: payload.ddns_config_id ?? 0,
         domains: payload.domains,
         ca: payload.ca ?? '',
         email: payload.email ?? '',

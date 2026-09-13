@@ -7,3 +7,4 @@ cmd/fonu/web/dist/
 /data/
 .DS_Store
 .cursor/
+scripts/

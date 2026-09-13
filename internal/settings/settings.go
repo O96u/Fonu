@@ -15,6 +15,7 @@ const (
 	KeyRootDomain            = "root_domain"
 	KeyACMEEmail             = "acme_email"
 	KeyACMECA                = "acme_ca"
+	KeyZeroSSLAPIKey         = "zerossl_api_key"
 	KeyNotifyWebhookURL      = "notify_webhook_url"
 	KeyNotifyOnDDNSError     = "notify_on_ddns_error"
 	KeyNotifyOnCertError     = "notify_on_cert_error"

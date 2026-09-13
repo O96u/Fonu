@@ -7,12 +7,14 @@ import (
 )
 
 type Config struct {
-	ListenAddr      string
-	DataDir         string
-	SessionSecret   string
-	NginxBin        string
-	NginxPIDFile    string
-	NginxMimeTypes  string
+	ListenAddr            string
+	DataDir               string
+	SessionSecret         string
+	NginxBin              string
+	NginxPIDFile          string
+	NginxMimeTypes        string
+	NginxDefaultHTTPPort  int
+	NginxDefaultHTTPSPort int
 }
 
 func Load() Config {
@@ -21,13 +23,22 @@ func Load() Config {
 		dataDir = abs
 	}
 	return Config{
-		ListenAddr:    envOr("FONU_LISTEN", ":6893"),
-		DataDir:       dataDir,
-		SessionSecret: envOr("FONU_SESSION_SECRET", "change-me-in-production"),
-		NginxBin:       envOr("FONU_NGINX_BIN", "nginx"),
-		NginxPIDFile:   envOr("FONU_NGINX_PID", dataDir+"/nginx/nginx.pid"),
-		NginxMimeTypes: envOr("FONU_NGINX_MIME_TYPES", defaultMimeTypes()),
+		ListenAddr:            envOr("FONU_LISTEN", ":6893"),
+		DataDir:               dataDir,
+		SessionSecret:         envOr("FONU_SESSION_SECRET", "change-me-in-production"),
+		NginxBin:              envOr("FONU_NGINX_BIN", "nginx"),
+		NginxPIDFile:          envOr("FONU_NGINX_PID", dataDir+"/nginx/nginx.pid"),
+		NginxMimeTypes:        envOr("FONU_NGINX_MIME_TYPES", defaultMimeTypes()),
+		NginxDefaultHTTPPort:  envIntOr("FONU_NGINX_HTTP_PORT", 80),
+		NginxDefaultHTTPSPort: envIntOr("FONU_NGINX_HTTPS_PORT", 443),
 	}
+}
+
+func (c Config) DefaultListenPort(httpsEnabled bool) int {
+	if httpsEnabled {
+		return c.NginxDefaultHTTPSPort
+	}
+	return c.NginxDefaultHTTPPort
 }
 
 func (c Config) DBPath() string {

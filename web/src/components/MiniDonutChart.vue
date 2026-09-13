@@ -6,12 +6,12 @@
 import { computed } from 'vue'
 import { use } from 'echarts/core'
 import { PieChart } from 'echarts/charts'
-import { LegendComponent, TooltipComponent } from 'echarts/components'
+import { LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import { useTheme } from '../composables/useTheme'
 
-use([CanvasRenderer, PieChart, LegendComponent, TooltipComponent])
+use([CanvasRenderer, PieChart, LegendComponent, TitleComponent, TooltipComponent])
 
 const props = defineProps<{
   segments: { label: string; value: number; color: string }[]
@@ -21,8 +21,26 @@ const { isDark } = useTheme()
 
 const option = computed(() => {
   const textColor = isDark.value ? '#94a3b8' : '#6b7280'
+  const titleColor = isDark.value ? '#f1f5f9' : '#111827'
+  const total = props.segments.reduce((sum, s) => sum + s.value, 0)
 
   return {
+    title: [
+      {
+        text: String(total),
+        left: '31%',
+        top: '38%',
+        textAlign: 'center',
+        textStyle: { fontSize: 22, fontWeight: 700, color: titleColor },
+      },
+      {
+        text: '总请求',
+        left: '31%',
+        top: '52%',
+        textAlign: 'center',
+        textStyle: { fontSize: 12, color: textColor },
+      },
+    ],
     tooltip: {
       trigger: 'item',
       backgroundColor: isDark.value ? '#1e293b' : '#fff',
@@ -42,7 +60,7 @@ const option = computed(() => {
         const seg = props.segments.find((s) => s.label === name)
         const total = props.segments.reduce((sum, s) => sum + s.value, 0) || 1
         const pct = seg ? Math.round((seg.value / total) * 100) : 0
-        return `${name}  ${pct}%`
+        return `${name}  ${pct}% (${seg?.value ?? 0})`
       },
     },
     series: [

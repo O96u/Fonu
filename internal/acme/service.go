@@ -57,8 +57,11 @@ func (s *Service) List(ctx context.Context) ([]certstore.Record, error) {
 	return s.store.List(ctx)
 }
 
-func (s *Service) StartApply(ctx context.Context, dnsZone string, domains []string, ca, email string) (string, error) {
-	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, dnsZone, domains, ca, email)
+func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, ddnsConfigID int64) (string, error) {
+	if ddnsConfigID <= 0 {
+		return "", fmt.Errorf("请选择 DNS 任务")
+	}
+	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApplyWithConfig(ctx, domains, ca, email, ddnsConfigID)
 	if err != nil {
 		return "", err
 	}
@@ -71,7 +74,43 @@ func (s *Service) StreamJob(ctx context.Context, w http.ResponseWriter, jobID st
 	return s.jobs.Stream(ctx, w, jobID, flush)
 }
 
-func (s *Service) prepareApply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]string, string, string, string, string, string, ddns.Credentials, error) {
+func (s *Service) prepareApplyWithConfig(ctx context.Context, domains []string, ca, email string, ddnsConfigID int64) ([]string, string, string, string, string, string, ddns.Credentials, error) {
+	domains, err := NormalizeCertDomains(domains)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	primary := PrimaryCertDomain(domains)
+	if primary == "" {
+		return nil, "", "", "", "", "", ddns.Credentials{}, fmt.Errorf("请填写至少一个域名")
+	}
+	email, err = s.resolveACMEEmail(ctx, email)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	ca, err = s.resolveCA(ctx, ca)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	if err := ValidateCADomains(ca, domains); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+
+	cfg, provider, cred, err := s.ddnsSvc.CredentialsForConfigID(ctx, ddnsConfigID)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	if err := validateDNSCredentials(provider, cred); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	dnsZone := cfg.RootDomain
+	zones := cfg.ManagedDNSZones()
+	if len(zones) > 0 {
+		dnsZone = zones[0]
+	}
+	return domains, ca, email, primary, dnsZone, provider, cred, nil
+}
+
+func (s *Service) prepareApplyByZone(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]string, string, string, string, string, string, ddns.Credentials, error) {
 	domains, err := NormalizeCertDomains(domains)
 	if err != nil {
 		return nil, "", "", "", "", "", ddns.Credentials{}, err
@@ -94,6 +133,9 @@ func (s *Service) prepareApply(ctx context.Context, dnsZone string, domains []st
 	}
 	ca, err = s.resolveCA(ctx, ca)
 	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	if err := ValidateCADomains(ca, domains); err != nil {
 		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
 	provider, cred, err := s.dnsCredentialsForDomain(ctx, dnsZone)
@@ -130,7 +172,7 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 }
 
 func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]certstore.Record, error) {
-	domains, ca, email, primary, _, provider, cred, err := s.prepareApply(ctx, dnsZone, domains, ca, email)
+	domains, ca, email, primary, _, provider, cred, err := s.prepareApplyByZone(ctx, dnsZone, domains, ca, email)
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +349,32 @@ func (s *Service) resolveCA(ctx context.Context, ca string) (string, error) {
 	return ca, nil
 }
 
+func (s *Service) registerACMEAccount(ctx context.Context, client *lego.Client, ca string, logStep func(string)) (*registration.Resource, error) {
+	reg, err := client.Registration.ResolveAccountByKey()
+	if err == nil {
+		return reg, nil
+	}
+	logStep("注册 ACME 账户…")
+	switch NormalizeCA(ca) {
+	case CAZeroSSL:
+		apiKey, err := s.settings.Get(ctx, settings.KeyZeroSSLAPIKey)
+		if err != nil {
+			return nil, err
+		}
+		kid, hmac, err := zerosslEABCredentials(ctx, apiKey)
+		if err != nil {
+			return nil, err
+		}
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	default:
+		return client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+	}
+}
+
 func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider string, cred ddns.Credentials, rootDomain string, domains []string) (certstore.Record, error) {
 	logStep := func(msg string) {
 		if job != nil {
@@ -341,13 +409,9 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 	}
 
 	logStep("检查 ACME 账户…")
-	reg, err := client.Registration.ResolveAccountByKey()
+	reg, err := s.registerACMEAccount(ctx, client, ca, logStep)
 	if err != nil {
-		logStep("注册 ACME 账户…")
-		reg, err = client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
-		if err != nil {
-			return certstore.Record{}, fmt.Errorf("ACME 注册失败：%w", err)
-		}
+		return certstore.Record{}, fmt.Errorf("ACME 注册失败：%w", err)
 	}
 	user.registration = reg
 

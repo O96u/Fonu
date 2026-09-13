@@ -29,28 +29,31 @@ func (h *CertHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, []map[string]string{
 		{"value": acme.CALetsEncrypt, "label": acme.CALabel(acme.CALetsEncrypt)},
+		{"value": acme.CAZeroSSL, "label": acme.CALabel(acme.CAZeroSSL)},
+		{"value": acme.CABuypass, "label": acme.CALabel(acme.CABuypass)},
 		{"value": acme.CALetsEncryptStaging, "label": acme.CALabel(acme.CALetsEncryptStaging)},
 	})
 }
 
 func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Domain  string   `json:"domain"`
-		DNSZone string   `json:"dns_zone"`
-		Domains []string `json:"domains"`
-		CA      string   `json:"ca"`
-		Email   string   `json:"email"`
+		Domain       string   `json:"domain"`
+		DNSZone      string   `json:"dns_zone"`
+		DDNSConfigID int64    `json:"ddns_config_id"`
+		Domains      []string `json:"domains"`
+		CA           string   `json:"ca"`
+		Email        string   `json:"email"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	domains := req.Domains
 	if len(domains) == 0 && strings.TrimSpace(req.Domain) != "" {
 		domains = []string{req.Domain}
 	}
-	dnsZone := strings.TrimSpace(req.DNSZone)
-	if dnsZone == "" && len(domains) > 0 {
-		dnsZone = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(domains[0])), "*.")
+	if req.DDNSConfigID <= 0 {
+		writeError(w, http.StatusBadRequest, "请选择 DNS 任务")
+		return
 	}
-	jobID, err := h.svc.StartApply(r.Context(), dnsZone, domains, req.CA, req.Email)
+	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, req.DDNSConfigID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

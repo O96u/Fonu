@@ -6,13 +6,13 @@
 
       <div class="auth-brand">
 
-        <div class="auth-brand__logo">F</div>
+        <img class="auth-brand__logo" :src="logoImg" alt="Fonu" />
 
         <div>
 
           <h1>Fonu</h1>
 
-          <p>Simple Access for Your NAS</p>
+          <p>让 NAS 访问更简单</p>
 
         </div>
 
@@ -57,6 +57,7 @@ import { useRouter } from 'vue-router'
 import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 
 import { api } from '../api/client'
+import logoImg from '../assets/brand/logo.png'
 
 
 
@@ -154,25 +155,15 @@ async function submit() {
 
 .auth-brand__logo {
 
-  width: 44px;
+  width: 48px;
 
-  height: 44px;
+  height: 48px;
 
-  border-radius: 12px;
+  border-radius: 14px;
 
-  background: var(--fonu-brand);
+  object-fit: cover;
 
-  color: #fff;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-
-  font-size: 22px;
-
-  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.22);
 
 }
 

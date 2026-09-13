@@ -105,12 +105,15 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatusHandler) resolvePublicIPs(ctx context.Context) (ipv4, ipv6, source string) {
-	ddnsStatus, _, ddnsCount := h.ddnsSvc.Summary(ctx)
-	if ddnsCount > 0 && ddnsStatus != "disabled" {
-		ipv4, ipv6, _ := h.ddnsSvc.PublicIPs(ctx)
+	if ipv4, ipv6, ok := h.ddnsSvc.PublicIPs(ctx); ok {
 		return ipv4, ipv6, "ddns"
 	}
-	ipv4, ipv6, err := publicip.Detect(ctx)
+	if ipv4, ipv6, ok := h.ddnsSvc.LastKnownPublicIPs(ctx); ok {
+		return ipv4, ipv6, "ddns"
+	}
+	detectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	ipv4, ipv6, err := publicip.Detect(detectCtx)
 	if err != nil {
 		return "", ipv6, "none"
 	}

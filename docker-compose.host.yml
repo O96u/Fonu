@@ -1,0 +1,18 @@
+# 飞牛 NAS 等已占用 80/443 的环境：使用 host 网络 + 高位默认反代端口
+services:
+  fonu:
+    image: muxui/fonu:${FONU_VERSION:-latest}
+    container_name: fonu
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - fonu-data:/data
+    environment:
+      FONU_DATA_DIR: /data
+      FONU_LISTEN: :6893
+      FONU_SESSION_SECRET: ${FONU_SESSION_SECRET:-change-me-in-production}
+      FONU_NGINX_HTTP_PORT: ${FONU_NGINX_HTTP_PORT:-18080}
+      FONU_NGINX_HTTPS_PORT: ${FONU_NGINX_HTTPS_PORT:-9443}
+
+volumes:
+  fonu-data:

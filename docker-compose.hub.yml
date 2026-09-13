@@ -1,6 +1,6 @@
 services:
   fonu:
-    image: ${DOCKERHUB_USERNAME}/fonu:${FONU_VERSION:-latest}
+    image: muxui/fonu:${FONU_VERSION:-latest}
     container_name: fonu
     restart: unless-stopped
     ports:

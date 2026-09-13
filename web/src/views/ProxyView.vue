@@ -1,153 +1,400 @@
 <template>
-  <PageHeader title="反代" description="管理通过域名访问的 NAS 服务">
+  <PageHeader
+    title="反代"
+    description="通过 Nginx 反向代理，让内网服务可以通过域名安全访问"
+  >
     <template #actions>
-      <n-button :loading="scanning" @click="scanServices">扫描服务</n-button>
+      <n-button :loading="scanning" @click="scanServices">
+        <template #icon><n-icon :component="SearchOutline" /></template>
+        扫描服务
+      </n-button>
       <n-button type="primary" @click="openCreate">
         <template #icon><n-icon :component="AddOutline" /></template>
-        新增规则
+        新建规则
       </n-button>
     </template>
   </PageHeader>
 
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
-  <FonuCard v-else flush>
-    <div class="toolbar">
-      <n-input v-model:value="search" clearable placeholder="搜索域名或 IP" style="max-width: 260px">
-        <template #prefix><n-icon :component="SearchOutline" /></template>
-      </n-input>
-      <n-select v-model:value="statusFilter" :options="statusOptions" clearable placeholder="状态" style="width: 120px" />
-      <n-select v-model:value="httpsFilter" :options="httpsOptions" clearable placeholder="HTTPS" style="width: 120px" />
+  <template v-else>
+    <div class="stats-row">
+      <div class="stat-card">
+        <n-icon :component="LayersOutline" class="stat-card__icon stat-card__icon--blue" />
+        <div class="stat-card__value">{{ rules.length }}</div>
+        <div class="stat-card__label">服务总数</div>
+        <div class="stat-card__sub">{{ enabledCount }} 运行 · {{ disabledCount }} 停止</div>
+      </div>
+      <div class="stat-card">
+        <n-icon :component="CloudUploadOutline" class="stat-card__icon stat-card__icon--green" />
+        <div class="stat-card__value stat-card__value--sm">{{ formatBytes(trafficTotals.upload) }}</div>
+        <div class="stat-card__label">总上传</div>
+        <div class="stat-card__sub">累计流量</div>
+      </div>
+      <div class="stat-card">
+        <n-icon :component="CloudDownloadOutline" class="stat-card__icon stat-card__icon--blue" />
+        <div class="stat-card__value stat-card__value--sm">{{ formatBytes(trafficTotals.download) }}</div>
+        <div class="stat-card__label">总下载</div>
+        <div class="stat-card__sub">累计流量</div>
+      </div>
+      <div class="stat-card">
+        <n-icon :component="ArrowUpOutline" class="stat-card__icon stat-card__icon--amber" />
+        <div class="stat-card__value stat-card__value--sm">{{ formatRate(trafficTotals.uploadRate) }}</div>
+        <div class="stat-card__label">当前上传</div>
+        <div class="stat-card__sub">实时速率</div>
+      </div>
+      <div class="stat-card">
+        <n-icon :component="ArrowDownOutline" class="stat-card__icon stat-card__icon--green" />
+        <div class="stat-card__value stat-card__value--sm">{{ formatRate(trafficTotals.downloadRate) }}</div>
+        <div class="stat-card__label">当前下载</div>
+        <div class="stat-card__sub">实时速率</div>
+      </div>
+      <div class="stat-card">
+        <n-icon :component="PeopleOutline" class="stat-card__icon stat-card__icon--purple" />
+        <div class="stat-card__value">{{ trafficTotals.connections }}</div>
+        <div class="stat-card__label">当前连接</div>
+        <div class="stat-card__sub">全部规则合计</div>
+      </div>
     </div>
 
-    <n-data-table
-      v-if="filteredRules.length > 0"
-      :columns="columns"
-      :data="filteredRules"
-      :loading="loading"
-      :bordered="false"
-      :scroll-x="1280"
-      :row-key="(r: ProxyRule) => r.id"
-    />
+    <div class="proxy-layout" :class="{ 'proxy-layout--with-detail': showDetailPanel && selectedRule }">
+      <FonuCard flush class="proxy-panel">
+        <div class="proxy-toolbar">
+          <n-input
+            v-model:value="search"
+            clearable
+            size="small"
+            placeholder="搜索域名或备注..."
+            class="proxy-toolbar__search"
+          >
+            <template #prefix><n-icon :component="SearchOutline" /></template>
+          </n-input>
+          <n-select
+            v-model:value="statusFilter"
+            size="small"
+            :options="statusOptions"
+            clearable
+            placeholder="全部状态"
+            class="proxy-toolbar__filter"
+          />
+          <n-select
+            v-model:value="httpsFilter"
+            size="small"
+            :options="httpsOptions"
+            clearable
+            placeholder="全部协议"
+            class="proxy-toolbar__filter"
+          />
+          <div class="proxy-toolbar__spacer" />
+          <n-button size="small" quaternary :loading="loading" @click="refreshAll">
+            <template #icon><n-icon :component="RefreshOutline" /></template>
+          </n-button>
+        </div>
 
-    <EmptyState
-      v-if="!loading && rules.length === 0"
-      title="还没有反向代理规则"
-      description="创建第一条规则，让域名访问你的 NAS 服务。"
-    >
-      <template #action>
-        <n-button type="primary" @click="openCreate">创建规则</n-button>
-      </template>
-    </EmptyState>
-  </FonuCard>
+        <div v-if="loading && rules.length === 0" class="proxy-loading">
+          <n-spin size="medium" />
+        </div>
+
+        <div v-else-if="filteredRules.length > 0" class="proxy-table-wrap">
+          <n-data-table
+            class="proxy-table"
+            :columns="columns"
+            :data="filteredRules"
+            :bordered="false"
+            size="small"
+            :scroll-x="1180"
+            :row-key="(r: ProxyRule) => r.id"
+            :row-props="rowProps"
+          />
+        </div>
+
+        <EmptyState
+          v-else-if="rules.length === 0"
+          title="还没有反向代理规则"
+          description="创建第一条规则，让域名访问你的 NAS 服务。"
+        >
+          <template #action>
+            <n-button type="primary" @click="openCreate">新建规则</n-button>
+          </template>
+        </EmptyState>
+
+        <EmptyState
+          v-else
+          title="没有匹配的规则"
+          description="试试调整搜索关键词或筛选条件。"
+        />
+      </FonuCard>
+
+      <aside v-if="showDetailPanel && selectedRule" class="proxy-detail">
+        <div class="proxy-detail__head">
+          <div>
+            <div class="proxy-detail__title">{{ primaryHost(selectedRule) }}</div>
+            <StatusBadge
+              :value="selectedRule.enabled ? 'ok' : 'disabled'"
+              :text="selectedRule.enabled ? '运行中' : '已停止'"
+            />
+          </div>
+          <n-button size="small" quaternary @click="closeDetail">
+            <template #icon><n-icon :component="CloseOutline" /></template>
+          </n-button>
+        </div>
+
+        <n-tabs v-model:value="detailTab" type="line" size="small" class="proxy-detail__tabs">
+          <n-tab-pane name="overview" tab="概览" />
+          <n-tab-pane name="logs" tab="日志" />
+          <n-tab-pane name="settings" tab="设置" />
+        </n-tabs>
+
+        <div v-if="detailTab === 'overview'" class="proxy-detail__body">
+          <section class="detail-section">
+            <div class="detail-section__head">
+              <h4>基础信息</h4>
+              <n-button size="tiny" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
+            </div>
+            <dl class="detail-kv">
+              <div><dt>域名</dt><dd>{{ ruleHosts(selectedRule).join('、') }}</dd></div>
+              <div><dt>监听端口</dt><dd>{{ listenLabel(selectedRule) }}</dd></div>
+              <div><dt>目标地址</dt><dd class="mono">{{ selectedRule.upstream }}</dd></div>
+              <div><dt>协议</dt><dd>{{ selectedRule.https_enabled ? 'HTTPS' : 'HTTP' }}</dd></div>
+              <div><dt>状态</dt><dd>{{ selectedRule.enabled ? '运行中' : '已停止' }}</dd></div>
+              <div v-if="selectedRule.remark"><dt>备注</dt><dd>{{ selectedRule.remark }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="detail-section">
+            <div class="detail-section__head">
+              <h4>
+                实时数据
+                <span class="detail-section__sub">（最近 5 分钟）</span>
+              </h4>
+              <span class="live-badge"><span class="live-badge__dot" />实时</span>
+            </div>
+            <div class="traffic-live-legend">
+              <span class="traffic-live-legend__item traffic-live-legend__item--up">
+                <span class="traffic-live-legend__dot" />
+                上传 {{ formatRate(selectedTraffic?.upload_rate ?? 0) }}
+              </span>
+              <span class="traffic-live-legend__item traffic-live-legend__item--down">
+                <span class="traffic-live-legend__dot" />
+                下载 {{ formatRate(selectedTraffic?.download_rate ?? 0) }}
+              </span>
+            </div>
+            <MiniTrafficChart
+              :labels="trafficChart.labels"
+              :upload="trafficChart.upload"
+              :download="trafficChart.download"
+            />
+          </section>
+
+          <section class="detail-section">
+            <h4>流量统计</h4>
+            <div class="traffic-mini-grid">
+              <div class="traffic-mini">
+                <div class="traffic-mini__label">总上传</div>
+                <div class="traffic-mini__value">{{ formatBytes(selectedTraffic?.upload_total ?? 0) }}</div>
+              </div>
+              <div class="traffic-mini">
+                <div class="traffic-mini__label">总下载</div>
+                <div class="traffic-mini__value">{{ formatBytes(selectedTraffic?.download_total ?? 0) }}</div>
+              </div>
+              <div class="traffic-mini">
+                <div class="traffic-mini__label">当前上传</div>
+                <div class="traffic-mini__value">{{ formatRate(selectedTraffic?.upload_rate ?? 0) }}</div>
+              </div>
+              <div class="traffic-mini">
+                <div class="traffic-mini__label">当前下载</div>
+                <div class="traffic-mini__value">{{ formatRate(selectedTraffic?.download_rate ?? 0) }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <div class="detail-section__head">
+              <h4>连接信息</h4>
+              <n-button size="tiny" quaternary @click="loadClients">刷新</n-button>
+            </div>
+            <div class="detail-kv">
+              <div><dt>当前连接</dt><dd>{{ selectedTraffic?.connections ?? 0 }}</dd></div>
+            </div>
+            <div v-if="clientRows.length > 0" class="clients-list clients-list--compact">
+              <div v-for="row in clientRows" :key="row.ip" class="clients-row">
+                <span class="mono">{{ row.ip }}</span>
+                <span class="text-muted">{{ formatRelativeTime(row.last_seen) }}</span>
+              </div>
+            </div>
+            <p v-else class="detail-empty">最近 65 秒内暂无访问客户端</p>
+          </section>
+        </div>
+
+        <div v-else-if="detailTab === 'logs'" class="proxy-detail__body proxy-detail__body--logs">
+          <div class="log-panel-head">
+            <span class="text-muted">实时访问日志</span>
+            <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
+          </div>
+          <div ref="logBox" class="proxy-log-box proxy-log-box--embedded">
+            <div
+              v-for="(line, i) in logLines"
+              :key="i"
+              class="proxy-log-line"
+              :class="logLineClass(line)"
+            >
+              {{ formatAccessLine(line) }}
+            </div>
+            <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
+          </div>
+        </div>
+
+        <div v-else class="proxy-detail__body">
+          <p class="detail-hint">在此快速调整规则开关，完整编辑请点「编辑规则」。</p>
+          <n-form label-placement="top" class="detail-form">
+            <n-form-item label="启用 HTTPS">
+              <n-switch :value="selectedRule.https_enabled" disabled />
+            </n-form-item>
+            <n-form-item label="HTTP 跳转 HTTPS">
+              <n-switch :value="selectedRule.http_redirect" disabled />
+            </n-form-item>
+            <n-form-item label="启用规则">
+              <n-switch :value="selectedRule.enabled" disabled />
+            </n-form-item>
+          </n-form>
+          <n-space>
+            <n-button type="primary" @click="openEdit(selectedRule)">编辑规则</n-button>
+            <n-button type="error" quaternary @click="confirmDelete(selectedRule)">删除规则</n-button>
+          </n-space>
+        </div>
+      </aside>
+    </div>
+  </template>
 
   <n-modal v-model:show="showModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-modal">
       <div class="proxy-modal__form">
-        <h3 class="modal-title">{{ editing ? '编辑规则' : '新增规则' }}</h3>
-        <n-form label-placement="top">
-          <n-form-item label="监听类型">
-            <div class="listen-types">
-              <n-checkbox v-model:checked="form.listen_ipv4">IPv4</n-checkbox>
-              <n-checkbox v-model:checked="form.listen_ipv6">IPv6</n-checkbox>
+        <div class="proxy-modal__header">
+          <h3 class="modal-title">{{ editing ? '编辑规则' : '新增规则' }}</h3>
+          <n-button size="small" quaternary @click="showModal = false">
+            <template #icon><n-icon :component="CloseOutline" /></template>
+          </n-button>
+        </div>
+
+        <n-form label-placement="top" class="proxy-modal__body">
+          <n-form-item required>
+            <template #label>
+              <span class="form-label">
+                前端域名
+                <n-tooltip trigger="hover">
+                  <template #trigger>
+                    <n-icon :component="HelpCircleOutline" class="form-label__help" />
+                  </template>
+                  每行一个域名；如需单独端口可写 example.com:6893
+                </n-tooltip>
+              </span>
+            </template>
+            <div class="field-stack">
+              <n-input
+                v-model:value="form.hostsText"
+                type="textarea"
+                :rows="4"
+                placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
+              />
+              <p class="field-hint">支持多个域名，每行一个，可包含端口（如 example.com:6893）</p>
             </div>
           </n-form-item>
-          <n-form-item label="监听端口">
-            <n-input-number v-model:value="form.listen_port" :min="1" :max="65535" style="width: 160px" />
+
+          <div class="listen-row">
+            <div class="listen-col listen-col--port">
+              <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
+              <div class="listen-col__control">
+                <n-input-number v-model:value="form.listen_port" :min="1" :max="65535" class="port-input" />
+              </div>
+            </div>
+            <div class="listen-col listen-col--protocol">
+              <div class="listen-col__label">监听协议</div>
+              <div class="listen-col__control">
+                <div class="listen-types">
+                  <n-checkbox v-model:checked="form.listen_ipv4">IPv4</n-checkbox>
+                  <n-checkbox v-model:checked="form.listen_ipv6">IPv6</n-checkbox>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <n-form-item label="目标地址" required>
+            <div class="field-stack">
+              <n-input v-model:value="form.upstream" placeholder="例如：http://192.168.1.100:5173" />
+              <p class="field-hint">支持 http://、https://，也可以是 IP 地址或内网域名</p>
+            </div>
           </n-form-item>
-          <n-form-item label="前端域名">
+
+          <div class="form-switch-list">
+            <div class="form-switch-row">
+              <div class="form-switch-row__text">
+                <div class="form-switch-row__label">启用 HTTPS</div>
+                <div class="form-switch-row__hint">为前端域名启用 HTTPS 访问</div>
+              </div>
+              <n-switch v-model:value="form.https_enabled" />
+            </div>
+            <div class="form-switch-row">
+              <div class="form-switch-row__text">
+                <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
+                <div class="form-switch-row__hint">将 HTTP 请求自动跳转为 HTTPS</div>
+              </div>
+              <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
+            </div>
+            <div class="form-switch-row">
+              <div class="form-switch-row__text">
+                <div class="form-switch-row__label">启用规则</div>
+                <div class="form-switch-row__hint">创建后立即生效，此规则将开始转发请求</div>
+              </div>
+              <n-switch v-model:value="form.enabled" />
+            </div>
+          </div>
+
+          <n-form-item label="备注">
             <n-input
-              v-model:value="form.hostsText"
-              type="textarea"
-              :rows="5"
-              placeholder="每行一个域名，例如：&#10;1.example.com&#10;2.example.com&#10;example.org&#10;example.com:6893"
+              v-model:value="form.remark"
+              maxlength="100"
+              show-count
+              placeholder="选填，便于识别该规则的用途"
             />
           </n-form-item>
-          <n-form-item label="目标地址">
-            <n-input v-model:value="form.upstream" placeholder="http://192.168.1.10:5666" />
-          </n-form-item>
-          <n-form-item label="启用 HTTPS">
-            <n-switch v-model:value="form.https_enabled" />
-          </n-form-item>
-          <n-form-item label="HTTP 跳转 HTTPS">
-            <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
-          </n-form-item>
-          <n-form-item label="启用规则">
-            <n-switch v-model:value="form.enabled" />
-          </n-form-item>
         </n-form>
+
         <div class="modal-footer">
           <n-button @click="showModal = false">取消</n-button>
           <n-button type="primary" :loading="saving" @click="save">{{ editing ? '保存' : '创建' }}</n-button>
         </div>
       </div>
+
       <div class="proxy-modal__help">
         <h4>配置说明</h4>
         <ol>
-          <li>监听端口为整组规则共用，如 <code>8011</code> 表示通过 <code>域名:8011</code> 访问</li>
-          <li>可添加多个前端域名，公网分别通过各自域名加同一端口访问</li>
-          <li>如需单独端口，可写 <code>example.com:6893</code></li>
-          <li>目标地址填写 NAS 内网服务，如 <code>http://192.168.8.3:6893</code></li>
+          <li>
+            <strong>前端域名</strong>：支持多个域名或子域名，每行一个；如需单独端口可写
+            <code>example.com:6893</code>。
+          </li>
+          <li>
+            <strong>目标地址</strong>：填写内网服务地址，支持 <code>http://</code>、<code>https://</code>、IP 或内网域名。
+          </li>
+          <li>
+            <strong>其他选项</strong>
+            <ul>
+              <li>启用 HTTPS：为域名配置 SSL 证书访问</li>
+              <li>HTTP 跳转 HTTPS：自动将 HTTP 请求重定向到 HTTPS</li>
+              <li>启用规则：创建后立即开始转发</li>
+            </ul>
+          </li>
         </ol>
-        <p class="help-note">自定义端口需在 Docker / 路由器中映射对应端口到 Fonu Nginx。</p>
-      </div>
-    </div>
-  </n-modal>
-
-  <n-modal
-    v-model:show="showLogModal"
-    preset="card"
-    :style="{ width: 'min(960px, 96vw)' }"
-    :segmented="{ content: true }"
-    :content-style="{ padding: 0 }"
-    @after-leave="stopLogStream"
-  >
-    <template #header>
-      <div class="log-modal-header">
-        <div>
-          <div class="log-modal-title">访问日志</div>
-          <div class="log-modal-sub">{{ logRuleTitle }}</div>
-        </div>
-        <n-button size="small" quaternary @click="clearLogLines">清空</n-button>
-      </div>
-    </template>
-    <div ref="logBox" class="proxy-log-box">
-      <div v-for="(line, i) in logLines" :key="i" class="proxy-log-line" :class="logLineClass(line)">
-        {{ formatAccessLine(line) }}
-      </div>
-      <div v-if="logLines.length === 0" class="proxy-log-empty">
-        暂无记录。打开时会加载该域名最近 100 条访问日志，之后实时追加。请通过反代域名访问（非 Fonu 管理页）；完整历史见「日志 → 访问日志」。
-      </div>
-    </div>
-  </n-modal>
-
-  <n-modal
-    v-model:show="showClientsModal"
-    preset="card"
-    :style="{ width: 'min(520px, 96vw)' }"
-    :segmented="{ content: true }"
-    @after-leave="stopClientsPoll"
-  >
-    <template #header>
-      <div>
-        <div class="log-modal-title">当前连接</div>
-        <div class="log-modal-sub">{{ clientsRuleTitle }}</div>
-      </div>
-    </template>
-    <n-spin :show="clientsLoading">
-      <div v-if="clientRows.length > 0" class="clients-list">
-        <div v-for="row in clientRows" :key="row.ip" class="clients-row">
-          <span class="mono">{{ row.ip }}</span>
-          <span class="text-muted">{{ formatRelativeTime(row.last_seen) }}</span>
+        <div class="proxy-modal__tip">
+          <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
+          <span>请确保已正确配置域名解析，且内网服务可以正常访问。</span>
         </div>
       </div>
-      <div v-else class="clients-empty">最近 65 秒内暂无访问客户端</div>
-    </n-spin>
+    </div>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
 import {
   NButton,
   NCheckbox,
@@ -159,19 +406,37 @@ import {
   NInputNumber,
   NModal,
   NSelect,
+  NSpace,
   NSpin,
   NSwitch,
+  NTabPane,
+  NTabs,
   NTag,
+  NTooltip,
   useDialog,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
-import { AddOutline, SearchOutline } from '@vicons/ionicons5'
+import {
+  AddOutline,
+  ArrowDownOutline,
+  ArrowUpOutline,
+  CloseOutline,
+  CloudDownloadOutline,
+  CloudUploadOutline,
+  HelpCircleOutline,
+  InformationCircleOutline,
+  LayersOutline,
+  PeopleOutline,
+  RefreshOutline,
+  SearchOutline,
+} from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
 import type { ProxyClientConn, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
+import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { formatBytes, formatRate, formatRelativeTime } from '../utils/format'
@@ -189,25 +454,31 @@ const search = ref('')
 const statusFilter = ref<string | null>(null)
 const httpsFilter = ref<string | null>(null)
 const scanning = ref(false)
-const showLogModal = ref(false)
-const logRule = ref<ProxyRule | null>(null)
+const selectedRuleId = ref<number | null>(null)
+const showDetailPanel = ref(false)
+const detailTab = ref<'overview' | 'logs' | 'settings'>('overview')
 const logLines = ref<string[]>([])
 const logBox = ref<HTMLElement | null>(null)
 let logEventSource: EventSource | null = null
 const trafficByRule = ref<Record<number, ProxyTraffic>>({})
-const showClientsModal = ref(false)
-const clientsRule = ref<ProxyRule | null>(null)
 const clientRows = ref<ProxyClientConn[]>([])
 const clientsLoading = ref(false)
+type RatePoint = { at: number; upload: number; download: number }
+const rateHistory = ref<RatePoint[]>([])
+const RATE_HISTORY_MS = 5 * 60 * 1000
 let trafficTimer: ReturnType<typeof setInterval> | null = null
 let clientsTimer: ReturnType<typeof setInterval> | null = null
 
-const logRuleTitle = computed(() => (logRule.value ? ruleTitle(logRule.value) : ''))
-const clientsRuleTitle = computed(() => (clientsRule.value ? ruleTitle(clientsRule.value) : ''))
+const nginxHttpPort = ref(80)
+const nginxHttpsPort = ref(443)
+
+function defaultListenPort(httpsEnabled: boolean) {
+  return httpsEnabled ? nginxHttpsPort.value : nginxHttpPort.value
+}
 
 const statusOptions = [
   { label: '运行中', value: 'enabled' },
-  { label: '已停用', value: 'disabled' },
+  { label: '已停止', value: 'disabled' },
 ]
 const httpsOptions = [
   { label: 'HTTPS', value: 'on' },
@@ -223,6 +494,112 @@ const form = reactive({
   https_enabled: true,
   http_redirect: true,
   enabled: true,
+  remark: '',
+})
+
+const enabledCount = computed(() => rules.value.filter((r) => r.enabled).length)
+const disabledCount = computed(() => rules.value.length - enabledCount.value)
+
+const trafficTotals = computed(() => {
+  let upload = 0
+  let download = 0
+  let uploadRate = 0
+  let downloadRate = 0
+  let connections = 0
+  for (const stats of Object.values(trafficByRule.value)) {
+    upload += stats.upload_total
+    download += stats.download_total
+    uploadRate += stats.upload_rate
+    downloadRate += stats.download_rate
+    connections += stats.connections
+  }
+  return { upload, download, uploadRate, downloadRate, connections }
+})
+
+const filteredRules = computed(() =>
+  rules.value.filter((rule) => {
+    const q = search.value.toLowerCase()
+    const hostText = ruleHosts(rule).join(' ').toLowerCase()
+    const remark = (rule.remark ?? '').toLowerCase()
+    if (q && !hostText.includes(q) && !rule.upstream.toLowerCase().includes(q) && !remark.includes(q)) return false
+    if (statusFilter.value === 'enabled' && !rule.enabled) return false
+    if (statusFilter.value === 'disabled' && rule.enabled) return false
+    if (httpsFilter.value === 'on' && !rule.https_enabled) return false
+    if (httpsFilter.value === 'off' && rule.https_enabled) return false
+    return true
+  }),
+)
+
+const selectedRule = computed(() => rules.value.find((r) => r.id === selectedRuleId.value) ?? null)
+const selectedTraffic = computed(() =>
+  selectedRule.value ? trafficByRule.value[selectedRule.value.id] : undefined,
+)
+
+const trafficChart = computed(() => {
+  const now = Date.now()
+  const labels: string[] = []
+  const upload: number[] = []
+  const download: number[] = []
+  for (let i = 5; i >= 0; i--) {
+    const bucketEnd = now - i * 60 * 1000
+    const bucketStart = bucketEnd - 60 * 1000
+    const points = rateHistory.value.filter((p) => p.at > bucketStart && p.at <= bucketEnd)
+    const avg = (key: 'upload' | 'download') =>
+      points.length ? points.reduce((sum, p) => sum + p[key], 0) / points.length : 0
+    upload.push(avg('upload'))
+    download.push(avg('download'))
+    const d = new Date(bucketEnd)
+    labels.push(
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+    )
+  }
+  return { labels, upload, download }
+})
+
+function clearRateHistory() {
+  rateHistory.value = []
+}
+
+function recordRateSample(ruleId: number) {
+  const stats = trafficByRule.value[ruleId]
+  if (!stats) return
+  const now = Date.now()
+  rateHistory.value.push({
+    at: now,
+    upload: stats.upload_rate,
+    download: stats.download_rate,
+  })
+  const cutoff = now - RATE_HISTORY_MS
+  rateHistory.value = rateHistory.value.filter((p) => p.at >= cutoff)
+}
+
+watch(filteredRules, (list) => {
+  if (list.length === 0) {
+    selectedRuleId.value = null
+    showDetailPanel.value = false
+    return
+  }
+  if (selectedRuleId.value && !list.some((r) => r.id === selectedRuleId.value)) {
+    selectedRuleId.value = null
+    showDetailPanel.value = false
+  }
+})
+
+function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' | 'settings' = 'overview') {
+  selectedRuleId.value = rule.id
+  detailTab.value = tab
+  showDetailPanel.value = true
+  clearRateHistory()
+  recordRateSample(rule.id)
+}
+
+function closeDetail() {
+  showDetailPanel.value = false
+  clearRateHistory()
+}
+
+watch(selectedRuleId, (id, prev) => {
+  if (id !== prev) clearRateHistory()
 })
 
 function ruleHosts(rule: ProxyRule): string[] {
@@ -236,6 +613,11 @@ function ruleHosts(rule: ProxyRule): string[] {
     })
   }
   return rule.domain ? [rule.domain] : []
+}
+
+function primaryHost(rule: ProxyRule): string {
+  const hosts = ruleHosts(rule)
+  return hosts[0] ?? `规则 #${rule.id}`
 }
 
 function hostsToText(rule: ProxyRule): string {
@@ -264,97 +646,139 @@ function parseHostsText(text: string): string[] {
     .filter(Boolean)
 }
 
-const filteredRules = computed(() =>
-  rules.value.filter((rule) => {
-    const q = search.value.toLowerCase()
-    const hostText = ruleHosts(rule).join(' ').toLowerCase()
-    if (q && !hostText.includes(q) && !rule.upstream.toLowerCase().includes(q)) return false
-    if (statusFilter.value === 'enabled' && !rule.enabled) return false
-    if (statusFilter.value === 'disabled' && rule.enabled) return false
-    if (httpsFilter.value === 'on' && !rule.https_enabled) return false
-    if (httpsFilter.value === 'off' && rule.https_enabled) return false
-    return true
-  }),
-)
+function parseHostname(line: string): string {
+  const raw = line.trim()
+  if (!raw) return ''
+  if (raw.includes(':') && !raw.includes(']') && raw.split(':').length === 2) {
+    return raw.split(':')[0].toLowerCase()
+  }
+  return raw.toLowerCase()
+}
+
+function effectiveListenPort(line: string, ruleListenPort: number): number {
+  const raw = line.trim()
+  if (raw.includes(':') && !raw.includes(']') && raw.split(':').length === 2) {
+    const port = Number.parseInt(raw.split(':')[1], 10)
+    if (port > 0) return port
+  }
+  return ruleListenPort
+}
+
+function hostBindingKey(hostname: string, port: number): string {
+  return `${hostname.toLowerCase()}:${port}`
+}
+
+function findHostConflict(
+  hosts: string[],
+  ruleListenPort: number,
+  excludeRuleId?: number,
+): { host: string; port: number; rule: ProxyRule } | null {
+  const wanted = new Set(
+    hosts.map((line) => hostBindingKey(parseHostname(line), effectiveListenPort(line, ruleListenPort))).filter((k) => !k.startsWith(':')),
+  )
+  if (wanted.size === 0) return null
+  for (const rule of rules.value) {
+    if (excludeRuleId && rule.id === excludeRuleId) continue
+    for (const host of asList(rule.hosts)) {
+      const hostname = host.hostname.toLowerCase()
+      const port = host.listen_port ?? rule.listen_port
+      if (wanted.has(hostBindingKey(hostname, port))) {
+        return { host: hostname, port, rule }
+      }
+    }
+  }
+  return null
+}
+
+function renderProtocol(row: ProxyRule): VNode {
+  const tags: VNode[] = []
+  if (row.https_enabled) {
+    tags.push(h(NTag, { size: 'small', type: 'info', bordered: false, round: true }, () => 'HTTPS'))
+  } else {
+    tags.push(h(NTag, { size: 'small', type: 'success', bordered: false, round: true }, () => 'HTTP'))
+  }
+  return h('div', { class: 'proto-tags' }, tags)
+}
+
+function rowProps(row: ProxyRule) {
+  return {
+    class: showDetailPanel.value && selectedRuleId.value === row.id ? 'proxy-row--active' : '',
+  }
+}
 
 const columns: DataTableColumns<ProxyRule> = [
-  { type: 'selection' },
   {
-    title: '前端域名',
+    title: '域名',
     key: 'hosts',
-    minWidth: 220,
-    render: (row) =>
-      h(
-        'div',
-        { class: 'host-tags' },
-        ruleHosts(row).map((host) =>
-          h(NTag, { size: 'small', bordered: false, round: true }, () => host),
-        ),
-      ),
+    minWidth: 160,
+    render: (row) => h('div', { class: 'domain-cell' }, [
+      h('div', { class: 'domain-cell__main' }, primaryHost(row)),
+      h('div', { class: 'domain-cell__sub' }, ruleHosts(row).length > 1 ? `等 ${ruleHosts(row).length} 个域名` : ''),
+    ]),
   },
   {
-    title: '监听',
+    title: '监听端口',
     key: 'listen_port',
-    width: 130,
+    width: 128,
     render: (row) => h('span', { class: 'mono text-secondary' }, listenLabel(row)),
   },
-  { title: '目标地址', key: 'upstream', render: (row) => h('span', { class: 'mono text-secondary' }, row.upstream) },
   {
-    title: 'HTTPS',
+    title: '目标地址',
+    key: 'upstream',
+    minWidth: 180,
+    render: (row) => h('span', { class: 'mono text-secondary' }, row.upstream),
+  },
+  {
+    title: '协议',
     key: 'https_enabled',
-    width: 90,
-    render: (row) =>
-      row.https_enabled
-        ? h(NTag, { size: 'small', type: 'info', bordered: false, round: true }, () => 'HTTPS')
-        : h('span', { class: 'text-muted' }, '-'),
+    width: 88,
+    render: (row) => renderProtocol(row),
   },
   {
     title: '状态',
     key: 'enabled',
-    width: 100,
-    render: (row) => h(StatusBadge, { value: row.enabled ? 'ok' : 'disabled', text: row.enabled ? '运行中' : '已停用' }),
+    width: 96,
+    render: (row) =>
+      h(StatusBadge, { value: row.enabled ? 'ok' : 'disabled', text: row.enabled ? '运行中' : '已停止' }),
   },
   {
-    title: '流量',
-    key: 'traffic',
-    width: 200,
-    render: (row) => {
-      const stats = trafficByRule.value[row.id]
-      if (!stats) {
-        return h('span', { class: 'text-muted' }, '-')
-      }
-      return h('div', { class: 'traffic-cell' }, [
-        h('div', { class: 'traffic-line' }, [
-          h('span', { class: 'traffic-dir' }, '↓'),
-          h('span', { class: 'mono' }, formatBytes(stats.download_total)),
-          h('span', { class: 'traffic-rate' }, formatRate(stats.download_rate)),
-        ]),
-        h('div', { class: 'traffic-line' }, [
-          h('span', { class: 'traffic-dir' }, '↑'),
-          h('span', { class: 'mono' }, formatBytes(stats.upload_total)),
-          h('span', { class: 'traffic-rate' }, formatRate(stats.upload_rate)),
-        ]),
-        h(
-          NButton,
-          {
-            size: 'tiny',
-            quaternary: true,
-            type: stats.connections > 0 ? 'info' : 'default',
-            class: 'traffic-conn-btn',
-            onClick: () => openClients(row),
-          },
-          () => `${stats.connections} 连接`,
-        ),
-      ])
-    },
+    title: '当前连接',
+    key: 'connections',
+    width: 88,
+    render: (row) => h('span', { class: 'mono' }, String(trafficByRule.value[row.id]?.connections ?? 0)),
+  },
+  {
+    title: '当前上传',
+    key: 'upload_rate',
+    width: 96,
+    render: (row) => h('span', { class: 'mono text-secondary' }, formatRate(trafficByRule.value[row.id]?.upload_rate ?? 0)),
+  },
+  {
+    title: '当前下载',
+    key: 'download_rate',
+    width: 96,
+    render: (row) => h('span', { class: 'mono text-secondary' }, formatRate(trafficByRule.value[row.id]?.download_rate ?? 0)),
+  },
+  {
+    title: '总上传',
+    key: 'upload_total',
+    width: 96,
+    render: (row) => h('span', { class: 'mono' }, formatBytes(trafficByRule.value[row.id]?.upload_total ?? 0)),
+  },
+  {
+    title: '总下载',
+    key: 'download_total',
+    width: 96,
+    render: (row) => h('span', { class: 'mono' }, formatBytes(trafficByRule.value[row.id]?.download_total ?? 0)),
   },
   {
     title: '操作',
     key: 'actions',
-    width: 196,
+    width: 168,
+    fixed: 'right',
     render: (row) =>
       renderTableRowActions([
-        { label: '日志', onClick: () => openLogs(row) },
+        { label: '详情', onClick: () => openDetail(row) },
         { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
         { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
       ]),
@@ -382,20 +806,15 @@ function logLineClass(line: string): string {
   return ''
 }
 
-function openLogs(row: ProxyRule) {
-  logRule.value = row
-  logLines.value = []
-  showLogModal.value = true
-}
-
 function stopLogStream() {
   logEventSource?.close()
   logEventSource = null
 }
 
 function startLogStream() {
-  if (!logRule.value || logEventSource) return
-  logEventSource = new EventSource(`/api/proxies/${logRule.value.id}/logs/stream?tail=100`, {
+  const rule = selectedRule.value
+  if (!rule || logEventSource) return
+  logEventSource = new EventSource(`/api/proxies/${rule.id}/logs/stream?tail=100`, {
     withCredentials: true,
   })
   logEventSource.addEventListener('log', (event) => {
@@ -406,7 +825,7 @@ function startLogStream() {
     })
   })
   logEventSource.onerror = () => {
-    message.warning('日志连接中断，请关闭后重新打开')
+    message.warning('日志连接中断')
     stopLogStream()
   }
 }
@@ -415,9 +834,11 @@ function clearLogLines() {
   logLines.value = []
 }
 
-watch(showLogModal, (open) => {
-  if (open) startLogStream()
-  else stopLogStream()
+watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab]) => {
+  stopLogStream()
+  if (!visible || !id || tab !== 'logs') return
+  logLines.value = []
+  startLogStream()
 })
 
 async function refreshTraffic() {
@@ -428,9 +849,16 @@ async function refreshTraffic() {
       next[row.rule_id] = row
     }
     trafficByRule.value = next
+    if (showDetailPanel.value && selectedRuleId.value && detailTab.value === 'overview') {
+      recordRateSample(selectedRuleId.value)
+    }
   } catch {
     // ignore polling errors
   }
+}
+
+async function refreshAll() {
+  await Promise.all([load(), refreshTraffic()])
 }
 
 function startTrafficPoll() {
@@ -446,10 +874,11 @@ function stopTrafficPoll() {
 }
 
 async function loadClients() {
-  if (!clientsRule.value) return
+  const rule = selectedRule.value
+  if (!rule) return
   clientsLoading.value = true
   try {
-    clientRows.value = asList(await api.getProxyClients(clientsRule.value.id))
+    clientRows.value = asList(await api.getProxyClients(rule.id))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '读取连接失败')
   } finally {
@@ -457,16 +886,10 @@ async function loadClients() {
   }
 }
 
-function openClients(row: ProxyRule) {
-  clientsRule.value = row
-  clientRows.value = []
-  showClientsModal.value = true
-}
-
 function startClientsPoll() {
   stopClientsPoll()
   void loadClients()
-  clientsTimer = setInterval(loadClients, 2000)
+  clientsTimer = setInterval(loadClients, 5000)
 }
 
 function stopClientsPoll() {
@@ -476,10 +899,23 @@ function stopClientsPoll() {
   }
 }
 
-watch(showClientsModal, (open) => {
-  if (open) startClientsPoll()
-  else stopClientsPoll()
+watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab]) => {
+  if (!visible || !id || tab !== 'overview') {
+    stopClientsPoll()
+    return
+  }
+  startClientsPoll()
 })
+
+async function loadDefaults() {
+  try {
+    const { nginx_http_port, nginx_https_port } = await api.getVersion()
+    if (nginx_http_port > 0) nginxHttpPort.value = nginx_http_port
+    if (nginx_https_port > 0) nginxHttpsPort.value = nginx_https_port
+  } catch {
+    // keep local fallbacks
+  }
+}
 
 async function load() {
   loading.value = true
@@ -494,7 +930,7 @@ async function load() {
 }
 
 function resetForm() {
-  form.listen_port = 80
+  form.listen_port = defaultListenPort(form.https_enabled)
   form.listen_ipv4 = true
   form.listen_ipv6 = false
   form.hostsText = ''
@@ -502,6 +938,7 @@ function resetForm() {
   form.https_enabled = true
   form.http_redirect = true
   form.enabled = true
+  form.remark = ''
 }
 
 function buildPayload(): ProxySavePayload {
@@ -521,6 +958,7 @@ function buildPayload(): ProxySavePayload {
     https_enabled: form.https_enabled,
     http_redirect: form.http_redirect,
     enabled: form.enabled,
+    remark: form.remark.trim(),
   }
 }
 
@@ -552,8 +990,9 @@ function openCreate() {
 
 function openEdit(rule: ProxyRule) {
   editing.value = rule
+  selectedRuleId.value = rule.id
   Object.assign(form, {
-    listen_port: rule.listen_port || 80,
+    listen_port: rule.listen_port || defaultListenPort(rule.https_enabled),
     listen_ipv4: rule.listen_ipv4 ?? true,
     listen_ipv6: rule.listen_ipv6 ?? false,
     hostsText: hostsToText(rule),
@@ -561,14 +1000,26 @@ function openEdit(rule: ProxyRule) {
     https_enabled: rule.https_enabled,
     http_redirect: rule.http_redirect,
     enabled: rule.enabled,
+    remark: rule.remark ?? '',
   })
   showModal.value = true
 }
+
+watch(showModal, (open) => {
+  if (!open) editing.value = null
+})
 
 async function save() {
   saving.value = true
   try {
     const payload = buildPayload()
+    const listenPort = payload.listen_port ?? form.listen_port
+    const conflict = findHostConflict(payload.hosts, listenPort, editing.value?.id)
+    if (conflict) {
+      const owner = primaryHost(conflict.rule)
+      message.error(`域名 ${conflict.host}:${conflict.port} 已被规则「${owner}」使用，请编辑现有规则或更换域名/端口`)
+      return
+    }
     if (editing.value) {
       await api.updateProxy(editing.value.id, payload)
       message.success('规则已保存')
@@ -602,6 +1053,10 @@ function confirmDelete(rule: ProxyRule) {
       api
         .deleteProxy(rule.id)
         .then(async () => {
+          if (selectedRuleId.value === rule.id) {
+            selectedRuleId.value = null
+            showDetailPanel.value = false
+          }
           rules.value = rules.value.filter((r) => r.id !== rule.id)
           message.success('规则已删除')
           await load()
@@ -619,7 +1074,16 @@ function confirmDelete(rule: ProxyRule) {
   })
 }
 
+watch(
+  () => form.https_enabled,
+  (httpsEnabled) => {
+    if (!showModal.value || editing.value) return
+    form.listen_port = defaultListenPort(httpsEnabled)
+  },
+)
+
 onMounted(async () => {
+  await loadDefaults()
   await load()
   await refreshTraffic()
   startTrafficPoll()
@@ -632,31 +1096,317 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.toolbar {
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--fonu-space-4);
+  margin-bottom: var(--fonu-space-4);
+}
+
+.stat-card {
+  background: var(--fonu-surface);
+  border: 1px solid var(--fonu-border);
+  border-radius: var(--fonu-radius);
+  box-shadow: var(--fonu-shadow);
+  padding: var(--fonu-space-4);
+  min-height: 118px;
+}
+
+.stat-card__icon { font-size: 18px; margin-bottom: 4px; }
+.stat-card__icon--blue { color: #3b82f6; }
+.stat-card__icon--green { color: #10b981; }
+.stat-card__icon--amber { color: #f59e0b; }
+.stat-card__icon--purple { color: #8b5cf6; }
+
+.stat-card__value {
+  margin-top: 4px;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--fonu-text);
+}
+
+.stat-card__value--sm { font-size: 22px; }
+
+.stat-card__label {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stat-card__sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.proxy-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fonu-space-4);
+  align-items: start;
+}
+
+.proxy-layout--with-detail {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+.proxy-panel {
+  min-width: 0;
+}
+
+.proxy-panel :deep(.fonu-card__body) {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.proxy-toolbar {
   display: flex;
   align-items: center;
   gap: var(--fonu-space-3);
+  padding: var(--fonu-space-4);
+  border-bottom: 1px solid var(--fonu-border);
   flex-wrap: wrap;
-  margin-bottom: var(--fonu-space-4);
-  padding: 0 var(--fonu-space-5);
-  padding-top: var(--fonu-space-4);
 }
 
-.host-tags {
+.proxy-toolbar__search {
+  width: 240px;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.proxy-toolbar__filter {
+  width: 132px;
+  flex-shrink: 0;
+}
+
+.proxy-toolbar__spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--fonu-space-6) 0;
+}
+
+.proxy-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.proxy-table { width: 100%; }
+
+.proxy-table :deep(.proxy-row--active td) {
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.proxy-table :deep(.domain-cell__main) {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.proxy-table :deep(.domain-cell__sub) {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.proxy-table :deep(.proto-tags) {
   display: flex;
   flex-wrap: wrap;
+  gap: 4px;
+}
+
+.proxy-detail {
+  background: var(--fonu-surface);
+  border: 1px solid var(--fonu-border);
+  border-radius: var(--fonu-radius);
+  box-shadow: var(--fonu-shadow);
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.proxy-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-4) var(--fonu-space-4) 0;
+}
+
+.proxy-detail__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.proxy-detail__tabs {
+  padding: 0 var(--fonu-space-4);
+}
+
+.proxy-detail__body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--fonu-space-4);
+}
+
+.proxy-detail__body--logs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.detail-section {
+  margin-bottom: var(--fonu-space-5);
+}
+
+.detail-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--fonu-space-3);
+}
+
+.detail-section h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-section__sub {
+  font-weight: 400;
+  color: var(--fonu-text-muted);
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.live-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.traffic-live-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.traffic-live-legend__item {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+}
+
+.traffic-live-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.traffic-live-legend__item--up .traffic-live-legend__dot {
+  background: #10b981;
+}
+
+.traffic-live-legend__item--down .traffic-live-legend__dot {
+  background: #3b82f6;
+}
+
+.detail-kv {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.detail-kv div {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.detail-kv dt {
+  color: var(--fonu-text-muted);
+}
+
+.detail-kv dd {
+  margin: 0;
+  color: var(--fonu-text);
+  word-break: break-all;
+}
+
+.traffic-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.traffic-mini {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+}
+
+.traffic-mini__label {
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+}
+
+.traffic-mini__value {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.detail-empty,
+.detail-hint {
+  font-size: 13px;
+  color: var(--fonu-text-muted);
+  line-height: 1.6;
+}
+
+.log-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }
 
 .listen-types {
   display: flex;
-  gap: var(--fonu-space-4);
+  align-items: center;
+  gap: var(--fonu-space-5);
 }
 
 .proxy-modal {
   display: flex;
-  width: 760px;
+  width: 900px;
   max-width: 95vw;
+  max-height: 90vh;
   background: var(--fonu-surface);
   border-radius: var(--fonu-radius);
   overflow: hidden;
@@ -665,28 +1415,57 @@ onUnmounted(() => {
 
 .proxy-modal__form {
   flex: 1;
-  padding: var(--fonu-space-5);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.proxy-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-5) var(--fonu-space-5) 0;
+}
+
+.proxy-modal__body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--fonu-space-4) var(--fonu-space-5) 0;
 }
 
 .proxy-modal__help {
-  width: 280px;
+  width: 300px;
+  flex-shrink: 0;
   padding: var(--fonu-space-5);
-  background: var(--fonu-bg);
+  background: #f8fafc;
   border-left: 1px solid var(--fonu-border);
   font-size: 13px;
   color: var(--fonu-text-secondary);
+  overflow: auto;
 }
 
 .proxy-modal__help h4 {
   margin: 0 0 var(--fonu-space-3);
   font-size: 14px;
+  font-weight: 600;
   color: var(--fonu-text);
 }
 
 .proxy-modal__help ol {
   margin: 0;
   padding-left: 18px;
-  line-height: 1.7;
+  line-height: 1.75;
+}
+
+.proxy-modal__help ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.proxy-modal__help li + li {
+  margin-top: 10px;
 }
 
 .proxy-modal__help code {
@@ -696,14 +1475,131 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-.help-note {
-  margin-top: var(--fonu-space-4);
+.proxy-modal__tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: var(--fonu-space-5);
+  padding: 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.proxy-modal__tip-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 16px;
+}
+
+.form-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.form-label__help {
+  font-size: 14px;
+  color: var(--fonu-text-muted);
+  cursor: help;
+}
+
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.field-hint {
+  margin: 0;
   font-size: 12px;
   color: var(--fonu-text-muted);
+  line-height: 1.5;
+}
+
+.proxy-modal__body :deep(.n-form-item .n-form-item-blank) {
+  display: block;
+  width: 100%;
+}
+
+.listen-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: var(--fonu-space-5);
+}
+
+.listen-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.listen-col--port {
+  width: 168px;
+  flex-shrink: 0;
+}
+
+.listen-col--protocol {
+  flex-shrink: 0;
+}
+
+.listen-col__label {
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--fonu-text);
+}
+
+.required-mark {
+  color: #d03050;
+}
+
+.listen-col__control {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.port-input {
+  width: 100%;
+}
+
+.form-switch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: var(--fonu-space-4);
+}
+
+.form-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-4);
+  padding: 12px 14px;
+  border: 1px solid var(--fonu-border);
+  border-radius: 10px;
+  background: var(--fonu-bg);
+}
+
+.form-switch-row__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.form-switch-row__hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+  line-height: 1.5;
 }
 
 .modal-title {
-  margin: 0 0 var(--fonu-space-4);
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
 }
@@ -712,54 +1608,26 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: var(--fonu-space-3);
-  margin-top: var(--fonu-space-4);
-}
-
-@media (max-width: 640px) {
-  .proxy-modal {
-    flex-direction: column;
-  }
-  .proxy-modal__help {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--fonu-border);
-  }
-}
-
-.log-modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-4);
-  width: 100%;
-}
-
-.log-modal-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.log-modal-sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--fonu-text-muted);
+  padding: var(--fonu-space-4) var(--fonu-space-5) var(--fonu-space-5);
+  border-top: 1px solid var(--fonu-border);
+  margin-top: var(--fonu-space-2);
 }
 
 .proxy-log-box {
   background: #0f172a;
   color: #e2e8f0;
-  min-height: 420px;
-  max-height: min(68vh, 560px);
   overflow: auto;
-  padding: var(--fonu-space-4);
+  padding: var(--fonu-space-3);
   font-family: var(--fonu-mono);
   font-size: 12px;
   line-height: 1.7;
+  border-radius: var(--fonu-radius-sm);
 }
 
-html[data-theme='dark'] .proxy-log-box,
-html.dark .proxy-log-box {
-  background: #020617;
+.proxy-log-box--embedded {
+  flex: 1;
+  min-height: 280px;
+  max-height: 420px;
 }
 
 .proxy-log-line {
@@ -767,54 +1635,24 @@ html.dark .proxy-log-box {
   word-break: break-all;
 }
 
-.proxy-log-line.is-warn {
-  color: #fbbf24;
-}
-
-.proxy-log-line.is-error {
-  color: #f87171;
-}
+.proxy-log-line.is-warn { color: #fbbf24; }
+.proxy-log-line.is-error { color: #f87171; }
 
 .proxy-log-empty {
-  padding: var(--fonu-space-6);
+  padding: var(--fonu-space-5);
   text-align: center;
   color: #94a3b8;
-}
-
-.traffic-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.traffic-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.traffic-dir {
-  width: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.traffic-rate {
-  color: var(--fonu-text-muted);
-  font-size: 11px;
-}
-
-.traffic-conn-btn {
-  margin-top: 2px;
-  padding: 0 4px !important;
-  height: 22px !important;
 }
 
 .clients-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 10px;
+}
+
+.clients-list--compact .clients-row {
+  padding: 6px 8px;
 }
 
 .clients-row {
@@ -827,9 +1665,46 @@ html.dark .proxy-log-box {
   background: var(--fonu-bg);
 }
 
-.clients-empty {
-  padding: var(--fonu-space-6);
-  text-align: center;
-  color: var(--fonu-text-muted);
+.mono { font-family: var(--fonu-mono); }
+.text-muted { color: var(--fonu-text-muted); }
+.text-secondary { color: var(--fonu-text-secondary); }
+
+@media (max-width: 1399px) {
+  .proxy-layout--with-detail {
+    grid-template-columns: 1fr;
+  }
+  .proxy-detail {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 1199px) {
+  .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proxy-toolbar__filter { width: 100%; }
+}
+
+@media (max-width: 640px) {
+  .proxy-modal {
+    flex-direction: column;
+    width: 100%;
+  }
+  .proxy-modal__help {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--fonu-border);
+  }
+  .listen-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--fonu-space-4);
+  }
+
+  .listen-col--port {
+    width: 100%;
+  }
 }
 </style>
