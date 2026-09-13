@@ -25,10 +25,8 @@ jobs:
         include:
           - platform: linux/amd64
             arch: amd64
-            publish_default_tags: true
           - platform: linux/arm64
             arch: arm64
-            publish_default_tags: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,23 +38,6 @@ jobs:
         env:
           REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare image tags
-        id: tags
-        env:
-          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/fonu
-          VERSION: ${{ steps.version.outputs.version }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            echo "DOCKERHUB_USERNAME secret is not set" >&2
-            exit 1
-          fi
-          TAGS="${IMAGE}:${VERSION}-${ARCH}"
-          if [ "${{ matrix.publish_default_tags }}" = "true" ]; then
-            TAGS="${TAGS},${IMAGE}:${VERSION},${IMAGE}:latest"
-          fi
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -71,7 +52,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      - name: Build and push arch image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -79,10 +60,46 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/fonu:${{ steps.version.outputs.version }}-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  create-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create multi-arch manifest
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/fonu
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "${IMAGE}" ]; then
+            echo "DOCKERHUB_USERNAME secret is not set" >&2
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
