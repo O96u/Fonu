@@ -236,7 +236,12 @@
                 <span class="text-muted">实时访问日志</span>
                 <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
               </div>
-              <div ref="logBox" class="proxy-log-box proxy-log-box--embedded">
+              <div
+                ref="logBox"
+                class="proxy-log-box proxy-log-box--embedded"
+                :class="{ 'is-empty': logLines.length === 0 }"
+                @scroll="onLogBoxScroll"
+              >
                 <div
                   v-for="(line, i) in logLines"
                   :key="i"
@@ -450,6 +455,8 @@ const showDetailPanel = ref(false)
 const detailTab = ref<'overview' | 'logs'>('overview')
 const logLines = ref<string[]>([])
 const logBox = ref<HTMLElement | null>(null)
+const logStickToBottom = ref(true)
+const LOG_SCROLL_BOTTOM_THRESHOLD = 24
 let logEventSource: EventSource | null = null
 const trafficByRule = ref<Record<number, ProxyTraffic>>({})
 const clientRows = ref<ProxyClientConn[]>([])
@@ -868,6 +875,25 @@ function logLineClass(line: string): string {
   return ''
 }
 
+function isLogAtBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= LOG_SCROLL_BOTTOM_THRESHOLD
+}
+
+function onLogBoxScroll() {
+  const el = logBox.value
+  if (!el) return
+  logStickToBottom.value = isLogAtBottom(el)
+}
+
+function scrollLogToBottom(force = false) {
+  if (!force && !logStickToBottom.value) return
+  requestAnimationFrame(() => {
+    const el = logBox.value
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  })
+}
+
 function stopLogStream() {
   logEventSource?.close()
   logEventSource = null
@@ -882,9 +908,7 @@ function startLogStream() {
   logEventSource.addEventListener('log', (event) => {
     logLines.value.push(event.data)
     if (logLines.value.length > 500) logLines.value = logLines.value.slice(-400)
-    requestAnimationFrame(() => {
-      logBox.value?.scrollTo({ top: logBox.value.scrollHeight })
-    })
+    scrollLogToBottom()
   })
   logEventSource.onerror = () => {
     message.warning('日志连接中断')
@@ -894,16 +918,29 @@ function startLogStream() {
 
 function clearLogLines() {
   logLines.value = []
+  logStickToBottom.value = true
 }
 
-watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab], [wasVisible, wasId]) => {
+watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab], [wasVisible, wasId]) => {
   stopLogStream()
   if (!visible || !id || tab !== 'logs') return
   if (!wasVisible || id !== wasId) {
     logLines.value = []
+    logStickToBottom.value = true
   }
   startLogStream()
+  await nextTick()
+  scrollLogToBottom(true)
 })
+
+watch(
+  () => logLines.value.length,
+  async () => {
+    if (detailTab.value !== 'logs' || !logStickToBottom.value) return
+    await nextTick()
+    scrollLogToBottom()
+  },
+)
 
 async function refreshTraffic() {
   try {
@@ -1802,19 +1839,47 @@ onUnmounted(() => {
 .proxy-log-box {
   background: #0f172a;
   color: #e2e8f0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--fonu-space-3);
   font-family: var(--fonu-mono);
   font-size: 12px;
   line-height: 1.7;
   border-radius: var(--fonu-radius-sm);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
+
+.proxy-log-box:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
+}
+
+.proxy-log-box::-webkit-scrollbar {
+  width: 7px;
+}
+
+.proxy-log-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.proxy-log-box::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 4px;
+}
+
+.proxy-log-box:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
 }
 
 .proxy-log-box--embedded {
   flex: 1;
   min-height: 0;
+}
+
+.proxy-log-box--embedded.is-empty {
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 
 .proxy-log-line {
@@ -1826,10 +1891,6 @@ onUnmounted(() => {
 .proxy-log-line.is-error { color: #f87171; }
 
 .proxy-log-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: var(--fonu-space-5);
   text-align: center;
   color: #94a3b8;

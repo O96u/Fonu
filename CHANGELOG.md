@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.19] - 2026-09-13
+
+### 修复
+
+- 反代详情日志：修复无法滚动的问题，悬停显示滚动条，默认跟随最新日志
+
 ## [v0.1.18] - 2026-09-13
 
 ### 改进
