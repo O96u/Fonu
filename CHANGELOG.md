@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.18] - 2026-09-13
+
+### 改进
+
+- 反代详情：概览 / 日志 Tab 切换，默认概览；日志区域撑满侧栏
+- 反代列表：状态列改为开关，可直接启用/停用
+- 反代「复制」改为填入新建表单（名称加 `-复制` 后缀）
+- README Docker 徽章按 semver 排序，避免显示 `-amd64` 标签
+
+### 移除
+
+- 反代详情「设置」Tab 与拖动排序提示文案
+
 ## [v0.1.17] - 2026-09-13
 
 ### 新增

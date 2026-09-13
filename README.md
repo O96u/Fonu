@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/O96u/Fonu/blob/main/web/package.json"><img src="https://img.shields.io/github/package-json/v/O96u/Fonu?filename=web%2Fpackage.json&style=flat-square&color=22c55e" alt="version" /></a>
-  <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
+  <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?sort=semver&style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/目标平台-飞牛_fnOS-22c55e?style=flat-square" alt="飞牛 fnOS" />
   <img src="https://img.shields.io/badge/其他环境-未测试-94a3b8?style=flat-square" alt="其他环境未测试" />
   <img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />

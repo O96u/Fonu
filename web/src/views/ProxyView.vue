@@ -96,7 +96,6 @@
         </div>
 
         <template v-else-if="tableRules.length > 0">
-          <p v-if="canReorder" class="proxy-sort-hint">拖动左侧手柄可调整规则顺序</p>
           <div ref="tableWrapRef" class="proxy-table-wrap">
             <n-data-table
               class="proxy-table"
@@ -144,18 +143,15 @@
         </div>
 
         <n-tabs v-model:value="detailTab" type="line" size="small" class="proxy-detail__tabs">
-          <n-tab-pane name="overview" tab="概览" />
-          <n-tab-pane name="logs" tab="日志" />
-          <n-tab-pane name="settings" tab="设置" />
-        </n-tabs>
-
-        <div v-if="detailTab === 'overview'" class="proxy-detail__body">
+          <n-tab-pane name="overview" tab="概览">
+            <div class="proxy-detail__body">
           <section class="detail-section">
             <div class="detail-section__head">
               <h4>基础信息</h4>
               <n-space :size="4">
-                <n-button size="tiny" quaternary @click="copyRuleInfo(selectedRule)">复制</n-button>
+                <n-button size="tiny" quaternary @click="openDuplicate(selectedRule)">复制</n-button>
                 <n-button size="tiny" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
+                <n-button size="tiny" quaternary type="error" @click="confirmDelete(selectedRule)">删除</n-button>
               </n-space>
             </div>
             <dl class="detail-kv">
@@ -231,44 +227,29 @@
             </div>
             <p v-else class="detail-empty">最近 65 秒内暂无访问客户端</p>
           </section>
-        </div>
-
-        <div v-else-if="detailTab === 'logs'" class="proxy-detail__body proxy-detail__body--logs">
-          <div class="log-panel-head">
-            <span class="text-muted">实时访问日志</span>
-            <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
-          </div>
-          <div ref="logBox" class="proxy-log-box proxy-log-box--embedded">
-            <div
-              v-for="(line, i) in logLines"
-              :key="i"
-              class="proxy-log-line"
-              :class="logLineClass(line)"
-            >
-              {{ formatAccessLine(line) }}
             </div>
-            <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
-          </div>
-        </div>
+          </n-tab-pane>
 
-        <div v-else class="proxy-detail__body">
-          <p class="detail-hint">在此快速调整规则开关，完整编辑请点「编辑规则」。</p>
-          <n-form label-placement="top" class="detail-form">
-            <n-form-item label="启用 HTTPS">
-              <n-switch :value="selectedRule.https_enabled" disabled />
-            </n-form-item>
-            <n-form-item label="HTTP 跳转 HTTPS">
-              <n-switch :value="selectedRule.http_redirect" disabled />
-            </n-form-item>
-            <n-form-item label="启用规则">
-              <n-switch :value="selectedRule.enabled" disabled />
-            </n-form-item>
-          </n-form>
-          <n-space>
-            <n-button type="primary" @click="openEdit(selectedRule)">编辑规则</n-button>
-            <n-button type="error" quaternary @click="confirmDelete(selectedRule)">删除规则</n-button>
-          </n-space>
-        </div>
+          <n-tab-pane name="logs" tab="日志">
+            <div class="proxy-detail__body proxy-detail__body--logs">
+              <div class="log-panel-head">
+                <span class="text-muted">实时访问日志</span>
+                <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
+              </div>
+              <div ref="logBox" class="proxy-log-box proxy-log-box--embedded">
+                <div
+                  v-for="(line, i) in logLines"
+                  :key="i"
+                  class="proxy-log-line"
+                  :class="logLineClass(line)"
+                >
+                  {{ formatAccessLine(line) }}
+                </div>
+                <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
+              </div>
+            </div>
+          </n-tab-pane>
+        </n-tabs>
       </aside>
     </div>
   </template>
@@ -466,7 +447,7 @@ const httpsFilter = ref<string | null>(null)
 const scanning = ref(false)
 const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
-const detailTab = ref<'overview' | 'logs' | 'settings'>('overview')
+const detailTab = ref<'overview' | 'logs'>('overview')
 const logLines = ref<string[]>([])
 const logBox = ref<HTMLElement | null>(null)
 let logEventSource: EventSource | null = null
@@ -510,6 +491,7 @@ const form = reactive({
 const tableWrapRef = ref<HTMLElement | null>(null)
 let rowSortable: Sortable | null = null
 const reordering = ref(false)
+const togglingRuleId = ref<number | null>(null)
 
 const enabledCount = computed(() => rules.value.filter((r) => r.enabled).length)
 const disabledCount = computed(() => rules.value.length - enabledCount.value)
@@ -605,7 +587,7 @@ watch(filteredRules, (list) => {
   }
 })
 
-function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' | 'settings' = 'overview') {
+function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' = 'overview') {
   selectedRuleId.value = rule.id
   detailTab.value = tab
   showDetailPanel.value = true
@@ -645,37 +627,12 @@ function ruleName(rule: ProxyRule): string {
   return name || primaryHost(rule)
 }
 
-function formatRuleCopyText(rule: ProxyRule): string {
-  const hosts = ruleHosts(rule)
-  const lines = [
-    `名称: ${rule.name?.trim() || '—'}`,
-    `域名: ${hosts.join('、') || '—'}`,
-    `监听端口: ${listenLabel(rule)}`,
-    `目标地址: ${rule.upstream}`,
-    `协议: ${rule.https_enabled ? 'HTTPS' : 'HTTP'}`,
-    `HTTP 跳转 HTTPS: ${rule.http_redirect ? '是' : '否'}`,
-    `状态: ${rule.enabled ? '运行中' : '已停止'}`,
-  ]
-  const stats = trafficByRule.value[rule.id]
-  if (stats) {
-    lines.push(
-      `当前连接: ${stats.connections}`,
-      `当前上传: ${formatRate(stats.upload_rate)}`,
-      `当前下载: ${formatRate(stats.download_rate)}`,
-      `总上传: ${formatBytes(stats.upload_total)}`,
-      `总下载: ${formatBytes(stats.download_total)}`,
-    )
-  }
-  return lines.join('\n')
-}
-
-async function copyRuleInfo(rule: ProxyRule) {
-  try {
-    await navigator.clipboard.writeText(formatRuleCopyText(rule))
-    message.success('已复制规则信息')
-  } catch {
-    message.error('复制失败')
-  }
+function duplicateName(rule: ProxyRule): string {
+  const base = rule.name?.trim() || primaryHost(rule)
+  const suffix = '-复制'
+  const maxBase = 100 - suffix.length
+  const trimmedBase = base.length > maxBase ? base.slice(0, maxBase) : base
+  return `${trimmedBase}${suffix}`
 }
 
 function hostsToText(rule: ProxyRule): string {
@@ -817,9 +774,30 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
   {
     title: '状态',
     key: 'enabled',
-    width: 96,
+    width: 108,
     render: (row) =>
-      h(StatusBadge, { value: row.enabled ? 'ok' : 'disabled', text: row.enabled ? '运行中' : '已停止' }),
+      h(
+        'div',
+        {
+          class: 'proxy-enable-cell',
+          onClick: (e: Event) => e.stopPropagation(),
+        },
+        [
+          h(
+            NSwitch,
+            {
+              value: row.enabled,
+              size: 'small',
+              loading: togglingRuleId.value === row.id,
+              onUpdateValue: (enabled: boolean) => toggleRuleEnabled(row, enabled),
+            },
+            {
+              checked: () => '启用',
+              unchecked: () => '停用',
+            },
+          ),
+        ],
+      ),
   },
   {
     title: '当前连接',
@@ -858,7 +836,7 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
       fixed: 'right',
       render: (row) =>
         renderTableRowActions([
-          { label: '复制', onClick: () => copyRuleInfo(row) },
+          { label: '复制', onClick: () => openDuplicate(row) },
           { label: '详情', onClick: () => openDetail(row) },
           { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
           { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
@@ -918,10 +896,12 @@ function clearLogLines() {
   logLines.value = []
 }
 
-watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab]) => {
+watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab], [wasVisible, wasId]) => {
   stopLogStream()
   if (!visible || !id || tab !== 'logs') return
-  logLines.value = []
+  if (!wasVisible || id !== wasId) {
+    logLines.value = []
+  }
   startLogStream()
 })
 
@@ -1070,6 +1050,46 @@ function openCreate() {
   editing.value = null
   resetForm()
   showModal.value = true
+}
+
+async function toggleRuleEnabled(row: ProxyRule, enabled: boolean) {
+  if (togglingRuleId.value === row.id || row.enabled === enabled) return
+  togglingRuleId.value = row.id
+  const prev = row.enabled
+  rules.value = rules.value.map((rule) => (rule.id === row.id ? { ...rule, enabled } : rule))
+  try {
+    const updated = await api.updateProxy(row.id, { enabled })
+    rules.value = rules.value.map((rule) => (rule.id === updated.id ? updated : rule))
+    message.success(enabled ? '已启用' : '已停用')
+  } catch (error) {
+    rules.value = rules.value.map((rule) => (rule.id === row.id ? { ...rule, enabled: prev } : rule))
+    const msg = error instanceof Error ? error.message : '更新失败'
+    if (msg.startsWith('规则已保存')) {
+      message.warning(msg)
+      await load()
+    } else {
+      message.error(msg)
+    }
+  } finally {
+    togglingRuleId.value = null
+  }
+}
+
+function openDuplicate(rule: ProxyRule) {
+  editing.value = null
+  Object.assign(form, {
+    listen_port: rule.listen_port || defaultListenPort(rule.https_enabled),
+    listen_ipv4: rule.listen_ipv4 ?? true,
+    listen_ipv6: rule.listen_ipv6 ?? false,
+    hostsText: hostsToText(rule),
+    upstream: rule.upstream,
+    https_enabled: rule.https_enabled,
+    http_redirect: rule.http_redirect,
+    enabled: rule.enabled,
+    name: duplicateName(rule),
+  })
+  showModal.value = true
+  message.info('已填入复制内容，请修改域名后保存')
 }
 
 function openEdit(rule: ProxyRule) {
@@ -1275,6 +1295,7 @@ onUnmounted(() => {
 
 .proxy-layout--with-detail {
   grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: stretch;
 }
 
 .proxy-panel {
@@ -1318,13 +1339,6 @@ onUnmounted(() => {
   padding: var(--fonu-space-6) 0;
 }
 
-.proxy-sort-hint {
-  margin: 0 0 8px;
-  padding: 0 var(--fonu-space-4);
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-}
-
 .proxy-drag-handle {
   display: inline-flex;
   align-items: center;
@@ -1348,6 +1362,11 @@ onUnmounted(() => {
 
 .proxy-table :deep(.proxy-row--active td) {
   background: rgba(16, 185, 129, 0.06);
+}
+
+.proxy-enable-cell {
+  display: inline-flex;
+  align-items: center;
 }
 
 .proxy-table :deep(.domain-cell__main) {
@@ -1394,19 +1413,39 @@ onUnmounted(() => {
 }
 
 .proxy-detail__tabs {
-  padding: 0 var(--fonu-space-4);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--fonu-space-4) var(--fonu-space-4);
+}
+
+.proxy-detail__tabs :deep(.n-tabs-pane-wrapper) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.proxy-detail__tabs :deep(.n-tab-pane) {
+  height: 100%;
+  padding-top: var(--fonu-space-2);
 }
 
 .proxy-detail__body {
   flex: 1;
   overflow: auto;
   padding: var(--fonu-space-4);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .proxy-detail__body--logs {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  padding: var(--fonu-space-3) 0 0;
+  overflow: hidden;
 }
 
 .detail-section {
@@ -1773,8 +1812,9 @@ onUnmounted(() => {
 
 .proxy-log-box--embedded {
   flex: 1;
-  min-height: 280px;
-  max-height: 420px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .proxy-log-line {
@@ -1786,6 +1826,10 @@ onUnmounted(() => {
 .proxy-log-line.is-error { color: #f87171; }
 
 .proxy-log-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: var(--fonu-space-5);
   text-align: center;
   color: #94a3b8;
