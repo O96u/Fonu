@@ -28,7 +28,8 @@ type Rule struct {
 	HTTPSEnabled bool      `json:"https_enabled"`
 	HTTPRedirect bool      `json:"http_redirect"`
 	Enabled      bool      `json:"enabled"`
-	Remark       string    `json:"remark"`
+	Name         string    `json:"name"`
+	SortOrder    int       `json:"sort_order"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -95,7 +96,7 @@ type CreateInput struct {
 	HTTPSEnabled bool
 	HTTPRedirect bool
 	Enabled      bool
-	Remark       string
+	Name         string
 }
 
 type UpdateInput struct {
@@ -107,7 +108,7 @@ type UpdateInput struct {
 	HTTPSEnabled *bool
 	HTTPRedirect *bool
 	Enabled      *bool
-	Remark       *string
+	Name         *string
 }
 
 type Store struct {
@@ -140,9 +141,9 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 	}
 	q := s.querier()
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
 		FROM proxy_rules
-		ORDER BY id ASC
+		ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -165,7 +166,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 	row := s.querier().QueryRowContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
 		FROM proxy_rules WHERE id = ?
 	`, id)
 	rule, err := scanRule(row)
@@ -191,15 +192,19 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 		return Rule{}, err
 	}
 
-	remark, err := normalizeRemark(in.Remark)
+	name, err := normalizeName(in.Name)
+	if err != nil {
+		return Rule{}, err
+	}
+	sortOrder, err := s.nextSortOrder(ctx)
 	if err != nil {
 		return Rule{}, err
 	}
 
 	res, err := s.querier().ExecContext(ctx, `
-		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), remark)
+		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), name, sortOrder)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -228,7 +233,7 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	httpsEnabled := current.HTTPSEnabled
 	httpRedirect := current.HTTPRedirect
 	enabled := current.Enabled
-	remark := current.Remark
+	name := current.Name
 	hosts := current.Hosts
 
 	if in.Upstream != nil {
@@ -261,8 +266,8 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	if in.Remark != nil {
-		remark, err = normalizeRemark(*in.Remark)
+	if in.Name != nil {
+		name, err = normalizeName(*in.Name)
 		if err != nil {
 			return Rule{}, err
 		}
@@ -290,9 +295,9 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 
 	_, err = s.querier().ExecContext(ctx, `
 		UPDATE proxy_rules
-		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, remark = ?, updated_at = datetime('now')
+		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, name = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), remark, id)
+	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), name, id)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -331,8 +336,8 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
 	rows, err := s.querier().QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, remark, created_at, updated_at
-		FROM proxy_rules WHERE enabled = 1 ORDER BY id ASC
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
+		FROM proxy_rules WHERE enabled = 1 ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -532,7 +537,8 @@ func scanRule(row rowScanner) (Rule, error) {
 		&httpsEnabled,
 		&httpRedirect,
 		&enabled,
-		&rule.Remark,
+		&rule.Name,
+		&rule.SortOrder,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -563,10 +569,67 @@ func boolInt(v bool) int {
 	return 0
 }
 
-func normalizeRemark(raw string) (string, error) {
-	remark := strings.TrimSpace(raw)
-	if len(remark) > 100 {
-		return "", fmt.Errorf("备注不能超过 100 个字符")
+func normalizeName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if len(name) > 100 {
+		return "", fmt.Errorf("名称不能超过 100 个字符")
 	}
-	return remark, nil
+	return name, nil
+}
+
+func (s *Store) nextSortOrder(ctx context.Context) (int, error) {
+	var maxOrder sql.NullInt64
+	err := s.querier().QueryRowContext(ctx, `SELECT MAX(sort_order) FROM proxy_rules`).Scan(&maxOrder)
+	if err != nil {
+		return 0, err
+	}
+	if !maxOrder.Valid {
+		return 0, nil
+	}
+	return int(maxOrder.Int64) + 1, nil
+}
+
+func (s *Store) Reorder(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("无效的规则 ID")
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("排序列表包含重复的规则 ID")
+		}
+		seen[id] = struct{}{}
+	}
+
+	var total int
+	if err := s.querier().QueryRowContext(ctx, `SELECT COUNT(*) FROM proxy_rules`).Scan(&total); err != nil {
+		return err
+	}
+	if len(ids) != total {
+		return fmt.Errorf("排序列表必须包含全部规则")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for index, id := range ids {
+		res, err := tx.ExecContext(ctx, `UPDATE proxy_rules SET sort_order = ?, updated_at = datetime('now') WHERE id = ?`, index, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("规则不存在")
+		}
+	}
+	return tx.Commit()
 }

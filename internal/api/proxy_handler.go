@@ -32,7 +32,12 @@ type proxyRequest struct {
 	HTTPSEnabled *bool    `json:"https_enabled"`
 	HTTPRedirect *bool    `json:"http_redirect"`
 	Enabled      *bool    `json:"enabled"`
-	Remark       *string  `json:"remark"`
+	Name         *string  `json:"name"`
+	Remark       *string  `json:"remark"` // deprecated alias for name
+}
+
+type proxyReorderRequest struct {
+	IDs []int64 `json:"ids"`
 }
 
 func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -58,9 +63,9 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	listenPort := intDefault(req.ListenPort, h.cfg.DefaultListenPort(boolDefault(req.HTTPSEnabled, true)))
-	remark := ""
-	if req.Remark != nil {
-		remark = *req.Remark
+	name := ""
+	if resolved := req.resolveName(); resolved != nil {
+		name = *resolved
 	}
 	in := proxy.CreateInput{
 		Upstream:     req.Upstream,
@@ -71,7 +76,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
 		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
 		Enabled:      boolDefault(req.Enabled, true),
-		Remark:       remark,
+		Name:         name,
 	}
 
 	rule, err := h.svc.Create(r.Context(), in)
@@ -120,8 +125,8 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled != nil {
 		in.Enabled = req.Enabled
 	}
-	if req.Remark != nil {
-		in.Remark = req.Remark
+	if resolved := req.resolveName(); resolved != nil {
+		in.Name = resolved
 	}
 
 	rule, err := h.svc.Update(r.Context(), id, in)
@@ -182,6 +187,19 @@ func (h *ProxyHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	h.logs.StreamAccessForHosts(w, r, hosts)
 }
 
+func (h *ProxyHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	var req proxyReorderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	if err := h.svc.Reorder(r.Context(), req.IDs); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
@@ -193,6 +211,13 @@ func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (req proxyRequest) resolveName() *string {
+	if req.Name != nil {
+		return req.Name
+	}
+	return req.Remark
 }
 
 func (req proxyRequest) hosts() []string {

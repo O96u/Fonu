@@ -64,7 +64,7 @@
             v-model:value="search"
             clearable
             size="small"
-            placeholder="搜索域名或备注..."
+            placeholder="搜索名称、域名或目标地址..."
             class="proxy-toolbar__search"
           >
             <template #prefix><n-icon :component="SearchOutline" /></template>
@@ -95,18 +95,22 @@
           <n-spin size="medium" />
         </div>
 
-        <div v-else-if="filteredRules.length > 0" class="proxy-table-wrap">
-          <n-data-table
-            class="proxy-table"
-            :columns="columns"
-            :data="filteredRules"
-            :bordered="false"
-            size="small"
-            :scroll-x="1180"
-            :row-key="(r: ProxyRule) => r.id"
-            :row-props="rowProps"
-          />
-        </div>
+        <template v-else-if="tableRules.length > 0">
+          <p v-if="canReorder" class="proxy-sort-hint">拖动左侧手柄可调整规则顺序</p>
+          <div ref="tableWrapRef" class="proxy-table-wrap">
+            <n-data-table
+              class="proxy-table"
+              :class="{ 'proxy-table--sortable': canReorder }"
+              :columns="columns"
+              :data="tableRules"
+              :bordered="false"
+              size="small"
+              :scroll-x="canReorder ? 1260 : 1220"
+              :row-key="(r: ProxyRule) => r.id"
+              :row-props="rowProps"
+            />
+          </div>
+        </template>
 
         <EmptyState
           v-else-if="rules.length === 0"
@@ -128,7 +132,7 @@
       <aside v-if="showDetailPanel && selectedRule" class="proxy-detail">
         <div class="proxy-detail__head">
           <div>
-            <div class="proxy-detail__title">{{ primaryHost(selectedRule) }}</div>
+            <div class="proxy-detail__title">{{ ruleName(selectedRule) }}</div>
             <StatusBadge
               :value="selectedRule.enabled ? 'ok' : 'disabled'"
               :text="selectedRule.enabled ? '运行中' : '已停止'"
@@ -149,15 +153,18 @@
           <section class="detail-section">
             <div class="detail-section__head">
               <h4>基础信息</h4>
-              <n-button size="tiny" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
+              <n-space :size="4">
+                <n-button size="tiny" quaternary @click="copyRuleInfo(selectedRule)">复制</n-button>
+                <n-button size="tiny" quaternary type="primary" @click="openEdit(selectedRule)">编辑</n-button>
+              </n-space>
             </div>
             <dl class="detail-kv">
+              <div><dt>名称</dt><dd>{{ selectedRule.name || '—' }}</dd></div>
               <div><dt>域名</dt><dd>{{ ruleHosts(selectedRule).join('、') }}</dd></div>
               <div><dt>监听端口</dt><dd>{{ listenLabel(selectedRule) }}</dd></div>
               <div><dt>目标地址</dt><dd class="mono">{{ selectedRule.upstream }}</dd></div>
               <div><dt>协议</dt><dd>{{ selectedRule.https_enabled ? 'HTTPS' : 'HTTP' }}</dd></div>
               <div><dt>状态</dt><dd>{{ selectedRule.enabled ? '运行中' : '已停止' }}</dd></div>
-              <div v-if="selectedRule.remark"><dt>备注</dt><dd>{{ selectedRule.remark }}</dd></div>
             </dl>
           </section>
 
@@ -277,6 +284,15 @@
         </div>
 
         <n-form label-placement="top" class="proxy-modal__body">
+          <n-form-item label="名称">
+            <n-input
+              v-model:value="form.name"
+              maxlength="100"
+              show-count
+              placeholder="选填，用于在列表中识别该规则"
+            />
+          </n-form-item>
+
           <n-form-item required>
             <template #label>
               <span class="form-label">
@@ -349,14 +365,6 @@
             </div>
           </div>
 
-          <n-form-item label="备注">
-            <n-input
-              v-model:value="form.remark"
-              maxlength="100"
-              show-count
-              placeholder="选填，便于识别该规则的用途"
-            />
-          </n-form-item>
         </n-form>
 
         <div class="modal-footer">
@@ -394,7 +402,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
+import Sortable from 'sortablejs'
 import {
   NButton,
   NCheckbox,
@@ -422,6 +431,7 @@ import {
   ArrowDownOutline,
   ArrowUpOutline,
   CloseOutline,
+  ReorderThreeOutline,
   CloudDownloadOutline,
   CloudUploadOutline,
   HelpCircleOutline,
@@ -494,8 +504,12 @@ const form = reactive({
   https_enabled: true,
   http_redirect: true,
   enabled: true,
-  remark: '',
+  name: '',
 })
+
+const tableWrapRef = ref<HTMLElement | null>(null)
+let rowSortable: Sortable | null = null
+const reordering = ref(false)
 
 const enabledCount = computed(() => rules.value.filter((r) => r.enabled).length)
 const disabledCount = computed(() => rules.value.length - enabledCount.value)
@@ -516,12 +530,16 @@ const trafficTotals = computed(() => {
   return { upload, download, uploadRate, downloadRate, connections }
 })
 
+const canReorder = computed(
+  () => !search.value.trim() && !statusFilter.value && !httpsFilter.value && rules.value.length > 1,
+)
+
 const filteredRules = computed(() =>
   rules.value.filter((rule) => {
     const q = search.value.toLowerCase()
     const hostText = ruleHosts(rule).join(' ').toLowerCase()
-    const remark = (rule.remark ?? '').toLowerCase()
-    if (q && !hostText.includes(q) && !rule.upstream.toLowerCase().includes(q) && !remark.includes(q)) return false
+    const name = (rule.name ?? '').toLowerCase()
+    if (q && !hostText.includes(q) && !rule.upstream.toLowerCase().includes(q) && !name.includes(q)) return false
     if (statusFilter.value === 'enabled' && !rule.enabled) return false
     if (statusFilter.value === 'disabled' && rule.enabled) return false
     if (httpsFilter.value === 'on' && !rule.https_enabled) return false
@@ -529,6 +547,8 @@ const filteredRules = computed(() =>
     return true
   }),
 )
+
+const tableRules = computed(() => (canReorder.value ? rules.value : filteredRules.value))
 
 const selectedRule = computed(() => rules.value.find((r) => r.id === selectedRuleId.value) ?? null)
 const selectedTraffic = computed(() =>
@@ -620,15 +640,50 @@ function primaryHost(rule: ProxyRule): string {
   return hosts[0] ?? `规则 #${rule.id}`
 }
 
+function ruleName(rule: ProxyRule): string {
+  const name = rule.name?.trim()
+  return name || primaryHost(rule)
+}
+
+function formatRuleCopyText(rule: ProxyRule): string {
+  const hosts = ruleHosts(rule)
+  const lines = [
+    `名称: ${rule.name?.trim() || '—'}`,
+    `域名: ${hosts.join('、') || '—'}`,
+    `监听端口: ${listenLabel(rule)}`,
+    `目标地址: ${rule.upstream}`,
+    `协议: ${rule.https_enabled ? 'HTTPS' : 'HTTP'}`,
+    `HTTP 跳转 HTTPS: ${rule.http_redirect ? '是' : '否'}`,
+    `状态: ${rule.enabled ? '运行中' : '已停止'}`,
+  ]
+  const stats = trafficByRule.value[rule.id]
+  if (stats) {
+    lines.push(
+      `当前连接: ${stats.connections}`,
+      `当前上传: ${formatRate(stats.upload_rate)}`,
+      `当前下载: ${formatRate(stats.download_rate)}`,
+      `总上传: ${formatBytes(stats.upload_total)}`,
+      `总下载: ${formatBytes(stats.download_total)}`,
+    )
+  }
+  return lines.join('\n')
+}
+
+async function copyRuleInfo(rule: ProxyRule) {
+  try {
+    await navigator.clipboard.writeText(formatRuleCopyText(rule))
+    message.success('已复制规则信息')
+  } catch {
+    message.error('复制失败')
+  }
+}
+
 function hostsToText(rule: ProxyRule): string {
   return ruleHosts(rule).join('\n')
 }
 
 function ruleTitle(rule: ProxyRule): string {
-  const hosts = ruleHosts(rule)
-  if (hosts.length === 0) return `规则 #${rule.id}`
-  if (hosts.length === 1) return hosts[0]
-  return `${hosts[0]} 等 ${hosts.length} 个域名`
+  return ruleName(rule)
 }
 
 function listenLabel(rule: ProxyRule): string {
@@ -706,16 +761,41 @@ function rowProps(row: ProxyRule) {
   }
 }
 
-const columns: DataTableColumns<ProxyRule> = [
-  {
-    title: '域名',
-    key: 'hosts',
-    minWidth: 160,
-    render: (row) => h('div', { class: 'domain-cell' }, [
-      h('div', { class: 'domain-cell__main' }, primaryHost(row)),
-      h('div', { class: 'domain-cell__sub' }, ruleHosts(row).length > 1 ? `等 ${ruleHosts(row).length} 个域名` : ''),
-    ]),
-  },
+const columns = computed<DataTableColumns<ProxyRule>>(() => {
+  const cols: DataTableColumns<ProxyRule> = []
+
+  if (canReorder.value) {
+    cols.push({
+      title: '',
+      key: 'sort',
+      width: 40,
+      render: () =>
+        h('span', { class: 'proxy-drag-handle', title: '拖动排序' }, [
+          h(NIcon, { component: ReorderThreeOutline, size: 16 }),
+        ]),
+    })
+  }
+
+  cols.push({
+    title: '名称',
+    key: 'name',
+    minWidth: 180,
+    render: (row) => {
+      const hosts = ruleHosts(row)
+      const subtitle =
+        hosts.length > 1
+          ? hosts.join('、')
+          : row.name?.trim()
+            ? hosts[0] ?? ''
+            : ''
+      return h('div', { class: 'domain-cell' }, [
+        h('div', { class: 'domain-cell__main' }, ruleName(row)),
+        subtitle ? h('div', { class: 'domain-cell__sub' }, subtitle) : null,
+      ])
+    },
+  })
+
+  cols.push(
   {
     title: '监听端口',
     key: 'listen_port',
@@ -771,19 +851,23 @@ const columns: DataTableColumns<ProxyRule> = [
     width: 96,
     render: (row) => h('span', { class: 'mono' }, formatBytes(trafficByRule.value[row.id]?.download_total ?? 0)),
   },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 168,
-    fixed: 'right',
-    render: (row) =>
-      renderTableRowActions([
-        { label: '详情', onClick: () => openDetail(row) },
-        { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
-        { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
-      ]),
-  },
-]
+    {
+      title: '操作',
+      key: 'actions',
+      width: 208,
+      fixed: 'right',
+      render: (row) =>
+        renderTableRowActions([
+          { label: '复制', onClick: () => copyRuleInfo(row) },
+          { label: '详情', onClick: () => openDetail(row) },
+          { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
+          { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
+        ]),
+    },
+  )
+
+  return cols
+})
 
 const accessLineRe =
   /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)$/
@@ -938,7 +1022,7 @@ function resetForm() {
   form.https_enabled = true
   form.http_redirect = true
   form.enabled = true
-  form.remark = ''
+  form.name = ''
 }
 
 function buildPayload(): ProxySavePayload {
@@ -958,7 +1042,7 @@ function buildPayload(): ProxySavePayload {
     https_enabled: form.https_enabled,
     http_redirect: form.http_redirect,
     enabled: form.enabled,
-    remark: form.remark.trim(),
+    name: form.name.trim(),
   }
 }
 
@@ -1000,10 +1084,51 @@ function openEdit(rule: ProxyRule) {
     https_enabled: rule.https_enabled,
     http_redirect: rule.http_redirect,
     enabled: rule.enabled,
-    remark: rule.remark ?? '',
+    name: rule.name ?? '',
   })
   showModal.value = true
 }
+
+function destroyRowSortable() {
+  rowSortable?.destroy()
+  rowSortable = null
+}
+
+async function setupRowSortable() {
+  destroyRowSortable()
+  if (!canReorder.value) return
+  await nextTick()
+  const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
+  if (!tbody) return
+  rowSortable = Sortable.create(tbody, {
+    handle: '.proxy-drag-handle',
+    animation: 150,
+    draggable: '.n-data-table-tr',
+    onEnd: async (evt) => {
+      if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex || reordering.value) {
+        return
+      }
+      const next = [...rules.value]
+      const [moved] = next.splice(evt.oldIndex, 1)
+      next.splice(evt.newIndex, 0, moved)
+      rules.value = next
+      reordering.value = true
+      try {
+        await api.reorderProxies(next.map((rule) => rule.id))
+        message.success('排序已保存')
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '排序保存失败')
+        await load()
+      } finally {
+        reordering.value = false
+      }
+    },
+  })
+}
+
+watch([canReorder, () => rules.value.length, tableRules], () => {
+  void setupRowSortable()
+})
 
 watch(showModal, (open) => {
   if (!open) editing.value = null
@@ -1089,6 +1214,7 @@ onMounted(async () => {
   startTrafficPoll()
 })
 onUnmounted(() => {
+  destroyRowSortable()
   stopLogStream()
   stopTrafficPoll()
   stopClientsPoll()
@@ -1190,6 +1316,27 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   padding: var(--fonu-space-6) 0;
+}
+
+.proxy-sort-hint {
+  margin: 0 0 8px;
+  padding: 0 var(--fonu-space-4);
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.proxy-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--fonu-text-secondary);
+  cursor: grab;
+}
+
+.proxy-table--sortable :deep(.proxy-drag-handle:active) {
+  cursor: grabbing;
 }
 
 .proxy-table-wrap {

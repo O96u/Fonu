@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.17] - 2026-09-13
+
+### 新增
+
+- 反代规则「备注」改为「名称」，列表以名称优先展示
+- 反代规则复制当前信息到剪贴板
+- 反代列表拖动排序（无筛选时）
+
 ## [v0.1.16] - 2026-09-13
 
 ### 改进

@@ -1,7 +1,7 @@
 {
   "name": "fonu-web",
   "private": true,
-  "version": "0.1.16",
+  "version": "0.1.17",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,11 +13,13 @@
     "@vicons/ionicons5": "^0.13.0",
     "echarts": "^6.1.0",
     "naive-ui": "^2.40.1",
+    "sortablejs": "^1.15.7",
     "vue": "^3.5.13",
     "vue-echarts": "^8.3.0",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",

@@ -96,6 +96,8 @@ export const api = {
   updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>
     request<ProxyRule>(`/api/proxies/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
+  reorderProxies: (ids: number[]) =>
+    request<void>('/api/proxies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   getProxyTraffic: () => request<ProxyTraffic[]>('/api/proxies/traffic'),
   getProxyClients: (id: number) => request<ProxyClientConn[]>(`/api/proxies/${id}/clients`),
 

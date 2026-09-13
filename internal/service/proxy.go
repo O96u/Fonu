@@ -75,6 +75,10 @@ func (s *ProxyService) Update(ctx context.Context, id int64, in proxy.UpdateInpu
 	return rule, nil
 }
 
+func (s *ProxyService) Reorder(ctx context.Context, ids []int64) error {
+	return s.store.Reorder(ctx, ids)
+}
+
 func (s *ProxyService) Delete(ctx context.Context, id int64) error {
 	if err := s.store.Delete(ctx, id); err != nil {
 		return err

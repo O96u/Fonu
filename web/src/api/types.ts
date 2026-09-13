@@ -15,7 +15,8 @@ export interface ProxyRule {
   https_enabled: boolean
   http_redirect: boolean
   enabled: boolean
-  remark: string
+  name: string
+  sort_order: number
   created_at: string
   updated_at: string
 }
@@ -43,7 +44,7 @@ export interface ProxySavePayload {
   https_enabled?: boolean
   http_redirect?: boolean
   enabled?: boolean
-  remark?: string
+  name?: string
 }
 
 export interface AuthStatus {
