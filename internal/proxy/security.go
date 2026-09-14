@@ -60,6 +60,35 @@ type BasicAuthInput struct {
 	Password *string // plaintext on write only
 }
 
+// DefaultPrivateCIDRs are always exempt from china_only restrictions.
+var DefaultPrivateCIDRs = []string{
+	"10.0.0.0/8",
+	"127.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"::1/128",
+	"fc00::/7",
+}
+
+func ChinaBypassCIDRs(extra []string) []string {
+	seen := make(map[string]bool, len(DefaultPrivateCIDRs)+len(extra))
+	out := make([]string, 0, len(DefaultPrivateCIDRs)+len(extra))
+	for _, cidr := range DefaultPrivateCIDRs {
+		if !seen[cidr] {
+			seen[cidr] = true
+			out = append(out, cidr)
+		}
+	}
+	for _, cidr := range extra {
+		cidr = strings.TrimSpace(cidr)
+		if cidr != "" && !seen[cidr] {
+			seen[cidr] = true
+			out = append(out, cidr)
+		}
+	}
+	return out
+}
+
 func DefaultSecurityConfig() SecurityConfig {
 	return SecurityConfig{}
 }

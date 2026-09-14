@@ -37,4 +37,42 @@ func TestValidateSecurityWhitelistRequiresEntries(t *testing.T) {
 	}
 }
 
+func TestChinaBypassCIDRsIncludesDefaults(t *testing.T) {
+	got := ChinaBypassCIDRs(nil)
+	for _, want := range DefaultPrivateCIDRs {
+		if !contains(got, want) {
+			t.Fatalf("missing default %s in %v", want, got)
+		}
+	}
+}
+
+func TestChinaBypassCIDRsMergesExtra(t *testing.T) {
+	got := ChinaBypassCIDRs([]string{"203.0.113.0/24", "192.168.0.0/16"})
+	if !contains(got, "203.0.113.0/24") {
+		t.Fatalf("missing extra CIDR: %v", got)
+	}
+	if count(got, "192.168.0.0/16") != 1 {
+		t.Fatalf("expected single 192.168.0.0/16 entry: %v", got)
+	}
+}
+
+func contains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func count(ss []string, s string) int {
+	n := 0
+	for _, v := range ss {
+		if v == s {
+			n++
+		}
+	}
+	return n
+}
+
 func strPtr(s string) *string { return &s }

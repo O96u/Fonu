@@ -52,10 +52,21 @@ func hasLimitZones(rules []proxy.Rule) bool {
 	return false
 }
 
+func writePrivateIPGeo(b *strings.Builder) {
+	b.WriteString(`    geo $fonu_client_ip $fonu_is_private {
+        default 0;
+        10.0.0.0/8 1;
+        127.0.0.0/8 1;
+        172.16.0.0/12 1;
+        192.168.0.0/16 1;
+        ::1/128 1;
+        fc00::/7 1;
+    }
+
+`)
+}
+
 func writeChinaGeoBlocks(b *strings.Builder, cfg config.Config, opts GenerateOptions, rules []proxy.Rule) {
-	if !opts.ChinaCIDRAvailable {
-		return
-	}
 	needsChina := false
 	for _, rule := range rules {
 		if rule.Enabled && rule.Security.ChinaOnly {
@@ -64,6 +75,10 @@ func writeChinaGeoBlocks(b *strings.Builder, cfg config.Config, opts GenerateOpt
 		}
 	}
 	if !needsChina {
+		return
+	}
+	writePrivateIPGeo(b)
+	if !opts.ChinaCIDRAvailable {
 		return
 	}
 	cidrPath := absNginxPath(cfg.ChinaCIDRPath())
@@ -87,12 +102,10 @@ func writeChinaOnlyBypassGeo(b *strings.Builder, rules []proxy.Rule, opts Genera
 			continue
 		}
 		sec := rule.Security.Normalize()
-		if len(sec.IPWhitelist) == 0 {
-			continue
-		}
+		cidrs := proxy.ChinaBypassCIDRs(sec.IPWhitelist)
 		b.WriteString(fmt.Sprintf("    geo $fonu_client_ip $fonu_rule_%d_china_bypass {\n", rule.ID))
 		b.WriteString("        default 0;\n")
-		for _, cidr := range sec.IPWhitelist {
+		for _, cidr := range cidrs {
 			b.WriteString(fmt.Sprintf("        %s 1;\n", cidr))
 		}
 		b.WriteString("    }\n\n")
@@ -101,11 +114,11 @@ func writeChinaOnlyBypassGeo(b *strings.Builder, rules []proxy.Rule, opts Genera
 
 func writeChinaOnlyCheck(b *strings.Builder, rule proxy.Rule, opts GenerateOptions) {
 	sec := rule.Security.Normalize()
-	if !sec.ChinaOnly || !opts.ChinaCIDRAvailable {
+	if !sec.ChinaOnly {
 		return
 	}
-	if len(sec.IPWhitelist) == 0 {
-		b.WriteString(`        if ($fonu_is_china = 0) {
+	if !opts.ChinaCIDRAvailable {
+		b.WriteString(`        if ($fonu_is_private = 0) {
             return 403;
         }
 `)
@@ -115,14 +128,18 @@ func writeChinaOnlyCheck(b *strings.Builder, rule proxy.Rule, opts GenerateOptio
         if ($fonu_is_china = 0) {
             set $fonu_china_block 1;
         }
+        if ($fonu_is_private = 1) {
+            set $fonu_china_block 0;
+        }
 `)
 	b.WriteString(fmt.Sprintf(`        if ($fonu_rule_%d_china_bypass = 1) {
             set $fonu_china_block 0;
         }
-        if ($fonu_china_block = 1) {
+`, rule.ID))
+	b.WriteString(`        if ($fonu_china_block = 1) {
             return 403;
         }
-`, rule.ID))
+`)
 }
 
 func writeServerSecurityHeaders(b *strings.Builder, sec proxy.SecurityConfig, https bool) {

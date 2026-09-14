@@ -14,6 +14,7 @@ func EnsureErrorPages(cfg config.Config) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	ensureNginxReadable(dir, true)
 
 	pages := []struct {
 		file, sprite, bgPos, title, msg string
@@ -27,27 +28,46 @@ func EnsureErrorPages(cfg config.Config) error {
 	}
 	for _, p := range pages {
 		html := errorPageHTML(p.code, p.title, p.msg, p.sprite, p.bgPos)
-		if err := os.WriteFile(filepath.Join(dir, p.file), []byte(html), 0o644); err != nil {
+		target := filepath.Join(dir, p.file)
+		if err := os.WriteFile(target, []byte(html), 0o644); err != nil {
 			return err
 		}
+		ensureNginxReadable(target, false)
 	}
 
 	for _, name := range []string{"error.png", "429.png"} {
-		src := findErrorAsset(name)
-		if src == "" {
-			continue
-		}
-		if err := copyFileIfChanged(src, filepath.Join(dir, name)); err != nil {
+		if err := ensureErrorAsset(dir, name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func ensureErrorAsset(dir, name string) error {
+	target := filepath.Join(dir, name)
+	if src := findErrorAsset(name); src != "" {
+		if err := copyFileIfChanged(src, target); err != nil {
+			return err
+		}
+	} else if err := writeEmbeddedErrorAsset(name, target); err != nil {
+		return err
+	}
+	ensureNginxReadable(target, false)
+	return nil
+}
+
+func writeEmbeddedErrorAsset(name, target string) error {
+	data, err := errorAssetFS.ReadFile("assets/" + name)
+	if err != nil {
+		return nil
+	}
+	return os.WriteFile(target, data, 0o644)
+}
+
 func findErrorAsset(name string) string {
 	candidates := []string{
 		filepath.Join("web", "assets", "image", name),
-		filepath.Join("internal", "nginx", "assets", "errors", name),
+		filepath.Join("internal", "nginx", "assets", name),
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {

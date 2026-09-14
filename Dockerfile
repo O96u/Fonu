@@ -28,6 +28,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=go-builder /fonu /app/fonu
+COPY --from=go-builder /src/web/assets/image /app/web/assets/image
 COPY migrations /app/migrations
 
 ENV FONU_DATA_DIR=/data \

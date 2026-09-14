@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.22] - 2026-09-14
+
+### 改进
+
+- 仅中国大陆：内网 IP（10/8、172.16/12、192.168/16 等）默认放行，无需手动加白名单
+- 自定义错误页图片内嵌进二进制，Docker 镜像补充 `web/assets/image` 资源目录
+
+### 修复
+
+- 错误页目录权限：生成后自动 chmod/chown，避免 nginx（www-data）无法读取导致回退默认 403 页
+- 中国 IP 段未就绪时，仅中国大陆规则改为只拦截非公网内网地址
+
 ## [v0.1.21] - 2026-09-14
 
 ### 新增

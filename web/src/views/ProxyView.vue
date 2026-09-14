@@ -473,7 +473,9 @@
                     <div class="security-option">
                       <div class="security-option__text">
                         <div class="security-option__label">仅中国大陆 IP</div>
-                        <div class="security-option__hint">需先在设置页更新中国 IP 段</div>
+                        <div class="security-option__hint">
+                          需先在设置页更新中国 IP 段；内网（10/8、172.16/12、192.168/16 等）默认放行
+                        </div>
                       </div>
                       <n-switch v-model:value="form.china_only" size="small" />
                     </div>
@@ -643,7 +645,7 @@
               <strong>IP 策略</strong>：经 CDN 访问时，请在「设置」配置信任代理，否则限流与 IP 规则可能不准。
             </li>
             <li>
-              <strong>仅中国大陆</strong>：需先在设置页更新中国 IP 段；白名单 IP 不受此限制。
+              <strong>仅中国大陆</strong>：需先在设置页更新中国 IP 段；内网 IP 默认放行，额外豁免 IP 可写在白名单里（无需开启白名单模式）。
             </li>
             <li>
               <strong>一键推荐</strong>：HTTPS + 限流 + 安全响应头，适合公网暴露场景。
