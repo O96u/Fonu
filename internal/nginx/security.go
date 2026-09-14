@@ -163,11 +163,20 @@ func writeTLSProtocols(b *strings.Builder, sec proxy.SecurityConfig) {
 
 func writeErrorPages(b *strings.Builder, cfg config.Config) {
 	errorsDir := absNginxPath(cfg.ErrorsDir())
+	// HTML is served via internal error_page redirect; images are fetched by the browser
+	// as separate requests and must not use the internal-only location.
 	b.WriteString(`    error_page 403 /fonu-errors/403.html;
     error_page 404 /fonu-errors/404.html;
     error_page 429 /fonu-errors/429.html;
     error_page 500 /fonu-errors/500.html;
     error_page 502 503 /fonu-errors/503.html;
+
+    location = /fonu-errors/error.png {
+        alias ` + errorsDir + `/error.png;
+    }
+    location = /fonu-errors/429.png {
+        alias ` + errorsDir + `/429.png;
+    }
 
     location ^~ /fonu-errors/ {
         internal;

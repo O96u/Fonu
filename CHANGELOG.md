@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.23] - 2026-09-14
+
+### 修复
+
+- 自定义错误页插图无法显示：图片路径改为公开 location，浏览器可正常加载 `error.png` / `429.png`
+
 ## [v0.1.22] - 2026-09-14
 
 ### 改进

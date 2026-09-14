@@ -77,6 +77,8 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 		"limit_req zone=fonu_rule_7_req burst=20",
 		"limit_conn fonu_rule_7_conn 20",
 		"error_page 403 /fonu-errors/403.html",
+		"location = /fonu-errors/error.png",
+		"location = /fonu-errors/429.png",
 		"X-Forwarded-Host $host",
 		"X-Forwarded-Port $server_port",
 		"X-Real-Proto $scheme",
