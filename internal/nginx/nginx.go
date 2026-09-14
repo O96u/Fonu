@@ -99,6 +99,8 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 	}
 
 	opts := m.opts
+	// Path override is only for pre-rename validation during China CIDR updates.
+	opts.ChinaCIDRPathOverride = ""
 	opts.ChinaCIDRAvailable = chinaCIDRExists(m.cfg)
 
 	content, err := Generate(m.cfg, rules, certs, opts)

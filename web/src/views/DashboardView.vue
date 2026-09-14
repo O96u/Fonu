@@ -362,21 +362,11 @@ const trafficChart = computed(() => {
 
 const hourlyBars = computed(() => {
   const labels = Array.from({ length: 12 }, (_, i) => String(i * 2).padStart(2, '0'))
-  const values = Array(12).fill(0)
-  for (const log of accessLogs.value) {
-    const hour = new Date(log.time).getHours()
-    values[Math.floor(hour / 2)]++
+  const hourly = status.value?.requests_hourly
+  if (hourly?.length === 12) {
+    return { labels, values: hourly }
   }
-  const hasData = values.some((v) => v > 0)
-  if (!hasData && (status.value?.request_today ?? 0) > 0) {
-    const total = status.value?.request_today ?? 0
-    const base = total / 12
-    return {
-      labels,
-      values: [base * 0.5, base * 0.7, base * 0.9, base * 1.1, base * 1.3, base * 1.2, base * 1.0, base * 0.8, base * 0.7, base * 0.6, base * 0.5, base * 0.4].map(Math.round),
-    }
-  }
-  return { labels, values }
+  return { labels, values: Array(12).fill(0) }
 })
 
 const requestTrend = computed(() => {

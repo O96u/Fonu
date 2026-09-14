@@ -138,6 +138,7 @@ export interface DashboardStatus {
   proxy_count: number
   nginx_status: string
   request_today: number
+  requests_hourly: number[]
   error_today: number
   avg_response_ms: number
   started_at: string

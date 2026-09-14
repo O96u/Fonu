@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.24] - 2026-09-14
+
+### 修复
+
+- 中国 IP 段更新后 nginx 重载失败：校验用临时文件，应用配置时改用正式的 `china_cidr.conf`
+- 仪表盘「今日请求」图表：从完整 access.log 按小时统计，不再仅用最近 10 条访问记录
+
 ## [v0.1.23] - 2026-09-14
 
 ### 修复

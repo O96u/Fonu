@@ -105,10 +105,10 @@ func (s *Service) Update(ctx context.Context) error {
 		return err
 	}
 	opts := s.loadGenerateOptions(ctx)
-	opts.ChinaCIDRPathOverride = tmpPath
-	opts.ChinaCIDRAvailable = true
-	s.nginxMgr.SetGenerateOptions(opts)
-	if err := s.nginxMgr.ValidateOnlyWithOptions(ctx, rules, nil, opts); err != nil {
+	validateOpts := opts
+	validateOpts.ChinaCIDRPathOverride = tmpPath
+	validateOpts.ChinaCIDRAvailable = true
+	if err := s.nginxMgr.ValidateOnlyWithOptions(ctx, rules, nil, validateOpts); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("nginx 校验失败: %w", err)
 	}

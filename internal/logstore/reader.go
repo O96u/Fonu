@@ -186,6 +186,48 @@ func parseSystem(line string) (SystemEntry, bool) {
 	return entry, entry.Message != ""
 }
 
+// HourlyAccessCounts returns request counts for today in 12 two-hour buckets (00, 02, …, 22).
+func HourlyAccessCounts(path string) []int {
+	counts := make([]int, 12)
+	file, err := os.Open(path)
+	if err != nil {
+		return counts
+	}
+	defer file.Close()
+
+	today := time.Now().Format("2006-01-02")
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, today) {
+			continue
+		}
+		entry, ok := parseAccess(line)
+		if !ok {
+			continue
+		}
+		t, ok := parseAccessTime(entry.Time)
+		if !ok {
+			continue
+		}
+		bucket := t.Hour() / 2
+		if bucket >= 0 && bucket < len(counts) {
+			counts[bucket]++
+		}
+	}
+	return counts
+}
+
+func parseAccessTime(raw string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 func CountTodayAccess(path string) (total int, errors int, avgMs float64) {
 	file, err := os.Open(path)
 	if err != nil {
