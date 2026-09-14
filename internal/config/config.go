@@ -61,6 +61,18 @@ func (c Config) CertsDir() string {
 	return c.DataDir + "/certs"
 }
 
+func (c Config) ErrorsDir() string {
+	return c.NginxDir() + "/errors"
+}
+
+func (c Config) ChinaCIDRPath() string {
+	return c.NginxDir() + "/china_cidr.conf"
+}
+
+func (c Config) ChinaCIDRTempPath() string {
+	return c.NginxDir() + "/china_cidr.conf.tmp"
+}
+
 func defaultDataDir() string {
 	if _, err := os.Stat("/data"); err == nil {
 		return "/data"

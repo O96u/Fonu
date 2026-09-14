@@ -18,20 +18,21 @@ type Host struct {
 }
 
 type Rule struct {
-	ID           int64     `json:"id"`
-	Domain       string    `json:"domain"`
-	Upstream     string    `json:"upstream"`
-	ListenPort   int       `json:"listen_port"`
-	ListenIPv4   bool      `json:"listen_ipv4"`
-	ListenIPv6   bool      `json:"listen_ipv6"`
-	Hosts        []Host    `json:"hosts"`
-	HTTPSEnabled bool      `json:"https_enabled"`
-	HTTPRedirect bool      `json:"http_redirect"`
-	Enabled      bool      `json:"enabled"`
-	Name         string    `json:"name"`
-	SortOrder    int       `json:"sort_order"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int64          `json:"id"`
+	Domain       string         `json:"domain"`
+	Upstream     string         `json:"upstream"`
+	ListenPort   int            `json:"listen_port"`
+	ListenIPv4   bool           `json:"listen_ipv4"`
+	ListenIPv6   bool           `json:"listen_ipv6"`
+	Hosts        []Host         `json:"hosts"`
+	HTTPSEnabled bool           `json:"https_enabled"`
+	HTTPRedirect bool           `json:"http_redirect"`
+	Enabled      bool           `json:"enabled"`
+	Name         string         `json:"name"`
+	SortOrder    int            `json:"sort_order"`
+	Security     SecurityConfig `json:"security"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
 type PortGroup struct {
@@ -97,6 +98,7 @@ type CreateInput struct {
 	HTTPRedirect bool
 	Enabled      bool
 	Name         string
+	Security     SecurityInput
 }
 
 type UpdateInput struct {
@@ -109,6 +111,7 @@ type UpdateInput struct {
 	HTTPRedirect *bool
 	Enabled      *bool
 	Name         *string
+	Security     *SecurityInput
 }
 
 type Store struct {
@@ -141,7 +144,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 	}
 	q := s.querier()
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules
 		ORDER BY sort_order ASC, id ASC
 	`)
@@ -166,7 +169,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 	row := s.querier().QueryRowContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE id = ?
 	`, id)
 	rule, err := scanRule(row)
@@ -201,10 +204,19 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 		return Rule{}, err
 	}
 
+	security, err := MergeSecurity(DefaultSecurityConfig(), in.Security)
+	if err != nil {
+		return Rule{}, err
+	}
+	securityJSON, err := security.ToJSON()
+	if err != nil {
+		return Rule{}, err
+	}
+
 	res, err := s.querier().ExecContext(ctx, `
-		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), name, sortOrder)
+		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), name, sortOrder, securityJSON)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -282,6 +294,18 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 		}
 	}
 
+	security := current.Security
+	if in.Security != nil {
+		security, err = MergeSecurity(current.Security, *in.Security)
+		if err != nil {
+			return Rule{}, err
+		}
+	}
+	securityJSON, err := security.ToJSON()
+	if err != nil {
+		return Rule{}, err
+	}
+
 	if in.ListenPort != nil && *in.ListenPort != oldListenPort && in.Hosts == nil {
 		for _, host := range current.Hosts {
 			if hostEffectivePort(host, oldListenPort) != oldListenPort {
@@ -295,9 +319,9 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 
 	_, err = s.querier().ExecContext(ctx, `
 		UPDATE proxy_rules
-		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, name = ?, updated_at = datetime('now')
+		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, name = ?, security_json = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), name, id)
+	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), name, securityJSON, id)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -336,7 +360,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
 	rows, err := s.querier().QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE enabled = 1 ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
@@ -511,6 +535,7 @@ func (s *Store) attachHosts(ctx context.Context, rules []Rule) ([]Rule, error) {
 	for i := range rules {
 		rules[i].Hosts = byRule[rules[i].ID]
 		rules[i].Domain = rules[i].PrimaryHost()
+		rules[i].Security = rules[i].Security.ForAPI()
 	}
 	return rules, nil
 }
@@ -526,6 +551,7 @@ func scanRule(row rowScanner) (Rule, error) {
 	var httpsEnabled int
 	var httpRedirect int
 	var enabled int
+	var securityJSON string
 	var createdAt string
 	var updatedAt string
 	if err := row.Scan(
@@ -539,6 +565,7 @@ func scanRule(row rowScanner) (Rule, error) {
 		&enabled,
 		&rule.Name,
 		&rule.SortOrder,
+		&securityJSON,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -549,6 +576,11 @@ func scanRule(row rowScanner) (Rule, error) {
 	rule.HTTPSEnabled = httpsEnabled == 1
 	rule.HTTPRedirect = httpRedirect == 1
 	rule.Enabled = enabled == 1
+	security, err := ParseSecurityJSON(securityJSON)
+	if err != nil {
+		return Rule{}, err
+	}
+	rule.Security = security
 	rule.CreatedAt = parseTime(createdAt)
 	rule.UpdatedAt = parseTime(updatedAt)
 	return rule, nil

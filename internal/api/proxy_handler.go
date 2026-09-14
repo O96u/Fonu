@@ -23,17 +23,18 @@ func NewProxyHandler(cfg config.Config, svc *service.ProxyService, logs *LogsHan
 }
 
 type proxyRequest struct {
-	Domain       string   `json:"domain"`
-	Upstream     string   `json:"upstream"`
-	ListenPort   *int     `json:"listen_port"`
-	ListenIPv4   *bool    `json:"listen_ipv4"`
-	ListenIPv6   *bool    `json:"listen_ipv6"`
-	Hosts        []string `json:"hosts"`
-	HTTPSEnabled *bool    `json:"https_enabled"`
-	HTTPRedirect *bool    `json:"http_redirect"`
-	Enabled      *bool    `json:"enabled"`
-	Name         *string  `json:"name"`
-	Remark       *string  `json:"remark"` // deprecated alias for name
+	Domain       string           `json:"domain"`
+	Upstream     string           `json:"upstream"`
+	ListenPort   *int             `json:"listen_port"`
+	ListenIPv4   *bool            `json:"listen_ipv4"`
+	ListenIPv6   *bool            `json:"listen_ipv6"`
+	Hosts        []string         `json:"hosts"`
+	HTTPSEnabled *bool            `json:"https_enabled"`
+	HTTPRedirect *bool            `json:"http_redirect"`
+	Enabled      *bool            `json:"enabled"`
+	Name         *string          `json:"name"`
+	Remark       *string          `json:"remark"` // deprecated alias for name
+	Security     *securityRequest `json:"security,omitempty"`
 }
 
 type proxyReorderRequest struct {
@@ -77,6 +78,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
 		Enabled:      boolDefault(req.Enabled, true),
 		Name:         name,
+		Security:     req.securityInput(),
 	}
 
 	rule, err := h.svc.Create(r.Context(), in)
@@ -127,6 +129,10 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if resolved := req.resolveName(); resolved != nil {
 		in.Name = resolved
+	}
+	if req.Security != nil {
+		sec := req.securityInput()
+		in.Security = &sec
 	}
 
 	rule, err := h.svc.Update(r.Context(), id, in)

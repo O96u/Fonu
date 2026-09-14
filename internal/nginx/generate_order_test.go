@@ -46,7 +46,7 @@ func TestGenerateHTTPSBlockBeforeHTTPRedirect(t *testing.T) {
 		KeyPath:  filepath.Join(certDir, "privatekey.pem"),
 	}}
 
-	content, err := Generate(cfg, rules, certs)
+	content, err := Generate(cfg, rules, certs, GenerateOptions{})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

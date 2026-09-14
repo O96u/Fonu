@@ -104,7 +104,7 @@
               :data="tableRules"
               :bordered="false"
               size="small"
-              :scroll-x="canReorder ? 1260 : 1220"
+              :scroll-x="canReorder ? 1460 : 1420"
               :row-key="(r: ProxyRule) => r.id"
               :row-props="rowProps"
             />
@@ -154,9 +154,27 @@
         </n-space>
       </div>
 
-      <n-tabs v-model:value="detailTab" type="line" size="small" class="proxy-detail__tabs">
-        <n-tab-pane name="overview" tab="概览">
-          <div class="proxy-detail__body proxy-detail__body--overview">
+      <div class="proxy-detail__tabbar">
+        <button
+          type="button"
+          class="proxy-detail__tab"
+          :class="{ 'proxy-detail__tab--active': detailTab === 'overview' }"
+          @click="detailTab = 'overview'"
+        >
+          概览
+        </button>
+        <button
+          type="button"
+          class="proxy-detail__tab"
+          :class="{ 'proxy-detail__tab--active': detailTab === 'logs' }"
+          @click="detailTab = 'logs'"
+        >
+          日志
+        </button>
+      </div>
+
+      <div class="proxy-detail__scroll">
+        <div v-show="detailTab === 'overview'" class="proxy-detail__pane proxy-detail__pane--overview">
             <div class="overview-strip">
               <div class="overview-strip__item">
                 <span class="overview-strip__label">域名</span>
@@ -180,6 +198,22 @@
                   </n-tag>
                 </span>
               </div>
+            </div>
+
+            <div class="overview-security">
+              <span class="overview-security__label">安全策略</span>
+              <div v-if="selectedSecurityFeatures.length" class="overview-security__tags">
+                <n-tag
+                  v-for="tag in selectedSecurityFeatures"
+                  :key="tag"
+                  size="small"
+                  round
+                  :bordered="false"
+                >
+                  {{ tag }}
+                </n-tag>
+              </div>
+              <span v-else class="overview-security__empty">未启用</span>
             </div>
 
             <div class="overview-main">
@@ -246,11 +280,9 @@
                 </section>
               </aside>
             </div>
-          </div>
-        </n-tab-pane>
+        </div>
 
-          <n-tab-pane name="logs" tab="日志">
-            <div class="proxy-detail__body proxy-detail__body--logs">
+        <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
                 <span class="text-muted">实时访问日志</span>
                 <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
@@ -283,9 +315,8 @@
                 </template>
                 <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
               </div>
-            </div>
-          </n-tab-pane>
-        </n-tabs>
+        </div>
+      </div>
     </div>
   </n-modal>
 
@@ -299,89 +330,285 @@
           </n-button>
         </div>
 
-        <n-form label-placement="top" class="proxy-modal__body">
-          <n-form-item label="名称">
-            <n-input
-              v-model:value="form.name"
-              maxlength="100"
-              show-count
-              placeholder="选填，用于在列表中识别该规则"
-            />
-          </n-form-item>
+        <div class="proxy-modal__tabbar">
+          <button
+            type="button"
+            class="proxy-modal__tab"
+            :class="{ 'proxy-modal__tab--active': formTab === 'basic' }"
+            @click="formTab = 'basic'"
+          >
+            基础配置
+          </button>
+          <button
+            type="button"
+            class="proxy-modal__tab"
+            :class="{ 'proxy-modal__tab--active': formTab === 'security' }"
+            @click="formTab = 'security'"
+          >
+            <span class="proxy-modal__tab-label">
+              安全设置
+              <n-tag v-if="activeSecurityFeatures.length" size="tiny" round :bordered="false" type="success">
+                {{ activeSecurityFeatures.length }}
+              </n-tag>
+            </span>
+          </button>
+        </div>
 
-          <n-form-item required>
-            <template #label>
-              <span class="form-label">
-                前端域名
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <n-icon :component="HelpCircleOutline" class="form-label__help" />
-                  </template>
-                  每行一个域名；如需单独端口可写 example.com:6893
-                </n-tooltip>
-              </span>
-            </template>
-            <div class="field-stack">
-              <n-input
-                v-model:value="form.hostsText"
-                type="textarea"
-                :rows="4"
-                placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
-              />
-              <p class="field-hint">支持多个域名，每行一个，可包含端口（如 example.com:6893）</p>
-            </div>
-          </n-form-item>
+        <div class="proxy-modal__scroll">
+          <n-form v-show="formTab === 'basic'" label-placement="top" class="proxy-modal__pane">
+              <n-form-item label="名称">
+                <n-input
+                  v-model:value="form.name"
+                  maxlength="100"
+                  show-count
+                  placeholder="选填，用于在列表中识别该规则"
+                />
+              </n-form-item>
 
-          <div class="listen-row">
-            <div class="listen-col listen-col--port">
-              <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
-              <div class="listen-col__control">
-                <n-input-number v-model:value="form.listen_port" :min="1" :max="65535" class="port-input" />
-              </div>
-            </div>
-            <div class="listen-col listen-col--protocol">
-              <div class="listen-col__label">监听协议</div>
-              <div class="listen-col__control">
-                <div class="listen-types">
-                  <n-checkbox v-model:checked="form.listen_ipv4">IPv4</n-checkbox>
-                  <n-checkbox v-model:checked="form.listen_ipv6">IPv6</n-checkbox>
+              <n-form-item required>
+                <template #label>
+                  <span class="form-label">
+                    前端域名
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-icon :component="HelpCircleOutline" class="form-label__help" />
+                      </template>
+                      每行一个域名；如需单独端口可写 example.com:6893
+                    </n-tooltip>
+                  </span>
+                </template>
+                <div class="field-stack">
+                  <n-input
+                    v-model:value="form.hostsText"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
+                  />
+                  <p class="field-hint">支持多个域名，每行一个，可包含端口</p>
+                </div>
+              </n-form-item>
+
+              <div class="listen-row">
+                <div class="listen-col listen-col--port">
+                  <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
+                  <div class="listen-col__control">
+                    <n-input-number v-model:value="form.listen_port" :min="1" :max="65535" class="port-input" />
+                  </div>
+                </div>
+                <div class="listen-col listen-col--protocol">
+                  <div class="listen-col__label">监听协议</div>
+                  <div class="listen-col__control">
+                    <div class="listen-types">
+                      <n-checkbox v-model:checked="form.listen_ipv4">IPv4</n-checkbox>
+                      <n-checkbox v-model:checked="form.listen_ipv6">IPv6</n-checkbox>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <n-form-item label="目标地址" required>
+                <div class="field-stack">
+                  <n-input v-model:value="form.upstream" placeholder="例如：http://192.168.1.100:5173" />
+                  <p class="field-hint">支持 http://、https://，也可以是 IP 地址或内网域名</p>
+                </div>
+              </n-form-item>
+
+              <div class="form-switch-list form-switch-list--compact">
+                <div class="form-switch-row">
+                  <div class="form-switch-row__text">
+                    <div class="form-switch-row__label">启用 HTTPS</div>
+                    <div class="form-switch-row__hint">为前端域名启用 HTTPS 访问</div>
+                  </div>
+                  <n-switch v-model:value="form.https_enabled" />
+                </div>
+                <div class="form-switch-row">
+                  <div class="form-switch-row__text">
+                    <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
+                    <div class="form-switch-row__hint">将 HTTP 请求自动跳转为 HTTPS</div>
+                  </div>
+                  <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
+                </div>
+                <div class="form-switch-row">
+                  <div class="form-switch-row__text">
+                    <div class="form-switch-row__label">启用规则</div>
+                    <div class="form-switch-row__hint">保存后立即开始转发请求</div>
+                  </div>
+                  <n-switch v-model:value="form.enabled" />
+                </div>
+              </div>
+            </n-form>
+
+          <div v-show="formTab === 'security'" class="proxy-modal__pane proxy-modal__pane--security">
+              <div class="security-section">
+              <div class="security-header">
+                <div class="security-header__row">
+                  <div class="security-header__status">
+                    <span class="security-header__status-label">已启用</span>
+                    <div v-if="activeSecurityFeatures.length" class="security-header__tags">
+                      <n-tag
+                        v-for="tag in activeSecurityFeatures"
+                        :key="tag"
+                        size="small"
+                        round
+                        :bordered="false"
+                      >
+                        {{ tag }}
+                      </n-tag>
+                    </div>
+                    <span v-else class="security-header__empty">暂无</span>
+                  </div>
+                  <n-button type="primary" size="tiny" class="security-header__preset" @click="applySecurityPreset">
+                    <template #icon><n-icon :component="FlashOutline" :size="14" /></template>
+                    一键推荐
+                  </n-button>
+                </div>
+                <p class="security-header__note">
+                  IP 策略依赖「设置 → 信任代理」；白名单 IP 可豁免「仅中国大陆」限制。
+                </p>
+              </div>
+
+              <n-collapse v-model:expanded-names="securityExpanded" class="security-collapse">
+                <n-collapse-item title="IP 访问控制" name="ip">
+                  <div class="security-panel">
+                    <div class="security-option">
+                      <div class="security-option__text">
+                        <div class="security-option__label">仅中国大陆 IP</div>
+                        <div class="security-option__hint">需先在设置页更新中国 IP 段</div>
+                      </div>
+                      <n-switch v-model:value="form.china_only" size="small" />
+                    </div>
+
+                    <div class="security-option">
+                      <div class="security-option__text">
+                        <div class="security-option__label">黑名单模式</div>
+                        <div class="security-option__hint">启用后拒绝列表中的 IP 访问</div>
+                      </div>
+                      <n-switch v-model:value="form.ip_blacklist_mode" size="small" />
+                    </div>
+                    <div v-if="form.ip_blacklist_mode" class="security-panel__fields">
+                      <n-form-item label="IP 黑名单">
+                        <n-input
+                          v-model:value="form.ip_blacklist_text"
+                          type="textarea"
+                          :rows="2"
+                          placeholder="每行一个 IP 或 CIDR"
+                        />
+                      </n-form-item>
+                    </div>
+
+                    <div class="security-option">
+                      <div class="security-option__text">
+                        <div class="security-option__label">白名单模式</div>
+                        <div class="security-option__hint">启用后仅允许白名单 IP 访问</div>
+                      </div>
+                      <n-switch v-model:value="form.ip_whitelist_mode" size="small" />
+                    </div>
+                    <div v-if="form.ip_whitelist_mode" class="security-panel__fields">
+                      <n-form-item label="IP 白名单">
+                        <n-input
+                          v-model:value="form.ip_whitelist_text"
+                          type="textarea"
+                          :rows="2"
+                          placeholder="每行一个 IP 或 CIDR"
+                        />
+                      </n-form-item>
+                    </div>
+                  </div>
+                </n-collapse-item>
+
+                <n-collapse-item title="认证" name="auth">
+                  <div class="security-panel">
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">Basic Auth</div>
+                      <div class="security-option__hint">浏览器弹窗认证</div>
+                    </div>
+                    <n-switch v-model:value="form.basic_auth_enabled" size="small" />
+                  </div>
+                  <div v-if="form.basic_auth_enabled" class="security-fields-grid">
+                    <n-form-item label="用户名">
+                      <n-input v-model:value="form.basic_auth_username" placeholder="用户名" />
+                    </n-form-item>
+                    <n-form-item label="密码">
+                      <n-input
+                        v-model:value="form.basic_auth_password"
+                        type="password"
+                        show-password-on="click"
+                        :placeholder="editing?.security?.basic_auth?.has_password ? '留空则不修改' : '至少 8 位'"
+                      />
+                    </n-form-item>
+                  </div>
+                  </div>
+                </n-collapse-item>
+
+                <n-collapse-item title="流量控制" name="traffic">
+                  <div class="security-panel">
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">请求限流</div>
+                      <div class="security-option__hint">超出速率返回 429</div>
+                    </div>
+                    <n-switch v-model:value="form.rate_limit_enabled" size="small" />
+                  </div>
+                  <div v-if="form.rate_limit_enabled" class="security-fields-grid">
+                    <n-form-item label="每秒请求数">
+                      <n-input-number v-model:value="form.rate_limit_rate" :min="1" :max="10000" class="w-full" />
+                    </n-form-item>
+                    <n-form-item label="突发上限">
+                      <n-input-number v-model:value="form.rate_limit_burst" :min="1" :max="100000" class="w-full" />
+                    </n-form-item>
+                  </div>
+
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">连接数限制</div>
+                      <div class="security-option__hint">每 IP 最大并发连接</div>
+                    </div>
+                    <n-switch v-model:value="form.conn_limit_enabled" size="small" />
+                  </div>
+                  <div v-if="form.conn_limit_enabled" class="security-panel__fields">
+                    <n-form-item label="最大连接数">
+                      <n-input-number v-model:value="form.conn_limit_max" :min="1" :max="10000" class="conn-limit-input" />
+                    </n-form-item>
+                  </div>
+                  </div>
+                </n-collapse-item>
+
+                <n-collapse-item title="高级" name="advanced">
+                  <div class="security-panel">
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">忽略后端 TLS 证书</div>
+                      <div class="security-option__hint">上游为自签 https:// 时使用</div>
+                    </div>
+                    <n-switch v-model:value="form.proxy_ssl_verify_off" size="small" />
+                  </div>
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">使用目标 Host 头</div>
+                      <div class="security-option__hint">转发时使用上游地址作为 Host</div>
+                    </div>
+                    <n-switch v-model:value="form.proxy_host_upstream" size="small" />
+                  </div>
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">仅 TLS 1.3</div>
+                    </div>
+                    <n-switch v-model:value="form.tls_min_13_only" size="small" :disabled="!form.https_enabled" />
+                  </div>
+                  <div class="security-option">
+                    <div class="security-option__text">
+                      <div class="security-option__label">安全响应头</div>
+                      <div class="security-option__hint">HSTS、X-Frame-Options 等</div>
+                    </div>
+                    <n-switch v-model:value="form.security_headers" size="small" :disabled="!form.https_enabled" />
+                  </div>
+                  </div>
+                </n-collapse-item>
+              </n-collapse>
+              </div>
           </div>
-
-          <n-form-item label="目标地址" required>
-            <div class="field-stack">
-              <n-input v-model:value="form.upstream" placeholder="例如：http://192.168.1.100:5173" />
-              <p class="field-hint">支持 http://、https://，也可以是 IP 地址或内网域名</p>
-            </div>
-          </n-form-item>
-
-          <div class="form-switch-list">
-            <div class="form-switch-row">
-              <div class="form-switch-row__text">
-                <div class="form-switch-row__label">启用 HTTPS</div>
-                <div class="form-switch-row__hint">为前端域名启用 HTTPS 访问</div>
-              </div>
-              <n-switch v-model:value="form.https_enabled" />
-            </div>
-            <div class="form-switch-row">
-              <div class="form-switch-row__text">
-                <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
-                <div class="form-switch-row__hint">将 HTTP 请求自动跳转为 HTTPS</div>
-              </div>
-              <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
-            </div>
-            <div class="form-switch-row">
-              <div class="form-switch-row__text">
-                <div class="form-switch-row__label">启用规则</div>
-                <div class="form-switch-row__hint">创建后立即生效，此规则将开始转发请求</div>
-              </div>
-              <n-switch v-model:value="form.enabled" />
-            </div>
-          </div>
-
-        </n-form>
+        </div>
 
         <div class="modal-footer">
           <n-button @click="showModal = false">取消</n-button>
@@ -390,39 +617,56 @@
       </div>
 
       <div class="proxy-modal__help">
-        <h4>配置说明</h4>
-        <ol>
-          <li>
-            <strong>前端域名</strong>：支持多个域名或子域名，每行一个；如需单独端口可写
-            <code>example.com:6893</code>。
-          </li>
-          <li>
-            <strong>目标地址</strong>：填写内网服务地址，支持 <code>http://</code>、<code>https://</code>、IP 或内网域名。
-          </li>
-          <li>
-            <strong>其他选项</strong>
-            <ul>
-              <li>启用 HTTPS：为域名配置 SSL 证书访问</li>
-              <li>HTTP 跳转 HTTPS：自动将 HTTP 请求重定向到 HTTPS</li>
-              <li>启用规则：创建后立即开始转发</li>
-            </ul>
-          </li>
-        </ol>
-        <div class="proxy-modal__tip">
-          <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-          <span>请确保已正确配置域名解析，且内网服务可以正常访问。</span>
-        </div>
+        <template v-if="formTab === 'basic'">
+          <h4>配置说明</h4>
+          <ol>
+            <li>
+              <strong>前端域名</strong>：支持多个域名，每行一个；单独端口可写
+              <code>example.com:6893</code>。
+            </li>
+            <li>
+              <strong>目标地址</strong>：内网服务地址，支持 <code>http://</code>、<code>https://</code> 或 IP。
+            </li>
+            <li>
+              <strong>HTTPS</strong>：需在「证书」页为域名申请或上传证书。
+            </li>
+          </ol>
+          <div class="proxy-modal__tip">
+            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
+            <span>请确保域名已解析到本机，且内网服务可访问。</span>
+          </div>
+        </template>
+        <template v-else>
+          <h4>安全说明</h4>
+          <ol>
+            <li>
+              <strong>IP 策略</strong>：经 CDN 访问时，请在「设置」配置信任代理，否则限流与 IP 规则可能不准。
+            </li>
+            <li>
+              <strong>仅中国大陆</strong>：需先在设置页更新中国 IP 段；白名单 IP 不受此限制。
+            </li>
+            <li>
+              <strong>一键推荐</strong>：HTTPS + 限流 + 安全响应头，适合公网暴露场景。
+            </li>
+          </ol>
+          <div class="proxy-modal__tip">
+            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
+            <span>安全策略保存后会自动重载 Nginx 配置。</span>
+          </div>
+        </template>
       </div>
     </div>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Component, type VNode } from 'vue'
 import Sortable from 'sortablejs'
 import {
   NButton,
   NCheckbox,
+  NCollapse,
+  NCollapseItem,
   NDataTable,
   NForm,
   NFormItem,
@@ -430,12 +674,11 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NPopover,
   NSelect,
   NSpace,
   NSpin,
   NSwitch,
-  NTabPane,
-  NTabs,
   NTag,
   NTooltip,
   useDialog,
@@ -447,9 +690,12 @@ import {
   ArrowDownOutline,
   ArrowUpOutline,
   CloseOutline,
+  CopyOutline,
+  OpenOutline,
   ReorderThreeOutline,
   CloudDownloadOutline,
   CloudUploadOutline,
+  FlashOutline,
   HelpCircleOutline,
   InformationCircleOutline,
   LayersOutline,
@@ -475,6 +721,8 @@ const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const showModal = ref(false)
+const formTab = ref<'basic' | 'security'>('basic')
+const securityExpanded = ref<string[]>(['ip'])
 const editing = ref<ProxyRule | null>(null)
 const search = ref('')
 const statusFilter = ref<string | null>(null)
@@ -513,6 +761,26 @@ const httpsOptions = [
   { label: 'HTTP', value: 'off' },
 ]
 
+const defaultSecurityForm = () => ({
+  ip_blacklist_text: '',
+  ip_blacklist_mode: false,
+  ip_whitelist_text: '',
+  ip_whitelist_mode: false,
+  china_only: false,
+  basic_auth_enabled: false,
+  basic_auth_username: '',
+  basic_auth_password: '',
+  rate_limit_enabled: false,
+  rate_limit_rate: 10,
+  rate_limit_burst: 20,
+  conn_limit_enabled: false,
+  conn_limit_max: 20,
+  proxy_ssl_verify_off: false,
+  proxy_host_upstream: false,
+  tls_min_13_only: false,
+  security_headers: false,
+})
+
 const form = reactive({
   listen_port: 80,
   listen_ipv4: true,
@@ -523,6 +791,7 @@ const form = reactive({
   http_redirect: true,
   enabled: true,
   name: '',
+  ...defaultSecurityForm(),
 })
 
 const tableWrapRef = ref<HTMLElement | null>(null)
@@ -569,9 +838,66 @@ const filteredRules = computed(() =>
 
 const tableRules = computed(() => (canReorder.value ? rules.value : filteredRules.value))
 
+const activeSecurityFeatures = computed(() => {
+  const tags: string[] = []
+  if (form.ip_blacklist_mode) tags.push('黑名单')
+  if (form.ip_whitelist_mode) tags.push('白名单')
+  if (form.china_only) tags.push('大陆 IP')
+  if (form.basic_auth_enabled) tags.push('Auth')
+  if (form.rate_limit_enabled) tags.push('限流')
+  if (form.conn_limit_enabled) tags.push('连接限制')
+  if (form.proxy_ssl_verify_off) tags.push('跳过 TLS 校验')
+  if (form.proxy_host_upstream) tags.push('目标 Host')
+  if (form.tls_min_13_only) tags.push('TLS 1.3')
+  if (form.security_headers) tags.push('响应头')
+  return tags
+})
+
+function syncSecurityExpanded() {
+  const expanded = new Set<string>()
+  if (
+    form.ip_blacklist_mode ||
+    form.ip_whitelist_mode ||
+    form.china_only
+  ) {
+    expanded.add('ip')
+  }
+  if (form.basic_auth_enabled) expanded.add('auth')
+  if (form.rate_limit_enabled || form.conn_limit_enabled) expanded.add('traffic')
+  if (
+    form.proxy_ssl_verify_off ||
+    form.proxy_host_upstream ||
+    form.tls_min_13_only ||
+    form.security_headers
+  ) {
+    expanded.add('advanced')
+  }
+  securityExpanded.value = expanded.size > 0 ? [...expanded] : ['ip']
+}
+
 const selectedRule = computed(() => rules.value.find((r) => r.id === selectedRuleId.value) ?? null)
 const selectedTraffic = computed(() =>
   selectedRule.value ? trafficByRule.value[selectedRule.value.id] : undefined,
+)
+
+function securityFeatureLabels(rule: ProxyRule): string[] {
+  const sec = rule.security ?? {}
+  const tags: string[] = []
+  if ((sec.ip_blacklist?.length ?? 0) > 0) tags.push('黑名单')
+  if (sec.ip_whitelist_mode) tags.push('白名单')
+  if (sec.china_only) tags.push('大陆 IP')
+  if (sec.basic_auth?.enabled) tags.push('Auth')
+  if (sec.rate_limit?.enabled) tags.push('限流')
+  if (sec.conn_limit?.enabled) tags.push('连接限制')
+  if (sec.proxy_ssl_verify_off) tags.push('跳过 TLS 校验')
+  if (sec.proxy_host_upstream) tags.push('目标 Host')
+  if (sec.tls_min_13_only) tags.push('TLS 1.3')
+  if (sec.security_headers) tags.push('响应头')
+  return tags
+}
+
+const selectedSecurityFeatures = computed(() =>
+  selectedRule.value ? securityFeatureLabels(selectedRule.value) : [],
 )
 
 const trafficChart = computed(() => {
@@ -689,6 +1015,113 @@ function listenLabel(rule: ProxyRule): string {
   return `${rule.listen_port} (${stack})`
 }
 
+function hostAccessUrl(rule: ProxyRule, hostPart: string): string {
+  const scheme = rule.https_enabled ? 'https' : 'http'
+  const hasExplicitPort = hostPart.startsWith('[')
+    ? /]:\d+$/.test(hostPart)
+    : /^[^:[\]]+:\d+$/.test(hostPart)
+  if (hasExplicitPort) {
+    return `${scheme}://${hostPart}`
+  }
+
+  const defaultPort = rule.https_enabled ? nginxHttpsPort.value : nginxHttpPort.value
+  if (rule.listen_port !== defaultPort) {
+    return `${scheme}://${hostPart}:${rule.listen_port}`
+  }
+  return `${scheme}://${hostPart}`
+}
+
+function ruleAccessUrls(rule: ProxyRule): string[] {
+  return ruleHosts(rule).map((host) => hostAccessUrl(rule, host))
+}
+
+async function copyAccessUrl(url: string) {
+  try {
+    await navigator.clipboard.writeText(url)
+    message.success('链接已复制')
+  } catch {
+    message.error('复制失败')
+  }
+}
+
+function renderLinkAction(icon: Component, title: string, onClick: () => void): VNode {
+  return h(
+    'button',
+    {
+      type: 'button',
+      class: 'domain-cell__link-action',
+      title,
+      onClick: (e: Event) => {
+        e.stopPropagation()
+        onClick()
+      },
+    },
+    [h(NIcon, { component: icon, size: 14 })],
+  )
+}
+
+function renderAccessLinkRow(url: string): VNode {
+  return h(
+    'div',
+    { class: 'domain-cell__link-row', onClick: (e: Event) => e.stopPropagation() },
+    [
+      h(
+        'a',
+        {
+          class: 'domain-cell__link',
+          href: url,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: url,
+          onClick: (e: Event) => e.stopPropagation(),
+        },
+        url,
+      ),
+      renderLinkAction(CopyOutline, '复制链接', () => copyAccessUrl(url)),
+      renderLinkAction(OpenOutline, '新窗口打开', () => window.open(url, '_blank', 'noopener,noreferrer')),
+    ],
+  )
+}
+
+function renderDomainAccessLinks(rule: ProxyRule): VNode | null {
+  const hosts = ruleHosts(rule)
+  if (hosts.length === 0) return null
+
+  const showLinks = hosts.length > 1 || !!rule.name?.trim()
+  if (!showLinks) return null
+
+  const urls = ruleAccessUrls(rule)
+  const maxInline = 2
+  const inline = urls.slice(0, maxInline)
+  const rest = urls.slice(maxInline)
+
+  const children: VNode[] = inline.map((url) => renderAccessLinkRow(url))
+  if (rest.length > 0) {
+    children.push(
+      h(
+        NPopover,
+        { trigger: 'click', placement: 'bottom-start', showArrow: false },
+        {
+          trigger: () =>
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'domain-cell__more',
+                onClick: (e: Event) => e.stopPropagation(),
+              },
+              `还有 ${rest.length} 个域名`,
+            ),
+          default: () =>
+            h('div', { class: 'domain-cell__popover-links' }, rest.map((url) => renderAccessLinkRow(url))),
+        },
+      ),
+    )
+  }
+
+  return h('div', { class: 'domain-cell__links' }, children)
+}
+
 function parseHostsText(text: string): string[] {
   return text
     .split('\n')
@@ -774,20 +1207,12 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
   cols.push({
     title: '名称',
     key: 'name',
-    minWidth: 180,
-    render: (row) => {
-      const hosts = ruleHosts(row)
-      const subtitle =
-        hosts.length > 1
-          ? hosts.join('、')
-          : row.name?.trim()
-            ? hosts[0] ?? ''
-            : ''
-      return h('div', { class: 'domain-cell' }, [
+    minWidth: 260,
+    render: (row) =>
+      h('div', { class: 'domain-cell' }, [
         h('div', { class: 'domain-cell__main' }, ruleName(row)),
-        subtitle ? h('div', { class: 'domain-cell__sub' }, subtitle) : null,
-      ])
-    },
+        renderDomainAccessLinks(row),
+      ]),
   })
 
   cols.push(
@@ -808,6 +1233,20 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
     key: 'https_enabled',
     width: 88,
     render: (row) => renderProtocol(row),
+  },
+  {
+    title: '安全',
+    key: 'security',
+    width: 120,
+    render: (row) => {
+      const tags = securityTags(row)
+      if (tags.length === 0) return h('span', { class: 'text-muted' }, '—')
+      return h(
+        'div',
+        { class: 'proxy-security-tags' },
+        tags.map((tag) => h(NTag, { size: 'small', bordered: false, round: true }, { default: () => tag })),
+      )
+    },
   },
   {
     title: '状态',
@@ -1090,6 +1529,77 @@ function resetForm() {
   form.http_redirect = true
   form.enabled = true
   form.name = ''
+  Object.assign(form, defaultSecurityForm())
+}
+
+function loadSecurityToForm(rule?: ProxyRule | null) {
+  const sec = rule?.security ?? {}
+  form.ip_blacklist_text = (sec.ip_blacklist ?? []).join('\n')
+  form.ip_blacklist_mode = (sec.ip_blacklist?.length ?? 0) > 0
+  form.ip_whitelist_text = (sec.ip_whitelist ?? []).join('\n')
+  form.ip_whitelist_mode = sec.ip_whitelist_mode ?? false
+  form.china_only = sec.china_only ?? false
+  form.basic_auth_enabled = sec.basic_auth?.enabled ?? false
+  form.basic_auth_username = sec.basic_auth?.username ?? ''
+  form.basic_auth_password = ''
+  form.rate_limit_enabled = sec.rate_limit?.enabled ?? false
+  form.rate_limit_rate = sec.rate_limit?.rate ?? 10
+  form.rate_limit_burst = sec.rate_limit?.burst ?? 20
+  form.conn_limit_enabled = sec.conn_limit?.enabled ?? false
+  form.conn_limit_max = sec.conn_limit?.max ?? 20
+  form.proxy_ssl_verify_off = sec.proxy_ssl_verify_off ?? false
+  form.proxy_host_upstream = sec.proxy_host_upstream ?? false
+  form.tls_min_13_only = sec.tls_min_13_only ?? false
+  form.security_headers = sec.security_headers ?? false
+}
+
+function buildSecurityPayload() {
+  const payload: ProxySavePayload['security'] = {
+    ip_blacklist_text: form.ip_blacklist_mode ? form.ip_blacklist_text : '',
+    ip_whitelist_text: form.ip_whitelist_text,
+    ip_whitelist_mode: form.ip_whitelist_mode,
+    china_only: form.china_only,
+    proxy_ssl_verify_off: form.proxy_ssl_verify_off,
+    proxy_host_upstream: form.proxy_host_upstream,
+    tls_min_13_only: form.tls_min_13_only,
+    security_headers: form.security_headers,
+    basic_auth: {
+      enabled: form.basic_auth_enabled,
+      username: form.basic_auth_username.trim(),
+    },
+    rate_limit: form.rate_limit_enabled
+      ? { enabled: true, rate: form.rate_limit_rate, burst: form.rate_limit_burst }
+      : { enabled: false },
+    conn_limit: form.conn_limit_enabled
+      ? { enabled: true, max: form.conn_limit_max }
+      : { enabled: false },
+  }
+  if (form.basic_auth_password.trim()) {
+    payload.basic_auth!.password = form.basic_auth_password
+  }
+  return payload
+}
+
+function applySecurityPreset() {
+  form.https_enabled = true
+  form.http_redirect = true
+  form.rate_limit_enabled = true
+  form.rate_limit_rate = 10
+  form.rate_limit_burst = 20
+  form.security_headers = true
+  formTab.value = 'security'
+  securityExpanded.value = ['traffic', 'advanced']
+  message.success('已填入推荐配置：HTTPS、限流与安全响应头')
+}
+
+function securityTags(rule: ProxyRule): string[] {
+  const sec = rule.security ?? {}
+  const tags: string[] = []
+  if (sec.basic_auth?.enabled) tags.push('Auth')
+  if ((sec.ip_blacklist?.length ?? 0) > 0 || sec.ip_whitelist_mode) tags.push('IP')
+  if (sec.china_only) tags.push('CN')
+  if (sec.rate_limit?.enabled || sec.conn_limit?.enabled) tags.push('Limit')
+  return tags
 }
 
 function buildPayload(): ProxySavePayload {
@@ -1110,6 +1620,7 @@ function buildPayload(): ProxySavePayload {
     http_redirect: form.http_redirect,
     enabled: form.enabled,
     name: form.name.trim(),
+    security: buildSecurityPayload(),
   }
 }
 
@@ -1135,7 +1646,9 @@ async function scanServices() {
 
 function openCreate() {
   editing.value = null
+  formTab.value = 'basic'
   resetForm()
+  securityExpanded.value = ['ip']
   showModal.value = true
 }
 
@@ -1176,6 +1689,9 @@ function openDuplicate(rule: ProxyRule) {
     enabled: rule.enabled,
     name: duplicateName(rule),
   })
+  loadSecurityToForm(rule)
+  syncSecurityExpanded()
+  formTab.value = 'basic'
   showModal.value = true
   message.info('已填入复制内容，请修改域名后保存')
 }
@@ -1195,6 +1711,9 @@ function openEdit(rule: ProxyRule) {
     enabled: rule.enabled,
     name: rule.name ?? '',
   })
+  loadSecurityToForm(rule)
+  syncSecurityExpanded()
+  formTab.value = activeSecurityFeatures.value.length > 0 ? 'security' : 'basic'
   showModal.value = true
 }
 
@@ -1459,10 +1978,137 @@ onUnmounted(() => {
   color: var(--fonu-text);
 }
 
-.proxy-table :deep(.domain-cell__sub) {
-  margin-top: 2px;
+.proxy-table :deep(.domain-cell__links) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.proxy-table :deep(.domain-cell__link-row) {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.proxy-table :deep(.domain-cell__link) {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
-  color: var(--fonu-text-muted);
+  font-family: var(--fonu-mono);
+  color: #2563eb;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-table :deep(.domain-cell__link:hover) {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+
+.proxy-table :deep(.domain-cell__link-action) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.proxy-table :deep(.domain-cell__link-action:hover) {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.proxy-table :deep(.domain-cell__more) {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.proxy-table :deep(.domain-cell__more:hover) {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+
+.domain-cell__popover-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 240px;
+  max-width: min(420px, 80vw);
+  padding: 4px 0;
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link-row) {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link-row:hover) {
+  background: var(--fonu-bg);
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link) {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: var(--fonu-mono);
+  color: #2563eb;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link:hover) {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link-action) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.domain-cell__popover-links :deep(.domain-cell__link-action:hover) {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .proxy-table :deep(.proto-tags) {
@@ -1473,8 +2119,7 @@ onUnmounted(() => {
 
 .proxy-detail-modal {
   width: min(920px, 96vw);
-  height: min(720px, 88vh);
-  max-height: 88vh;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   background: var(--fonu-surface);
@@ -1524,45 +2169,58 @@ onUnmounted(() => {
   border-color: rgba(16, 185, 129, 0.25);
 }
 
-.proxy-detail__tabs {
-  flex: 1 1 0;
-  min-height: 0;
+.proxy-detail__tabbar {
   display: flex;
-  flex-direction: column;
-  padding: 0 var(--fonu-space-5) var(--fonu-space-5);
-}
-
-.proxy-detail__tabs :deep(.n-tabs-nav) {
+  gap: var(--fonu-space-5);
+  padding: var(--fonu-space-3) var(--fonu-space-5) 0;
+  border-bottom: 1px solid var(--fonu-border);
   flex-shrink: 0;
 }
 
-/* naive-ui 默认非 animated 时 tab-pane 直接挂在 .n-tabs 下，无 pane-wrapper */
-.proxy-detail__tabs :deep(.n-tabs-pane-wrapper),
-.proxy-detail__tabs :deep(.n-tab-pane) {
-  flex: 1 1 0;
-  min-height: 0;
+.proxy-detail__tab {
+  margin: 0;
+  padding: 8px 2px 10px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fonu-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.proxy-detail__tab:hover {
+  color: var(--fonu-text);
+}
+
+.proxy-detail__tab--active {
+  color: var(--fonu-brand-text);
+  font-weight: 600;
+  border-bottom-color: var(--fonu-brand);
+}
+
+.proxy-detail__scroll {
+  flex: 1;
+  min-height: min(480px, 60vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
 }
 
-.proxy-detail__body {
-  flex: 1 1 0;
+.proxy-detail__pane {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--fonu-space-4) var(--fonu-space-5) var(--fonu-space-5);
+}
+
+.proxy-detail__pane--overview {
+  flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: var(--fonu-space-4) var(--fonu-space-1);
-  box-sizing: border-box;
-}
-
-.proxy-detail__body--overview {
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--fonu-space-4);
-  padding-top: var(--fonu-space-2);
-  flex: 1 1 0;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .overview-strip {
@@ -1573,6 +2231,38 @@ onUnmounted(() => {
   background: var(--fonu-bg);
   border: 1px solid var(--fonu-border);
   border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.overview-security {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.overview-security__label {
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.overview-security__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.overview-security__empty {
+  font-size: 13px;
+  color: var(--fonu-text-muted);
 }
 
 .overview-strip__item {
@@ -1758,13 +2448,13 @@ onUnmounted(() => {
   margin-bottom: 6px;
 }
 
-.proxy-detail__body--logs {
-  flex: 1 1 0;
+.proxy-detail__pane--logs {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--fonu-space-3) 0 0;
   overflow: hidden;
+  padding-top: var(--fonu-space-3);
 }
 
 .live-badge {
@@ -1858,10 +2548,235 @@ onUnmounted(() => {
   padding: var(--fonu-space-5) var(--fonu-space-5) 0;
 }
 
-.proxy-modal__body {
+.proxy-modal__tabbar {
+  display: flex;
+  gap: var(--fonu-space-5);
+  padding: var(--fonu-space-3) var(--fonu-space-5) 0;
+  border-bottom: 1px solid var(--fonu-border);
+  flex-shrink: 0;
+}
+
+.proxy-modal__tab {
+  margin: 0;
+  padding: 8px 2px 10px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fonu-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.proxy-modal__tab:hover {
+  color: var(--fonu-text);
+}
+
+.proxy-modal__tab--active {
+  color: var(--fonu-brand-text);
+  font-weight: 600;
+  border-bottom-color: var(--fonu-brand);
+}
+
+.proxy-modal__tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.proxy-modal__scroll {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.proxy-modal__pane {
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--fonu-space-4) var(--fonu-space-5) 0;
+}
+
+.proxy-modal__pane :deep(.n-form) {
+  width: 100%;
+}
+
+.security-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.security-header {
+  padding: 14px 16px 16px;
+  border-radius: 10px;
+  background: var(--fonu-bg);
+  border: 1px solid var(--fonu-border);
+}
+
+.security-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+}
+
+.security-header__preset {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.security-header__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.security-header__status-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text-secondary);
+  flex-shrink: 0;
+}
+
+.security-header__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.security-header__empty {
+  font-size: 13px;
+  color: var(--fonu-text-muted);
+}
+
+.security-header__note {
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--fonu-border);
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+  line-height: 1.6;
+}
+
+.security-collapse {
+  width: 100%;
+  border: 1px solid var(--fonu-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--fonu-surface);
+}
+
+.security-collapse :deep(.n-collapse-item) {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.security-collapse :deep(.n-collapse-item + .n-collapse-item) {
+  border-top: 1px solid var(--fonu-border) !important;
+}
+
+/* naive-ui 首个 collapse-item 默认 padding-top: 0，导致首项偏矮 */
+.security-collapse :deep(.n-collapse-item__header) {
+  padding: 12px 14px !important;
+  min-height: 44px;
+  box-sizing: border-box;
+  font-weight: 600;
+  background: var(--fonu-bg);
+}
+
+.security-collapse :deep(.n-collapse-item:first-child > .n-collapse-item__header) {
+  padding-top: 12px !important;
+}
+
+.security-collapse :deep(.n-collapse-item__content-inner) {
+  padding: 0 14px 14px;
+}
+
+.security-panel {
+  padding-top: 2px;
+}
+
+.security-panel__fields {
+  padding: 8px 0 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--fonu-border);
+}
+
+.security-panel__fields :deep(.n-form-item) {
+  margin-bottom: 0;
+}
+
+.security-panel__fields :deep(.n-form-item-label) {
+  padding-bottom: 6px;
+}
+
+.security-panel__fields:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 6px;
+}
+
+.security-panel .security-fields-grid {
+  padding: 8px 0 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--fonu-border);
+}
+
+.security-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: 12px 0;
+}
+
+.security-panel .security-option + .security-option,
+.security-panel__fields + .security-option,
+.security-fields-grid + .security-option {
+  border-top: 1px solid var(--fonu-border);
+}
+
+.security-option__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fonu-text);
+}
+
+.security-option__hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+  line-height: 1.45;
+}
+
+.security-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fonu-space-3);
+  padding: 4px 0 8px;
+}
+
+.conn-limit-input {
+  width: 160px;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.form-switch-list--compact {
+  margin-bottom: 0;
+}
+
+.proxy-security-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .proxy-modal__help {
@@ -1949,7 +2864,7 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.proxy-modal__body :deep(.n-form-item .n-form-item-blank) {
+.proxy-modal__pane :deep(.n-form-item .n-form-item-blank) {
   display: block;
   width: 100%;
 }

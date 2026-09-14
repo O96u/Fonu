@@ -20,6 +20,15 @@ const (
 	KeyNotifyOnDDNSError     = "notify_on_ddns_error"
 	KeyNotifyOnCertError     = "notify_on_cert_error"
 	KeyNotifyOnNginxError    = "notify_on_nginx_error"
+	KeyTrustedProxy          = "trusted_proxy_json"
+	KeyGlobalIPBlacklist     = "global_ip_blacklist"
+	KeyChinaCIDRUpdateHours  = "china_cidr_update_interval_hours"
+	KeyChinaCIDRSourceV4     = "china_cidr_source_url_v4"
+	KeyChinaCIDRSourceV6     = "china_cidr_source_url_v6"
+	KeyChinaCIDRUpdatedAt    = "china_cidr_updated_at"
+	KeyChinaCIDRCountV4      = "china_cidr_count_v4"
+	KeyChinaCIDRCountV6      = "china_cidr_count_v6"
+	KeyChinaCIDRLastError    = "china_cidr_last_error"
 )
 
 var Defaults = map[string]string{
@@ -28,7 +37,8 @@ var Defaults = map[string]string{
 	KeyLogRetentionDays:   "30",
 	KeyDDNSCheckInterval:  "5",
 	KeyCertRenewThreshold: "30",
-	KeyACMECA:             "letsencrypt",
+	KeyACMECA:                    "letsencrypt",
+	KeyChinaCIDRUpdateHours:      "24",
 }
 
 type Store struct {

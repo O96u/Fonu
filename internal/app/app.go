@@ -18,6 +18,7 @@ import (
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/ddns"
 	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/logstore"
@@ -82,7 +83,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 
-	proxySvc := service.NewProxyService(cfg, conn, proxyStore, certStore, nginxMgr)
+	proxySvc := service.NewProxyService(cfg, conn, proxyStore, certStore, settingsStore, nginxMgr)
+	chinaCIDRSvc := chinacidr.New(cfg, settingsStore, nginxMgr, proxyStore, logger.With("module", "CHINA_CIDR"))
 	notifySvc := notify.New(settingsStore)
 	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)
@@ -92,18 +94,19 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"))
 
 	handler := api.NewRouter(api.Deps{
-		Config:    cfg,
-		Logger:    logger,
-		Auth:      authSvc,
-		Proxy:     proxySvc,
-		DDNS:      ddnsSvc,
-		ACME:      acmeSvc,
-		Settings:  settingsStore,
-		Backup:    backupSvc,
-		Discovery: discoverySvc,
-		Traffic:   trafficCollector,
-		StaticFS:  staticFS,
-		StartedAt: startedAt,
+		Config:     cfg,
+		Logger:     logger,
+		Auth:       authSvc,
+		Proxy:      proxySvc,
+		DDNS:       ddnsSvc,
+		ACME:       acmeSvc,
+		Settings:   settingsStore,
+		ChinaCIDR:  chinaCIDRSvc,
+		Backup:     backupSvc,
+		Discovery:  discoverySvc,
+		Traffic:    trafficCollector,
+		StaticFS:   staticFS,
+		StartedAt:  startedAt,
 	})
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -116,6 +119,10 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	if intervalMinutes <= 0 {
 		intervalMinutes = 5
 	}
+	chinaHours, _ := settingsStore.GetInt(ctx, settings.KeyChinaCIDRUpdateHours)
+	if chinaHours <= 0 {
+		chinaHours = 24
+	}
 	sched := scheduler.New(
 		scheduler.Job{
 			Name:     "ddns",
@@ -126,6 +133,11 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 			Name:     "acme",
 			Interval: 24 * time.Hour,
 			Run:      acmeSvc.Tick,
+		},
+		scheduler.Job{
+			Name:     "china_cidr",
+			Interval: time.Duration(chinaHours) * time.Hour,
+			Run:      chinaCIDRSvc.Tick,
 		},
 	)
 	sched.Start(ctx)

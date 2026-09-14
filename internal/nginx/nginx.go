@@ -25,6 +25,7 @@ const (
 type Manager struct {
 	cfg    config.Config
 	logger *slog.Logger
+	opts   GenerateOptions
 }
 
 type ApplyResult struct {
@@ -34,6 +35,14 @@ type ApplyResult struct {
 
 func NewManager(cfg config.Config, logger *slog.Logger) *Manager {
 	return &Manager{cfg: cfg, logger: logger}
+}
+
+func (m *Manager) SetGenerateOptions(opts GenerateOptions) {
+	m.opts = opts
+}
+
+func (m *Manager) CurrentOptions() GenerateOptions {
+	return m.opts
 }
 
 func (m *Manager) EnsureDirs() error {
@@ -82,7 +91,17 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 		return ApplyResult{}, err
 	}
 
-	content, err := Generate(m.cfg, rules, certs)
+	if err := EnsureErrorPages(m.cfg); err != nil {
+		return ApplyResult{}, err
+	}
+	if err := SyncHtpasswdFiles(m.cfg, rules); err != nil {
+		return ApplyResult{}, err
+	}
+
+	opts := m.opts
+	opts.ChinaCIDRAvailable = chinaCIDRExists(m.cfg)
+
+	content, err := Generate(m.cfg, rules, certs, opts)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -142,7 +161,16 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 }
 
 func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []CertSource) error {
-	content, err := Generate(m.cfg, rules, certs)
+	return m.ValidateOnlyWithOptions(ctx, rules, certs, m.opts)
+}
+
+func (m *Manager) ValidateOnlyWithOptions(ctx context.Context, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	if opts.ChinaCIDRPathOverride != "" {
+		opts.ChinaCIDRAvailable = true
+	} else {
+		opts.ChinaCIDRAvailable = chinaCIDRExists(m.cfg)
+	}
+	content, err := Generate(m.cfg, rules, certs, opts)
 	if err != nil {
 		return err
 	}

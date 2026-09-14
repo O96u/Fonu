@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.21] - 2026-09-14
+
+### 新增
+
+- 反代安全设置：IP 黑/白名单、仅中国大陆、Basic Auth、速率/连接数限制
+- 设置页：信任代理（CDN Real IP）、全局 IP 黑名单、中国 IP 段定时更新
+- 自定义 Nginx 错误页（403 / 404 / 429 / 500 / 503）
+- 高级选项：上游 TLS 校验跳过、目标 Host 头、TLS 1.3 仅、HTTPS 安全响应头
+
+### 改进
+
+- 中国 IP 段：同步更新 API、ghfast 镜像回退、多源下载与状态展示
+- 反代编辑/详情弹窗 UI 重构；列表域名访问链接与复制
+- 仅中国大陆 + 白名单：白名单 IP 正确豁免大陆限制（geo + 变量组合）
+
+### 修复
+
+- 白名单模式开启但未填 IP 时的校验
+- API 测试依赖 settings 包导入
+
 ## [v0.1.20] - 2026-09-13
 
 ### 改进

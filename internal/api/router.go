@@ -18,7 +18,8 @@ func NewRouter(deps Deps) http.Handler {
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME),
-		settingsHandler:  NewSettingsHandler(deps.Settings),
+		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy),
+		chinaCIDRHandler: NewChinaCIDRHandler(deps.ChinaCIDR),
 		logsHandler:      logsHandler,
 		backupHandler:    NewBackupHandler(deps.Backup),
 		discoveryHandler: NewDiscoveryHandler(deps.Discovery),
@@ -64,6 +65,10 @@ func NewRouter(deps Deps) http.Handler {
 	protect("DELETE /api/certificates/{domain}", r.certHandler.Delete)
 	protect("GET /api/settings", r.settingsHandler.Get)
 	protect("PUT /api/settings", r.settingsHandler.Put)
+	if deps.ChinaCIDR != nil {
+		protect("GET /api/settings/china-cidr", r.chinaCIDRHandler.Status)
+		protect("POST /api/settings/china-cidr/refresh", r.chinaCIDRHandler.Refresh)
+	}
 	protect("GET /api/logs/access", r.logsHandler.Access)
 	protect("GET /api/logs/error", r.logsHandler.Error)
 	protect("GET /api/logs/system", r.logsHandler.System)
@@ -89,7 +94,8 @@ type Router struct {
 	statusHandler   *StatusHandler
 	ddnsHandler     *DDNSHandler
 	certHandler     *CertHandler
-	settingsHandler *SettingsHandler
+	settingsHandler  *SettingsHandler
+	chinaCIDRHandler *ChinaCIDRHandler
 	logsHandler      *LogsHandler
 	backupHandler    *BackupHandler
 	discoveryHandler *DiscoveryHandler

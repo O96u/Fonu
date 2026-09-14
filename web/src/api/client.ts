@@ -11,6 +11,7 @@ import type {
   DDNSTestPayload,
   DiscoveredService,
   ProxyClientConn,
+  ChinaCIDRStatus,
   ProxyRule,
   ProxySavePayload,
   ProxyTraffic,
@@ -187,6 +188,9 @@ export const api = {
   getSettings: () => request<SettingsMap>('/api/settings'),
   saveSettings: (payload: SettingsMap) =>
     request<SettingsMap>('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  getChinaCIDRStatus: () => request<ChinaCIDRStatus>('/api/settings/china-cidr'),
+  refreshChinaCIDR: () =>
+    request<ChinaCIDRStatus>('/api/settings/china-cidr/refresh', { method: 'POST' }),
 
   getAccessLogs: (params?: { limit?: number; keyword?: string; status?: number }) => {
     const q = new URLSearchParams()

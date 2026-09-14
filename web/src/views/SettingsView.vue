@@ -62,6 +62,72 @@
         </div>
       </FonuCard>
 
+      <FonuCard title="反代安全" subtitle="全局 IP 策略与真实客户端 IP">
+        <p class="field-hint">
+          IP 黑白名单、仅中国大陆等策略依赖正确识别客户端 IP。若域名经 CDN/多层反代，请在此配置信任代理。
+        </p>
+        <div class="form-switch-row">
+          <div class="form-switch-row__text">
+            <div class="form-switch-row__label">启用信任代理</div>
+            <div class="form-switch-row__hint">从请求头解析真实客户端 IP</div>
+          </div>
+          <n-switch v-model:value="trustedProxyEnabled" />
+        </div>
+        <div v-if="trustedProxyEnabled" class="settings-fields">
+          <div class="settings-field">
+            <div class="settings-field__label">预设</div>
+            <n-select v-model:value="trustedProxyPreset" :options="trustedProxyPresets" />
+          </div>
+          <div v-if="trustedProxyPreset === 'custom'" class="settings-field">
+            <div class="settings-field__label">信任 CIDR（每行一个）</div>
+            <n-input v-model:value="trustedProxyCIDRs" type="textarea" :rows="4" placeholder="203.0.113.0/24" />
+          </div>
+          <div v-if="trustedProxyPreset === 'custom'" class="settings-field">
+            <div class="settings-field__label">IP 头字段</div>
+            <n-select v-model:value="trustedProxyHeader" :options="trustedProxyHeaders" />
+          </div>
+        </div>
+        <div class="settings-field">
+          <div class="settings-field__label">全局 IP 黑名单（每行一个，优先于所有规则）</div>
+          <n-input v-model:value="globalIPBlacklistText" type="textarea" :rows="3" placeholder="1.2.3.4&#10;5.6.7.0/24" />
+        </div>
+        <div class="settings-field china-cidr-field">
+          <div class="settings-field__row">
+            <span class="settings-field__label">中国 IP 段</span>
+            <StatusBadge :kind="chinaCIDRBadgeKind" :text="chinaCIDRBadgeText" />
+            <n-button
+              size="small"
+              :loading="refreshingCIDR || chinaCIDR.updating"
+              :disabled="chinaCIDR.updating && !refreshingCIDR"
+              @click="refreshChinaCIDR"
+            >
+              {{ refreshingCIDR || chinaCIDR.updating ? '更新中…' : '立即更新' }}
+            </n-button>
+          </div>
+          <p class="field-hint">
+            <template v-if="chinaCIDR.ready">
+              上次更新：{{ formatDate(chinaCIDR.updated_at) }}（{{ formatRelativeTime(chinaCIDR.updated_at) }}） · IPv4
+              {{ chinaCIDR.entry_count_v4 }} 条 · IPv6 {{ chinaCIDR.entry_count_v6 }} 条
+            </template>
+            <template v-else-if="chinaCIDR.updated_at">
+              上次更新：{{ formatDate(chinaCIDR.updated_at) }} · IPv4 {{ chinaCIDR.entry_count_v4 }} 条 · IPv6
+              {{ chinaCIDR.entry_count_v6 }} 条（当前不可用，请重新更新）
+            </template>
+            <template v-else-if="refreshingCIDR || chinaCIDR.updating">
+              正在下载 IPv4 / IPv6 段并校验 Nginx 配置，通常需要 10–60 秒…
+            </template>
+            <template v-else>尚未下载中国 IP 段，启用「仅中国大陆」前请先更新</template>
+          </p>
+          <p v-if="chinaCIDR.last_error && !refreshingCIDR && !chinaCIDR.updating" class="field-hint field-hint--error">
+            {{ chinaCIDR.last_error }}
+          </p>
+          <div class="settings-field">
+            <div class="settings-field__label">更新间隔（小时）</div>
+            <n-input-number v-model:value="chinaCIDRHours" :min="1" :max="168" class="settings-field__input" />
+          </div>
+        </div>
+      </FonuCard>
+
       <FonuCard title="安全" subtitle="管理员账户" class="settings-card settings-card--security">
         <div class="security-form">
           <div class="settings-fields">
@@ -164,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   NButton,
   NIcon,
@@ -186,10 +252,14 @@ import {
   SunnyOutline,
 } from '@vicons/ionicons5'
 import { api } from '../api/client'
+import type { ChinaCIDRStatus } from '../api/types'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
+import StatusBadge from '../components/StatusBadge.vue'
 import { useTheme } from '../composables/useTheme'
+import { formatDate, formatRelativeTime } from '../utils/format'
+import type { StatusKind } from '../utils/status'
 
 const message = useMessage()
 const { setThemeMode } = useTheme()
@@ -214,6 +284,39 @@ const certThreshold = ref(30)
 const logRetention = ref(30)
 const acmeEmail = ref('')
 const zerosslApiKey = ref('')
+const trustedProxyEnabled = ref(false)
+const trustedProxyPreset = ref('cloudflare')
+const trustedProxyCIDRs = ref('')
+const trustedProxyHeader = ref('X-Forwarded-For')
+const globalIPBlacklistText = ref('')
+const chinaCIDRHours = ref(24)
+const refreshingCIDR = ref(false)
+const chinaCIDR = ref<ChinaCIDRStatus>({ entry_count_v4: 0, entry_count_v6: 0 })
+let chinaCIDRPollTimer: ReturnType<typeof setInterval> | undefined
+
+const chinaCIDRBadgeKind = computed((): StatusKind => {
+  if (refreshingCIDR.value || chinaCIDR.value.updating) return 'warning'
+  if (chinaCIDR.value.ready) return 'success'
+  if (chinaCIDR.value.last_error) return 'error'
+  return 'disabled'
+})
+
+const chinaCIDRBadgeText = computed(() => {
+  if (refreshingCIDR.value || chinaCIDR.value.updating) return '更新中'
+  if (chinaCIDR.value.ready) return '已就绪'
+  if (chinaCIDR.value.last_error) return '更新失败'
+  return '未下载'
+})
+
+const trustedProxyPresets = [
+  { label: 'Cloudflare', value: 'cloudflare' },
+  { label: '自定义', value: 'custom' },
+]
+const trustedProxyHeaders = [
+  { label: 'X-Forwarded-For', value: 'X-Forwarded-For' },
+  { label: 'X-Real-IP', value: 'X-Real-IP' },
+  { label: 'CF-Connecting-IP', value: 'CF-Connecting-IP' },
+]
 
 const themeOptions = [
   { value: 'system', label: '跟随系统', icon: DesktopOutline },
@@ -247,7 +350,99 @@ function applySettingsToForm(settings: Record<string, string>) {
   logRetention.value = Number(settings.log_retention_days ?? 30)
   acmeEmail.value = settings.acme_email ?? ''
   zerosslApiKey.value = settings.zerossl_api_key ?? ''
+  chinaCIDRHours.value = Number(settings.china_cidr_update_interval_hours ?? 24)
+  try {
+    const tp = JSON.parse(settings.trusted_proxy_json || '{}') as {
+      enabled?: boolean
+      preset?: string
+      cidrs?: string[]
+      header?: string
+    }
+    trustedProxyEnabled.value = tp.enabled ?? false
+    trustedProxyPreset.value = tp.preset || 'cloudflare'
+    trustedProxyCIDRs.value = (tp.cidrs ?? []).join('\n')
+    trustedProxyHeader.value = tp.header || 'X-Forwarded-For'
+  } catch {
+    trustedProxyEnabled.value = false
+  }
+  try {
+    const bl = JSON.parse(settings.global_ip_blacklist || '[]') as string[]
+    globalIPBlacklistText.value = bl.join('\n')
+  } catch {
+    globalIPBlacklistText.value = ''
+  }
 }
+
+function buildTrustedProxyJSON() {
+  const cidrs = trustedProxyCIDRs.value
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return JSON.stringify({
+    enabled: trustedProxyEnabled.value,
+    preset: trustedProxyPreset.value,
+    cidrs,
+    header: trustedProxyHeader.value,
+    recursive: trustedProxyHeader.value === 'X-Forwarded-For',
+  })
+}
+
+function buildGlobalBlacklistJSON() {
+  const list = globalIPBlacklistText.value
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return JSON.stringify(list)
+}
+
+async function loadChinaCIDRStatus() {
+  try {
+    chinaCIDR.value = await api.getChinaCIDRStatus()
+    if (chinaCIDR.value.updating) {
+      startChinaCIDRPoll()
+    } else {
+      stopChinaCIDRPoll()
+    }
+  } catch {
+    // optional on load
+  }
+}
+
+function stopChinaCIDRPoll() {
+  if (chinaCIDRPollTimer) {
+    clearInterval(chinaCIDRPollTimer)
+    chinaCIDRPollTimer = undefined
+  }
+}
+
+function startChinaCIDRPoll() {
+  if (chinaCIDRPollTimer) return
+  chinaCIDRPollTimer = setInterval(() => void loadChinaCIDRStatus(), 2000)
+}
+
+async function refreshChinaCIDR() {
+  refreshingCIDR.value = true
+  stopChinaCIDRPoll()
+  try {
+    chinaCIDR.value = await api.refreshChinaCIDR()
+    if (chinaCIDR.value.ready) {
+      message.success(
+        `中国 IP 段已更新：IPv4 ${chinaCIDR.value.entry_count_v4} 条，IPv6 ${chinaCIDR.value.entry_count_v6} 条`,
+      )
+    } else {
+      message.warning('更新完成，但数据尚未就绪，请查看下方错误信息')
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '更新失败')
+    await loadChinaCIDRStatus()
+  } finally {
+    refreshingCIDR.value = false
+  }
+}
+
+onBeforeUnmount(() => {
+  stopChinaCIDRPoll()
+})
 
 function buildSavePayload() {
   return {
@@ -261,6 +456,9 @@ function buildSavePayload() {
     log_retention_days: String(logRetention.value),
     acme_email: acmeEmail.value.trim(),
     zerossl_api_key: zerosslApiKey.value.trim(),
+    trusted_proxy_json: buildTrustedProxyJSON(),
+    global_ip_blacklist: buildGlobalBlacklistJSON(),
+    china_cidr_update_interval_hours: String(chinaCIDRHours.value),
   }
 }
 
@@ -269,6 +467,7 @@ async function load() {
   pageError.value = ''
   try {
     applySettingsToForm(await api.getSettings())
+    await loadChinaCIDRStatus()
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -429,6 +628,10 @@ onMounted(load)
   right: 8px;
   font-size: 16px;
   color: #10b981;
+}
+
+.field-hint--error {
+  color: var(--n-error-color, #e11d48);
 }
 
 .field-hint {

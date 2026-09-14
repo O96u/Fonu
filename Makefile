@@ -1,4 +1,11 @@
-.PHONY: web build test lint fmt docker
+.PHONY: web build test lint fmt docker install-hooks compress-images
+
+compress-images:
+	python scripts/compress-images.py
+
+install-hooks:
+	git config core.hooksPath githooks
+	@echo "Git hooks installed from githooks/"
 
 web:
 	cd web && npm ci && npm run build

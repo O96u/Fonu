@@ -10,6 +10,7 @@ import (
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/nginx"
 	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/settings"
 	"github.com/fonu/fonu/internal/validate"
 )
 
@@ -18,11 +19,12 @@ type ProxyService struct {
 	cfg       config.Config
 	store     *proxy.Store
 	certStore *certificate.Store
+	settings  *settings.Store
 	nginx     *nginx.Manager
 }
 
-func NewProxyService(cfg config.Config, db *sql.DB, store *proxy.Store, certStore *certificate.Store, nginxMgr *nginx.Manager) *ProxyService {
-	return &ProxyService{db: db, cfg: cfg, store: store, certStore: certStore, nginx: nginxMgr}
+func NewProxyService(cfg config.Config, db *sql.DB, store *proxy.Store, certStore *certificate.Store, settingsStore *settings.Store, nginxMgr *nginx.Manager) *ProxyService {
+	return &ProxyService{db: db, cfg: cfg, store: store, certStore: certStore, settings: settingsStore, nginx: nginxMgr}
 }
 
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {
@@ -102,6 +104,7 @@ func (s *ProxyService) applyNginx(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.nginx.SetGenerateOptions(s.loadGenerateOptions(ctx))
 	_, err = s.nginx.Apply(ctx, rules, certs)
 	return err
 }
@@ -128,6 +131,7 @@ func (s *ProxyService) ValidateRule(ctx context.Context, candidate proxy.Rule, e
 	if err != nil {
 		return err
 	}
+	s.nginx.SetGenerateOptions(s.loadGenerateOptions(ctx))
 	if err := s.nginx.ValidateOnly(ctx, rules, certs); err != nil {
 		return err
 	}

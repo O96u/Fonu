@@ -10,7 +10,7 @@ import (
 	"github.com/fonu/fonu/internal/proxy"
 )
 
-func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource) (string, error) {
+func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
 	var b strings.Builder
 
 	b.WriteString(`worker_processes auto;
@@ -36,13 +36,22 @@ http {
         ''      close;
     }
 
+    limit_req_status 429;
+    limit_conn_status 503;
+
 `)
+
+	writeRealIPDirectives(&b, opts.TrustedProxy)
+	writeGlobalDenyList(&b, opts.GlobalIPBlacklist)
+	writeLimitZones(&b, rules)
+	writeChinaGeoBlocks(&b, cfg, opts, rules)
+	writeChinaOnlyBypassGeo(&b, rules, opts)
 
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
-		if err := writeRuleBlocks(&b, cfg, rule, certs); err != nil {
+		if err := writeRuleBlocks(&b, cfg, rule, certs, opts); err != nil {
 			return "", err
 		}
 	}
@@ -55,7 +64,7 @@ http {
 	return content, nil
 }
 
-func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource) error {
+func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) error {
 	for _, group := range rule.PortGroups() {
 		if len(group.Hostnames) == 0 {
 			continue
@@ -65,9 +74,8 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 		useHTTPS := rule.HTTPSEnabled && certUsable(cert)
 
 		wroteBlock := false
-		// HTTPS server must be emitted before the HTTP redirect block on Windows nginx.
 		if useHTTPS {
-			if !appendSSLServerBlock(b, group.Port, serverNames, cert, rule.Upstream, rule.ListenIPv4, rule.ListenIPv6) {
+			if !appendSSLServerBlock(b, cfg, group.Port, serverNames, cert, rule, opts) {
 				return fmt.Errorf("HTTPS 证书文件不可用，请重新导入证书或关闭 HTTPS")
 			}
 			wroteBlock = true
@@ -76,6 +84,7 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			b.WriteString("server {\n")
 			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
+			writeErrorPages(b, cfg)
 			b.WriteString("    return 301 https://$host:$server_port$request_uri;\n")
 			b.WriteString("}\n")
 			wroteBlock = true
@@ -85,28 +94,70 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			b.WriteString("server {\n")
 			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
-			writeProxyLocation(b, rule.Upstream)
+			writeErrorPages(b, cfg)
+			writeLocationWithSecurity(b, cfg, rule, opts)
 			b.WriteString("}\n")
 		}
 	}
 	return nil
 }
 
-func appendSSLServerBlock(b *strings.Builder, port int, serverNames string, cert *certFiles, upstream string, ipv4 bool, ipv6 bool) bool {
+func appendSSLServerBlock(b *strings.Builder, cfg config.Config, port int, serverNames string, cert *certFiles, rule proxy.Rule, opts GenerateOptions) bool {
 	if !certUsable(cert) {
 		return false
 	}
 	var block strings.Builder
 	block.WriteString("server {\n")
-	writeListenDirectives(&block, port, true, ipv4, ipv6)
+	writeListenDirectives(&block, port, true, rule.ListenIPv4, rule.ListenIPv6)
 	block.WriteString(fmt.Sprintf("    server_name %s;\n\n", serverNames))
 	block.WriteString(fmt.Sprintf("    ssl_certificate %s;\n", absNginxPath(cert.CertPath)))
 	block.WriteString(fmt.Sprintf("    ssl_certificate_key %s;\n", absNginxPath(cert.KeyPath)))
-	block.WriteString("    ssl_protocols TLSv1.2 TLSv1.3;\n\n")
-	writeProxyLocation(&block, upstream)
+	writeTLSProtocols(&block, rule.Security)
+	writeServerSecurityHeaders(&block, rule.Security, true)
+	writeErrorPages(&block, cfg)
+	writeLocationWithSecurity(&block, cfg, rule, opts)
 	block.WriteString("}\n")
 	b.WriteString(block.String())
 	return true
+}
+
+func writeLocationWithSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rule, opts GenerateOptions) {
+	b.WriteString("    location / {\n")
+	writeLocationSecurity(b, cfg, rule, opts)
+	writeProxyLocationBody(b, rule.Upstream, rule.Security)
+	b.WriteString("    }\n")
+}
+
+func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.SecurityConfig) {
+	hostHeader := "$host"
+	if sec.ProxyHostUpstream {
+		hostHeader = "$proxy_host"
+	}
+	sslBlock := ""
+	if strings.HasPrefix(upstream, "https://") {
+		if sec.ProxySSLVerifyOff {
+			sslBlock = `        proxy_ssl_verify off;
+        proxy_ssl_server_name on;
+`
+		} else {
+			sslBlock = `        proxy_ssl_server_name on;
+`
+		}
+	}
+	b.WriteString(fmt.Sprintf(`%s        proxy_pass %s;
+        proxy_http_version 1.1;
+        proxy_set_header Host %s;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Real-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+`, sslBlock, upstream, hostHeader))
 }
 
 func writeListenDirectives(b *strings.Builder, port int, ssl bool, ipv4 bool, ipv6 bool) {
@@ -120,22 +171,6 @@ func writeListenDirectives(b *strings.Builder, port int, ssl bool, ipv4 bool, ip
 	if ipv6 {
 		b.WriteString(fmt.Sprintf("    listen [::]:%d%s;\n", port, sslSuffix))
 	}
-}
-
-func writeProxyLocation(b *strings.Builder, upstream string) {
-	b.WriteString(fmt.Sprintf(`    location / {
-        proxy_pass %s;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_buffering off;
-        proxy_read_timeout 3600s;
-    }
-`, upstream))
 }
 
 type certFiles struct {

@@ -35,7 +35,7 @@ func TestGenerateMixedRulesWithoutCerts(t *testing.T) {
 		},
 	}
 
-	content, err := Generate(cfg, rules, nil)
+	content, err := Generate(cfg, rules, nil, GenerateOptions{})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}

@@ -43,7 +43,7 @@ func TestGenerateHTTPSWithCertIncludesCertificateDirectives(t *testing.T) {
 		Domains:  []string{"*.example.com", "example.com"},
 		CertPath: filepath.Join(certDir, "fullchain.pem"),
 		KeyPath:  filepath.Join(certDir, "privatekey.pem"),
-	}})
+	}}, GenerateOptions{})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}

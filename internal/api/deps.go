@@ -7,6 +7,7 @@ import (
 	"github.com/fonu/fonu/internal/acme"
 	"github.com/fonu/fonu/internal/auth"
 	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/ddns"
 	"github.com/fonu/fonu/internal/discovery"
@@ -23,6 +24,7 @@ type Deps struct {
 	DDNS       *ddns.Service
 	ACME       *acme.Service
 	Settings   *settings.Store
+	ChinaCIDR  *chinacidr.Service
 	Backup     *backup.Service
 	Discovery  *discovery.Service
 	Traffic    *traffic.Collector

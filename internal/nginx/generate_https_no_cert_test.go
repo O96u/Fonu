@@ -25,7 +25,7 @@ func TestGenerateHTTPSWithoutCertUsesHTTPOnly(t *testing.T) {
 		Enabled:      true,
 	}}
 
-	content, err := Generate(cfg, rules, nil)
+	content, err := Generate(cfg, rules, nil, GenerateOptions{})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}

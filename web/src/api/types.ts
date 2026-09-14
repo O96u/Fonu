@@ -4,6 +4,37 @@ export interface ProxyHost {
   listen_port?: number | null
 }
 
+export interface BasicAuthConfig {
+  enabled?: boolean
+  username?: string
+  has_password?: boolean
+}
+
+export interface RateLimitConfig {
+  enabled?: boolean
+  rate?: number
+  burst?: number
+}
+
+export interface ConnLimitConfig {
+  enabled?: boolean
+  max?: number
+}
+
+export interface ProxySecurityConfig {
+  ip_blacklist?: string[]
+  ip_whitelist?: string[]
+  ip_whitelist_mode?: boolean
+  china_only?: boolean
+  basic_auth?: BasicAuthConfig
+  rate_limit?: RateLimitConfig
+  conn_limit?: ConnLimitConfig
+  proxy_ssl_verify_off?: boolean
+  proxy_host_upstream?: boolean
+  tls_min_13_only?: boolean
+  security_headers?: boolean
+}
+
 export interface ProxyRule {
   id: number
   domain: string
@@ -17,8 +48,18 @@ export interface ProxyRule {
   enabled: boolean
   name: string
   sort_order: number
+  security: ProxySecurityConfig
   created_at: string
   updated_at: string
+}
+
+export interface ChinaCIDRStatus {
+  updated_at?: string
+  entry_count_v4: number
+  entry_count_v6: number
+  last_error?: string
+  updating?: boolean
+  ready?: boolean
 }
 
 export interface ProxyTraffic {
@@ -35,6 +76,26 @@ export interface ProxyClientConn {
   last_seen: string
 }
 
+export interface ProxySecurityPayload {
+  ip_blacklist?: string[]
+  ip_whitelist?: string[]
+  ip_whitelist_mode?: boolean
+  ip_blacklist_text?: string
+  ip_whitelist_text?: string
+  china_only?: boolean
+  basic_auth?: {
+    enabled?: boolean
+    username?: string
+    password?: string
+  }
+  rate_limit?: RateLimitConfig
+  conn_limit?: ConnLimitConfig
+  proxy_ssl_verify_off?: boolean
+  proxy_host_upstream?: boolean
+  tls_min_13_only?: boolean
+  security_headers?: boolean
+}
+
 export interface ProxySavePayload {
   upstream: string
   listen_port?: number
@@ -45,6 +106,7 @@ export interface ProxySavePayload {
   http_redirect?: boolean
   enabled?: boolean
   name?: string
+  security?: ProxySecurityPayload
 }
 
 export interface AuthStatus {
