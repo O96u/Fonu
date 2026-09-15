@@ -465,6 +465,7 @@ import {
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
+import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import { api, asList } from '../api/client'
 import type { DDNSConfig, DDNSDomainRecord } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
@@ -505,12 +506,14 @@ const providerOptions = [
   { label: 'Cloudflare', value: 'cloudflare' },
   { label: 'DNSPod', value: 'dnspod' },
   { label: '阿里云 DNS', value: 'alidns' },
+  { label: '腾讯云 DNS', value: 'tencentcloud' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
   cloudflare: { label: 'Cloudflare', icon: cloudflareIcon },
   dnspod: { label: 'DNSPod', icon: dnspodIcon },
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
+  tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
 }
 
 const taskForm = reactive<ProviderForm>({

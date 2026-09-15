@@ -23,6 +23,8 @@ func CredentialsFromSave(in SaveInput) Credentials {
 		return Credentials{Provider: "dnspod", TokenID: strings.TrimSpace(in.APITokenID), Token: strings.TrimSpace(in.APIToken)}
 	case "alidns":
 		return Credentials{Provider: "alidns", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
+	case "tencentcloud":
+		return Credentials{Provider: "tencentcloud", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
 	default:
 		return Credentials{Provider: "cloudflare", Token: strings.TrimSpace(in.APIToken)}
 	}
@@ -32,7 +34,7 @@ func (c Credentials) HasValues() bool {
 	switch c.Provider {
 	case "dnspod":
 		return c.TokenID != "" && c.Token != ""
-	case "alidns":
+	case "alidns", "tencentcloud":
 		return c.Token != "" && c.Secret != ""
 	default:
 		return c.Token != ""
@@ -48,6 +50,10 @@ func (c Credentials) Validate(provider string) error {
 	case "alidns":
 		if c.Token == "" || c.Secret == "" {
 			return fmt.Errorf("请填写阿里云 AccessKey ID 和 Secret")
+		}
+	case "tencentcloud":
+		if c.Token == "" || c.Secret == "" {
+			return fmt.Errorf("请填写腾讯云 SecretId 和 SecretKey")
 		}
 	default:
 		if c.Token == "" {

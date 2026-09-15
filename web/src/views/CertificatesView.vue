@@ -465,6 +465,7 @@ import zerosslLogo from '../assets/brand/ca/zerossl.png'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
+import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -531,6 +532,7 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   cloudflare: { label: 'Cloudflare', icon: cloudflareIcon },
   dnspod: { label: 'DNSPod', icon: dnspodIcon },
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
+  tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
 }
 
 const caLogoMap: Record<string, string> = {

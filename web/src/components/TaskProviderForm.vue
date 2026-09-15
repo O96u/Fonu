@@ -37,8 +37,8 @@
       <span v-if="editing?.has_token" class="token-hint">已配置 · 留空则保持不变</span>
     </div>
 
-    <div v-if="form.provider === 'alidns'" class="provider-form__field">
-      <label class="provider-form__label">AccessKey Secret</label>
+    <div v-if="form.provider === 'alidns' || form.provider === 'tencentcloud'" class="provider-form__field">
+      <label class="provider-form__label">{{ secretLabel }}</label>
       <n-input
         v-model:value="form.api_secret"
         type="password"
@@ -77,6 +77,7 @@ import { NButton, NInput, NSelect, NSwitch } from 'naive-ui'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
+import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import type { DDNSConfig } from '../api/types'
 
 export type ProviderForm = {
@@ -106,23 +107,32 @@ const providerOptions = [
   { label: 'Cloudflare', value: 'cloudflare' },
   { label: 'DNSPod', value: 'dnspod' },
   { label: '阿里云 DNS', value: 'alidns' },
+  { label: '腾讯云 DNS', value: 'tencentcloud' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
   cloudflare: { label: 'Cloudflare', icon: cloudflareIcon },
   dnspod: { label: 'DNSPod', icon: dnspodIcon },
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
+  tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
 }
 
 const credentialLabel = computed(() => {
   if (props.form.provider === 'alidns') return 'AccessKey ID'
+  if (props.form.provider === 'tencentcloud') return 'SecretId'
   if (props.form.provider === 'dnspod') return 'Token'
   return 'API Token'
+})
+
+const secretLabel = computed(() => {
+  if (props.form.provider === 'tencentcloud') return 'SecretKey'
+  return 'AccessKey Secret'
 })
 
 const credentialPlaceholder = computed(() => {
   if (props.editing?.has_token) return '留空则保持不变'
   if (props.form.provider === 'alidns') return 'AccessKey ID'
+  if (props.form.provider === 'tencentcloud') return '腾讯云 SecretId'
   if (props.form.provider === 'dnspod') return 'DNSPod Token'
   return 'Cloudflare API Token'
 })

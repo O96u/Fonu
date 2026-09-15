@@ -54,4 +54,6 @@ committer_email="${GIT_COMMITTER_EMAIL:-$config_email}"
 check_pair "author" "$author_name" "$author_email"
 check_pair "committer" "$committer_name" "$committer_email"
 
+# commit-msg hook performs message checks when installed via core.hooksPath.
+
 exit 0

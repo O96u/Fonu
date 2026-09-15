@@ -1,0 +1,53 @@
+#!/bin/sh
+# Reject commit messages that credit forbidden Cursor / Cursor Agent identities.
+
+set -eu
+
+msg_file="${1:?commit message file required}"
+
+is_forbidden_identity() {
+	name="${1:-}"
+	email="${2:-}"
+
+	name_lower=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+	email_lower=$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')
+
+	case "$name_lower" in
+	*cursoragent* | *"cursor agent"*) return 0 ;;
+	esac
+
+	case "$email_lower" in
+	*cursoragent* | *"cursor agent"*) return 0 ;;
+	esac
+
+	if [ "$name_lower" = "cursor" ]; then
+		return 0
+	fi
+
+	return 1
+}
+
+if grep -Eiq 'co-authored-by:[[:space:]]*cursor[[:space:]]*<[^>]*cursoragent[^>]*>' "$msg_file"; then
+	printf 'Error: commit message must not include Co-authored-by Cursor / cursoragent.\n' >&2
+	exit 1
+fi
+
+while IFS= read -r line; do
+	case "$line" in
+	Co-authored-by:*|co-authored-by:*)
+		author_part=${line#*[}
+		author_part=${author_part%]*}
+		name=${author_part%%<*}
+		name=$(printf '%s' "$name" | sed 's/[[:space:]]*$//')
+		email=${author_part#*<}
+		email=${email%>*}
+		if is_forbidden_identity "$name" "$email"; then
+			printf 'Error: commit message Co-authored-by uses a forbidden identity.\n' >&2
+			printf '  %s\n' "$line" >&2
+			exit 1
+		fi
+		;;
+	esac
+done < "$msg_file"
+
+exit 0

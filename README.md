@@ -12,7 +12,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/O96u/Fonu/blob/main/web/package.json"><img src="https://img.shields.io/github/package-json/v/O96u/Fonu?filename=web%2Fpackage.json&style=flat-square&color=22c55e" alt="version" /></a>
   <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?sort=semver&style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/目标平台-飞牛_fnOS-22c55e?style=flat-square" alt="飞牛 fnOS" />
   <img src="https://img.shields.io/badge/其他环境-未测试-94a3b8?style=flat-square" alt="其他环境未测试" />
@@ -35,7 +34,7 @@
 | 模块           | 说明                                                                        |
 | -------------- | --------------------------------------------------------------------------- |
 | **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP |
-| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云；单任务多根域名，自动同步公网 IP            |
+| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云 DNS；单任务多根域名，自动同步公网 IP |
 | **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                   |
 | **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                     |
 | **日志**       | Nginx 访问/错误日志、系统运行日志；分页与实时 SSE 推送                      |
@@ -76,7 +75,7 @@
 | **后端**     | Go 1.23、标准库 HTTP、SQLite（modernc.org/sqlite）    |
 | **反向代理** | 内置 Nginx（动态生成配置、热重载）                    |
 | **证书**     | go-acme/lego（Let's Encrypt）                         |
-| **DDNS**     | Cloudflare / DNSPod / 阿里云 DNS API                  |
+| **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 DNS API         |
 | **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts            |
 | **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI |
 

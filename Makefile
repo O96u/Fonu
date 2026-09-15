@@ -4,8 +4,9 @@ compress-images:
 	python scripts/compress-images.py
 
 install-hooks:
+	chmod +x githooks/pre-commit githooks/commit-msg 2>/dev/null || true
 	git config core.hooksPath githooks
-	@echo "Git hooks installed from githooks/"
+	@echo "Git hooks installed from githooks/ (pre-commit + commit-msg)"
 
 web:
 	cd web && npm ci && npm run build

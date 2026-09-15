@@ -8,6 +8,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
 	"github.com/go-acme/lego/v4/providers/dns/cloudflare"
 	"github.com/go-acme/lego/v4/providers/dns/dnspod"
+	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
 
 	"github.com/fonu/fonu/internal/ddns"
 )
@@ -23,6 +24,11 @@ func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provide
 		cfg.APIKey = cred.Token
 		cfg.SecretKey = cred.Secret
 		return alidns.NewDNSProviderConfig(cfg)
+	case "tencentcloud":
+		cfg := tencentcloud.NewDefaultConfig()
+		cfg.SecretID = cred.Token
+		cfg.SecretKey = cred.Secret
+		return tencentcloud.NewDNSProviderConfig(cfg)
 	default:
 		cfg := cloudflare.NewDefaultConfig()
 		cfg.AuthToken = cred.Token
@@ -32,7 +38,7 @@ func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provide
 
 func dnsProviderName(provider string) string {
 	switch provider {
-	case "dnspod", "alidns":
+	case "dnspod", "alidns", "tencentcloud":
 		return provider
 	default:
 		return "cloudflare"
@@ -77,7 +83,10 @@ func validateDNSCredentials(provider string, cred ddns.Credentials) error {
 	if provider == "alidns" && cred.Secret == "" {
 		return fmt.Errorf("请先在 DDNS 页面配置阿里云 AccessKey")
 	}
-	if provider != "dnspod" && provider != "alidns" && cred.Token == "" {
+	if provider == "tencentcloud" && cred.Secret == "" {
+		return fmt.Errorf("请先在 DDNS 页面配置腾讯云 SecretKey")
+	}
+	if provider != "dnspod" && provider != "alidns" && provider != "tencentcloud" && cred.Token == "" {
 		return fmt.Errorf("请先在 DDNS 页面配置 Cloudflare API Token")
 	}
 	return nil

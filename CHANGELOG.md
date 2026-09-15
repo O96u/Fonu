@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.25] - 2026-09-15
+
+### 新增
+
+- DDNS 与证书 DNS-01：支持腾讯云 DNS（SecretId + SecretKey，区别于 DNSPod ID+Token）
+
 ## [v0.1.24] - 2026-09-14
 
 ### 修复
