@@ -36,4 +36,23 @@ func TestGenerateNginxGateway(t *testing.T) {
 	if !strings.Contains(out, `localAddr = "127.0.0.1:9443"`) {
 		t.Fatalf("missing https local addr: %s", out)
 	}
+	if !strings.Contains(out, `transport.tls.enable = true`) {
+		t.Fatalf("missing tls enable: %s", out)
+	}
+}
+
+func TestGenerateDisablesTLSByDefault(t *testing.T) {
+	cfg := config.Config{DataDir: "/data", FrpPIDFile: "/data/frp/frpc.pid"}
+	frpCfg := Config{
+		ServerAddr:    "vps.example.com",
+		ServerPort:    7000,
+		CustomDomains: []string{"nas.example.com"},
+	}
+	out, err := Generate(cfg, frpCfg, "secret-token", 18080, 9443)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `transport.tls.enable = false`) {
+		t.Fatalf("expected tls disabled: %s", out)
+	}
 }

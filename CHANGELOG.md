@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.27] - 2026-09-16
+
+### 修复
+
+- FRP：移除无效的 `pidFile` 配置项，修复 frpc 启动即退出（exit status 1）
+- FRP：关闭穿透时保存按钮不可用，导致无法真正关闭
+- FRP：frps 配置随连接设置实时生成，不再展示静态示例
+- 仪表盘「今日请求」：改为滚动最近 24 小时统计，修复当前时段无数据
+
+### 改进
+
+- Docker 镜像内置 frpc 升级至 v0.71.0
+
 ## [v0.1.26] - 2026-09-16
 
 ### 新增

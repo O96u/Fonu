@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type FRPHandler struct {
-	mgr  *frp.Manager
+	mgr   *frp.Manager
 	proxy *service.ProxyService
 }
 
@@ -19,8 +20,10 @@ func NewFRPHandler(mgr *frp.Manager, proxySvc *service.ProxyService) *FRPHandler
 
 type frpResponse struct {
 	frp.Config
-	Status       frp.Status `json:"status"`
-	FRPSTemplate string     `json:"frps_template"`
+	Status         frp.Status `json:"status"`
+	FRPSConfig     string     `json:"frps_config"`
+	NginxHTTPPort  int        `json:"nginx_http_port"`
+	NginxHTTPSPort int        `json:"nginx_https_port"`
 }
 
 type frpSaveRequest struct {
@@ -32,17 +35,27 @@ type frpSaveRequest struct {
 	CustomDomains []string `json:"custom_domains"`
 }
 
+func (h *FRPHandler) buildResponse(ctx context.Context, cfg frp.Config) frpResponse {
+	frpsConfig, err := h.mgr.FRPSConfig(ctx)
+	if err != nil {
+		frpsConfig = ""
+	}
+	return frpResponse{
+		Config:         cfg,
+		Status:         h.mgr.Status(ctx),
+		FRPSConfig:     frpsConfig,
+		NginxHTTPPort:  h.mgr.NginxHTTPPort(),
+		NginxHTTPSPort: h.mgr.NginxHTTPSPort(),
+	}
+}
+
 func (h *FRPHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.mgr.Load(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, frpResponse{
-		Config:       cfg,
-		Status:       h.mgr.Status(r.Context()),
-		FRPSTemplate: frp.FRPSTemplate(),
-	})
+	writeJSON(w, http.StatusOK, h.buildResponse(r.Context(), cfg))
 }
 
 func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +81,14 @@ func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
+	resp := h.buildResponse(r.Context(), cfg)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message": result.Message,
-		"config":  cfg,
-		"status":  h.mgr.Status(r.Context()),
+		"message":          result.Message,
+		"config":           resp.Config,
+		"status":           resp.Status,
+		"frps_config":      resp.FRPSConfig,
+		"nginx_http_port":  resp.NginxHTTPPort,
+		"nginx_https_port": resp.NginxHTTPSPort,
 	})
 }
 
@@ -100,11 +117,15 @@ func (h *FRPHandler) SyncDomains(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
+	resp := h.buildResponse(r.Context(), cfg)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message": result.Message,
-		"domains": cfg.CustomDomains,
-		"config":  cfg,
-		"status":  h.mgr.Status(r.Context()),
+		"message":          result.Message,
+		"domains":          cfg.CustomDomains,
+		"config":           resp.Config,
+		"status":           resp.Status,
+		"frps_config":      resp.FRPSConfig,
+		"nginx_http_port":  resp.NginxHTTPPort,
+		"nginx_https_port": resp.NginxHTTPSPort,
 	})
 }
 

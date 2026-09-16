@@ -89,6 +89,11 @@ func (m *Manager) Apply(ctx context.Context, in SaveInput) (ApplyResult, error) 
 		return ApplyResult{}, err
 	}
 
+	if err := m.verifyConfig(ctx); err != nil {
+		_ = m.store.SetLastError(ctx, err.Error())
+		return ApplyResult{}, err
+	}
+
 	if !m.available() {
 		msg := "frpc 未安装，配置已保存"
 		_ = m.store.SetLastError(ctx, msg)
@@ -182,6 +187,37 @@ func (m *Manager) Logs(ctx context.Context, limit int) ([]string, error) {
 	return ReadLogTail(m.cfg.FrpLogPath(), limit)
 }
 
+func (m *Manager) FRPSConfig(ctx context.Context) (string, error) {
+	cfg, err := m.store.Load(ctx)
+	if err != nil {
+		return "", err
+	}
+	_, token, err := m.store.LoadRuntime(ctx)
+	if err != nil {
+		return "", err
+	}
+	port := cfg.ServerPort
+	if port <= 0 {
+		port = 7000
+	}
+	return BuildFRPSConfig(port, m.cfg.NginxDefaultHTTPPort, m.cfg.NginxDefaultHTTPSPort, token), nil
+}
+
+func (m *Manager) NginxHTTPPort() int {
+	return m.cfg.NginxDefaultHTTPPort
+}
+
+func (m *Manager) NginxHTTPSPort() int {
+	return m.cfg.NginxDefaultHTTPSPort
+}
+
+func (m *Manager) verifyConfig(ctx context.Context) error {
+	if !m.available() {
+		return nil
+	}
+	return m.runFrpc(ctx, []string{"verify", "-c", m.cfg.FrpConfigPath()}, "FRP 配置校验失败")
+}
+
 func (m *Manager) markStarted(ctx context.Context) {
 	_ = m.store.SetStartedAt(ctx, time.Now().UTC().Format(time.RFC3339))
 }
@@ -247,13 +283,11 @@ func (m *Manager) runFrpc(ctx context.Context, args []string, prefix string) err
 	ctx, cancel := context.WithTimeout(ctx, frpcCmdTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.cfg.FrpcBin, args...)
-	var stderr bytes.Buffer
+	var stderr, stdout bytes.Buffer
 	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
+		msg := frpcCommandError(stdout.String(), stderr.String(), err)
 		if ctx.Err() == context.DeadlineExceeded {
 			msg = "操作超时"
 		}
@@ -264,10 +298,17 @@ func (m *Manager) runFrpc(ctx context.Context, args []string, prefix string) err
 
 func (m *Manager) runFrpcStart(ctx context.Context, args []string, prefix string) error {
 	cmd := exec.Command(m.cfg.FrpcBin, args...)
-	var stderr bytes.Buffer
+	var stderr, stdout bytes.Buffer
 	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("%s：%s", prefix, err.Error())
+	}
+	if cmd.Process != nil {
+		if err := writePIDFile(m.cfg.FrpPIDFile, cmd.Process.Pid); err != nil {
+			_ = cmd.Process.Kill()
+			return fmt.Errorf("%s：%s", prefix, err.Error())
+		}
 	}
 
 	waitDone := make(chan error, 1)
@@ -283,13 +324,8 @@ func (m *Manager) runFrpcStart(ctx context.Context, args []string, prefix string
 			if running, _ := m.isRunning(); running {
 				return nil
 			}
-			msg := strings.TrimSpace(stderr.String())
-			if msg == "" && err != nil {
-				msg = err.Error()
-			}
-			if msg == "" {
-				msg = "进程已退出"
-			}
+			msg := frpcCommandError(stdout.String(), stderr.String(), err)
+			m.logger.Warn("frpc exited during start", "error", msg)
 			return fmt.Errorf("%s：%s", prefix, msg)
 		default:
 		}
@@ -301,11 +337,36 @@ func (m *Manager) runFrpcStart(ctx context.Context, args []string, prefix string
 	if running, _ := m.isRunning(); running {
 		return nil
 	}
-	msg := strings.TrimSpace(stderr.String())
+	msg := frpcCommandError(stdout.String(), stderr.String(), nil)
 	if msg == "" {
 		msg = "未检测到运行中的进程"
 	}
 	return fmt.Errorf("%s：%s", prefix, msg)
+}
+
+func frpcCommandError(stdout, stderr string, err error) string {
+	msg := strings.TrimSpace(stderr)
+	if msg == "" {
+		msg = strings.TrimSpace(stdout)
+	}
+	if msg == "" && err != nil {
+		msg = err.Error()
+	}
+	if msg == "" {
+		msg = "进程已退出"
+	}
+	return msg
+}
+
+func writePIDFile(path string, pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("无效的 frpc 进程 ID")
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", pid)), 0o644)
 }
 
 func (m *Manager) isRunning() (bool, error) {
@@ -353,26 +414,6 @@ func terminateProcess(pid int, sig syscall.Signal) error {
 		return err
 	}
 	return proc.Signal(sig)
-}
-
-// FRPSTemplate returns a sample frps.toml for VPS deployment documentation.
-func FRPSTemplate() string {
-	return strings.TrimSpace(`
-bindAddr = "0.0.0.0"
-bindPort = 7000
-
-auth.method = "token"
-auth.token = "your-secret-token"
-
-vhostHTTPPort = 80
-vhostHTTPSPort = 443
-
-# 可选：frps 管理面板
-# webServer.addr = "0.0.0.0"
-# webServer.port = 7500
-# webServer.user = "admin"
-# webServer.password = "admin"
-`) + "\n"
 }
 
 func FrpConfigDir(cfg config.Config) string {

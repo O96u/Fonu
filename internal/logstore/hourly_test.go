@@ -8,25 +8,38 @@ import (
 	"time"
 )
 
-func TestHourlyAccessCounts(t *testing.T) {
+func TestHourlyAccessCountsRolling24h(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "access.log")
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
 	lines := []string{
-		today + "T08:15:00+08:00 app.example.com GET / 200 0.010 1.2.3.4 127.0.0.1:8080",
-		today + "T08:45:00+08:00 app.example.com GET /api 200 0.010 1.2.3.4 127.0.0.1:8080",
-		today + "T18:30:00+08:00 app.example.com GET / 200 0.010 1.2.3.4 127.0.0.1:8080",
-		"2020-01-01T18:30:00+08:00 app.example.com GET / 200 0.010 1.2.3.4 127.0.0.1:8080",
+		formatAccessLine(now.Add(-20*time.Hour)),
+		formatAccessLine(now.Add(-19*time.Hour)),
+		formatAccessLine(now.Add(-2*time.Hour)),
+		formatAccessLine(now.Add(-30*time.Minute)),
+		formatAccessLine(now.Add(-30*time.Hour)), // outside rolling window
 	}
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	got := HourlyAccessCounts(path)
-	if got[4] != 2 {
-		t.Fatalf("bucket 08-10 expected 2, got %d (%v)", got[4], got)
+	got, labels := HourlyAccessCounts(path)
+	if len(got) != 12 || len(labels) != 12 {
+		t.Fatalf("expected 12 buckets, got %d counts / %d labels", len(got), len(labels))
 	}
-	if got[9] != 1 {
-		t.Fatalf("bucket 18-20 expected 1, got %d (%v)", got[9], got)
+	sum := 0
+	for _, n := range got {
+		sum += n
 	}
+	if sum != 4 {
+		t.Fatalf("expected 4 requests in window, got %d (%v)", sum, got)
+	}
+	latest := got[11]
+	if latest < 1 {
+		t.Fatalf("latest bucket expected recent traffic, got %d (%v)", latest, got)
+	}
+}
+
+func formatAccessLine(at time.Time) string {
+	return at.Format(time.RFC3339) + " app.example.com GET / 200 0.010 1.2.3.4 127.0.0.1:8080"
 }

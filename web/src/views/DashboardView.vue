@@ -361,12 +361,16 @@ const trafficChart = computed(() => {
 })
 
 const hourlyBars = computed(() => {
-  const labels = Array.from({ length: 12 }, (_, i) => String(i * 2).padStart(2, '0'))
   const hourly = status.value?.requests_hourly
-  if (hourly?.length === 12) {
-    return { labels, values: hourly }
+  const apiLabels = status.value?.requests_hourly_labels
+  if (hourly?.length === 12 && apiLabels?.length === 12) {
+    return { labels: apiLabels, values: hourly }
   }
-  return { labels, values: Array(12).fill(0) }
+  const fallbackLabels = Array.from({ length: 12 }, (_, i) => String(i * 2).padStart(2, '0'))
+  if (hourly?.length === 12) {
+    return { labels: fallbackLabels, values: hourly }
+  }
+  return { labels: fallbackLabels, values: Array(12).fill(0) }
 })
 
 const requestTrend = computed(() => {

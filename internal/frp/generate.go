@@ -2,6 +2,7 @@ package frp
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/fonu/fonu/internal/config"
@@ -26,8 +27,7 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 	b.WriteString(fmt.Sprintf("serverAddr = %q\n", frpCfg.ServerAddr))
 	b.WriteString(fmt.Sprintf("serverPort = %d\n\n", frpCfg.ServerPort))
 
-	b.WriteString(fmt.Sprintf("pidFile = %q\n", cfg.FrpPIDFile))
-	b.WriteString(fmt.Sprintf("log.to = %q\n", cfg.FrpLogPath()))
+	b.WriteString(fmt.Sprintf("log.to = %q\n", tomlPath(cfg.FrpLogPath())))
 	b.WriteString("log.level = \"info\"\n\n")
 
 	b.WriteString("auth.method = \"token\"\n")
@@ -35,6 +35,8 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 
 	if frpCfg.TLSEnabled {
 		b.WriteString("transport.tls.enable = true\n\n")
+	} else {
+		b.WriteString("transport.tls.enable = false\n\n")
 	}
 
 	b.WriteString("[[proxies]]\n")
@@ -53,6 +55,10 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 	b.WriteString(fmt.Sprintf("localAddr = \"127.0.0.1:%d\"\n", httpsPort))
 
 	return b.String(), nil
+}
+
+func tomlPath(path string) string {
+	return filepath.ToSlash(filepath.Clean(path))
 }
 
 func formatTOMLStringArray(items []string) string {

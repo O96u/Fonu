@@ -156,9 +156,9 @@
           </div>
 
           <div class="save-row">
-            <n-button type="primary" :loading="saving" :disabled="!frpForm.enabled" @click="save">
+            <n-button type="primary" :loading="saving" @click="save">
               <template #icon><n-icon :component="LinkOutline" /></template>
-              保存并连接
+              {{ frpForm.enabled ? '保存并连接' : '保存并关闭' }}
             </n-button>
           </div>
         </FonuCard>
@@ -227,25 +227,24 @@
           <n-icon :component="OptionsOutline" class="card-title-icon" />
           <span>高级设置</span>
         </template>
-        <p class="section-desc">需要在 VPS 上部署 frps，Fonu 只管理 NAS 侧的 frpc 客户端。</p>
+        <p class="section-desc">
+          在 VPS 部署 frps 后，将下方配置保存为 <code>frps.toml</code> 并启动。配置会随上方连接设置实时更新，保存 Fonu 后同步生效。
+        </p>
 
-        <div class="advanced-list">
-          <button type="button" class="advanced-item" @click="showTemplate = true">
-            <n-icon :component="DocumentTextOutline" class="advanced-item__icon" />
-            <div class="advanced-item__text">
-              <div class="advanced-item__title">查看 frps 配置示例</div>
-              <div class="advanced-item__hint">获取服务端 frps.toml 配置示例，复制到你的 VPS 使用</div>
-            </div>
-            <n-icon :component="ChevronForwardOutline" class="advanced-item__chevron" />
-          </button>
-          <button type="button" class="advanced-item" @click="openLogs">
-            <n-icon :component="TerminalOutline" class="advanced-item__icon" />
-            <div class="advanced-item__text">
-              <div class="advanced-item__title">运行日志</div>
-              <div class="advanced-item__hint">查看 frpc 的运行日志，便于排查问题</div>
-            </div>
-            <n-icon :component="ChevronForwardOutline" class="advanced-item__chevron" />
-          </button>
+        <div class="settings-field">
+          <div class="settings-field__label">VPS 服务端配置 (frps.toml)</div>
+          <n-input type="textarea" :rows="12" readonly :value="frpsConfigPreview" class="frps-config-input" />
+          <p class="field-hint field-hint--inline">
+            网关端口与 Fonu Nginx 一致（HTTP {{ nginxHttpPort }} / HTTPS {{ nginxHttpsPort }}）。VPS 防火墙需放行
+            {{ frpForm.server_port || 7000 }}、{{ nginxHttpPort }}、{{ nginxHttpsPort }}。
+          </p>
+          <div class="frps-config-actions">
+            <n-button secondary @click="copyFrpsConfig">复制配置</n-button>
+            <n-button quaternary @click="openLogs">
+              <template #icon><n-icon :component="TerminalOutline" /></template>
+              查看 frpc 日志
+            </n-button>
+          </div>
         </div>
       </FonuCard>
     </div>
@@ -259,11 +258,6 @@
       <p>4. 在 <router-link :to="{ name: 'ddns' }">DDNS</router-link> 将域名解析到 VPS 公网 IP。</p>
       <p>5. HTTPS 证书推荐继续使用 DNS-01，由 Fonu Nginx 终结 TLS。</p>
     </div>
-  </n-modal>
-
-  <n-modal v-model:show="showTemplate" preset="card" title="frps 配置示例" style="width: min(720px, 92vw)">
-    <n-input type="textarea" :rows="14" readonly :value="frpsTemplate" />
-    <n-button class="modal-action" type="primary" @click="copyFrpsTemplate">复制配置</n-button>
   </n-modal>
 
   <n-modal v-model:show="showDomains" preset="card" title="穿透域名" style="width: min(520px, 92vw)">
@@ -319,7 +313,6 @@ const syncing = ref(false)
 const loadingLogs = ref(false)
 const pageError = ref('')
 const showHelp = ref(false)
-const showTemplate = ref(false)
 const showDomains = ref(false)
 const showLogs = ref(false)
 
@@ -332,7 +325,9 @@ const frpForm = reactive({
   tls_enabled: false,
 })
 const frpDomainsText = ref('')
-const frpsTemplate = ref('')
+const frpsConfigSaved = ref('')
+const nginxHttpPort = ref(80)
+const nginxHttpsPort = ref(443)
 const frpStatus = ref<FRPStatus>({ enabled: false, connected: false, message: '未启用' })
 const logLines = ref<string[]>([])
 
@@ -363,6 +358,15 @@ const displayServerEndpoint = computed(() => {
 
 const domainPreview = computed(() => parseDomains().slice(0, 3))
 
+const frpsConfigPreview = computed(() =>
+  buildFrpsConfig({
+    bindPort: frpForm.server_port > 0 ? frpForm.server_port : 7000,
+    httpPort: nginxHttpPort.value,
+    httpsPort: nginxHttpsPort.value,
+    token: resolveFrpsTokenPreview(),
+  }),
+)
+
 const connectionTitle = computed(() => {
   if (!frpForm.enabled) return '未启用'
   if (frpStatus.value.connected) return '已连接'
@@ -392,6 +396,36 @@ function formatUptime(seconds: number) {
   return `${minutes} 分钟`
 }
 
+function buildFrpsConfig(opts: { bindPort: number; httpPort: number; httpsPort: number; token: string }) {
+  const token = opts.token.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `bindAddr = "0.0.0.0"
+bindPort = ${opts.bindPort}
+
+vhostHTTPPort = ${opts.httpPort}
+vhostHTTPSPort = ${opts.httpsPort}
+
+[auth]
+method = "token"
+token = "${token}"
+`
+}
+
+function resolveFrpsTokenPreview() {
+  const typed = frpForm.auth_token.trim()
+  if (typed) return typed
+  if (frpForm.has_auth_token && frpsConfigSaved.value) {
+    const match = frpsConfigSaved.value.match(/token\s*=\s*"([^"]*)"/)
+    if (match?.[1]) return match[1]
+  }
+  return '请填写 Token 后保存'
+}
+
+function applyFrpsMeta(data: { frps_config?: string; nginx_http_port?: number; nginx_https_port?: number }) {
+  frpsConfigSaved.value = data.frps_config ?? ''
+  if (data.nginx_http_port && data.nginx_http_port > 0) nginxHttpPort.value = data.nginx_http_port
+  if (data.nginx_https_port && data.nginx_https_port > 0) nginxHttpsPort.value = data.nginx_https_port
+}
+
 function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
   frpForm.enabled = data.enabled
   frpForm.server_addr = data.server_addr ?? ''
@@ -400,7 +434,7 @@ function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
   frpForm.has_auth_token = data.has_auth_token
   frpForm.tls_enabled = data.tls_enabled
   frpDomainsText.value = (data.custom_domains ?? []).join('\n')
-  frpsTemplate.value = data.frps_template ?? ''
+  applyFrpsMeta(data)
   frpStatus.value = data.status
 }
 
@@ -466,8 +500,9 @@ async function save() {
     frpForm.auth_token = ''
     frpForm.has_auth_token = result.config.has_auth_token
     frpDomainsText.value = (result.config.custom_domains ?? []).join('\n')
+    applyFrpsMeta(result)
     frpStatus.value = result.status
-    message.success(result.message || '已保存并连接')
+    message.success(result.message || (frpForm.enabled ? '已保存并连接' : '已关闭内网穿透'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '保存失败')
   } finally {
@@ -480,6 +515,7 @@ async function syncDomains() {
   try {
     const result = await api.syncFRPDomains()
     frpDomainsText.value = (result.domains ?? []).join('\n')
+    applyFrpsMeta(result)
     frpStatus.value = result.status
     message.success(result.message || `已同步 ${result.domains.length} 个域名`)
   } catch (error) {
@@ -505,9 +541,18 @@ async function openLogs() {
   await fetchLogs()
 }
 
-async function copyFrpsTemplate() {
+async function copyFrpsConfig() {
+  const typed = frpForm.auth_token.trim()
+  if (!typed && !frpForm.has_auth_token) {
+    message.warning('请先填写 Token 并保存')
+    return
+  }
+  const text =
+    !typed && frpForm.has_auth_token && frpsConfigSaved.value
+      ? frpsConfigSaved.value
+      : frpsConfigPreview.value
   try {
-    await navigator.clipboard.writeText(frpsTemplate.value)
+    await navigator.clipboard.writeText(text)
     message.success('已复制 frps 配置')
   } catch {
     message.error('复制失败')
@@ -915,6 +960,17 @@ onMounted(load)
 .gateway-item__chevron {
   margin-left: auto;
   color: var(--fonu-text-muted);
+}
+
+.frps-config-input {
+  margin-top: 8px;
+}
+
+.frps-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .advanced-list {

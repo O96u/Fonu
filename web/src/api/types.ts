@@ -139,6 +139,7 @@ export interface DashboardStatus {
   nginx_status: string
   request_today: number
   requests_hourly: number[]
+  requests_hourly_labels?: string[]
   error_today: number
   avg_response_ms: number
   started_at: string
@@ -292,7 +293,18 @@ export interface FRPResponse {
   tls_enabled: boolean
   custom_domains: string[]
   status: FRPStatus
-  frps_template: string
+  frps_config: string
+  nginx_http_port: number
+  nginx_https_port: number
+}
+
+export interface FRPSaveResponse {
+  message: string
+  config: FRPConfig
+  status: FRPStatus
+  frps_config: string
+  nginx_http_port: number
+  nginx_https_port: number
 }
 
 export interface FRPSavePayload {

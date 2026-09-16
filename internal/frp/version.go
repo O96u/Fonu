@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const defaultClientVersion = "frpc v0.66.0"
+const defaultClientVersion = "frpc v0.71.0"
 
 func ResolveClientVersion(bin string) string {
 	bin = strings.TrimSpace(bin)

@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 FROM debian:bookworm-slim
 ARG TARGETARCH
-ARG FRP_VERSION=0.66.0
+ARG FRP_VERSION=0.71.0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx ca-certificates curl \
     && case "${TARGETARCH}" in \

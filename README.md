@@ -77,7 +77,7 @@
 | **反向代理** | 内置 Nginx（动态生成配置、热重载）                    |
 | **证书**     | go-acme/lego（Let's Encrypt）                         |
 | **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 DNS API         |
-| **内网穿透** | 内置 frpc（v0.66.x），固定穿透 Fonu Nginx 端口        |
+| **内网穿透** | 内置 frpc（v0.71.x），固定穿透 Fonu Nginx 端口        |
 | **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts            |
 | **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI |
 
@@ -151,7 +151,7 @@ docker compose up -d --build
 
 #### 1. VPS 部署 frps
 
-在具有公网 IP 的 VPS 上安装 [frp](https://github.com/fatedier/frp)（建议 v0.66.x），创建 `frps.toml`：
+在具有公网 IP 的 VPS 上安装 [frp](https://github.com/fatedier/frp)（建议 v0.71.x，与 Fonu 内置 frpc 同版本），创建 `frps.toml`：
 
 ```toml
 bindAddr = "0.0.0.0"

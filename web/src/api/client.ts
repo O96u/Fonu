@@ -9,9 +9,9 @@ import type {
   DDNSConfig,
   DDNSSavePayload,
   DDNSTestPayload,
-  FRPConfig,
   FRPResponse,
   FRPSavePayload,
+  FRPSaveResponse,
   FRPStatus,
   DiscoveredService,
   ProxyClientConn,
@@ -198,16 +198,15 @@ export const api = {
 
   getFRP: () => request<FRPResponse>('/api/frp'),
   saveFRP: (payload: FRPSavePayload) =>
-    request<{ message: string; config: FRPConfig; status: FRPStatus }>('/api/frp', {
+    request<FRPSaveResponse>('/api/frp', {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   getFRPStatus: () => request<FRPStatus>('/api/frp/status'),
   syncFRPDomains: () =>
-    request<{ message: string; domains: string[]; config: FRPConfig; status: FRPStatus }>(
-      '/api/frp/sync-domains',
-      { method: 'POST' },
-    ),
+    request<FRPSaveResponse & { domains: string[] }>('/api/frp/sync-domains', {
+      method: 'POST',
+    }),
   getFRPLogs: (limit = 200) => request<string[]>(`/api/frp/logs?limit=${limit}`),
 
   getAccessLogs: (params?: { limit?: number; keyword?: string; status?: number }) => {

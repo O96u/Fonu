@@ -51,9 +51,10 @@ type statusResponse struct {
 	CertificateSummary string `json:"certificate_summary,omitempty"`
 	ProxyCount        int     `json:"proxy_count"`
 	NginxStatus       string  `json:"nginx_status"`
-	RequestToday      int     `json:"request_today"`
-	RequestsHourly    []int   `json:"requests_hourly"`
-	ErrorToday        int     `json:"error_today"`
+	RequestToday         int      `json:"request_today"`
+	RequestsHourly       []int    `json:"requests_hourly"`
+	RequestsHourlyLabels []string `json:"requests_hourly_labels"`
+	ErrorToday           int      `json:"error_today"`
 	AvgResponseMs     float64 `json:"avg_response_ms"`
 	StartedAt         string  `json:"started_at"`
 	UptimeSeconds     int64   `json:"uptime_seconds"`
@@ -81,7 +82,7 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	accessLog := filepath.Join(h.cfg.LogsDir(), "access.log")
 	total, errors, avgMs := logstore.CountTodayAccess(accessLog)
-	hourly := logstore.HourlyAccessCounts(accessLog)
+	hourly, hourlyLabels := logstore.HourlyAccessCounts(accessLog)
 
 	started, _ := time.Parse(time.RFC3339, h.startedAt)
 	uptime := time.Since(started).Seconds()
@@ -99,9 +100,10 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 		CertificateSummary: certSummary,
 		ProxyCount:        len(rules),
 		NginxStatus:       nginxStatus,
-		RequestToday:      total,
-		RequestsHourly:    hourly,
-		ErrorToday:        errors,
+		RequestToday:         total,
+		RequestsHourly:       hourly,
+		RequestsHourlyLabels: hourlyLabels,
+		ErrorToday:           errors,
 		AvgResponseMs:     avgMs,
 		StartedAt:         h.startedAt,
 		UptimeSeconds: int64(uptime),

@@ -36,7 +36,7 @@ const option = computed(() => {
       formatter: (params: { name: string; value: number }[]) => {
         const p = params[0]
         if (!p) return ''
-        return `${p.name}:00<br/>请求数 ${p.value}`
+        return `${p.name}<br/>请求数 ${p.value}`
       },
     },
     xAxis: {
@@ -44,7 +44,7 @@ const option = computed(() => {
       data: labels,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: textColor, fontSize: 11 },
+      axisLabel: { color: textColor, fontSize: 10, interval: 1, hideOverlap: true },
     },
     yAxis: {
       type: 'value',

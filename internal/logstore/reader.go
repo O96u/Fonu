@@ -186,24 +186,26 @@ func parseSystem(line string) (SystemEntry, bool) {
 	return entry, entry.Message != ""
 }
 
-// HourlyAccessCounts returns request counts for today in 12 two-hour buckets (00, 02, …, 22).
-func HourlyAccessCounts(path string) []int {
-	counts := make([]int, 12)
+const hourlyBucketCount = 12
+const hourlyWindow = 24 * time.Hour
+
+// HourlyAccessCounts returns request counts for the rolling last 24 hours in 12 two-hour buckets.
+func HourlyAccessCounts(path string) ([]int, []string) {
+	counts := make([]int, hourlyBucketCount)
+	now := time.Now()
+	windowStart := now.Add(-hourlyWindow)
+	labels := rollingHourlyLabels(windowStart)
+
 	file, err := os.Open(path)
 	if err != nil {
-		return counts
+		return counts, labels
 	}
 	defer file.Close()
 
-	today := time.Now().Format("2006-01-02")
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, today) {
-			continue
-		}
-		entry, ok := parseAccess(line)
+		entry, ok := parseAccess(scanner.Text())
 		if !ok {
 			continue
 		}
@@ -211,21 +213,51 @@ func HourlyAccessCounts(path string) []int {
 		if !ok {
 			continue
 		}
-		bucket := t.Hour() / 2
-		if bucket >= 0 && bucket < len(counts) {
-			counts[bucket]++
+		if t.Before(windowStart) || t.After(now) {
+			continue
 		}
+		bucket := int(t.Sub(windowStart).Hours()) / 2
+		if bucket < 0 {
+			continue
+		}
+		if bucket >= len(counts) {
+			bucket = len(counts) - 1
+		}
+		counts[bucket]++
 	}
-	return counts
+	return counts, labels
+}
+
+func rollingHourlyLabels(windowStart time.Time) []string {
+	labels := make([]string, hourlyBucketCount)
+	for i := 0; i < hourlyBucketCount; i++ {
+		labels[i] = windowStart.Add(time.Duration(i*2) * time.Hour).Format("HH:00")
+	}
+	return labels
 }
 
 func parseAccessTime(raw string) (time.Time, bool) {
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+	raw = strings.TrimSpace(raw)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05Z0700",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	} {
 		if t, err := time.Parse(layout, raw); err == nil {
 			return t, true
 		}
 	}
 	return time.Time{}, false
+}
+
+func isLocalToday(t time.Time, now time.Time) bool {
+	lt := t.In(now.Location())
+	ny, nm, nd := now.Date()
+	ty, tm, td := lt.Date()
+	return ty == ny && tm == nm && td == nd
 }
 
 func CountTodayAccess(path string) (total int, errors int, avgMs float64) {
@@ -235,16 +267,17 @@ func CountTodayAccess(path string) (total int, errors int, avgMs float64) {
 	}
 	defer file.Close()
 
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
 	var sum float64
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, today) {
+		entry, ok := parseAccess(scanner.Text())
+		if !ok {
 			continue
 		}
-		entry, ok := parseAccess(line)
-		if !ok {
+		t, ok := parseAccessTime(entry.Time)
+		if !ok || !isLocalToday(t, now) {
 			continue
 		}
 		total++
