@@ -3,6 +3,7 @@ package logstore
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -187,14 +188,14 @@ func parseSystem(line string) (SystemEntry, bool) {
 }
 
 const hourlyBucketCount = 12
-const hourlyWindow = 24 * time.Hour
 
-// HourlyAccessCounts returns request counts for the rolling last 24 hours in 12 two-hour buckets.
+// HourlyAccessCounts returns today's request counts on a fixed 0–24h axis (12 two-hour buckets).
+// Future buckets (after the current time) stay zero.
 func HourlyAccessCounts(path string) ([]int, []string) {
-	counts := make([]int, hourlyBucketCount)
 	now := time.Now()
-	windowStart := now.Add(-hourlyWindow)
-	labels := rollingHourlyLabels(windowStart)
+	currentBucket := now.Hour() / 2
+	counts := make([]int, hourlyBucketCount)
+	labels := calendarHourlyLabels()
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -210,28 +211,22 @@ func HourlyAccessCounts(path string) ([]int, []string) {
 			continue
 		}
 		t, ok := parseAccessTime(entry.Time)
-		if !ok {
+		if !ok || !isLocalToday(t, now) {
 			continue
 		}
-		if t.Before(windowStart) || t.After(now) {
+		bucket := t.In(now.Location()).Hour() / 2
+		if bucket < 0 || bucket > currentBucket {
 			continue
-		}
-		bucket := int(t.Sub(windowStart).Hours()) / 2
-		if bucket < 0 {
-			continue
-		}
-		if bucket >= len(counts) {
-			bucket = len(counts) - 1
 		}
 		counts[bucket]++
 	}
 	return counts, labels
 }
 
-func rollingHourlyLabels(windowStart time.Time) []string {
+func calendarHourlyLabels() []string {
 	labels := make([]string, hourlyBucketCount)
 	for i := 0; i < hourlyBucketCount; i++ {
-		labels[i] = windowStart.Add(time.Duration(i*2) * time.Hour).Format("HH:00")
+		labels[i] = fmt.Sprintf("%02d:00", i*2)
 	}
 	return labels
 }
