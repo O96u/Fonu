@@ -76,6 +76,14 @@ func NewRouter(deps Deps) http.Handler {
 	protect("GET /api/backup/export", r.backupHandler.Export)
 	protect("POST /api/backup/restore", r.backupHandler.Restore)
 	protect("GET /api/discovery/scan", r.discoveryHandler.Scan)
+	if deps.FRP != nil {
+		frpHandler := NewFRPHandler(deps.FRP, deps.Proxy)
+		protect("GET /api/frp", frpHandler.Get)
+		protect("PUT /api/frp", frpHandler.Put)
+		protect("GET /api/frp/status", frpHandler.Status)
+		protect("POST /api/frp/sync-domains", frpHandler.SyncDomains)
+		protect("GET /api/frp/logs", frpHandler.Logs)
+	}
 
 	if deps.StaticFS != nil {
 		mux.Handle("/", r.spaHandler())

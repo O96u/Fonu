@@ -38,6 +38,7 @@
 | **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                   |
 | **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                     |
 | **日志**       | Nginx 访问/错误日志、系统运行日志；分页与实时 SSE 推送                      |
+| **内网穿透**   | FRP 客户端（Nginx 网关穿透）：无公网 IP 时经 VPS 中转，反代与安全策略不变   |
 | **设置**       | 管理员密码、配置备份与恢复、服务发现（如飞牛 fnOS :5666）                   |
 | **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                            |
 
@@ -76,6 +77,7 @@
 | **反向代理** | 内置 Nginx（动态生成配置、热重载）                    |
 | **证书**     | go-acme/lego（Let's Encrypt）                         |
 | **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 DNS API         |
+| **内网穿透** | 内置 frpc（v0.66.x），固定穿透 Fonu Nginx 端口        |
 | **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts            |
 | **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI |
 
@@ -141,6 +143,44 @@ docker compose up -d --build
 2. 访问 `http://<NAS-IP>:6893/login` 登录
 3. 在 **设置** 中立即修改管理员密码
 
+### FRP 内网穿透（无公网 IP）
+
+适用于无法端口映射、无公网 IPv4 的场景。Fonu 内置 **frpc**，仅做 **Nginx 网关穿透**：外网流量经 VPS 上的 frps 中转，再转发到本地 Nginx（默认 `18080` / `9443`）。域名分流、HTTPS 证书、访问控制、日志仍全部由 Fonu Nginx 处理。
+
+**流量路径**：用户 → DNS（解析到 VPS）→ frps → frpc → Fonu Nginx → 内网服务
+
+#### 1. VPS 部署 frps
+
+在具有公网 IP 的 VPS 上安装 [frp](https://github.com/fatedier/frp)（建议 v0.66.x），创建 `frps.toml`：
+
+```toml
+bindAddr = "0.0.0.0"
+bindPort = 7000
+
+auth.method = "token"
+auth.token = "your-secret-token"
+
+vhostHTTPPort = 80
+vhostHTTPSPort = 443
+```
+
+启动：`frps -c frps.toml`。安全组/防火墙需放行 **7000**（控制连接）及 **80/443**（HTTP/HTTPS 虚拟主机）。
+
+#### 2. Fonu 配置 frpc
+
+在侧栏 **内网穿透** 页面填写：
+
+- FRP 服务器地址 / 端口（默认 7000）
+- 与 frps 一致的认证 Token
+- 穿透域名列表（与反代规则中的域名一致，支持 `*.example.com`）
+
+保存后 Fonu 自动生成 `frpc.toml` 并启动 frpc，固定创建 HTTP → Nginx HTTP 端口、HTTPS → Nginx HTTPS 端口两条隧道。
+
+#### 3. DNS 与证书
+
+- **DDNS**：启用 FRP 后，域名应解析到 **VPS 公网 IP**，而非 NAS IP（DDNS 页会有提示）
+- **HTTPS 证书**：推荐继续使用 **DNS-01** 验证（Cloudflare 等已支持）；证书仍在 NAS 侧 Nginx 终结
+
 ## 环境变量
 
 | 变量                    | 默认值                    | 说明                                       |
@@ -151,6 +191,8 @@ docker compose up -d --build
 | `FONU_NGINX_HTTP_PORT`  | `80`                      | 新建 HTTP 反代规则的默认监听端口           |
 | `FONU_NGINX_HTTPS_PORT` | `443`                     | 新建 HTTPS 反代规则的默认监听端口          |
 | `FONU_NGINX_BIN`        | `nginx`                   | Nginx 可执行文件路径（本地开发可指定）     |
+| `FONU_FRPC_BIN`         | `frpc`                    | frpc 可执行文件路径（Docker 镜像内置）     |
+| `FONU_FRP_PID`          | `{DATA_DIR}/frp/frpc.pid` | frpc 进程 PID 文件路径                     |
 
 ## 注意事项
 

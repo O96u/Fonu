@@ -10,7 +10,18 @@
 
   <LoadError v-if="loadError" :message="loadError" @retry="init" />
 
-  <template v-else>
+  <n-alert
+    v-if="!loadError && frpEnabled"
+    class="frp-ddns-alert"
+    type="info"
+    :bordered="false"
+    title="FRP 内网穿透已启用"
+  >
+    请将域名 DNS 解析指向 <strong>FRP 服务器（VPS）的公网 IP</strong>，而非 NAS 本机 IP。可在
+    <router-link :to="{ name: 'frp' }">内网穿透</router-link> 页管理 FRP 配置。
+  </n-alert>
+
+  <template v-else-if="!loadError">
     <div class="stats-row">
       <div class="stat-card stat-card--ip">
         <div class="stat-card__head">
@@ -437,6 +448,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
+  NAlert,
   NButton,
   NIcon,
   NInput,
@@ -483,6 +495,7 @@ const message = useMessage()
 const dialog = useDialog()
 const configs = ref<DDNSConfig[]>([])
 const loading = ref(false)
+const frpEnabled = ref(false)
 const refreshingIP = ref(false)
 const loadError = ref('')
 const savingTask = ref(false)
@@ -816,6 +829,12 @@ async function init() {
   }
   refreshPublicIP()
   refreshLiveDNS()
+  try {
+    const frp = await api.getFRP()
+    frpEnabled.value = frp.enabled
+  } catch {
+    frpEnabled.value = false
+  }
 }
 
 async function saveTask() {
@@ -1091,6 +1110,10 @@ onMounted(init)
 </script>
 
 <style scoped>
+.frp-ddns-alert {
+  margin-bottom: var(--fonu-space-4);
+}
+
 .stats-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));

@@ -15,6 +15,8 @@ type Config struct {
 	NginxMimeTypes        string
 	NginxDefaultHTTPPort  int
 	NginxDefaultHTTPSPort int
+	FrpcBin               string
+	FrpPIDFile            string
 }
 
 func Load() Config {
@@ -31,6 +33,8 @@ func Load() Config {
 		NginxMimeTypes:        envOr("FONU_NGINX_MIME_TYPES", defaultMimeTypes()),
 		NginxDefaultHTTPPort:  envIntOr("FONU_NGINX_HTTP_PORT", 80),
 		NginxDefaultHTTPSPort: envIntOr("FONU_NGINX_HTTPS_PORT", 443),
+		FrpcBin:               envOr("FONU_FRPC_BIN", "frpc"),
+		FrpPIDFile:            envOr("FONU_FRP_PID", dataDir+"/frp/frpc.pid"),
 	}
 }
 
@@ -71,6 +75,18 @@ func (c Config) ChinaCIDRPath() string {
 
 func (c Config) ChinaCIDRTempPath() string {
 	return c.NginxDir() + "/china_cidr.conf.tmp"
+}
+
+func (c Config) FrpDir() string {
+	return c.DataDir + "/frp"
+}
+
+func (c Config) FrpConfigPath() string {
+	return c.FrpDir() + "/frpc.toml"
+}
+
+func (c Config) FrpLogPath() string {
+	return filepath.Join(c.LogsDir(), "frpc.log")
 }
 
 func defaultDataDir() string {

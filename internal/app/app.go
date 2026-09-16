@@ -21,6 +21,7 @@ import (
 	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/frp"
 	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/nginx"
@@ -37,6 +38,7 @@ type App struct {
 	logger     *slog.Logger
 	server     *http.Server
 	nginx      *nginx.Manager
+	frp        *frp.Manager
 	scheduler  *scheduler.Scheduler
 	shutdownFn context.CancelFunc
 	db         interface{ Close() error }
@@ -47,7 +49,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, appLogWriter), &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	for _, dir := range []string{cfg.DataDir, cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir()} {
+	for _, dir := range []string{cfg.DataDir, cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir(), cfg.FrpDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
 		}
@@ -90,6 +92,12 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)
 	backupSvc := backup.New(cfg.DataDir)
 	discoverySvc := discovery.New()
+	frpStore := frp.NewStore(settingsStore, secretBox)
+	frpMgr := frp.NewManager(cfg, frpStore, logger)
+	if err := frpMgr.EnsureDirs(); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)
 	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"))
 
@@ -104,6 +112,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		ChinaCIDR:  chinaCIDRSvc,
 		Backup:     backupSvc,
 		Discovery:  discoverySvc,
+		FRP:        frpMgr,
 		Traffic:    trafficCollector,
 		StaticFS:   staticFS,
 		StartedAt:  startedAt,
@@ -148,6 +157,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		logger:     logger,
 		server:     server,
 		nginx:      nginxMgr,
+		frp:        frpMgr,
 		scheduler:  sched,
 		shutdownFn: cancel,
 		db:         conn,
@@ -157,6 +167,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		cancel()
 		conn.Close()
 		return nil, err
+	}
+	if err := frpMgr.Bootstrap(context.Background()); err != nil {
+		logger.Warn("initial frpc bootstrap skipped", "module", "FRP", "error", err.Error())
 	}
 
 	logger.Info("application started", "module", "SYSTEM", "listen", cfg.ListenAddr)
@@ -184,6 +197,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 	if err := a.nginx.Stop(ctx); err != nil {
 		a.logger.Error("nginx stop failed", "module", "NGINX", "error", err.Error())
+	}
+	if a.frp != nil {
+		if err := a.frp.Stop(ctx); err != nil {
+			a.logger.Error("frpc stop failed", "module", "FRP", "error", err.Error())
+		}
 	}
 	if a.db != nil {
 		return a.db.Close()

@@ -113,6 +113,7 @@ import {
   CogOutline,
   DocumentTextOutline,
   Ellipse,
+  GitNetworkOutline,
   GridOutline,
   LockClosedOutline,
   LogoGithub,
@@ -167,10 +168,11 @@ async function loadVersion() {
 const menuDefs = [
   { label: '仪表盘', key: 'dashboard', icon: GridOutline },
   { label: 'DDNS', key: 'ddns', icon: CloudOutline },
-  { label: '证书', key: 'certificates', icon: LockClosedOutline },
-  { label: '反代', key: 'proxies', icon: SwapHorizontalOutline },
-  { label: '日志', key: 'logs', icon: DocumentTextOutline },
-  { label: '设置', key: 'settings', icon: CogOutline },
+  { label: '证书管理', key: 'certificates', icon: LockClosedOutline },
+  { label: '反向代理', key: 'proxies', icon: SwapHorizontalOutline },
+  { label: '内网穿透', key: 'frp', icon: GitNetworkOutline },
+  { label: '日志中心', key: 'logs', icon: DocumentTextOutline },
+  { label: '系统设置', key: 'settings', icon: CogOutline },
 ]
 
 const menuOptions = computed<MenuOption[]>(() =>

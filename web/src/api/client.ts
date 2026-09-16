@@ -9,6 +9,10 @@ import type {
   DDNSConfig,
   DDNSSavePayload,
   DDNSTestPayload,
+  FRPConfig,
+  FRPResponse,
+  FRPSavePayload,
+  FRPStatus,
   DiscoveredService,
   ProxyClientConn,
   ChinaCIDRStatus,
@@ -191,6 +195,20 @@ export const api = {
   getChinaCIDRStatus: () => request<ChinaCIDRStatus>('/api/settings/china-cidr'),
   refreshChinaCIDR: () =>
     request<ChinaCIDRStatus>('/api/settings/china-cidr/refresh', { method: 'POST' }),
+
+  getFRP: () => request<FRPResponse>('/api/frp'),
+  saveFRP: (payload: FRPSavePayload) =>
+    request<{ message: string; config: FRPConfig; status: FRPStatus }>('/api/frp', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  getFRPStatus: () => request<FRPStatus>('/api/frp/status'),
+  syncFRPDomains: () =>
+    request<{ message: string; domains: string[]; config: FRPConfig; status: FRPStatus }>(
+      '/api/frp/sync-domains',
+      { method: 'POST' },
+    ),
+  getFRPLogs: (limit = 200) => request<string[]>(`/api/frp/logs?limit=${limit}`),
 
   getAccessLogs: (params?: { limit?: number; keyword?: string; status?: number }) => {
     const q = new URLSearchParams()

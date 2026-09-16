@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.26] - 2026-09-16
+
+### 新增
+
+- FRP 内网穿透（Nginx 网关模式）：独立「内网穿透」页面配置 frps 连接，自动穿透本地 Nginx HTTP/HTTPS 端口
+- Docker 镜像内置 frpc v0.66.x（amd64 / arm64）
+- DDNS 页：FRP 启用时提示将域名解析到 VPS 公网 IP
+
 ## [v0.1.25] - 2026-09-15
 
 ### 新增

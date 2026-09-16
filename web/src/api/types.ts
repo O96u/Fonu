@@ -258,3 +258,48 @@ export interface DDNSTestPayload {
   api_token_id?: string
   api_secret?: string
 }
+
+export interface FRPStatus {
+  enabled: boolean
+  connected: boolean
+  message: string
+  last_error?: string
+  server_endpoint?: string
+  connected_at?: string
+  uptime_seconds?: number
+  client_version?: string
+  http_gateway_enabled?: boolean
+  https_gateway_enabled?: boolean
+  synced_domain_count?: number
+}
+
+export interface FRPConfig {
+  enabled: boolean
+  server_addr: string
+  server_port: number
+  auth_token: string
+  has_auth_token: boolean
+  tls_enabled: boolean
+  custom_domains: string[]
+}
+
+export interface FRPResponse {
+  enabled: boolean
+  server_addr: string
+  server_port: number
+  auth_token: string
+  has_auth_token: boolean
+  tls_enabled: boolean
+  custom_domains: string[]
+  status: FRPStatus
+  frps_template: string
+}
+
+export interface FRPSavePayload {
+  enabled: boolean
+  server_addr: string
+  server_port: number
+  auth_token?: string
+  tls_enabled: boolean
+  custom_domains: string[]
+}

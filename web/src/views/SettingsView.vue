@@ -1,5 +1,5 @@
 <template>
-  <PageHeader title="设置" description="配置界面、域名策略与系统维护" />
+  <PageHeader title="系统设置" description="配置界面、域名策略与系统维护" />
 
   <LoadError v-if="pageError" :message="pageError" @retry="load" />
 

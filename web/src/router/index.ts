@@ -8,6 +8,7 @@ import DdnsView from '../views/DdnsView.vue'
 import CertificatesView from '../views/CertificatesView.vue'
 import LogsView from '../views/LogsView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import FrpView from '../views/FrpView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -36,25 +37,31 @@ const router = createRouter({
           path: 'certificates',
           name: 'certificates',
           component: CertificatesView,
-          meta: { title: 'HTTPS 证书', description: '通过 ACME 自动申请和续签证书' },
+          meta: { title: '证书管理', description: '通过 ACME 自动申请和续签证书' },
         },
         {
           path: 'proxies',
           name: 'proxies',
           component: ProxyView,
-          meta: { title: '反代', description: '管理通过域名访问的 NAS 服务' },
+          meta: { title: '反向代理', description: '管理通过域名访问的 NAS 服务' },
+        },
+        {
+          path: 'frp',
+          name: 'frp',
+          component: FrpView,
+          meta: { title: '内网穿透', description: '通过 FRP 将公网流量转发到 Fonu Nginx' },
         },
         {
           path: 'logs',
           name: 'logs',
           component: LogsView,
-          meta: { title: '日志', description: '查看访问、错误与系统运行日志' },
+          meta: { title: '日志中心', description: '查看访问、错误与系统运行日志' },
         },
         {
           path: 'settings',
           name: 'settings',
           component: SettingsView,
-          meta: { title: '设置', description: '配置系统参数与运行策略' },
+          meta: { title: '系统设置', description: '配置系统参数与运行策略' },
         },
       ],
     },

@@ -1,5 +1,5 @@
 <template>
-  <PageHeader title="日志" description="Nginx 访问与错误日志；运行日志记录 DDNS、证书、Nginx 等业务事件" />
+  <PageHeader title="日志中心" description="Nginx 访问与错误日志；运行日志记录 DDNS、证书、Nginx 等业务事件" />
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 

@@ -1,6 +1,6 @@
 <template>
   <PageHeader
-    title="HTTPS 证书"
+    title="证书管理"
     description="通过 ACME 自动申请、续签，或导入已有证书，用于为域名提供安全的 HTTPS 访问"
   >
     <template #actions>

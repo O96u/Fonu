@@ -1,6 +1,6 @@
 <template>
   <PageHeader
-    title="反代"
+    title="反向代理"
     description="通过 Nginx 反向代理，让内网服务可以通过域名安全访问"
   >
     <template #actions>
