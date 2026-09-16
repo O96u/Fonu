@@ -44,7 +44,15 @@ const option = computed(() => {
       data: labels,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: textColor, fontSize: 10, interval: 1, hideOverlap: true },
+      axisLabel: {
+        color: textColor,
+        fontSize: 10,
+        interval: 0,
+        hideOverlap: false,
+        showMinLabel: true,
+        showMaxLabel: true,
+        rotate: labels.length > 8 ? 30 : 0,
+      },
     },
     yAxis: {
       type: 'value',

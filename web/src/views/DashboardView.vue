@@ -73,7 +73,7 @@
               <n-icon :component="FlashOutline" class="panel-title__icon panel-title__icon--amber" />
               <span>今日请求</span>
             </div>
-            <n-tag size="small" :bordered="false" class="range-tag">最近 24 小时</n-tag>
+            <n-tag size="small" :bordered="false" class="range-tag">今日 0–24 时</n-tag>
           </div>
           <div class="panel__body requests-panel__body">
             <div class="metric-hero">
@@ -360,17 +360,20 @@ const trafficChart = computed(() => {
   return { labels, upload, download }
 })
 
+const calendarHourLabels = Array.from({ length: 12 }, (_, i) =>
+  `${String(i * 2).padStart(2, '0')}:00`,
+)
+
 const hourlyBars = computed(() => {
   const hourly = status.value?.requests_hourly
   const apiLabels = status.value?.requests_hourly_labels
   if (hourly?.length === 12 && apiLabels?.length === 12) {
     return { labels: apiLabels, values: hourly }
   }
-  const fallbackLabels = Array.from({ length: 12 }, (_, i) => String(i * 2).padStart(2, '0'))
   if (hourly?.length === 12) {
-    return { labels: fallbackLabels, values: hourly }
+    return { labels: calendarHourLabels, values: hourly }
   }
-  return { labels: fallbackLabels, values: Array(12).fill(0) }
+  return { labels: calendarHourLabels, values: Array(12).fill(0) }
 })
 
 const requestTrend = computed(() => {

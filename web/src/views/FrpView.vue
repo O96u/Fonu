@@ -137,14 +137,20 @@
               />
             </div>
             <div class="settings-field">
-              <div class="settings-field__label">Token <span class="required">*</span></div>
+              <div class="settings-field__label">
+                Token <span class="required">*</span>
+                <span v-if="frpForm.has_auth_token" class="token-saved-hint">已保存</span>
+              </div>
               <n-input
                 v-model:value="frpForm.auth_token"
                 type="password"
                 show-password-on="click"
                 :disabled="!frpForm.enabled"
-                :placeholder="frpForm.has_auth_token ? '留空表示不修改' : '与 frps 配置一致'"
+                :placeholder="frpForm.has_auth_token ? '已保存，留空不修改' : '与 frps 配置一致'"
               />
+              <p v-if="frpForm.has_auth_token && !frpForm.auth_token" class="field-hint field-hint--inline">
+                Token 已加密保存，出于安全不显示明文；如需更换请直接输入新 Token。
+              </p>
             </div>
             <div class="form-switch-row">
               <div class="form-switch-row__text">
@@ -177,22 +183,8 @@
         </template>
 
         <p class="section-desc">
-          将当前启用的反向代理域名同步到 FRP Web 网关，所有域名将通过 Fonu Nginx 进行分流。
+          将当前启用的反向代理域名同步到 FRP Web 网关，所有域名将通过 Fonu Nginx 进行分流。点击「已同步域名」可查看或编辑。
         </p>
-
-        <div class="settings-field">
-          <div class="settings-field__label">穿透域名（每行一个，支持 *.example.com）</div>
-          <n-input
-            v-model:value="frpDomainsText"
-            type="textarea"
-            :rows="4"
-            placeholder="nas.example.com&#10;*.example.com"
-            :disabled="!frpForm.enabled"
-          />
-          <p class="field-hint field-hint--inline">
-            可手动填写，或点击「同步域名」从已启用的反向代理规则导入。
-          </p>
-        </div>
 
         <div class="gateway-grid">
           <div class="gateway-item">
@@ -261,8 +253,18 @@
   </n-modal>
 
   <n-modal v-model:show="showDomains" preset="card" title="穿透域名" style="width: min(520px, 92vw)">
-    <n-input v-model:value="frpDomainsText" type="textarea" :rows="8" placeholder="每行一个域名" />
-    <n-button class="modal-action" type="primary" @click="showDomains = false">确定</n-button>
+    <n-input
+      v-model:value="frpDomainsText"
+      type="textarea"
+      :rows="8"
+      placeholder="每行一个域名，支持 *.example.com"
+      :disabled="!frpForm.enabled"
+    />
+    <p class="field-hint field-hint--inline">可手动编辑，或点击「同步域名」从已启用的反向代理规则导入。</p>
+    <div class="modal-actions">
+      <n-button @click="showDomains = false">取消</n-button>
+      <n-button type="primary" :loading="saving" :disabled="!frpForm.enabled" @click="saveDomains">保存</n-button>
+    </div>
   </n-modal>
 
   <n-modal v-model:show="showLogs" preset="card" title="frpc 运行日志" style="width: min(860px, 92vw)">
@@ -426,12 +428,18 @@ function applyFrpsMeta(data: { frps_config?: string; nginx_http_port?: number; n
   if (data.nginx_https_port && data.nginx_https_port > 0) nginxHttpsPort.value = data.nginx_https_port
 }
 
+function tokenForSave() {
+  const token = frpForm.auth_token.trim()
+  if (!token) return undefined
+  return token
+}
+
 function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
   frpForm.enabled = data.enabled
   frpForm.server_addr = data.server_addr ?? ''
   frpForm.server_port = data.server_port > 0 ? data.server_port : 7000
-  frpForm.auth_token = ''
   frpForm.has_auth_token = data.has_auth_token
+  frpForm.auth_token = ''
   frpForm.tls_enabled = data.tls_enabled
   frpDomainsText.value = (data.custom_domains ?? []).join('\n')
   applyFrpsMeta(data)
@@ -477,7 +485,7 @@ async function ensureDomains() {
   }
 }
 
-async function save() {
+async function save(): Promise<boolean> {
   saving.value = true
   try {
     frpForm.server_addr = normalizeServerAddr(frpForm.server_addr)
@@ -487,26 +495,34 @@ async function save() {
     }
     if (frpForm.enabled && domains.length === 0) {
       message.warning('请填写穿透域名，或先在反向代理中启用规则后点击「同步域名」')
-      return
+      return false
     }
     const result = await api.saveFRP({
       enabled: frpForm.enabled,
       server_addr: frpForm.server_addr,
       server_port: frpForm.server_port || 7000,
-      auth_token: frpForm.auth_token.trim() || undefined,
+      auth_token: tokenForSave(),
       tls_enabled: frpForm.tls_enabled,
       custom_domains: domains,
     })
-    frpForm.auth_token = ''
     frpForm.has_auth_token = result.config.has_auth_token
+    frpForm.auth_token = ''
     frpDomainsText.value = (result.config.custom_domains ?? []).join('\n')
     applyFrpsMeta(result)
     frpStatus.value = result.status
     message.success(result.message || (frpForm.enabled ? '已保存并连接' : '已关闭内网穿透'))
+    return true
   } catch (error) {
     message.error(error instanceof Error ? error.message : '保存失败')
+    return false
   } finally {
     saving.value = false
+  }
+}
+
+async function saveDomains() {
+  if (await save()) {
+    showDomains.value = false
   }
 }
 
@@ -842,10 +858,23 @@ onMounted(load)
 }
 
 .settings-field__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: 500;
   color: var(--fonu-text);
+}
+
+.token-saved-hint {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #047857;
+  background: color-mix(in srgb, #10b981 10%, var(--fonu-bg));
+  border: 1px solid color-mix(in srgb, #10b981 22%, var(--fonu-border));
 }
 
 .settings-field__input-full {
@@ -1029,6 +1058,13 @@ onMounted(load)
 }
 
 .modal-action {
+  margin-top: var(--fonu-space-4);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
   margin-top: var(--fonu-space-4);
 }
 
