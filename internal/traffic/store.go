@@ -29,7 +29,8 @@ func (s *Store) LoadTotals(ctx context.Context) (map[string]hostTotals, error) {
 		if err := rows.Scan(&host, &up, &down); err != nil {
 			return nil, err
 		}
-		out[normalizeHost(host)] = hostTotals{Upload: up, Download: down}
+		key := strings.ToLower(strings.TrimSpace(host))
+		out[key] = hostTotals{Upload: up, Download: down}
 	}
 	return out, rows.Err()
 }
@@ -59,12 +60,4 @@ func (s *Store) SaveTotals(ctx context.Context, hosts map[string]hostTotals) err
 type hostTotals struct {
 	Upload   int64
 	Download int64
-}
-
-func normalizeHost(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if i := strings.Index(host, ":"); i > 0 {
-		host = host[:i]
-	}
-	return host
 }

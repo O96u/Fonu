@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +53,8 @@ type statusResponse struct {
 	ProxyCount        int     `json:"proxy_count"`
 	NginxStatus       string  `json:"nginx_status"`
 	RequestToday         int      `json:"request_today"`
+	RequestYesterday     int      `json:"request_yesterday"`
+	RequestTrend         *int     `json:"request_trend,omitempty"`
 	RequestsHourly       []int    `json:"requests_hourly"`
 	RequestsHourlyLabels []string `json:"requests_hourly_labels"`
 	ErrorToday           int      `json:"error_today"`
@@ -82,6 +85,7 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	accessLog := filepath.Join(h.cfg.LogsDir(), "access.log")
 	total, errors, avgMs := logstore.CountTodayAccess(accessLog)
+	yesterday, _, _ := logstore.CountAccessForDay(accessLog, time.Now().AddDate(0, 0, -1))
 	hourly, hourlyLabels := logstore.HourlyAccessCounts(accessLog)
 
 	started, _ := time.Parse(time.RFC3339, h.startedAt)
@@ -101,6 +105,8 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 		ProxyCount:        len(rules),
 		NginxStatus:       nginxStatus,
 		RequestToday:         total,
+		RequestYesterday:     yesterday,
+		RequestTrend:         requestTrendPercent(total, yesterday),
 		RequestsHourly:       hourly,
 		RequestsHourlyLabels: hourlyLabels,
 		ErrorToday:           errors,
@@ -150,6 +156,18 @@ func summarizeCertificates(records []certstore.Record) (status string, days int,
 		summary = fmt.Sprintf("%d 张证书", count)
 	}
 	return status, days, count, summary
+}
+
+func requestTrendPercent(today, yesterday int) *int {
+	if yesterday <= 0 {
+		if today <= 0 {
+			return nil
+		}
+		v := 100
+		return &v
+	}
+	v := int(math.Round(float64(today-yesterday) / float64(yesterday) * 100))
+	return &v
 }
 
 func certificateSummaryName(rec certstore.Record) string {

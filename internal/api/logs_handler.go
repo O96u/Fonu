@@ -89,6 +89,14 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogsHandler) StreamAccessForHosts(w http.ResponseWriter, r *http.Request, hosts []string) {
+	endpoints := make([]logstore.AccessEndpoint, 0, len(hosts))
+	for _, host := range hosts {
+		endpoints = append(endpoints, logstore.AccessEndpoint{Host: host})
+	}
+	h.StreamAccessForEndpoints(w, r, endpoints)
+}
+
+func (h *LogsHandler) StreamAccessForEndpoints(w http.ResponseWriter, r *http.Request, endpoints []logstore.AccessEndpoint) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -100,7 +108,7 @@ func (h *LogsHandler) StreamAccessForHosts(w http.ResponseWriter, r *http.Reques
 	}
 	path := filepath.Join(h.cfg.LogsDir(), "access.log")
 	tail := queryInt(r, "tail", 100)
-	filter := logstore.AccessHostFilter(hosts)
+	filter := logstore.AccessEndpointFilter(endpoints)
 	_ = logstore.StreamFile(r.Context(), path, w, func() error {
 		flusher.Flush()
 		return nil

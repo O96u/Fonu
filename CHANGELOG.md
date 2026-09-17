@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.30] - 2026-09-17
+
+### 修复
+
+- 反向代理 Basic Auth：htpasswd 文件补充 nginx 可读权限与 bcrypt 前缀兼容，修复认证后 500 错误
+- 反代连接数：按「域名 + 监听端口」统计，修复同域名多规则互相串数的问题
+- 仪表盘「今日请求」：排除错误页与 favicon 噪音，趋势改为较昨日对比
+
+### 新增
+
+- 反代详情日志：支持全屏查看实时访问日志
+
 ## [v0.1.29] - 2026-09-17
 
 ### 修复

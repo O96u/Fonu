@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/fonu/fonu/internal/config"
+	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/traffic"
@@ -185,12 +186,16 @@ func (h *ProxyHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "规则不存在")
 		return
 	}
-	hosts := rule.Hostnames()
-	if len(hosts) == 0 {
+	endpoints := rule.Endpoints()
+	if len(endpoints) == 0 {
 		writeError(w, http.StatusBadRequest, "该规则没有前端域名")
 		return
 	}
-	h.logs.StreamAccessForHosts(w, r, hosts)
+	matches := make([]logstore.AccessEndpoint, 0, len(endpoints))
+	for _, ep := range endpoints {
+		matches = append(matches, logstore.AccessEndpoint{Host: ep.Hostname, Port: ep.Port})
+	}
+	h.logs.StreamAccessForEndpoints(w, r, matches)
 }
 
 func (h *ProxyHandler) Reorder(w http.ResponseWriter, r *http.Request) {

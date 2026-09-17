@@ -285,40 +285,48 @@
         <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
                 <span class="text-muted">实时访问日志</span>
-                <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
+                <n-space :size="4">
+                  <n-button size="tiny" quaternary @click="openLogFullscreen">
+                    <template #icon><n-icon :component="ExpandOutline" /></template>
+                    全屏
+                  </n-button>
+                  <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
+                </n-space>
               </div>
-              <div
+              <ProxyAccessLogBox
                 ref="logBox"
-                class="proxy-log-box proxy-log-box--embedded"
-                :class="{ 'is-empty': logLines.length === 0 }"
+                :lines="logLines"
+                embedded
                 @scroll="onLogBoxScroll"
-              >
-                <template v-for="(item, i) in parsedLogLines" :key="i">
-                  <div
-                    v-if="item.parsed"
-                    class="proxy-log-entry"
-                    :class="logEntryStatusClass(item.parsed.status)"
-                  >
-                    <time class="proxy-log-entry__time">{{ item.parsed.time }}</time>
-                    <span class="proxy-log-entry__method" :class="`is-${item.parsed.method.toLowerCase()}`">
-                      {{ item.parsed.method }}
-                    </span>
-                    <span class="proxy-log-entry__path" :title="item.parsed.path">{{ item.parsed.path }}</span>
-                    <span class="proxy-log-entry__status">{{ item.parsed.status }}</span>
-                    <span class="proxy-log-entry__ms">{{ item.parsed.ms }}ms</span>
-                    <span class="proxy-log-entry__client mono">{{ item.parsed.client }}</span>
-                    <span class="proxy-log-entry__upstream mono" :title="item.parsed.upstream">
-                      → {{ item.parsed.upstream }}
-                    </span>
-                  </div>
-                  <div v-else class="proxy-log-line proxy-log-line--raw">{{ item.raw }}</div>
-                </template>
-                <div v-if="logLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
-              </div>
+              />
         </div>
       </div>
     </div>
   </n-modal>
+
+  <Teleport to="body">
+    <div v-if="logFullscreen && selectedRule" class="proxy-log-fullscreen">
+      <div class="proxy-log-fullscreen__head">
+        <div class="proxy-log-fullscreen__title">
+          <span>实时访问日志</span>
+          <span class="proxy-log-fullscreen__rule">{{ ruleName(selectedRule) }}</span>
+        </div>
+        <n-space :size="4">
+          <n-button size="small" quaternary @click="clearLogLines">清空</n-button>
+          <n-button size="small" quaternary @click="logFullscreen = false">
+            <template #icon><n-icon :component="ContractOutline" /></template>
+            退出全屏
+          </n-button>
+        </n-space>
+      </div>
+      <ProxyAccessLogBox
+        ref="logBoxFullscreen"
+        :lines="logLines"
+        fullscreen
+        @scroll="onLogBoxScroll"
+      />
+    </div>
+  </Teleport>
 
   <n-modal v-model:show="showModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-modal">
@@ -692,7 +700,9 @@ import {
   ArrowDownOutline,
   ArrowUpOutline,
   CloseOutline,
+  ContractOutline,
   CopyOutline,
+  ExpandOutline,
   OpenOutline,
   ReorderThreeOutline,
   CloudDownloadOutline,
@@ -709,6 +719,7 @@ import { api, asList } from '../api/client'
 import type { ProxyClientConn, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
+import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
 import LoadError from '../components/LoadError.vue'
 import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -734,7 +745,9 @@ const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
 const detailTab = ref<'overview' | 'logs'>('overview')
 const logLines = ref<string[]>([])
-const logBox = ref<HTMLElement | null>(null)
+const logBox = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
+const logBoxFullscreen = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
+const logFullscreen = ref(false)
 const logStickToBottom = ref(true)
 const LOG_SCROLL_BOTTOM_THRESHOLD = 24
 let logEventSource: EventSource | null = null
@@ -961,6 +974,7 @@ function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' = 'overview') {
 }
 
 function closeDetail() {
+  logFullscreen.value = false
   showDetailPanel.value = false
   detailTab.value = 'overview'
   clearRateHistory()
@@ -1326,63 +1340,30 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
   return cols
 })
 
-type AccessLogEntry = {
-  time: string
-  host: string
-  method: string
-  path: string
-  status: number
-  ms: string
-  client: string
-  upstream: string
-}
-
-const accessLineRe =
-  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+\S+\s+\S+)?$/
-
-function parseAccessLog(line: string): AccessLogEntry | null {
-  const m = line.match(accessLineRe)
-  if (!m) return null
-  const [, time, host, method, path, status, rt, client, upstream] = m
-  return {
-    time: time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, ''),
-    host,
-    method,
-    path,
-    status: Number(status),
-    ms: (parseFloat(rt) * 1000).toFixed(1),
-    client,
-    upstream,
-  }
-}
-
-const parsedLogLines = computed(() =>
-  logLines.value.map((raw) => ({ raw, parsed: parseAccessLog(raw) })),
-)
-
-function logEntryStatusClass(status: number): string {
-  if (status >= 500) return 'is-error'
-  if (status >= 400) return 'is-warn'
-  return ''
-}
-
 function isLogAtBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= LOG_SCROLL_BOTTOM_THRESHOLD
 }
 
-function onLogBoxScroll() {
-  const el = logBox.value
-  if (!el) return
+function onLogBoxScroll(el: HTMLElement) {
   logStickToBottom.value = isLogAtBottom(el)
 }
 
 function scrollLogToBottom(force = false) {
   if (!force && !logStickToBottom.value) return
   requestAnimationFrame(() => {
-    const el = logBox.value
-    if (!el) return
-    el.scrollTop = el.scrollHeight
+    logBox.value?.scrollToBottom()
+    if (logFullscreen.value) logBoxFullscreen.value?.scrollToBottom()
   })
+}
+
+async function openLogFullscreen() {
+  logFullscreen.value = true
+  await nextTick()
+  scrollLogToBottom(true)
+}
+
+function onLogFullscreenKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') logFullscreen.value = false
 }
 
 function stopLogStream() {
@@ -1432,6 +1413,16 @@ watch(
     scrollLogToBottom()
   },
 )
+
+watch(logFullscreen, (open) => {
+  if (open) {
+    document.addEventListener('keydown', onLogFullscreenKeydown)
+    document.body.style.overflow = 'hidden'
+    return
+  }
+  document.removeEventListener('keydown', onLogFullscreenKeydown)
+  document.body.style.overflow = ''
+})
 
 async function refreshTraffic() {
   try {
@@ -1848,6 +1839,8 @@ onUnmounted(() => {
   stopLogStream()
   stopTrafficPoll()
   stopClientsPoll()
+  document.removeEventListener('keydown', onLogFullscreenKeydown)
+  document.body.style.overflow = ''
 })
 </script>
 
@@ -2517,6 +2510,44 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
+.proxy-log-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  background: #0b1220;
+}
+
+.proxy-log-fullscreen__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.proxy-log-fullscreen__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.proxy-log-fullscreen__rule {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .listen-types {
   display: flex;
   align-items: center;
@@ -2959,156 +2990,6 @@ onUnmounted(() => {
   margin-top: var(--fonu-space-2);
 }
 
-.proxy-log-box {
-  background: #0f172a;
-  color: #e2e8f0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: var(--fonu-space-3);
-  font-family: var(--fonu-mono);
-  font-size: 12px;
-  line-height: 1.7;
-  border-radius: var(--fonu-radius-sm);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
-}
-
-.proxy-log-box:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.35);
-}
-
-.proxy-log-box::-webkit-scrollbar {
-  width: 7px;
-}
-
-.proxy-log-box::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.proxy-log-box::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.18);
-  border-radius: 4px;
-}
-
-.proxy-log-box:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-}
-
-.proxy-log-box--embedded {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.proxy-log-box--embedded.is-empty {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.proxy-log-entry {
-  display: grid;
-  grid-template-columns: 132px 52px minmax(0, 1fr) 44px 56px 108px minmax(80px, auto);
-  gap: 6px 10px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  border: 1px solid transparent;
-}
-
-.proxy-log-entry + .proxy-log-entry {
-  margin-top: 4px;
-}
-
-.proxy-log-entry:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(148, 163, 184, 0.12);
-}
-
-.proxy-log-entry__time {
-  color: #94a3b8;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.proxy-log-entry__method {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  background: rgba(59, 130, 246, 0.18);
-  color: #93c5fd;
-}
-
-.proxy-log-entry__method.is-get { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
-.proxy-log-entry__method.is-post { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
-.proxy-log-entry__method.is-put,
-.proxy-log-entry__method.is-patch { background: rgba(245, 158, 11, 0.18); color: #fcd34d; }
-.proxy-log-entry__method.is-delete { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
-
-.proxy-log-entry__path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #e2e8f0;
-}
-
-.proxy-log-entry__status {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  color: #86efac;
-}
-
-.proxy-log-entry.is-warn .proxy-log-entry__status { color: #fbbf24; }
-.proxy-log-entry.is-error .proxy-log-entry__status { color: #f87171; }
-
-.proxy-log-entry__ms {
-  color: #94a3b8;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.proxy-log-entry__client {
-  color: #cbd5e1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.proxy-log-entry__upstream {
-  color: #64748b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-}
-
-.proxy-log-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-  padding: 6px 10px;
-  color: #cbd5e1;
-}
-
-.proxy-log-line--raw + .proxy-log-entry,
-.proxy-log-entry + .proxy-log-line--raw {
-  margin-top: 4px;
-}
-
-.proxy-log-empty {
-  padding: var(--fonu-space-5);
-  text-align: center;
-  color: #94a3b8;
-}
-
 .clients-list {
   display: flex;
   flex-direction: column;
@@ -3154,12 +3035,6 @@ onUnmounted(() => {
   .overview-card--clients {
     min-height: 100px;
   }
-  .proxy-log-entry {
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 8px;
-  }
-  .proxy-log-entry__path { grid-column: 1 / -1; }
-  .proxy-log-entry__upstream { grid-column: 1 / -1; }
 }
 
 @media (max-width: 640px) {

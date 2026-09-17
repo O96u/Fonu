@@ -16,10 +16,10 @@ func TestHourlyAccessCountsCalendarDay(t *testing.T) {
 	todayNoon := time.Date(now.Year(), now.Month(), now.Day(), 11, 30, 0, 0, now.Location())
 	yesterday := todayMorning.Add(-24 * time.Hour)
 	lines := []string{
-		formatAccessLine(todayMorning),
-		formatAccessLine(todayMorning.Add(30 * time.Minute)),
-		formatAccessLine(todayNoon),
-		formatAccessLine(yesterday),
+		formatAccessLine(todayMorning, "/"),
+		formatAccessLine(todayMorning.Add(30*time.Minute), "/"),
+		formatAccessLine(todayNoon, "/"),
+		formatAccessLine(yesterday, "/"),
 	}
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 		t.Fatal(err)
@@ -47,6 +47,6 @@ func TestHourlyAccessCountsCalendarDay(t *testing.T) {
 	}
 }
 
-func formatAccessLine(at time.Time) string {
-	return at.Format(time.RFC3339) + " app.example.com GET / 200 0.010 1.2.3.4 127.0.0.1:8080"
+func formatAccessLine(at time.Time, path string) string {
+	return at.Format(time.RFC3339) + " app.example.com GET " + path + " 200 0.010 1.2.3.4 127.0.0.1:8080"
 }

@@ -165,7 +165,7 @@ func (c *Collector) ingestLine(line string, trackLive bool) {
 	if !ok || entry.Domain == "" {
 		return
 	}
-	host := normalizeHost(entry.Domain)
+	host := EndpointKey(entry.Domain, entry.ServerPort)
 	up := entry.RequestLength
 	down := entry.BytesSent
 	if up == 0 && down == 0 && !trackLive {
@@ -218,7 +218,7 @@ func (c *Collector) pruneHost(st *hostState, now time.Time) {
 	}
 }
 
-func (c *Collector) aggregateHosts(hostnames []string, now time.Time) (uploadTotal, downloadTotal int64, uploadRate, downloadRate float64, connections int) {
+func (c *Collector) aggregateEndpoints(endpoints []proxy.Endpoint, now time.Time) (uploadTotal, downloadTotal int64, uploadRate, downloadRate float64, connections int) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -226,9 +226,9 @@ func (c *Collector) aggregateHosts(hostnames []string, now time.Time) (uploadTot
 	var oldest time.Time
 	clientSet := map[string]time.Time{}
 
-	for _, name := range hostnames {
-		host := normalizeHost(name)
-		st, ok := c.hosts[host]
+	for _, ep := range endpoints {
+		key := EndpointKey(ep.Hostname, ep.Port)
+		st, ok := c.hosts[key]
 		if !ok {
 			continue
 		}
@@ -274,8 +274,8 @@ func (c *Collector) SnapshotForRules(rules []proxy.Rule) []RuleTraffic {
 	now := time.Now()
 	out := make([]RuleTraffic, 0, len(rules))
 	for _, rule := range rules {
-		hosts := rule.Hostnames()
-		up, down, upRate, downRate, conns := c.aggregateHosts(hosts, now)
+		endpoints := rule.Endpoints()
+		up, down, upRate, downRate, conns := c.aggregateEndpoints(endpoints, now)
 		out = append(out, RuleTraffic{
 			RuleID:        rule.ID,
 			UploadTotal:   up,
@@ -294,9 +294,9 @@ func (c *Collector) ClientsForRule(rule proxy.Rule) []ClientConn {
 	clientSet := map[string]time.Time{}
 
 	c.mu.RLock()
-	for _, name := range rule.Hostnames() {
-		host := normalizeHost(name)
-		st, ok := c.hosts[host]
+	for _, ep := range rule.Endpoints() {
+		key := EndpointKey(ep.Hostname, ep.Port)
+		st, ok := c.hosts[key]
 		if !ok {
 			continue
 		}

@@ -47,6 +47,36 @@ func (r Rule) PrimaryHost() string {
 	return ""
 }
 
+type Endpoint struct {
+	Hostname string
+	Port     int
+}
+
+func (r Rule) Endpoints() []Endpoint {
+	seen := make(map[string]bool)
+	var out []Endpoint
+	for _, host := range r.Hosts {
+		name := strings.ToLower(strings.TrimSpace(host.Hostname))
+		if name == "" {
+			continue
+		}
+		port := hostEffectivePort(host, r.ListenPort)
+		key := fmt.Sprintf("%s:%d", name, port)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, Endpoint{Hostname: name, Port: port})
+	}
+	if len(out) == 0 {
+		domain := strings.ToLower(strings.TrimSpace(r.Domain))
+		if domain != "" {
+			out = append(out, Endpoint{Hostname: domain, Port: r.ListenPort})
+		}
+	}
+	return out
+}
+
 func (r Rule) Hostnames() []string {
 	seen := make(map[string]bool)
 	var names []string

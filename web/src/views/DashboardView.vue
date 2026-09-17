@@ -73,13 +73,12 @@
               <n-icon :component="FlashOutline" class="panel-title__icon panel-title__icon--amber" />
               <span>今日请求</span>
             </div>
-            <n-tag size="small" :bordered="false" class="range-tag">今日 0–24 时</n-tag>
           </div>
           <div class="panel__body requests-panel__body">
             <div class="metric-hero">
               <span class="metric-hero__value">{{ (status?.request_today ?? 0).toLocaleString() }}</span>
               <n-tag v-if="requestTrend !== null" size="small" :bordered="false" :type="requestTrend >= 0 ? 'success' : 'warning'">
-                {{ requestTrend >= 0 ? '↑' : '↓' }} {{ requestTrend >= 0 ? '+' : '' }}{{ requestTrend }}%
+                较昨日 {{ requestTrend >= 0 ? '+' : '' }}{{ requestTrend }}%
               </n-tag>
             </div>
             <div class="panel-chart">
@@ -377,12 +376,8 @@ const hourlyBars = computed(() => {
 })
 
 const requestTrend = computed(() => {
-  const values = hourlyBars.value.values
-  if (values.every((v) => v === 0)) return null
-  const first = values.slice(0, 6).reduce((a, b) => a + b, 0)
-  const second = values.slice(6).reduce((a, b) => a + b, 0)
-  if (first === 0) return second > 0 ? 100 : 0
-  return Math.round(((second - first) / first) * 100)
+  const trend = status.value?.request_trend
+  return trend == null ? null : trend
 })
 
 const healthItems = computed(() => [
