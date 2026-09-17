@@ -47,7 +47,7 @@ func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "读取反向代理规则失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, rules)
+	writeJSON(w, http.StatusOK, proxy.RulesForAPI(rules))
 }
 
 func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, rule)
+	writeJSON(w, http.StatusCreated, proxy.RuleForAPI(rule))
 }
 
 func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +140,7 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, rule)
+	writeJSON(w, http.StatusOK, proxy.RuleForAPI(rule))
 }
 
 func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {

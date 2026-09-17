@@ -122,6 +122,19 @@ func (c SecurityConfig) Normalize() SecurityConfig {
 	return c
 }
 
+func RuleForAPI(rule Rule) Rule {
+	rule.Security = rule.Security.ForAPI()
+	return rule
+}
+
+func RulesForAPI(rules []Rule) []Rule {
+	out := make([]Rule, len(rules))
+	for i, rule := range rules {
+		out[i] = RuleForAPI(rule)
+	}
+	return out
+}
+
 func (c SecurityConfig) ForAPI() SecurityConfig {
 	out := c.Normalize()
 	if out.BasicAuth != nil {

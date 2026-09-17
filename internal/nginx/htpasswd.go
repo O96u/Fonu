@@ -29,7 +29,7 @@ func SyncHtpasswdFiles(cfg config.Config, rules []proxy.Rule) error {
 		if rule.Security.BasicAuthEnabled() {
 			active[rule.ID] = true
 			line := fmt.Sprintf("%s:%s\n", rule.Security.BasicAuth.Username, rule.Security.BasicAuth.PasswordHash)
-			if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
 				return err
 			}
 		}

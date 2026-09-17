@@ -8,7 +8,7 @@
 
 <p align="center">
   面向 <strong>飞牛 fnOS</strong> 的轻量公网访问管理工具<br />
-  反向代理 · DDNS · HTTPS 证书 · 一站式 Web 管理
+  反向代理 · DDNS · HTTPS 证书 · 内网穿透 · 一站式 Web 管理
 </p>
 
 <p align="center">
@@ -31,42 +31,57 @@
 
 ## 功能特性
 
-| 模块           | 说明                                                                        |
-| -------------- | --------------------------------------------------------------------------- |
-| **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP |
+| 模块           | 说明                                                                         |
+| -------------- | ---------------------------------------------------------------------------- |
+| **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP  |
 | **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云 DNS；单任务多根域名，自动同步公网 IP |
-| **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                   |
-| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                     |
-| **日志**       | Nginx 访问/错误日志、系统运行日志；分页与实时 SSE 推送                      |
-| **内网穿透**   | FRP 客户端（Nginx 网关穿透）：无公网 IP 时经 VPS 中转，反代与安全策略不变   |
-| **设置**       | 管理员密码、配置备份与恢复、服务发现（如飞牛 fnOS :5666）                   |
-| **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                            |
+| **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                    |
+| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                      |
+| **日志**       | Nginx 访问/错误日志、系统运行日志；分页与实时 SSE 推送                       |
+| **内网穿透**   | FRP 客户端（Nginx 网关穿透）：无公网 IP 时经 VPS 中转，反代与安全策略不变    |
+| **设置**       | 管理员密码、配置备份与恢复、服务发现（如飞牛 fnOS :5666）                    |
+| **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                             |
 
 ## 界面展示
 
-<p align="center"><strong>仪表盘</strong> — 服务状态、请求趋势、实时流量与运行健康度</p>
+<p align="center"><strong>仪表盘</strong> — 公网 IP、域名与证书概览，今日请求趋势、实时流量与服务健康度</p>
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="仪表盘" width="92%" />
+  <img src="docs/screenshots/dashboard.png" alt="仪表盘" />
 </p>
 
 <p align="center"><strong>DDNS</strong> — 多服务商、多根域名、解析记录与同步状态</p>
 <p align="center">
-  <img src="docs/screenshots/ddns.png" alt="DDNS" width="92%" />
+  <img src="docs/screenshots/ddns.png" alt="DDNS" />
 </p>
 
 <p align="center"><strong>HTTPS 证书</strong> — ACME 申请、自动续期、导入与下载</p>
 <p align="center">
-  <img src="docs/screenshots/certificates.png" alt="HTTPS 证书" width="92%" />
+  <img src="docs/screenshots/certificates.png" alt="HTTPS 证书" />
 </p>
 
-<p align="center"><strong>反向代理</strong> — 多域名多端口、流量统计与连接详情</p>
+<p align="center"><strong>反向代理</strong> — 多域名多端口、流量统计、连接详情与规则管理</p>
 <p align="center">
-  <img src="docs/screenshots/proxy.png" alt="反向代理" width="92%" />
+  <img src="docs/screenshots/proxy.png" alt="反向代理" />
 </p>
 
-<p align="center"><strong>设置</strong> — 外观、自动任务、安全、通知与配置备份</p>
+<p align="center"><strong>反向代理 · 规则配置</strong> — 域名、监听端口、目标地址与 HTTPS 跳转</p>
 <p align="center">
-  <img src="docs/screenshots/settings.png" alt="设置" width="92%" />
+  <img src="docs/screenshots/proxy-rule-basic.png" alt="反向代理规则配置" />
+</p>
+
+<p align="center"><strong>反向代理 · 安全设置</strong> — IP 访问控制、Basic Auth、限流与连接数限制</p>
+<p align="center">
+  <img src="docs/screenshots/proxy-rule-security.png" alt="反向代理安全设置" />
+</p>
+
+<p align="center"><strong>内网穿透</strong> — FRP 连接配置、Web 网关穿透与 frps 部署模板</p>
+<p align="center">
+  <img src="docs/screenshots/frp.png" alt="内网穿透" />
+</p>
+
+<p align="center"><strong>系统设置</strong> — 外观、自动任务、反代安全、通知与配置备份</p>
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="系统设置" />
 </p>
 
 ## 技术栈
@@ -220,4 +235,4 @@ make test
 
 ## 开源协议
 
-[GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html)
+本项目采用 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) 开源。

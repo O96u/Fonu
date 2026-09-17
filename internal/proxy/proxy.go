@@ -535,7 +535,6 @@ func (s *Store) attachHosts(ctx context.Context, rules []Rule) ([]Rule, error) {
 	for i := range rules {
 		rules[i].Hosts = byRule[rules[i].ID]
 		rules[i].Domain = rules[i].PrimaryHost()
-		rules[i].Security = rules[i].Security.ForAPI()
 	}
 	return rules, nil
 }

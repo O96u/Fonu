@@ -6,6 +6,30 @@ import (
 	"github.com/fonu/fonu/internal/validate"
 )
 
+func TestForAPIStripsPasswordHashButRuntimeKeepsAuth(t *testing.T) {
+	hash := "$2a$10$abcdefghijklmnopqrstuv"
+	sec := SecurityConfig{
+		BasicAuth: &BasicAuthConfig{
+			Enabled:      true,
+			Username:     "admin",
+			PasswordHash: hash,
+		},
+	}
+	if !sec.BasicAuthEnabled() {
+		t.Fatal("expected runtime basic auth enabled")
+	}
+	api := sec.ForAPI()
+	if api.BasicAuth.PasswordHash != "" {
+		t.Fatal("expected API view to strip password hash")
+	}
+	if !api.BasicAuth.HasPassword {
+		t.Fatal("expected has_password flag in API view")
+	}
+	if api.BasicAuthEnabled() {
+		t.Fatal("API view must not be treated as nginx-ready basic auth config")
+	}
+}
+
 func TestMergeSecurityBasicAuthKeepsHash(t *testing.T) {
 	hash, err := validate.BasicAuthPasswordHash("admin", "password123")
 	if err != nil {

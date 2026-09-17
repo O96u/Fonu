@@ -30,6 +30,7 @@ http {
 
     sendfile on;
     keepalive_timeout 65;
+    client_max_body_size 50m;
 
     map $http_upgrade $connection_upgrade {
         default upgrade;

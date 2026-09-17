@@ -30,6 +30,7 @@ func TestGenerateIncludesWebSocketAndProxy(t *testing.T) {
 		t.Fatalf("generate failed: %v", err)
 	}
 	for _, want := range []string{
+		"client_max_body_size 50m;",
 		"listen 80;",
 		"server_name nas.example.com",
 		"proxy_pass http://192.168.1.10:5666",

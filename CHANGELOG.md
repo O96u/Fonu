@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.29] - 2026-09-17
+
+### 修复
+
+- 反向代理 Basic Auth：修复密码哈希在 Nginx 重载前被剥离导致认证不生效的问题
+- 反代上传：全局默认 `client_max_body_size 50m`，修复大文件上传 413 错误
+
+### 改进
+
+- README 更新界面截图（v0.1.28）并补充开源地址与协议说明
+
 ## [v0.1.28] - 2026-09-16
 
 ### 修复
