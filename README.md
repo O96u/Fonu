@@ -223,7 +223,7 @@ vhostHTTPSPort = 443
 #### 3. DNS 与证书
 
 - **DDNS**：启用 FRP 后，域名应解析到 **VPS 公网 IP**，而非 NAS IP（DDNS 页会有提示）
-- **HTTPS 证书**：推荐继续使用 **DNS-01** 验证（Cloudflare 等已支持）；证书仍在 NAS 侧 Nginx 终结
+- **HTTPS 证书**：推荐继续使用 **DNS-01** 验证（Cloudflare、阿里云、腾讯云、DNSPod、火山引擎等已支持）；证书仍在 NAS 侧 Nginx 终结
 
 ## 环境变量
 

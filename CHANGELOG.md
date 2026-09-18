@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.2] - 2026-09-18
+
+### 新增
+
+- 证书：支持火山引擎 DNS 的 ACME DNS-01 验证
+
 ## [v1.0.1] - 2026-09-18
 
 ### 新增
