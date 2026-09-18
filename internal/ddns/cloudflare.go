@@ -25,6 +25,11 @@ func (c *Cloudflare) Verify(ctx context.Context, cred Credentials) error {
 	return err
 }
 
+func (c *Cloudflare) HasZone(ctx context.Context, cred Credentials, zone string) (bool, error) {
+	_, err := c.zoneID(ctx, cred.Token, zone)
+	return zoneLookupOK(err)
+}
+
 func (c *Cloudflare) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, recordName, recordType string) (string, error) {
 	zoneID, err := c.zoneID(ctx, cred.Token, rootDomain)
 	if err != nil {

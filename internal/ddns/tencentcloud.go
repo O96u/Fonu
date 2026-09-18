@@ -29,6 +29,15 @@ func (t *TencentCloud) Verify(ctx context.Context, cred Credentials) error {
 	return wrapTencentErr(err)
 }
 
+func (t *TencentCloud) HasZone(ctx context.Context, cred Credentials, zone string) (bool, error) {
+	client, err := t.client(cred)
+	if err != nil {
+		return false, err
+	}
+	_, err = t.domainInfo(client, zone)
+	return zoneLookupOK(wrapTencentErr(err))
+}
+
 func (t *TencentCloud) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, recordName, recordType string) (string, error) {
 	client, err := t.client(cred)
 	if err != nil {

@@ -36,6 +36,30 @@ func (a *AliDNS) Verify(ctx context.Context, cred Credentials) error {
 	return err
 }
 
+func (a *AliDNS) HasZone(ctx context.Context, cred Credentials, zone string) (bool, error) {
+	body, err := a.request(ctx, cred, map[string]string{
+		"Action":     "DescribeDomains",
+		"KeyWord":    zone,
+		"PageNumber": "1",
+		"PageSize":   "50",
+	})
+	if err != nil {
+		ok, lookupErr := zoneLookupOK(err)
+		return ok, lookupErr
+	}
+	var resp alidnsDomainsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return false, err
+	}
+	zone = strings.ToLower(strings.TrimSpace(zone))
+	for _, item := range resp.Domains.Domain {
+		if strings.EqualFold(item.DomainName, zone) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (a *AliDNS) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, recordName, recordType string) (string, error) {
 	subDomain := aliRR(recordName)
 	body, err := a.request(ctx, cred, map[string]string{
@@ -209,4 +233,12 @@ type alidnsRecordsResponse struct {
 			Value    string `json:"Value"`
 		} `json:"Record"`
 	} `json:"DomainRecords"`
+}
+
+type alidnsDomainsResponse struct {
+	Domains struct {
+		Domain []struct {
+			DomainName string `json:"DomainName"`
+		} `json:"Domain"`
+	} `json:"Domains"`
 }

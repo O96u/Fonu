@@ -25,6 +25,8 @@ func CredentialsFromSave(in SaveInput) Credentials {
 		return Credentials{Provider: "alidns", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
 	case "tencentcloud":
 		return Credentials{Provider: "tencentcloud", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
+	case "volcengine":
+		return Credentials{Provider: "volcengine", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
 	default:
 		return Credentials{Provider: "cloudflare", Token: strings.TrimSpace(in.APIToken)}
 	}
@@ -34,7 +36,7 @@ func (c Credentials) HasValues() bool {
 	switch c.Provider {
 	case "dnspod":
 		return c.TokenID != "" && c.Token != ""
-	case "alidns", "tencentcloud":
+	case "alidns", "tencentcloud", "volcengine":
 		return c.Token != "" && c.Secret != ""
 	default:
 		return c.Token != ""
@@ -54,6 +56,10 @@ func (c Credentials) Validate(provider string) error {
 	case "tencentcloud":
 		if c.Token == "" || c.Secret == "" {
 			return fmt.Errorf("请填写腾讯云 SecretId 和 SecretKey")
+		}
+	case "volcengine":
+		if c.Token == "" || c.Secret == "" {
+			return fmt.Errorf("请填写火山引擎 AccessKey ID 和 Secret Access Key")
 		}
 	default:
 		if c.Token == "" {

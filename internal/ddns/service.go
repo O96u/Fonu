@@ -32,6 +32,7 @@ func NewService(store *Store, settings *settings.Store, secretBox *secret.Box, l
 			"dnspod":       NewDNSPod(),
 			"alidns":       NewAliDNS(),
 			"tencentcloud": NewTencentCloud(),
+			"volcengine":   NewVolcengine(),
 		},
 		logger: logger.With("module", "DDNS"),
 		notify: notifySvc,
@@ -378,6 +379,7 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 	}
 	cred.Provider = cfg.Provider
 	provider := s.providerFor(cfg.Provider)
+	zoneCache := make(map[string]zoneHost)
 
 	for i := range records {
 		prevIPv4 := records[i].IPv4
@@ -385,11 +387,18 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 		prevStatus := records[i].Status
 		prevMessage := records[i].Message
 
-		root, record := ResolveDomainTarget(cfg.RootDomain, records[i].Domain)
-		records[i].Domain = FormatDomainLine(root, record)
+		fqdn := FQDNFromRecord(*cfg, records[i].Domain)
+		zone, record, err := s.resolveZone(ctx, provider, cred, fqdn, zoneCache)
+		if err != nil {
+			records[i].Domain = fqdn
+			records[i].Status = "error"
+			records[i].Message = err.Error()
+			continue
+		}
+		records[i].Domain = FormatDomainLine(zone, record)
 
 		if cfg.IPv4Enabled {
-			ip, err := provider.GetRecordIP(ctx, cred, root, record, "A")
+			ip, err := provider.GetRecordIP(ctx, cred, zone, record, "A")
 			switch {
 			case err != nil:
 				records[i].IPv4 = prevIPv4
@@ -411,7 +420,7 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 			}
 		}
 		if cfg.IPv6Enabled {
-			ip, err := provider.GetRecordIP(ctx, cred, root, record, "AAAA")
+			ip, err := provider.GetRecordIP(ctx, cred, zone, record, "AAAA")
 			switch {
 			case err != nil:
 				records[i].IPv6 = prevIPv6
@@ -482,14 +491,23 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	var lastErr error
 	var errCount, okCount int
 	changed := false
+	zoneCache := make(map[string]zoneHost)
 
 	for _, name := range recordNames {
-		root, record := ResolveDomainTarget(cfg.RootDomain, name)
-		fqdn := FormatDomainLine(root, record)
+		fqdn := FQDNFromRecord(cfg, name)
+		zone, record, zoneErr := s.resolveZone(ctx, provider, cred, fqdn, zoneCache)
+		if zoneErr != nil {
+			dr := DomainRecord{Domain: fqdn, Status: "error", Message: zoneErr.Error()}
+			domainRecords = append(domainRecords, dr)
+			lastErr = zoneErr
+			errCount++
+			continue
+		}
+		fqdn = FormatDomainLine(zone, record)
 		dr := DomainRecord{Domain: fqdn}
 
 		if cfg.IPv4Enabled && detectedIPv4 != "" {
-			current, getErr := provider.GetRecordIP(ctx, cred, root, record, "A")
+			current, getErr := provider.GetRecordIP(ctx, cred, zone, record, "A")
 			if getErr != nil {
 				dr.Status = "error"
 				dr.Message = getErr.Error()
@@ -505,7 +523,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 				dr.Status = "error"
 				dr.Message = "检测到内网 IPv4，拒绝更新"
 				lastErr = fmt.Errorf("检测到内网 IPv4，拒绝更新")
-			} else if err := provider.UpdateRecord(ctx, cred, root, record, "A", detectedIPv4); err != nil {
+			} else if err := provider.UpdateRecord(ctx, cred, zone, record, "A", detectedIPv4); err != nil {
 				dr.Status = "error"
 				dr.Message = err.Error()
 				lastErr = err
@@ -519,7 +537,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 		}
 
 		if cfg.IPv6Enabled && detectedIPv6 != "" && dr.Status != "error" {
-			current, getErr := provider.GetRecordIP(ctx, cred, root, record, "AAAA")
+			current, getErr := provider.GetRecordIP(ctx, cred, zone, record, "AAAA")
 			if getErr != nil {
 				dr.Status = "error"
 				dr.Message = getErr.Error()
@@ -535,7 +553,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 					dr.Status = "error"
 					dr.Message = "检测到内网 IPv6，拒绝更新"
 					lastErr = fmt.Errorf("检测到内网 IPv6，拒绝更新")
-				} else if err := provider.UpdateRecord(ctx, cred, root, record, "AAAA", detectedIPv6); err != nil {
+				} else if err := provider.UpdateRecord(ctx, cred, zone, record, "AAAA", detectedIPv6); err != nil {
 					dr.Status = "error"
 					dr.Message = err.Error()
 					lastErr = err
@@ -638,21 +656,33 @@ func (s *Service) providerFor(name string) Provider {
 	return s.providers["cloudflare"]
 }
 
-func validateSaveInput(in SaveInput) error {
-	if len(in.Domains) > 0 {
-		if _, _, err := ParseDomainLines(in.Domains); err != nil {
-			return err
-		}
-	} else {
-		if strings.TrimSpace(in.RootDomain) == "" {
-			return fmt.Errorf("至少需要一个域名")
-		}
-		if _, err := ParseRecordNames(in.RecordNames, in.RecordName); err != nil {
-			return err
+func (s *Service) resolveZone(ctx context.Context, provider Provider, cred Credentials, fqdn string, cache map[string]zoneHost) (zone, host string, err error) {
+	if cache != nil {
+		if item, ok := cache[fqdn]; ok {
+			return item.zone, item.host, item.err
 		}
 	}
+	zone, host, err = ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
+		return provider.HasZone(ctx, cred, candidate)
+	}, fqdn)
+	if cache != nil {
+		cache[fqdn] = zoneHost{zone: zone, host: host, err: err}
+	}
+	return zone, host, err
+}
+
+type zoneHost struct {
+	zone string
+	host string
+	err  error
+}
+
+func validateSaveInput(in SaveInput) error {
+	if _, err := FQDNsFromSaveInput(in); err != nil {
+		return err
+	}
 	switch strings.TrimSpace(in.Provider) {
-	case "dnspod", "cloudflare", "alidns", "tencentcloud", "":
+	case "dnspod", "cloudflare", "alidns", "tencentcloud", "volcengine", "":
 	default:
 		return fmt.Errorf("不支持的 DNS Provider")
 	}

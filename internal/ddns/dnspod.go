@@ -27,6 +27,11 @@ func (d *DNSPod) Verify(ctx context.Context, cred Credentials) error {
 	return err
 }
 
+func (d *DNSPod) HasZone(ctx context.Context, cred Credentials, zone string) (bool, error) {
+	_, err := d.domainID(d.apiClient(cred), zone)
+	return zoneLookupOK(err)
+}
+
 func (d *DNSPod) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, recordName, recordType string) (string, error) {
 	client := d.apiClient(cred)
 	domainID, err := d.domainID(client, rootDomain)

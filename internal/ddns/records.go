@@ -6,6 +6,65 @@ import (
 	"strings"
 )
 
+func ValidateDomainFormat(domain string) error {
+	domain = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(domain, ".")))
+	if domain == "" {
+		return fmt.Errorf("域名不能为空")
+	}
+	if strings.HasPrefix(domain, "*.") {
+		domain = strings.TrimPrefix(domain, "*.")
+	}
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("请填写完整域名，例如 s.example.com")
+	}
+	for _, part := range parts {
+		if part == "" {
+			return fmt.Errorf("域名格式无效")
+		}
+		if len(part) > 63 {
+			return fmt.Errorf("域名标签过长")
+		}
+		for i := 0; i < len(part); i++ {
+			c := part[i]
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return fmt.Errorf("域名包含非法字符")
+			}
+		}
+		if part[0] == '-' || part[len(part)-1] == '-' {
+			return fmt.Errorf("域名标签不能以连字符开头或结尾")
+		}
+	}
+	return nil
+}
+
+func FQDNsFromSaveInput(in SaveInput) ([]string, error) {
+	var names []string
+	var err error
+	if len(in.Domains) > 0 {
+		_, names, err = ParseDomainLines(in.Domains)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		root := strings.ToLower(strings.TrimSpace(in.RootDomain))
+		if root == "" {
+			return nil, fmt.Errorf("至少需要一个域名")
+		}
+		recordNames, err := ParseRecordNames(in.RecordNames, in.RecordName)
+		if err != nil {
+			return nil, err
+		}
+		names = FormatDomainLines(root, recordNames)
+	}
+	for _, name := range names {
+		if err := ValidateDomainFormat(name); err != nil {
+			return nil, fmt.Errorf("%s：%s", name, err.Error())
+		}
+	}
+	return names, nil
+}
+
 func ParseDomainLines(lines []string) (rootDomain string, recordNames []string, err error) {
 	seen := make(map[string]struct{})
 	names := make([]string, 0, len(lines))
@@ -76,12 +135,43 @@ func parseDomainLine(line string) (rootDomain, recordName string, err error) {
 
 func FormatDomainLine(rootDomain, recordName string) string {
 	recordName = strings.TrimSpace(strings.ToLower(recordName))
+	rootDomain = strings.TrimSpace(strings.ToLower(rootDomain))
 	if strings.Contains(recordName, ".") {
-		if root, record, err := parseDomainLine(recordName); err == nil {
-			return FormatDomainLine(root, record)
+		parts := strings.Split(recordName, ".")
+		if len(parts) >= 3 {
+			if root, record, err := parseDomainLine(recordName); err == nil {
+				return joinDomainLine(root, record)
+			}
+		}
+		if len(parts) == 2 {
+			if root, record, err := parseDomainLine(recordName); err == nil && record == "@" && recordName == root {
+				if rootDomain == "" || rootDomain == root {
+					return recordName
+				}
+			}
 		}
 	}
-	rootDomain = strings.TrimSpace(strings.ToLower(rootDomain))
+	return joinDomainLine(rootDomain, recordName)
+}
+
+// canonicalFQDN returns name when it is already a complete FQDN (e.g. api.nas.example.com).
+func canonicalFQDN(name string) string {
+	name = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(name, ".")))
+	if name == "" || name == "@" || !strings.Contains(name, ".") {
+		return ""
+	}
+	root, record, err := parseDomainLine(name)
+	if err != nil {
+		return name
+	}
+	fqdn := joinDomainLine(root, record)
+	if fqdn == name {
+		return name
+	}
+	return ""
+}
+
+func joinDomainLine(rootDomain, recordName string) string {
 	if recordName == "" || recordName == "@" {
 		return rootDomain
 	}
@@ -94,6 +184,10 @@ func FormatDomainLine(rootDomain, recordName string) string {
 func FormatDomainLines(rootDomain string, recordNames []string) []string {
 	out := make([]string, 0, len(recordNames))
 	for _, name := range recordNames {
+		if fqdn := canonicalFQDN(name); fqdn != "" {
+			out = append(out, fqdn)
+			continue
+		}
 		root, record := ResolveDomainTarget(rootDomain, name)
 		out = append(out, FormatDomainLine(root, record))
 	}
@@ -135,12 +229,16 @@ func normalizeRecordName(raw string) string {
 		return "@"
 	}
 	if strings.HasPrefix(name, "*.") {
+		root := strings.TrimPrefix(name, "*.")
+		if root != "" {
+			return FormatDomainLine(root, "*")
+		}
 		return "*"
 	}
 	if strings.Contains(name, ".") {
-		_, record, err := parseDomainLine(name)
-		if err == nil && record != "" {
-			return record
+		root, record, err := parseDomainLine(name)
+		if err == nil {
+			return FormatDomainLine(root, record)
 		}
 	}
 	return name
@@ -199,9 +297,13 @@ func (c Config) ManagedDNSZones() []string {
 	}
 	add(c.RootDomain)
 	for _, name := range c.RecordNamesList() {
-		root, _ := ResolveDomainTarget(c.RootDomain, name)
+		fqdn := FQDNFromRecord(c, name)
+		add(fqdn)
+		root, record := ResolveDomainTarget(c.RootDomain, name)
 		add(root)
-		add(FormatDomainLine(root, strings.TrimPrefix(strings.TrimSpace(name), "*.")))
+		if record != "@" && record != "*" {
+			add(FormatDomainLine(root, record))
+		}
 	}
 	return zones
 }

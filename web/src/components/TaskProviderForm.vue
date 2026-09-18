@@ -41,7 +41,7 @@
       />
     </div>
 
-    <div v-if="form.provider === 'alidns' || form.provider === 'tencentcloud'" class="provider-form__field">
+    <div v-if="form.provider === 'alidns' || form.provider === 'tencentcloud' || form.provider === 'volcengine'" class="provider-form__field">
       <label class="provider-form__label provider-secret-label">
         <span>{{ secretLabel }}</span>
         <n-tag v-if="editing?.has_token" size="small" type="success" :bordered="false">
@@ -88,6 +88,7 @@ import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
+import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import type { DDNSConfig } from '../api/types'
 
 export type ProviderForm = {
@@ -118,6 +119,7 @@ const providerOptions = [
   { label: 'DNSPod', value: 'dnspod' },
   { label: '阿里云 DNS', value: 'alidns' },
   { label: '腾讯云 DNS', value: 'tencentcloud' },
+  { label: '火山引擎 DNS', value: 'volcengine' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
@@ -125,10 +127,11 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   dnspod: { label: 'DNSPod', icon: dnspodIcon },
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
+  volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
 }
 
 const credentialLabel = computed(() => {
-  if (props.form.provider === 'alidns') return 'AccessKey ID'
+  if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
   if (props.form.provider === 'tencentcloud') return 'SecretId'
   if (props.form.provider === 'dnspod') return 'Token'
   return 'API Token'
@@ -146,7 +149,7 @@ const secretPlaceholder = computed(() => {
 
 const credentialPlaceholder = computed(() => {
   if (props.editing?.has_token) return CONFIGURED_SECRET_PLACEHOLDER
-  if (props.form.provider === 'alidns') return 'AccessKey ID'
+  if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretId'
   if (props.form.provider === 'dnspod') return 'DNSPod Token'
   return 'Cloudflare API Token'

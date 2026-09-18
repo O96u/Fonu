@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.1] - 2026-09-18
+
+### 新增
+
+- DDNS：支持火山引擎 DNS（AccessKey / Secret Access Key）
+- DDNS：委托子域与多层子域名 Zone 自动匹配（最长后缀优先，如 `a.zzz.com`）
+
+### 改进
+
+- DDNS：解析记录统一展示完整域名；任务列表仅显示记录条数
+- DDNS：保存时校验域名格式（非法字符、标签长度、连字符位置）
+- 证书：火山引擎 DNS 任务申请证书时给出明确不支持 DNS-01 的提示
+
+### 修复
+
+- DDNS：多层子域名（如 `aaaa.vvv.bbb.com`、`www.a.zzz.com`）保存后被截断的问题
+- DDNS：同一任务混用多根域/委托子域时 Zone 解析错误
+
 ## [v1.0.0] - 2026-09-18
 
 ### 新增

@@ -174,7 +174,6 @@
                 <span>{{ formatRelativeTime(cfg.last_updated_at) || '从未' }}</span>
               </div>
               <div class="task-item__row">
-                <span class="task-item__domain">{{ cfg.root_domain || '未配置记录' }}</span>
                 <span class="task-item__muted">（共 {{ domainRecordsOf(cfg).length }} 条记录）</span>
               </div>
               <div class="task-item__foot">
@@ -217,7 +216,7 @@
                 <span v-if="isDraftSelected">待添加解析记录</span>
                 <template v-else>
                   <span>上次同步 {{ formatRelativeTime(selectedTask.last_updated_at) || '从未' }}</span>
-                  <span>{{ selectedTask.root_domain }}（共 {{ domainRecordsOf(selectedTask).length }} 条记录）</span>
+                  <span>（共 {{ domainRecordsOf(selectedTask).length }} 条记录）</span>
                 </template>
               </div>
             </div>
@@ -316,7 +315,7 @@
                     <n-input
                       v-model:value="recordDraft.domain"
                       size="small"
-                      placeholder="s / @ / * 或 api.example.com"
+                      placeholder="例如 s.example.com 或 www.sub.example.com"
                       @keyup.enter="saveRecord"
                     />
                   </td>
@@ -348,7 +347,7 @@
                       <n-input
                         v-model:value="recordDraft.domain"
                         size="small"
-                        placeholder="s / @ / * 或 api.example.com"
+                        placeholder="例如 s.example.com 或 www.sub.example.com"
                         @keyup.enter="saveRecord"
                       />
                     </td>
@@ -370,7 +369,7 @@
                     </td>
                   </template>
                   <template v-else>
-                    <td>{{ hostRecord(record.domain, selectedTask.root_domain) }}</td>
+                    <td class="record-table__mono">{{ record.domain }}</td>
                     <td>
                       <div class="type-tags">
                         <n-tag v-if="selectedTask.ipv4_enabled" size="tiny" :bordered="false">A</n-tag>
@@ -436,7 +435,7 @@
           <div class="alert__body">
             <div class="alert__title">提示</div>
             <div class="alert__text">
-              同一服务商任务可管理多个域名：同一主域名下填主机记录（如 s、@、*），其他主域名请填完整域名（如 api.example.com）。Fonu 会按同步周期自动检测公网 IP 并更新对应解析记录。
+              每条记录请填写完整域名（如 s.example.com、www.sub.example.com）。同一服务商任务可管理多个不同域名，Fonu 会按同步周期自动检测公网 IP 并更新对应解析记录。
             </div>
           </div>
         </div>
@@ -478,6 +477,7 @@ import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
+import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import { api, asList } from '../api/client'
 import type { DDNSConfig, DDNSDomainRecord } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
@@ -520,6 +520,7 @@ const providerOptions = [
   { label: 'DNSPod', value: 'dnspod' },
   { label: '阿里云 DNS', value: 'alidns' },
   { label: '腾讯云 DNS', value: 'tencentcloud' },
+  { label: '火山引擎 DNS', value: 'volcengine' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
@@ -527,6 +528,7 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   dnspod: { label: 'DNSPod', icon: dnspodIcon },
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
+  volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
 }
 
 const taskForm = reactive<ProviderForm>({
@@ -634,13 +636,6 @@ function taskStatusText(cfg: DDNSConfig) {
   return '正常'
 }
 
-function hostRecord(domain: string, root: string) {
-  if (!root || domain === root) return '@'
-  const suffix = `.${root}`
-  if (domain.endsWith(suffix)) return domain.slice(0, -suffix.length) || '@'
-  return domain
-}
-
 function recordNamesOf(row: DDNSConfig): string[] {
   return row.record_names?.length ? row.record_names : [row.record_name || '@']
 }
@@ -653,7 +648,29 @@ function formatDomain(root: string, record: string): string {
 }
 
 function domainsOf(row: DDNSConfig): string[] {
-  return recordNamesOf(row).map((name) => formatDomain(row.root_domain, name))
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const name of recordNamesOf(row)) {
+    const domain = formatDomain(row.root_domain, name).trim().toLowerCase()
+    if (!domain || seen.has(domain)) continue
+    seen.add(domain)
+    out.push(domain)
+  }
+  return out
+}
+
+function validateDomainFormat(domain: string): string | null {
+  const raw = domain.trim().toLowerCase().replace(/\.$/, '')
+  if (!raw) return '请输入完整域名'
+  const bare = raw.startsWith('*.') ? raw.slice(2) : raw
+  if (!bare.includes('.')) return '请填写完整域名，例如 s.example.com'
+  if (!/^[a-z0-9.-]+$/.test(raw) && !/^\*\.[a-z0-9.-]+$/.test(raw)) return '域名包含非法字符'
+  const parts = bare.split('.').filter(Boolean)
+  if (parts.length < 2) return '域名格式无效'
+  for (const part of parts) {
+    if (part.length > 63 || part.startsWith('-') || part.endsWith('-')) return '域名格式无效'
+  }
+  return null
 }
 
 function domainRecordsOf(row: DDNSConfig): DDNSDomainRecord[] {
@@ -690,7 +707,7 @@ function recordValue(record: DDNSDomainRecord) {
 }
 
 function normalizeRecordDomain(input: string, rootDomain?: string): string {
-  const raw = input.trim().toLowerCase()
+  const raw = input.trim().toLowerCase().replace(/\.$/, '')
   if (!raw) return ''
   if (raw.includes('.')) return raw
   if (!rootDomain) return raw
@@ -905,7 +922,7 @@ function startAddRecord() {
 
 function startEditRecord(record: DDNSDomainRecord) {
   recordEditing.value = record.domain
-  recordDraft.domain = hostRecord(record.domain, selectedTask.value?.root_domain ?? '')
+  recordDraft.domain = record.domain
   recordDraft.originalDomain = record.domain
 }
 
@@ -920,8 +937,9 @@ async function saveRecord() {
   if (!task) return
 
   const domain = normalizeRecordDomain(recordDraft.domain, task.root_domain || undefined)
-  if (!domain) {
-    message.error('请输入主机记录或完整域名')
+  const formatError = validateDomainFormat(domain)
+  if (formatError) {
+    message.error(formatError)
     return
   }
 
