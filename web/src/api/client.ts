@@ -23,6 +23,7 @@ import type {
   RuleNginxView,
   SettingsMap,
   SystemLogEntry,
+  NotifyTestPayload,
 } from './types'
 
 export function asList<T>(value: T[] | null | undefined): T[] {
@@ -213,6 +214,11 @@ export const api = {
   getChinaCIDRStatus: () => request<ChinaCIDRStatus>('/api/settings/china-cidr'),
   refreshChinaCIDR: () =>
     request<ChinaCIDRStatus>('/api/settings/china-cidr/refresh', { method: 'POST' }),
+  testNotify: (payload: NotifyTestPayload) =>
+    request<{ message: string }>('/api/settings/notify/test', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   getFRP: () => request<FRPResponse>('/api/frp'),
   saveFRP: (payload: FRPSavePayload) =>

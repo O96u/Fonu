@@ -259,6 +259,7 @@ func parseSystem(line string) (SystemEntry, bool) {
 	if entry.Time == "" {
 		entry.Time = time.Now().UTC().Format(time.RFC3339)
 	}
+	entry = localizeSystemEntry(entry, raw)
 	return entry, entry.Message != ""
 }
 

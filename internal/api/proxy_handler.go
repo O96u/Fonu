@@ -45,7 +45,7 @@ type proxyReorderRequest struct {
 func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.svc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取反向代理规则失败")
+		writeError(r, w, http.StatusInternalServerError, "读取反向代理规则失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, proxy.RulesForAPI(rules))
@@ -54,13 +54,13 @@ func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req proxyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 
 	hosts := req.hosts()
 	if len(hosts) == 0 {
-		writeError(w, http.StatusBadRequest, "至少需要一个前端域名")
+		writeError(r, w, http.StatusBadRequest, "至少需要一个前端域名")
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	rule, err := h.svc.Create(r.Context(), in)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, proxy.RuleForAPI(rule))
@@ -93,13 +93,13 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 
 	var req proxyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 
@@ -138,7 +138,7 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	rule, err := h.svc.Update(r.Context(), id, in)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, proxy.RuleForAPI(rule))
@@ -151,7 +151,7 @@ func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {
 	}
 	rules, err := h.svc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取反向代理规则失败")
+		writeError(r, w, http.StatusInternalServerError, "读取反向代理规则失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, h.traffic.SnapshotForRules(rules))
@@ -164,12 +164,12 @@ func (h *ProxyHandler) Clients(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	rule, err := h.svc.Get(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "规则不存在")
+		writeError(r, w, http.StatusBadRequest, "规则不存在")
 		return
 	}
 	writeJSON(w, http.StatusOK, h.traffic.ClientsForRule(rule))
@@ -178,17 +178,17 @@ func (h *ProxyHandler) Clients(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	rule, err := h.svc.Get(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "规则不存在")
+		writeError(r, w, http.StatusBadRequest, "规则不存在")
 		return
 	}
 	endpoints := rule.Endpoints()
 	if len(endpoints) == 0 {
-		writeError(w, http.StatusBadRequest, "该规则没有前端域名")
+		writeError(r, w, http.StatusBadRequest, "该规则没有前端域名")
 		return
 	}
 	matches := make([]logstore.AccessEndpoint, 0, len(endpoints))
@@ -201,11 +201,11 @@ func (h *ProxyHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	var req proxyReorderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	if err := h.svc.Reorder(r.Context(), req.IDs); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -214,11 +214,11 @@ func (h *ProxyHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	if err := h.svc.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

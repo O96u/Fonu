@@ -571,12 +571,29 @@
                     <n-form-item label="用户名">
                       <n-input v-model:value="form.basic_auth_username" placeholder="用户名" />
                     </n-form-item>
-                    <n-form-item label="密码">
+                    <n-form-item>
+                      <template #label>
+                        <span class="proxy-secret-label">
+                          密码
+                          <n-tag
+                            v-if="editing?.security?.basic_auth?.has_password"
+                            size="small"
+                            type="success"
+                            :bordered="false"
+                          >
+                            {{ CONFIGURED_SECRET_TAG }}
+                          </n-tag>
+                        </span>
+                      </template>
                       <n-input
                         v-model:value="form.basic_auth_password"
                         type="password"
                         show-password-on="click"
-                        :placeholder="editing?.security?.basic_auth?.has_password ? '留空则不修改' : '至少 8 位'"
+                        :placeholder="
+                          editing?.security?.basic_auth?.has_password
+                            ? CONFIGURED_SECRET_PLACEHOLDER
+                            : '至少 8 位'
+                        "
                       />
                     </n-form-item>
                   </div>
@@ -851,6 +868,7 @@ import LoadError from '../components/LoadError.vue'
 import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { formatBytes, formatRate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -3288,6 +3306,12 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+}
+
+.proxy-secret-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .field-hint {

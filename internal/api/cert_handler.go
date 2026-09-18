@@ -20,7 +20,7 @@ func NewCertHandler(svc *acme.Service) *CertHandler {
 func (h *CertHandler) List(w http.ResponseWriter, r *http.Request) {
 	records, err := h.svc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取证书失败")
+		writeError(r, w, http.StatusInternalServerError, "读取证书失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, records)
@@ -50,12 +50,12 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		domains = []string{req.Domain}
 	}
 	if req.DDNSConfigID <= 0 {
-		writeError(w, http.StatusBadRequest, "请选择 DNS 任务")
+		writeError(r, w, http.StatusBadRequest, "请选择 DNS 任务")
 		return
 	}
 	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, req.DDNSConfigID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
@@ -64,7 +64,7 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 func (h *CertHandler) ApplyJobStream(w http.ResponseWriter, r *http.Request) {
 	jobID := strings.TrimSpace(r.PathValue("id"))
 	if jobID == "" {
-		writeError(w, http.StatusBadRequest, "无效的任务 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *CertHandler) ApplyJobStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "SSE 不可用")
+		writeError(r, w, http.StatusInternalServerError, "SSE 不可用")
 		return
 	}
 	if err := h.svc.StreamJob(r.Context(), w, jobID, func() error {
@@ -93,12 +93,12 @@ func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 		KeyPath     string `json:"key_path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	record, err := h.svc.Import(r.Context(), req.Certificate, req.PrivateKey, req.CertPath, req.KeyPath)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
@@ -107,13 +107,13 @@ func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 func (h *CertHandler) Download(w http.ResponseWriter, r *http.Request) {
 	domain := strings.TrimSpace(r.PathValue("domain"))
 	if domain == "" {
-		writeError(w, http.StatusBadRequest, "域名不能为空")
+		writeError(r, w, http.StatusBadRequest, "域名不能为空")
 		return
 	}
 	part := r.URL.Query().Get("part")
 	filename, contentType, data, err := h.svc.Download(r.Context(), domain, part)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
@@ -126,11 +126,11 @@ func (h *CertHandler) Download(w http.ResponseWriter, r *http.Request) {
 func (h *CertHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	domain := strings.TrimSpace(r.PathValue("domain"))
 	if domain == "" {
-		writeError(w, http.StatusBadRequest, "域名不能为空")
+		writeError(r, w, http.StatusBadRequest, "域名不能为空")
 		return
 	}
 	if err := h.svc.Delete(r.Context(), domain); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "证书已删除"})
@@ -144,7 +144,7 @@ func (h *CertHandler) Renew(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	record, err := h.svc.Renew(r.Context(), req.Domain, req.CA)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, record)

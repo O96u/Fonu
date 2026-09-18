@@ -19,7 +19,11 @@ func (s *ProxyService) loadGenerateOptions(ctx context.Context) nginx.GenerateOp
 	}
 	blRaw, err := s.settings.Get(ctx, settings.KeyGlobalIPBlacklist)
 	if err == nil {
-		opts.GlobalIPBlacklist = chinacidr.ParseGlobalIPBlacklist(blRaw)
+		opts.GlobalIPBlacklist = chinacidr.ParseGlobalIPList(blRaw)
+	}
+	wlRaw, err := s.settings.Get(ctx, settings.KeyGlobalIPWhitelist)
+	if err == nil {
+		opts.GlobalIPWhitelist = chinacidr.ParseGlobalIPList(wlRaw)
 	}
 	return opts
 }

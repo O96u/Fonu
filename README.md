@@ -37,52 +37,81 @@
 | **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云 DNS；单任务多根域名，自动同步公网 IP |
 | **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                    |
 | **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                      |
-| **日志**       | Nginx 访问/错误日志、系统运行日志；分页与实时 SSE 推送                       |
+| **日志中心**   | 系统日志、Nginx 访问日志、Nginx 错误日志；分页筛选与自动刷新                   |
 | **内网穿透**   | FRP 客户端（Nginx 网关穿透）：无公网 IP 时经 VPS 中转，反代与安全策略不变    |
-| **设置**       | 管理员密码、配置备份与恢复、服务发现（如飞牛 fnOS :5666）                    |
+| **系统设置**   | 常规 / 通知 / 安全 / 高级分栏；邮件/Webhook/Telegram 告警、备份与恢复        |
 | **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                             |
 
 ## 界面展示
 
-<p align="center"><strong>仪表盘</strong> — 公网 IP、域名与证书概览，今日请求趋势、实时流量与服务健康度</p>
-<p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="仪表盘" />
-</p>
-
-<p align="center"><strong>DDNS</strong> — 多服务商、多根域名、解析记录与同步状态</p>
-<p align="center">
-  <img src="docs/screenshots/ddns.png" alt="DDNS" />
-</p>
-
-<p align="center"><strong>HTTPS 证书</strong> — ACME 申请、自动续期、导入与下载</p>
-<p align="center">
-  <img src="docs/screenshots/certificates.png" alt="HTTPS 证书" />
-</p>
-
-<p align="center"><strong>反向代理</strong> — 多域名多端口、流量统计、连接详情与规则管理</p>
-<p align="center">
-  <img src="docs/screenshots/proxy.png" alt="反向代理" />
-</p>
-
-<p align="center"><strong>反向代理 · 规则配置</strong> — 域名、监听端口、目标地址与 HTTPS 跳转</p>
-<p align="center">
-  <img src="docs/screenshots/proxy-rule-basic.png" alt="反向代理规则配置" />
-</p>
-
-<p align="center"><strong>反向代理 · 安全设置</strong> — IP 访问控制、Basic Auth、限流与连接数限制</p>
-<p align="center">
-  <img src="docs/screenshots/proxy-rule-security.png" alt="反向代理安全设置" />
-</p>
-
-<p align="center"><strong>内网穿透</strong> — FRP 连接配置、Web 网关穿透与 frps 部署模板</p>
-<p align="center">
-  <img src="docs/screenshots/frp.png" alt="内网穿透" />
-</p>
-
-<p align="center"><strong>系统设置</strong> — 外观、自动任务、反代安全、通知与配置备份</p>
-<p align="center">
-  <img src="docs/screenshots/settings.png" alt="系统设置" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <b>仪表盘</b><br>
+      <a href="docs/screenshots/dashboard.png"><img src="docs/screenshots/dashboard.png" alt="仪表盘" width="100%" /></a>
+    </td>
+    <td align="center" width="50%">
+      <b>DDNS</b><br>
+      <a href="docs/screenshots/ddns.png"><img src="docs/screenshots/ddns.png" alt="DDNS" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <b>HTTPS 证书</b><br>
+      <a href="docs/screenshots/certificates.png"><img src="docs/screenshots/certificates.png" alt="HTTPS 证书" width="100%" /></a>
+    </td>
+    <td align="center">
+      <b>HTTPS 证书 · 申请向导</b><br>
+      <a href="docs/screenshots/certificates-apply.png"><img src="docs/screenshots/certificates-apply.png" alt="证书申请" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <b>反向代理</b><br>
+      <a href="docs/screenshots/proxy.png"><img src="docs/screenshots/proxy.png" alt="反向代理" width="100%" /></a>
+    </td>
+    <td align="center">
+      <b>反向代理 · 规则详情</b><br>
+      <a href="docs/screenshots/proxy-detail.png"><img src="docs/screenshots/proxy-detail.png" alt="反向代理规则详情" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <b>反向代理 · 规则配置</b><br>
+      <a href="docs/screenshots/proxy-rule-basic.png"><img src="docs/screenshots/proxy-rule-basic.png" alt="反向代理规则配置" width="100%" /></a>
+    </td>
+    <td align="center">
+      <b>反向代理 · 安全设置</b><br>
+      <a href="docs/screenshots/proxy-rule-security.png"><img src="docs/screenshots/proxy-rule-security.png" alt="反向代理安全设置" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <b>反向代理 · Nginx 配置</b><br>
+      <a href="docs/screenshots/proxy-rule-nginx.png"><img src="docs/screenshots/proxy-rule-nginx.png" alt="反向代理 Nginx 配置" width="100%" /></a>
+    </td>
+    <td align="center">
+      <b>内网穿透</b><br>
+      <a href="docs/screenshots/frp.png"><img src="docs/screenshots/frp.png" alt="内网穿透" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <b>系统设置</b><br>
+      <a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="系统设置" width="100%" /></a>
+    </td>
+    <td align="center">
+      <b>系统设置 · 高级</b><br>
+      <a href="docs/screenshots/settings-advanced.png"><img src="docs/screenshots/settings-advanced.png" alt="系统设置高级" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <b>日志中心</b><br>
+      <a href="docs/screenshots/logs.png"><img src="docs/screenshots/logs.png" alt="日志中心" width="100%" /></a>
+    </td>
+  </tr>
+</table>
 
 ## 技术栈
 
@@ -222,16 +251,19 @@ vhostHTTPSPort = 443
 ## 本地开发
 
 ```bash
-# 前端
+# 前端热更新
 cd web && npm ci && npm run dev
 
-# 后端（需先构建前端到 cmd/fonu/web/dist）
-make build
+# 后端（需先把 web/dist 复制到 cmd/fonu/web/dist）
+cd web && npm run build
 go run ./cmd/fonu
 
 # 测试
-make test
+go test ./...
+cd web && npm run typecheck
 ```
+
+发版版本号以 Git tag 与 `web/package.json` 为准；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 

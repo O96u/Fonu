@@ -23,7 +23,7 @@ func (h *LogsHandler) Access(w http.ResponseWriter, r *http.Request) {
 	status := queryInt(r, "status", 0)
 	entries, err := logstore.ReadAccess(filepath.Join(h.cfg.LogsDir(), "access.log"), limit, keyword, status)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取访问日志失败")
+		writeError(r, w, http.StatusInternalServerError, "读取访问日志失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
@@ -34,7 +34,7 @@ func (h *LogsHandler) Error(w http.ResponseWriter, r *http.Request) {
 	keyword := r.URL.Query().Get("keyword")
 	lines, err := logstore.ReadError(filepath.Join(h.cfg.LogsDir(), "error.log"), limit, keyword)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取错误日志失败")
+		writeError(r, w, http.StatusInternalServerError, "读取错误日志失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, lines)
@@ -46,7 +46,7 @@ func (h *LogsHandler) System(w http.ResponseWriter, r *http.Request) {
 	keyword := r.URL.Query().Get("keyword")
 	entries, err := logstore.ReadSystem(filepath.Join(h.cfg.LogsDir(), "app.log"), limit, level, keyword)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取系统日志失败")
+		writeError(r, w, http.StatusInternalServerError, "读取系统日志失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
@@ -64,7 +64,7 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	case "error":
 		path = filepath.Join(h.cfg.LogsDir(), "error.log")
 	default:
-		writeError(w, http.StatusBadRequest, "实时日志仅支持 Nginx 访问/错误日志")
+		writeError(r, w, http.StatusBadRequest, "实时日志仅支持 Nginx 访问/错误日志")
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "SSE 不可用")
+		writeError(r, w, http.StatusInternalServerError, "SSE 不可用")
 		return
 	}
 	tail := queryInt(r, "tail", 100)
@@ -103,7 +103,7 @@ func (h *LogsHandler) StreamAccessForEndpoints(w http.ResponseWriter, r *http.Re
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "SSE 不可用")
+		writeError(r, w, http.StatusInternalServerError, "SSE 不可用")
 		return
 	}
 	path := filepath.Join(h.cfg.LogsDir(), "access.log")

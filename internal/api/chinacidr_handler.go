@@ -22,7 +22,7 @@ func (h *ChinaCIDRHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := h.svc.Update(ctx); err != nil {
 		h.svc.RecordLastError(ctx, err)
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(r, w, http.StatusBadGateway, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, h.svc.Status(ctx))

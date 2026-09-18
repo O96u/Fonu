@@ -42,6 +42,7 @@ http {
 `)
 
 	writeRealIPDirectives(&b, opts.TrustedProxy)
+	writeGlobalAllowList(&b, opts.GlobalIPWhitelist)
 	writeGlobalDenyList(&b, opts.GlobalIPBlacklist)
 	writeLimitZones(&b, rules)
 	writeChinaGeoBlocks(&b, cfg, opts, rules)

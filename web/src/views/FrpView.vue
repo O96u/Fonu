@@ -137,20 +137,19 @@
               />
             </div>
             <div class="settings-field">
-              <div class="settings-field__label">
-                Token <span class="required">*</span>
-                <span v-if="frpForm.has_auth_token" class="token-saved-hint">已保存</span>
+              <div class="settings-field__label frp-secret-label">
+                <span>Token <span class="required">*</span></span>
+                <n-tag v-if="frpForm.has_auth_token" size="small" type="success" :bordered="false">
+                  {{ CONFIGURED_SECRET_TAG }}
+                </n-tag>
               </div>
               <n-input
                 v-model:value="frpForm.auth_token"
                 type="password"
                 show-password-on="click"
                 :disabled="!frpForm.enabled"
-                :placeholder="frpForm.has_auth_token ? '已保存，留空不修改' : '与 frps 配置一致'"
+                :placeholder="frpForm.has_auth_token ? CONFIGURED_SECRET_PLACEHOLDER : '与 frps 配置一致'"
               />
-              <p v-if="frpForm.has_auth_token && !frpForm.auth_token" class="field-hint field-hint--inline">
-                Token 已加密保存，出于安全不显示明文；如需更换请直接输入新 Token。
-              </p>
             </div>
             <div class="form-switch-row">
               <div class="form-switch-row__text">
@@ -285,8 +284,10 @@ import {
   NModal,
   NSpin,
   NSwitch,
+  NTag,
   useMessage,
 } from 'naive-ui'
+import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import {
   AlertCircleOutline,
   CheckmarkCircleOutline,
@@ -867,14 +868,10 @@ onMounted(load)
   color: var(--fonu-text);
 }
 
-.token-saved-hint {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #047857;
-  background: color-mix(in srgb, #10b981 10%, var(--fonu-bg));
-  border: 1px solid color-mix(in srgb, #10b981 22%, var(--fonu-border));
+.frp-secret-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settings-field__input-full {

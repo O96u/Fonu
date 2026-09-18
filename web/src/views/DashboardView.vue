@@ -160,11 +160,11 @@
           <div class="bottom-card__body">
             <n-data-table
               v-if="accessLogs.length > 0"
+              class="bottom-table"
               :columns="accessColumns"
               :data="accessLogs"
               :bordered="false"
               size="small"
-              :scroll-x="940"
             />
             <EmptyState v-else title="暂无访问记录" description="产生访问后这里会显示最近请求。" />
           </div>
@@ -184,11 +184,11 @@
           <div class="bottom-card__body">
             <n-data-table
               v-if="systemLogs.length > 0"
+              class="bottom-table"
               :columns="systemColumns"
               :data="systemLogs"
               :bordered="false"
               size="small"
-              :scroll-x="720"
             />
             <EmptyState v-else title="暂无系统日志" description="应用运行后会产生日志。" />
           </div>
@@ -224,6 +224,7 @@ import type {
   CertificateRecord,
   DashboardStatus,
   DDNSConfig,
+  ProxyRule,
   ProxyTraffic,
   SystemLogEntry,
 } from '../api/types'
@@ -234,7 +235,13 @@ import MiniBarChart from '../components/MiniBarChart.vue'
 import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import StatCard from '../components/StatCard.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import {
+  accessServiceTooltip,
+  buildProxyBindingIndex,
+  resolveAccessServiceLabel,
+} from '../utils/accessService'
 import { formatDate, formatLogTime, formatRate, formatRelativeTime, formatUptime } from '../utils/format'
+import { displaySystemLog } from '../utils/logDisplay'
 import { httpStatusKind } from '../utils/status'
 
 const message = useMessage()
@@ -242,7 +249,9 @@ const status = ref<DashboardStatus | null>(null)
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
 const accessLogs = ref<AccessLogEntry[]>([])
+const proxyRules = ref<ProxyRule[]>([])
 const systemLogs = ref<SystemLogEntry[]>([])
+const proxyBindingIndex = computed(() => buildProxyBindingIndex(proxyRules.value))
 const loading = ref(false)
 const loadError = ref('')
 const trafficByRule = ref<Record<number, ProxyTraffic>>({})
@@ -419,9 +428,20 @@ const healthItems = computed(() => [
   },
 ])
 
-const accessColumns: DataTableColumns<AccessLogEntry> = [
+const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
   { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
-  { title: '域名', key: 'domain', width: 132, ellipsis: { tooltip: true } },
+  {
+    title: '服务',
+    key: 'service',
+    minWidth: 100,
+    ellipsis: { tooltip: true },
+    render: (r) =>
+      h(
+        'span',
+        { title: accessServiceTooltip(r, proxyBindingIndex.value) },
+        resolveAccessServiceLabel(r, proxyBindingIndex.value),
+      ),
+  },
   {
     title: '方法',
     key: 'method',
@@ -447,10 +467,10 @@ const accessColumns: DataTableColumns<AccessLogEntry> = [
   {
     title: '来源 IP',
     key: 'client_ip',
-    width: 210,
+    minWidth: 120,
     render: (r) => h('span', { class: 'mono ip-cell' }, r.client_ip),
   },
-]
+])
 
 const systemColumns: DataTableColumns<SystemLogEntry> = [
   { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
@@ -458,15 +478,32 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
     title: '级别',
     key: 'level',
     width: 72,
-    render: (r) => h(NTag, { size: 'tiny', bordered: false, type: levelTag(r.level) }, () => r.level),
+    render: (r) => {
+      const display = displaySystemLog(r)
+      return h(
+        NTag,
+        { size: 'tiny', bordered: false, type: levelTag(display.displayLevel) },
+        () => display.displayLevel,
+      )
+    },
   },
-  { title: '模块', key: 'module', width: 80 },
-  { title: '内容', key: 'message', ellipsis: { tooltip: true } },
+  {
+    title: '模块',
+    key: 'module',
+    width: 108,
+    render: (r) => h('span', { class: 'nowrap-cell' }, displaySystemLog(r).displayModule),
+  },
+  {
+    title: '内容',
+    key: 'message',
+    ellipsis: { tooltip: true },
+    render: (r) => displaySystemLog(r).message,
+  },
 ]
 
 function levelTag(level: string) {
-  if (level === 'ERROR') return 'error'
-  if (level === 'WARN') return 'warning'
+  if (level === '错误' || level === 'ERROR') return 'error'
+  if (level === '警告' || level === 'WARN') return 'warning'
   return 'info'
 }
 
@@ -511,14 +548,16 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [s, access, system, certs] = await Promise.all([
+    const [s, access, system, certs, rules] = await Promise.all([
       api.getStatus(),
       api.getAccessLogs({ limit: 10 }),
       api.getSystemLogs({ limit: 10 }),
       api.listCertificates(),
+      api.listProxies().catch((): ProxyRule[] => []),
     ])
     status.value = s
     accessLogs.value = asList(access)
+    proxyRules.value = asList(rules)
     systemLogs.value = asList(system)
     certificates.value = asList(certs)
     api.listDDNSLite()
@@ -1072,7 +1111,7 @@ html.dark .hero-art {
 
 .bottom-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.72fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--fonu-space-4);
   align-items: stretch;
 }
@@ -1088,6 +1127,9 @@ html.dark .hero-art {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
 }
 
 .bottom-card :deep(.fonu-card__header) {
@@ -1097,8 +1139,41 @@ html.dark .hero-art {
 .bottom-card__body {
   flex: 1;
   height: 392px;
-  padding: 0 var(--fonu-space-5) var(--fonu-space-5);
+  padding: 0;
   overflow: auto;
+}
+
+.bottom-card__body :deep(.bottom-table) {
+  width: 100%;
+}
+
+.bottom-card__body :deep(.n-data-table-wrapper) {
+  width: 100%;
+}
+
+.bottom-card__body :deep(.n-data-table-base-table) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.bottom-card__body :deep(.n-data-table-th),
+.bottom-card__body :deep(.n-data-table-td) {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.bottom-card__body :deep(.n-data-table-th:first-child),
+.bottom-card__body :deep(.n-data-table-td:first-child) {
+  padding-left: var(--fonu-space-5);
+}
+
+.bottom-card__body :deep(.n-data-table-th:last-child),
+.bottom-card__body :deep(.n-data-table-td:last-child) {
+  padding-right: var(--fonu-space-5);
+}
+
+.nowrap-cell {
+  white-space: nowrap;
 }
 
 .card-title-icon {

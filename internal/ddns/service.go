@@ -284,7 +284,7 @@ func (s *Service) Tick(ctx context.Context) {
 		if err := s.runUpdate(ctx, cfg); err != nil {
 			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
 			if s.notify != nil {
-				s.notify.Alert(ctx, notify.EventDDNSError, "DDNS 更新失败", cfg.RootDomain+": "+err.Error())
+				s.notify.Alert(ctx, notify.EventDDNSFailure, "DDNS 更新失败", cfg.RootDomain+": "+err.Error())
 			}
 		}
 	}
@@ -433,6 +433,9 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 }
 
 func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
+	prevIPv4 := cfg.LastIPv4
+	prevIPv6 := cfg.LastIPv6
+
 	cred, err := s.loadCredentialsByID(ctx, cfg.ID)
 	if err != nil {
 		_ = s.store.UpdateStatus(ctx, cfg.ID, cfg.LastIPv4, cfg.LastIPv6, "error", err.Error())
@@ -573,9 +576,35 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	}
 	if changed {
 		s.logger.Info("ddns records updated", "provider", cfg.Provider)
+		if s.notify != nil {
+			msg := formatDDNSIPChangeMessage(cfg.RootDomain, prevIPv4, prevIPv6, storeIPv4, storeIPv6)
+			s.notify.Alert(ctx, notify.EventDDNSIPChange, "DDNS IP 已变更", msg)
+		}
 	}
 	_ = s.store.UpdateSyncResult(ctx, cfg.ID, storeIPv4, storeIPv6, overallStatus, overallError, domainRecords)
 	return lastErr
+}
+
+func formatDDNSIPChangeMessage(domain, prevIPv4, prevIPv6, newIPv4, newIPv6 string) string {
+	var parts []string
+	if newIPv4 != "" && newIPv4 != prevIPv4 {
+		if prevIPv4 != "" {
+			parts = append(parts, fmt.Sprintf("IPv4: %s → %s", prevIPv4, newIPv4))
+		} else {
+			parts = append(parts, fmt.Sprintf("IPv4: %s", newIPv4))
+		}
+	}
+	if newIPv6 != "" && newIPv6 != prevIPv6 {
+		if prevIPv6 != "" {
+			parts = append(parts, fmt.Sprintf("IPv6: %s → %s", prevIPv6, newIPv6))
+		} else {
+			parts = append(parts, fmt.Sprintf("IPv6: %s", newIPv6))
+		}
+	}
+	if len(parts) == 0 {
+		return domain
+	}
+	return domain + "\n" + strings.Join(parts, "\n")
 }
 
 func (s *Service) encryptCredentials(in SaveInput) (string, error) {

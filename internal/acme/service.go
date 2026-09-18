@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
@@ -39,6 +40,9 @@ type Service struct {
 	logger   *slog.Logger
 	notify   *notify.Service
 	jobs     *JobManager
+
+	expiryAlertMu sync.Mutex
+	expiryAlerted map[string]string
 }
 
 func NewService(cfg config.Config, store *certstore.Store, ddnsSvc *ddns.Service, settings *settings.Store, proxySvc *service.ProxyService, logger *slog.Logger, notifySvc *notify.Service) *Service {
@@ -49,8 +53,9 @@ func NewService(cfg config.Config, store *certstore.Store, ddnsSvc *ddns.Service
 		settings: settings,
 		proxySvc: proxySvc,
 		logger:   logger.With("module", "ACME"),
-		notify:   notifySvc,
-		jobs:     NewJobManager(),
+		notify:        notifySvc,
+		jobs:          NewJobManager(),
+		expiryAlerted: map[string]string{},
 	}
 }
 
@@ -294,7 +299,19 @@ func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstor
 	if err := s.proxySvc.ReloadAll(ctx); err != nil {
 		s.logger.Error("nginx reload after cert renew failed", "error", err.Error())
 	}
-	return s.store.GetByDomain(ctx, rootDomain)
+	rec, err := s.store.GetByDomain(ctx, rootDomain)
+	if err != nil {
+		return certstore.Record{}, err
+	}
+	if s.notify != nil {
+		expires := "未知"
+		if rec.ExpiresAt != nil {
+			expires = rec.ExpiresAt.Local().Format("2006-01-02")
+		}
+		s.notify.Alert(ctx, notify.EventCertRenewSuccess, "证书续签成功",
+			fmt.Sprintf("%s 已续签，到期 %s", rootDomain, expires))
+	}
+	return rec, nil
 }
 
 func (s *Service) Tick(ctx context.Context) {
@@ -310,6 +327,9 @@ func (s *Service) Tick(ctx context.Context) {
 		if rec.ExpiresAt == nil {
 			continue
 		}
+		if rec.ACMECA != "imported" && rec.DaysLeft <= threshold {
+			s.maybeAlertCertExpiry(ctx, rec.Domain, rec.DaysLeft)
+		}
 		if rec.DaysLeft <= threshold {
 			if rec.ACMECA == "imported" {
 				continue
@@ -317,11 +337,32 @@ func (s *Service) Tick(ctx context.Context) {
 			if _, err := s.Renew(ctx, rec.Domain, rec.ACMECA); err != nil {
 				s.logger.Error("certificate renew failed", "domain", rec.Domain, "error", err.Error())
 				if s.notify != nil {
-					s.notify.Alert(ctx, notify.EventCertError, "证书续签失败", err.Error())
+					s.notify.Alert(ctx, notify.EventCertRenewFailure, "证书续签失败",
+						fmt.Sprintf("%s: %s", rec.Domain, err.Error()))
 				}
 			}
 		}
 	}
+}
+
+func (s *Service) maybeAlertCertExpiry(ctx context.Context, domain string, daysLeft int) {
+	if s.notify == nil {
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	s.expiryAlertMu.Lock()
+	if s.expiryAlerted[domain] == today {
+		s.expiryAlertMu.Unlock()
+		return
+	}
+	s.expiryAlerted[domain] = today
+	s.expiryAlertMu.Unlock()
+
+	msg := fmt.Sprintf("%s 剩余 %d 天到期", domain, daysLeft)
+	if daysLeft <= 0 {
+		msg = fmt.Sprintf("%s 已到期或即将失效", domain)
+	}
+	s.notify.Alert(ctx, notify.EventCertExpiry, "证书即将到期", msg)
 }
 
 func (s *Service) markCertError(ctx context.Context, primary string, domains []string, ca string, err error) {

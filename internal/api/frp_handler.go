@@ -52,7 +52,7 @@ func (h *FRPHandler) buildResponse(ctx context.Context, cfg frp.Config) frpRespo
 func (h *FRPHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.mgr.Load(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
+		writeError(r, w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, h.buildResponse(r.Context(), cfg))
@@ -61,7 +61,7 @@ func (h *FRPHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
 	var req frpSaveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	result, err := h.mgr.Apply(r.Context(), frp.SaveInput{
@@ -73,12 +73,12 @@ func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
 		CustomDomains: req.CustomDomains,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	cfg, err := h.mgr.Load(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
+		writeError(r, w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
 	resp := h.buildResponse(r.Context(), cfg)
@@ -99,22 +99,22 @@ func (h *FRPHandler) Status(w http.ResponseWriter, r *http.Request) {
 func (h *FRPHandler) SyncDomains(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.proxy.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取反代规则失败")
+		writeError(r, w, http.StatusInternalServerError, "读取反代规则失败")
 		return
 	}
 	domains := frp.DomainsFromProxyRules(rules)
 	if len(domains) == 0 {
-		writeError(w, http.StatusBadRequest, "没有可同步的启用反代域名")
+		writeError(r, w, http.StatusBadRequest, "没有可同步的启用反代域名")
 		return
 	}
 	result, err := h.mgr.SyncDomains(r.Context(), domains)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	cfg, err := h.mgr.Load(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取 FRP 配置失败")
+		writeError(r, w, http.StatusInternalServerError, "读取 FRP 配置失败")
 		return
 	}
 	resp := h.buildResponse(r.Context(), cfg)
@@ -133,7 +133,7 @@ func (h *FRPHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 200)
 	lines, err := h.mgr.Logs(r.Context(), limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取 FRP 日志失败")
+		writeError(r, w, http.StatusInternalServerError, "读取 FRP 日志失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, lines)

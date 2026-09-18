@@ -66,7 +66,7 @@ type statusResponse struct {
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.proxySvc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取状态失败")
+		writeError(r, w, http.StatusInternalServerError, "读取状态失败")
 		return
 	}
 

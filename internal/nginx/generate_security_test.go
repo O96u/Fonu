@@ -52,6 +52,7 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 	}}
 
 	opts := GenerateOptions{
+		GlobalIPWhitelist:  []string{"203.0.113.10"},
 		GlobalIPBlacklist:  []string{"8.8.8.8"},
 		ChinaCIDRAvailable: true,
 	}
@@ -60,6 +61,8 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	checks := []string{
+		"allow 10.0.0.0/8;",
+		"allow 203.0.113.10;",
 		"deny 8.8.8.8;",
 		"limit_req_zone $binary_remote_addr zone=fonu_rule_7_req",
 		"limit_conn_zone $binary_remote_addr zone=fonu_rule_7_conn",
@@ -68,6 +71,7 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 		"geo $fonu_client_ip $fonu_rule_7_china_bypass",
 		"192.168.0.0/16 1;",
 		"192.168.1.0/24 1;",
+		"203.0.113.10 1;",
 		"set $fonu_china_block 0;",
 		"if ($fonu_is_private = 1)",
 		"if ($fonu_rule_7_china_bypass = 1)",

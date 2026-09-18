@@ -313,11 +313,13 @@ func (s *Service) loadGenerateOptions(ctx context.Context) nginx.GenerateOptions
 	raw, _ := s.settings.Get(ctx, settings.KeyTrustedProxy)
 	opts.TrustedProxy = nginx.ParseTrustedProxyJSON(raw)
 	blRaw, _ := s.settings.Get(ctx, settings.KeyGlobalIPBlacklist)
-	opts.GlobalIPBlacklist = ParseGlobalIPBlacklist(blRaw)
+	opts.GlobalIPBlacklist = ParseGlobalIPList(blRaw)
+	wlRaw, _ := s.settings.Get(ctx, settings.KeyGlobalIPWhitelist)
+	opts.GlobalIPWhitelist = ParseGlobalIPList(wlRaw)
 	return opts
 }
 
-func ParseGlobalIPBlacklist(raw string) []string {
+func ParseGlobalIPList(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "[]" {
 		return nil

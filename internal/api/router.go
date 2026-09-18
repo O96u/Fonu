@@ -13,13 +13,13 @@ import (
 func NewRouter(deps Deps) http.Handler {
 	logsHandler := NewLogsHandler(deps.Config)
 	r := &Router{
-		authHandler:     NewAuthHandler(deps.Auth),
+		authHandler:     NewAuthHandler(deps.Auth, deps.Notify),
 		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
 		nginxHandler:    NewNginxHandler(deps.Proxy),
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME),
-		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy),
+		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy, deps.Notify),
 		chinaCIDRHandler: NewChinaCIDRHandler(deps.ChinaCIDR),
 		logsHandler:      logsHandler,
 		backupHandler:    NewBackupHandler(deps.Backup),
@@ -70,8 +70,10 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/certificates/renew", r.certHandler.Renew)
 	protect("GET /api/certificates/{domain}/download", r.certHandler.Download)
 	protect("DELETE /api/certificates/{domain}", r.certHandler.Delete)
+	notifyHandler := NewNotifyHandler(deps.Notify)
 	protect("GET /api/settings", r.settingsHandler.Get)
 	protect("PUT /api/settings", r.settingsHandler.Put)
+	protect("POST /api/settings/notify/test", notifyHandler.Test)
 	if deps.ChinaCIDR != nil {
 		protect("GET /api/settings/china-cidr", r.chinaCIDRHandler.Status)
 		protect("POST /api/settings/china-cidr/refresh", r.chinaCIDRHandler.Refresh)
@@ -163,8 +165,14 @@ func loggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") &&
 			!strings.Contains(r.URL.Path, "/logs/stream") &&
 			!strings.Contains(r.URL.Path, "/certificates/jobs/") &&
-			rec.status >= 500 {
-			logger.Error("api request failed",
+			rec.status >= 400 {
+			level := slog.LevelWarn
+			msg := "api request completed with client error"
+			if rec.status >= 500 {
+				level = slog.LevelError
+				msg = "api request failed"
+			}
+			logger.Log(r.Context(), level, msg,
 				"module", "HTTP",
 				"method", r.Method,
 				"path", r.URL.Path,

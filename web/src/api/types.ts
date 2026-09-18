@@ -213,6 +213,7 @@ export interface CertificateRecord {
 export interface AccessLogEntry {
   time: string
   domain: string
+  server_port?: number
   method: string
   path: string
   status: number
@@ -226,6 +227,56 @@ export interface SystemLogEntry {
   level: string
   module: string
   message: string
+}
+
+export type NotifyType = '' | 'email' | 'webhook' | 'telegram'
+export type WebhookProvider = 'bark' | 'ntfy' | 'gotify' | 'custom'
+
+export interface NotifyEmailConfig {
+  host: string
+  port: number
+  username: string
+  from: string
+  to: string[]
+  tls: boolean
+  has_password?: boolean
+}
+
+export interface NotifyWebhookConfig {
+  provider: WebhookProvider
+  server: string
+  key: string
+  topic: string
+  url: string
+  has_secret?: boolean
+}
+
+export interface NotifyTelegramConfig {
+  chat_id: string
+  proxy_url: string
+  has_bot_token?: boolean
+}
+
+export interface NotifyTestPayload {
+  type: NotifyType
+  email: NotifyEmailConfig
+  webhook: NotifyWebhookConfig
+  telegram: NotifyTelegramConfig
+  on_ddns_ip_change: boolean
+  on_ddns_failure: boolean
+  on_cert_expiry: boolean
+  on_cert_renew_success: boolean
+  on_cert_renew_failure: boolean
+  on_ip_frequent_access: boolean
+  on_login_failure: boolean
+  on_nginx_reload_failure: boolean
+  ip_frequent_threshold: number
+  ip_frequent_window_sec: number
+  login_failure_threshold: number
+  login_failure_window_sec: number
+  smtp_password?: string
+  webhook_secret?: string
+  telegram_token?: string
 }
 
 export type SettingsMap = Record<string, string>

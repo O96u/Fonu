@@ -26,7 +26,12 @@
     </div>
 
     <div class="provider-form__field">
-      <label class="provider-form__label">{{ credentialLabel }}</label>
+      <label class="provider-form__label provider-secret-label">
+        <span>{{ credentialLabel }}</span>
+        <n-tag v-if="editing?.has_token" size="small" type="success" :bordered="false">
+          {{ CONFIGURED_SECRET_TAG }}
+        </n-tag>
+      </label>
       <n-input
         v-model:value="form.api_token"
         type="password"
@@ -34,16 +39,20 @@
         :placeholder="credentialPlaceholder"
         size="small"
       />
-      <span v-if="editing?.has_token" class="token-hint">已配置 · 留空则保持不变</span>
     </div>
 
     <div v-if="form.provider === 'alidns' || form.provider === 'tencentcloud'" class="provider-form__field">
-      <label class="provider-form__label">{{ secretLabel }}</label>
+      <label class="provider-form__label provider-secret-label">
+        <span>{{ secretLabel }}</span>
+        <n-tag v-if="editing?.has_token" size="small" type="success" :bordered="false">
+          {{ CONFIGURED_SECRET_TAG }}
+        </n-tag>
+      </label>
       <n-input
         v-model:value="form.api_secret"
         type="password"
         show-password-on="click"
-        placeholder="留空则保持不变"
+        :placeholder="editing?.has_token ? CONFIGURED_SECRET_PLACEHOLDER : secretPlaceholder"
         size="small"
       />
     </div>
@@ -73,7 +82,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NButton, NInput, NSelect, NSwitch } from 'naive-ui'
+import { NButton, NInput, NSelect, NSwitch, NTag } from 'naive-ui'
+import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
@@ -129,8 +139,13 @@ const secretLabel = computed(() => {
   return 'AccessKey Secret'
 })
 
+const secretPlaceholder = computed(() => {
+  if (props.form.provider === 'tencentcloud') return '腾讯云 SecretKey'
+  return 'AccessKey Secret'
+})
+
 const credentialPlaceholder = computed(() => {
-  if (props.editing?.has_token) return '留空则保持不变'
+  if (props.editing?.has_token) return CONFIGURED_SECRET_PLACEHOLDER
   if (props.form.provider === 'alidns') return 'AccessKey ID'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretId'
   if (props.form.provider === 'dnspod') return 'DNSPod Token'
@@ -227,10 +242,9 @@ function providerIcon(v: string) {
   flex-wrap: wrap;
 }
 
-.token-hint {
-  display: block;
-  margin-top: 4px;
-  color: var(--fonu-success);
-  font-size: 11px;
+.provider-secret-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

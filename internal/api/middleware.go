@@ -29,7 +29,7 @@ func RequireAuth(authSvc *auth.Service) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sessionID, _ := r.Context().Value(sessionContextKey).(string)
 			if err := authSvc.ValidateSession(r.Context(), sessionID); err != nil {
-				writeError(w, http.StatusUnauthorized, "未登录或会话已过期")
+				writeError(r, w, http.StatusUnauthorized, "未登录或会话已过期")
 				return
 			}
 			next.ServeHTTP(w, r)

@@ -8,7 +8,7 @@ import (
 )
 
 func TestCollectorAttributesConnectionsByHostAndPort(t *testing.T) {
-	c := NewCollector(nil, "")
+	c := NewCollector(nil, "", nil)
 	now := time.Now()
 	line6893 := "2026-09-17T08:30:00+08:00 xxx.com 6893 GET /login 200 0.010 218.88.23.20 192.168.8.3:6893 100 200"
 	line8443 := "2026-09-17T08:30:01+08:00 xxx.com 8443 GET / 200 0.010 218.88.23.20 192.168.8.3:8443 100 200"

@@ -12,11 +12,24 @@ import (
 type GenerateOptions struct {
 	TrustedProxy               TrustedProxyConfig
 	GlobalIPBlacklist          []string
+	GlobalIPWhitelist          []string
 	ChinaCIDRAvailable         bool
 	ChinaCIDRPathOverride      string
 	GlobalCustomOverride       string
 	GlobalCustomPathOverride   string
 	RuleCustomOverrides        map[int64]string
+}
+
+func writeGlobalAllowList(b *strings.Builder, cidrs []string) {
+	merged := proxy.ChinaBypassCIDRs(cidrs)
+	if len(merged) == 0 {
+		return
+	}
+	writeGlobalAllowListComment(b)
+	for _, cidr := range merged {
+		b.WriteString(fmt.Sprintf("    allow %s;\n", cidr))
+	}
+	b.WriteString("\n")
 }
 
 func writeGlobalDenyList(b *strings.Builder, cidrs []string) {
@@ -111,7 +124,7 @@ func writeChinaOnlyBypassGeo(b *strings.Builder, rules []proxy.Rule, opts Genera
 			continue
 		}
 		sec := rule.Security.Normalize()
-		cidrs := proxy.ChinaBypassCIDRs(sec.IPWhitelist)
+		cidrs := chinaBypassCIDRs(sec, opts.GlobalIPWhitelist)
 		writeChinaBypassComment(b, rule)
 		b.WriteString(fmt.Sprintf("    geo $fonu_client_ip $fonu_rule_%d_china_bypass {\n", rule.ID))
 		b.WriteString("        default 0;\n")
@@ -229,6 +242,13 @@ func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rul
         auth_basic_user_file %s;
 `, path))
 	}
+}
+
+func chinaBypassCIDRs(sec proxy.SecurityConfig, globalWhitelist []string) []string {
+	extra := make([]string, 0, len(globalWhitelist)+len(sec.IPWhitelist))
+	extra = append(extra, globalWhitelist...)
+	extra = append(extra, sec.IPWhitelist...)
+	return proxy.ChinaBypassCIDRs(extra)
 }
 
 func chinaCIDRExists(cfg config.Config) bool {

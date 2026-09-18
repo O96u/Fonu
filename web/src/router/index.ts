@@ -55,7 +55,7 @@ const router = createRouter({
           path: 'logs',
           name: 'logs',
           component: LogsView,
-          meta: { title: '日志中心', description: '查看访问、错误与系统运行日志' },
+          meta: { title: '日志中心', description: '查看系统、访问与 Nginx 错误日志' },
         },
         {
           path: 'settings',

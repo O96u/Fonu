@@ -20,14 +20,14 @@ func NewBackupHandler(svc *backup.Service) *BackupHandler {
 func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 	path, err := h.svc.Export(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "创建备份失败")
+		writeError(r, w, http.StatusInternalServerError, "创建备份失败")
 		return
 	}
 	defer os.Remove(path)
 
 	file, err := os.Open(path)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "读取备份失败")
+		writeError(r, w, http.StatusInternalServerError, "读取备份失败")
 		return
 	}
 	defer file.Close()
@@ -39,12 +39,12 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "上传文件无效")
+		writeError(r, w, http.StatusBadRequest, "上传文件无效")
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "请选择备份文件")
+		writeError(r, w, http.StatusBadRequest, "请选择备份文件")
 		return
 	}
 	defer file.Close()
@@ -52,20 +52,20 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	tmpPath := filepath.Join(os.TempDir(), header.Filename)
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "保存上传文件失败")
+		writeError(r, w, http.StatusInternalServerError, "保存上传文件失败")
 		return
 	}
 	if _, err := io.Copy(out, file); err != nil {
 		out.Close()
 		_ = os.Remove(tmpPath)
-		writeError(w, http.StatusInternalServerError, "保存上传文件失败")
+		writeError(r, w, http.StatusInternalServerError, "保存上传文件失败")
 		return
 	}
 	out.Close()
 
 	if err := h.svc.Restore(r.Context(), tmpPath); err != nil {
 		_ = os.Remove(tmpPath)
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	_ = os.Remove(tmpPath)

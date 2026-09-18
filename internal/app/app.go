@@ -87,7 +87,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 
 	proxySvc := service.NewProxyService(cfg, conn, proxyStore, certStore, settingsStore, nginxMgr)
 	chinaCIDRSvc := chinacidr.New(cfg, settingsStore, nginxMgr, proxyStore, logger.With("module", "CHINA_CIDR"))
-	notifySvc := notify.New(settingsStore)
+	notifySvc := notify.New(settingsStore, secretBox, logger)
+	proxySvc.SetNotify(notifySvc)
 	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)
 	backupSvc := backup.New(cfg.DataDir)
@@ -99,7 +100,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)
-	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"))
+	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"), notifySvc)
 
 	handler := api.NewRouter(api.Deps{
 		Config:     cfg,
@@ -109,6 +110,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		DDNS:       ddnsSvc,
 		ACME:       acmeSvc,
 		Settings:   settingsStore,
+		Notify:     notifySvc,
 		ChinaCIDR:  chinaCIDRSvc,
 		Backup:     backupSvc,
 		Discovery:  discoverySvc,

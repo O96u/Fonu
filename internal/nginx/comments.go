@@ -130,6 +130,10 @@ func writeLimitZoneComments(b *strings.Builder, rule proxy.Rule) {
 	}
 }
 
+func writeGlobalAllowListComment(b *strings.Builder) {
+	writeCommentLine(b, 4, "全局 IP 白名单（含内网段默认放行，优先于黑名单，可豁免仅中国大陆限制）")
+}
+
 func writeGlobalDenyListComment(b *strings.Builder) {
 	writeCommentLine(b, 4, "全局 IP 黑名单（系统设置，优先于所有规则）")
 }

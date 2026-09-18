@@ -1,81 +1,248 @@
 package notify
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/fonu/fonu/internal/secret"
 	"github.com/fonu/fonu/internal/settings"
-)
-
-const (
-	EventDDNSError  = "ddns_error"
-	EventCertError  = "cert_error"
-	EventNginxError = "nginx_error"
 )
 
 type Service struct {
 	settings *settings.Store
+	store    *Store
+	logger   *slog.Logger
 	client   *http.Client
+
+	accessMu      sync.Mutex
+	accessHits    map[string][]time.Time
+	accessAlerted map[string]time.Time
+
+	loginMu      sync.Mutex
+	loginHits    map[string][]time.Time
+	loginAlerted map[string]time.Time
 }
 
-func New(settings *settings.Store) *Service {
+func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Service{
-		settings: settings,
-		client:   &http.Client{Timeout: 10 * time.Second},
+		settings:      settingsStore,
+		store:         NewStore(settingsStore, secretBox),
+		logger:        logger,
+		client:        &http.Client{Timeout: 10 * time.Second},
+		accessHits:    map[string][]time.Time{},
+		accessAlerted: map[string]time.Time{},
+		loginHits:     map[string][]time.Time{},
+		loginAlerted:  map[string]time.Time{},
 	}
 }
 
 func (s *Service) Alert(ctx context.Context, event, title, message string) {
-	if s == nil {
+	if s == nil || s.store == nil {
 		return
 	}
-	if !s.enabledFor(ctx, event) {
-		return
-	}
-	url, err := s.settings.Get(ctx, settings.KeyNotifyWebhookURL)
-	if err != nil || strings.TrimSpace(url) == "" {
-		return
-	}
-	payload := map[string]string{
-		"event":   event,
-		"title":   title,
-		"message": message,
-		"time":    time.Now().UTC().Format(time.RFC3339),
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	cfg, err := s.store.LoadRuntime(ctx)
 	if err != nil {
+		s.logger.Warn("notify load config failed", "error", err.Error())
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
+	if !s.enabledFor(cfg, event) {
 		return
 	}
-	resp.Body.Close()
+	if err := s.send(ctx, cfg, event, title, message); err != nil {
+		s.logger.Warn("notify send failed", "event", event, "error", err.Error())
+	}
 }
 
-func (s *Service) enabledFor(ctx context.Context, event string) bool {
+func (s *Service) RecordAccessHit(ctx context.Context, ip string) {
+	s.recordThresholdHit(ctx, ip, EventIPFrequentAccess, func(cfg RuntimeConfig) (threshold, windowSec, cooldownSec int, enabled bool) {
+		enabled = s.enabledFor(cfg, EventIPFrequentAccess)
+		threshold = cfg.IPFrequentThreshold
+		if threshold <= 0 {
+			threshold = DefaultIPFrequentThreshold
+		}
+		windowSec = cfg.IPFrequentWindowSec
+		if windowSec <= 0 {
+			windowSec = DefaultIPFrequentWindowSec
+		}
+		return threshold, windowSec, DefaultIPFrequentAlertCooldown, enabled
+	}, &s.accessMu, s.accessHits, s.accessAlerted, func(ip string, windowSec, count, threshold int) string {
+		return fmt.Sprintf("IP %s 在 %d 秒内访问 %d 次（阈值 %d）", ip, windowSec, count, threshold)
+	}, "IP 频繁访问")
+}
+
+func (s *Service) RecordLoginFailure(ctx context.Context, ip string) {
+	s.recordThresholdHit(ctx, ip, EventLoginFailure, func(cfg RuntimeConfig) (threshold, windowSec, cooldownSec int, enabled bool) {
+		enabled = s.enabledFor(cfg, EventLoginFailure)
+		threshold = cfg.LoginFailureThreshold
+		if threshold <= 0 {
+			threshold = DefaultLoginFailureThreshold
+		}
+		windowSec = cfg.LoginFailureWindowSec
+		if windowSec <= 0 {
+			windowSec = DefaultLoginFailureWindowSec
+		}
+		return threshold, windowSec, DefaultLoginFailureAlertCooldown, enabled
+	}, &s.loginMu, s.loginHits, s.loginAlerted, func(ip string, windowSec, count, threshold int) string {
+		return fmt.Sprintf("IP %s 在 %d 秒内登录失败 %d 次（阈值 %d）", ip, windowSec, count, threshold)
+	}, "登录异常")
+}
+
+func (s *Service) recordThresholdHit(
+	ctx context.Context,
+	ip string,
+	event string,
+	cfgFn func(RuntimeConfig) (threshold, windowSec, cooldownSec int, enabled bool),
+	mu *sync.Mutex,
+	hits map[string][]time.Time,
+	alerted map[string]time.Time,
+	messageFn func(ip string, windowSec, count, threshold int) string,
+	title string,
+) {
+	if s == nil || s.store == nil {
+		return
+	}
+	ip = strings.TrimSpace(ip)
+	if ip == "" || ip == "-" {
+		return
+	}
+
+	cfg, err := s.store.LoadRuntime(ctx)
+	if err != nil {
+		return
+	}
+	threshold, windowSec, cooldownSec, enabled := cfgFn(cfg)
+	if !enabled {
+		return
+	}
+
+	window := time.Duration(windowSec) * time.Second
+	now := time.Now()
+	cutoff := now.Add(-window)
+
+	mu.Lock()
+	prev := hits[ip]
+	pruned := make([]time.Time, 0, len(prev)+1)
+	for _, at := range prev {
+		if !at.Before(cutoff) {
+			pruned = append(pruned, at)
+		}
+	}
+	pruned = append(pruned, now)
+	hits[ip] = pruned
+
+	count := len(pruned)
+	lastAlert := alerted[ip]
+	cooldown := time.Duration(cooldownSec) * time.Second
+	shouldAlert := count >= threshold && now.Sub(lastAlert) >= cooldown
+	if shouldAlert {
+		alerted[ip] = now
+	}
+	mu.Unlock()
+
+	if !shouldAlert {
+		return
+	}
+	s.Alert(ctx, event, title, messageFn(ip, windowSec, count, threshold))
+}
+
+func (s *Service) SendTest(ctx context.Context, in TestInput) error {
+	runtime, err := s.resolveTestRuntime(ctx, in)
+	if err != nil {
+		return err
+	}
+	if runtime.Type == "" {
+		return fmt.Errorf("请先选择通知方式")
+	}
+	if err := s.send(ctx, runtime, "test", "测试通知", "配置验证通过，当前通知通道可正常使用。"); err != nil {
+		s.logger.Warn("notify test send failed", "error", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (s *Service) resolveTestRuntime(ctx context.Context, in TestInput) (RuntimeConfig, error) {
+	smtpPassword := strings.TrimSpace(in.SMTPPassword)
+	webhookSecret := strings.TrimSpace(in.WebhookSecret)
+	telegramToken := strings.TrimSpace(in.TelegramToken)
+
+	if key := strings.TrimSpace(in.Webhook.Key); key != "" && key != MaskedSecret {
+		webhookSecret = key
+	}
+
+	needStored := smtpPassword == "" || smtpPassword == MaskedSecret ||
+		webhookSecret == "" || webhookSecret == MaskedSecret ||
+		telegramToken == "" || telegramToken == MaskedSecret
+
+	if needStored && s.store != nil {
+		stored, err := s.store.LoadRuntime(ctx)
+		if err != nil {
+			return RuntimeConfig{}, err
+		}
+		if (smtpPassword == "" || smtpPassword == MaskedSecret) && in.Email.HasPassword {
+			smtpPassword = stored.SMTPPassword
+		}
+		if (webhookSecret == "" || webhookSecret == MaskedSecret) && in.Webhook.HasSecret {
+			webhookSecret = stored.WebhookSecret
+		}
+		if (telegramToken == "" || telegramToken == MaskedSecret) && in.Telegram.HasBotToken {
+			telegramToken = stored.TelegramToken
+		}
+	}
+
+	return in.Config.Runtime(smtpPassword, webhookSecret, telegramToken), nil
+}
+
+func (s *Service) Store() *Store {
+	if s == nil {
+		return nil
+	}
+	return s.store
+}
+
+func (s *Service) send(ctx context.Context, cfg RuntimeConfig, event, title, message string) error {
+	content := FormatAlert(event, title, message)
+	switch cfg.Type {
+	case NotifyTypeEmail:
+		return SendEmail(cfg, content.Subject, content.PlainBody)
+	case NotifyTypeWebhook:
+		return SendWebhook(ctx, s.client, cfg, content)
+	case NotifyTypeTelegram:
+		return SendTelegram(ctx, s.client, cfg, content)
+	default:
+		return nil
+	}
+}
+
+func (s *Service) enabledFor(cfg RuntimeConfig, event string) bool {
+	if cfg.Type == "" {
+		return false
+	}
 	switch event {
-	case EventDDNSError:
-		return s.flag(ctx, settings.KeyNotifyOnDDNSError, true)
-	case EventCertError:
-		return s.flag(ctx, settings.KeyNotifyOnCertError, true)
-	case EventNginxError:
-		return s.flag(ctx, settings.KeyNotifyOnNginxError, false)
+	case EventDDNSIPChange:
+		return cfg.OnDDNSIPChange
+	case EventDDNSFailure:
+		return cfg.OnDDNSFailure
+	case EventCertExpiry:
+		return cfg.OnCertExpiry
+	case EventCertRenewSuccess:
+		return cfg.OnCertRenewSuccess
+	case EventCertRenewFailure:
+		return cfg.OnCertRenewFailure
+	case EventIPFrequentAccess:
+		return cfg.OnIPFrequentAccess
+	case EventLoginFailure:
+		return cfg.OnLoginFailure
+	case EventNginxReloadFailure:
+		return cfg.OnNginxReloadFailure
 	default:
 		return true
 	}
-}
-
-func (s *Service) flag(ctx context.Context, key string, fallback bool) bool {
-	raw, err := s.settings.Get(ctx, key)
-	if err != nil || raw == "" {
-		return fallback
-	}
-	return raw == "1" || strings.EqualFold(raw, "true")
 }

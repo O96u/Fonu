@@ -1,10 +1,42 @@
 <template>
-  <PageHeader title="日志中心" description="Nginx 访问与错误日志；运行日志记录 DDNS、证书、Nginx 等业务事件" />
+  <PageHeader
+    title="日志中心"
+    description="系统日志记录 Fonu 全部运行输出；访问日志与 Nginx 错误日志来自反向代理"
+  />
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 
   <FonuCard v-else flush class="logs-card">
     <n-tabs v-model:value="tab" type="line" animated class="logs-tabs">
+      <n-tab-pane name="system" tab="系统日志">
+        <LogToolbar
+          v-model:keyword="systemKeyword"
+          v-model:level="systemLevel"
+          :show-level="true"
+          @refresh="loadSystemLogs"
+        />
+        <p class="tab-hint">Fonu 全部运行日志（API、DDNS、证书、通知、Nginx 重载等），不含 Nginx 访问与错误文件。</p>
+        <n-data-table
+          v-if="filteredSystemLogs.length > 0"
+          class="log-table"
+          :columns="systemColumns"
+          :data="pagedSystemLogs"
+          :loading="loadingSystem"
+          :bordered="false"
+          :row-class-name="systemRowClassName"
+        />
+        <LogPagination
+          v-if="filteredSystemLogs.length > 0"
+          v-model:page="systemPage"
+          :item-count="filteredSystemLogs.length"
+        />
+        <EmptyState
+          v-if="!loadingSystem && systemLogs.length === 0"
+          title="暂无系统日志"
+          description="应用启动、DDNS 更新、证书操作或 API 请求会记录在这里。"
+        />
+      </n-tab-pane>
+
       <n-tab-pane name="access" tab="访问日志">
         <LogToolbar
           v-model:keyword="accessKeyword"
@@ -17,11 +49,13 @@
         />
         <n-data-table
           v-if="filteredAccessLogs.length > 0"
+          class="log-table"
           :columns="accessColumns"
           :data="pagedAccessLogs"
           :loading="loadingAccess"
           :bordered="false"
-          :scroll-x="1000"
+          :scroll-x="920"
+          :row-class-name="accessRowClassName"
         />
         <LogPagination
           v-if="filteredAccessLogs.length > 0"
@@ -35,14 +69,17 @@
         />
       </n-tab-pane>
 
-      <n-tab-pane name="error" tab="错误日志">
+      <n-tab-pane name="nginx" tab="Nginx 日志">
+        <p class="tab-hint">Nginx 错误日志（error.log），记录 SSL 握手失败、上游连接异常、配置冲突等。</p>
         <LogToolbar v-model:keyword="errorKeyword" @refresh="loadErrorLogs" />
         <n-data-table
           v-if="filteredErrorLogs.length > 0"
+          class="log-table"
           :columns="errorColumns"
           :data="pagedErrorLogs"
           :loading="loadingError"
           :bordered="false"
+          :row-class-name="errorRowClassName"
         />
         <LogPagination
           v-if="filteredErrorLogs.length > 0"
@@ -51,57 +88,9 @@
         />
         <EmptyState
           v-if="!loadingError && errorLogs.length === 0"
-          title="暂无错误日志"
-          description="系统或 Nginx 出现错误时会记录在这里。"
+          title="暂无 Nginx 错误日志"
+          description="Nginx 出现 SSL、上游或配置相关错误时会记录在这里。"
         />
-      </n-tab-pane>
-
-      <n-tab-pane name="system" tab="运行日志">
-        <LogToolbar
-          v-model:keyword="systemKeyword"
-          v-model:level="systemLevel"
-          :show-level="true"
-          @refresh="loadSystemLogs"
-        />
-        <p class="tab-hint">记录 DDNS 同步、证书申请、Nginx 重载、启动初始化等事件，不含页面轮询请求。</p>
-        <n-data-table
-          v-if="filteredSystemLogs.length > 0"
-          :columns="systemColumns"
-          :data="pagedSystemLogs"
-          :loading="loadingSystem"
-          :bordered="false"
-        />
-        <LogPagination
-          v-if="filteredSystemLogs.length > 0"
-          v-model:page="systemPage"
-          :item-count="filteredSystemLogs.length"
-        />
-        <EmptyState
-          v-if="!loadingSystem && systemLogs.length === 0"
-          title="暂无运行日志"
-          description="DDNS 更新、证书操作或 Nginx 状态变化时会记录在这里。"
-        />
-      </n-tab-pane>
-
-      <n-tab-pane name="stream" tab="实时日志">
-        <p class="tab-hint">
-          打开时会先加载最近 100 条 Nginx 日志，之后实时追加。完整历史请查看「访问日志 / 错误日志」分页列表。
-        </p>
-        <div class="toolbar">
-          <n-radio-group v-model:value="streamType" size="small">
-            <n-radio-button value="error">Nginx 错误</n-radio-button>
-            <n-radio-button value="access">Nginx 访问</n-radio-button>
-          </n-radio-group>
-          <n-button quaternary @click="clearStream">清空视图</n-button>
-        </div>
-        <div ref="streamBox" class="stream-box">
-          <div v-for="(line, i) in streamLines" :key="i" class="stream-line" :class="lineClass(line)">
-            {{ formatLogLine(line) }}
-          </div>
-          <div v-if="streamLines.length === 0" class="stream-empty text-muted">
-            暂无日志。经反代域名产生访问后会出现；若刚打开，请稍等或切换「访问日志」查看历史。
-          </div>
-        </div>
       </n-tab-pane>
     </n-tabs>
   </FonuCard>
@@ -115,8 +104,6 @@ import {
   NDataTable,
   NInput,
   NPagination,
-  NRadioButton,
-  NRadioGroup,
   NSelect,
   NTabPane,
   NTabs,
@@ -125,12 +112,27 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { api, asList } from '../api/client'
-import type { AccessLogEntry, SystemLogEntry } from '../api/types'
+import type { AccessLogEntry, ProxyRule, SystemLogEntry } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
-import { formatLogLine, formatLogTime, formatMs } from '../utils/format'
+import {
+  accessServiceTooltip,
+  buildProxyBindingIndex,
+  formatAccessFallback,
+  resolveAccessServiceLabel,
+} from '../utils/accessService'
+import { formatLogTime, formatMs } from '../utils/format'
+import {
+  latencyClass,
+  nginxLevelTagType,
+  parseNginxErrorLine,
+  type ParsedNginxError,
+  displaySystemLog,
+  systemLevelTagType,
+  systemModuleTagType,
+} from '../utils/logDisplay'
 import { httpStatusKind } from '../utils/status'
 
 const PAGE_SIZE = 20
@@ -194,7 +196,11 @@ const LogToolbar = defineComponent({
               placeholder: '日志级别',
               clearable: true,
               style: 'width: 120px',
-              options: ['INFO', 'WARN', 'ERROR'].map((l) => ({ label: l, value: l })),
+              options: [
+                { label: '信息', value: 'INFO' },
+                { label: '警告', value: 'WARN' },
+                { label: '错误', value: 'ERROR' },
+              ],
               'onUpdate:value': (v: string) => emit('update:level', v),
             })
           : null,
@@ -210,13 +216,16 @@ const LogToolbar = defineComponent({
 
 const message = useMessage()
 const route = useRoute()
-const LOG_TABS = ['access', 'error', 'system', 'stream'] as const
+const LOG_TABS = ['system', 'access', 'nginx'] as const
+type LogTab = (typeof LOG_TABS)[number]
 
-function resolveTab(queryTab: unknown) {
+function resolveTab(queryTab: unknown): LogTab {
+  if (queryTab === 'error' || queryTab === 'nginx') return 'nginx'
+  if (queryTab === 'stream') return 'access'
   if (typeof queryTab === 'string' && (LOG_TABS as readonly string[]).includes(queryTab)) {
-    return queryTab
+    return queryTab as LogTab
   }
-  return 'access'
+  return 'system'
 }
 
 const tab = ref(resolveTab(route.query.tab))
@@ -225,7 +234,9 @@ const autoRefresh = ref(false)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const accessLogs = ref<AccessLogEntry[]>([])
-const errorLogs = ref<{ line: string }[]>([])
+const proxyRules = ref<ProxyRule[]>([])
+const proxyBindingIndex = computed(() => buildProxyBindingIndex(proxyRules.value))
+const errorLogs = ref<ParsedNginxError[]>([])
 const systemLogs = ref<SystemLogEntry[]>([])
 const loadingAccess = ref(false)
 const loadingError = ref(false)
@@ -241,16 +252,13 @@ const accessPage = ref(1)
 const errorPage = ref(1)
 const systemPage = ref(1)
 
-const streamType = ref('error')
-const streamLines = ref<string[]>([])
-const streamBox = ref<HTMLElement | null>(null)
-let eventSource: EventSource | null = null
-
 const filteredAccessLogs = computed(() => {
   return accessLogs.value.filter((log) => {
     if (accessKeyword.value) {
       const kw = accessKeyword.value.toLowerCase()
-      if (!`${log.domain} ${log.path} ${log.client_ip}`.toLowerCase().includes(kw)) return false
+      const service = resolveAccessServiceLabel(log, proxyBindingIndex.value)
+      const fallback = formatAccessFallback(log)
+      if (!`${service} ${fallback} ${log.domain} ${log.path} ${log.client_ip}`.toLowerCase().includes(kw)) return false
     }
     if (accessStatus.value && log.status !== accessStatus.value) return false
     return true
@@ -260,13 +268,19 @@ const filteredAccessLogs = computed(() => {
 const filteredErrorLogs = computed(() => {
   if (!errorKeyword.value) return errorLogs.value
   const kw = errorKeyword.value.toLowerCase()
-  return errorLogs.value.filter((l) => l.line.toLowerCase().includes(kw))
+  return errorLogs.value.filter((entry) => entry.raw.toLowerCase().includes(kw))
 })
 
 const filteredSystemLogs = computed(() => {
   return systemLogs.value.filter((log) => {
+    const display = displaySystemLog(log)
     if (systemLevel.value && log.level.toUpperCase() !== systemLevel.value) return false
-    if (systemKeyword.value && !log.message.toLowerCase().includes(systemKeyword.value.toLowerCase())) return false
+    if (
+      systemKeyword.value &&
+      !`${display.displayModule} ${log.message}`.toLowerCase().includes(systemKeyword.value.toLowerCase())
+    ) {
+      return false
+    }
     return true
   })
 })
@@ -299,42 +313,150 @@ const statusTagType = (code: number) => {
 }
 
 const logTimeCell = (time: string) =>
-  h('span', { style: 'white-space: nowrap' }, formatLogTime(time))
+  h('span', { class: 'log-time' }, formatLogTime(time))
 
-const accessColumns: DataTableColumns<AccessLogEntry> = [
-  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time) },
-  { title: '域名', key: 'domain' },
+function accessRowClassName(row: AccessLogEntry) {
+  if (row.status >= 500) return 'log-row log-row--error'
+  if (row.status >= 400) return 'log-row log-row--warn'
+  return 'log-row'
+}
+
+function errorRowClassName(row: ParsedNginxError) {
+  const type = nginxLevelTagType(row.level)
+  if (type === 'error') return 'log-row log-row--error'
+  if (type === 'warning') return 'log-row log-row--warn'
+  return 'log-row'
+}
+
+function systemRowClassName(row: SystemLogEntry) {
+  const display = displaySystemLog(row)
+  if (display.displayLevel === '错误') return 'log-row log-row--error'
+  if (display.displayLevel === '警告') return 'log-row log-row--warn'
+  return 'log-row'
+}
+
+const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
+  { title: '时间', key: 'time', width: 168, render: (row) => logTimeCell(row.time) },
+  {
+    title: '服务',
+    key: 'service',
+    width: 128,
+    render: (row) => {
+      const tooltip = accessServiceTooltip(row, proxyBindingIndex.value)
+      const label = resolveAccessServiceLabel(row, proxyBindingIndex.value)
+      return h('span', { class: 'log-service nowrap', title: tooltip }, label)
+    },
+  },
   {
     title: '方法',
     key: 'method',
-    width: 80,
+    width: 68,
     render: (row) => h(NTag, { size: 'small', bordered: false, type: methodTagType(row.method) }, () => row.method),
   },
-  { title: '路径', key: 'path', ellipsis: { tooltip: true } },
+  {
+    title: '路径',
+    key: 'path',
+    width: 220,
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { class: 'log-path mono nowrap', title: row.path }, row.path),
+  },
   {
     title: '状态',
     key: 'status',
-    width: 80,
+    width: 68,
     render: (row) => h(NTag, { size: 'small', bordered: false, type: statusTagType(row.status) }, () => String(row.status)),
   },
-  { title: '耗时', key: 'response_time', width: 90, render: (row) => formatMs(row.response_time) },
-  { title: '来源 IP', key: 'client_ip', width: 130 },
-]
+  {
+    title: '耗时',
+    key: 'response_time',
+    width: 80,
+    render: (row) => h('span', { class: latencyClass(row.response_time) }, formatMs(row.response_time)),
+  },
+  {
+    title: '来源 IP',
+    key: 'client_ip',
+    width: 140,
+    render: (row) => h('span', { class: 'mono nowrap', title: row.client_ip }, row.client_ip),
+  },
+])
 
-const errorColumns: DataTableColumns<{ line: string }> = [
-  { title: '内容', key: 'line', ellipsis: { tooltip: true }, render: (row) => formatLogLine(row.line) },
+const errorColumns: DataTableColumns<ParsedNginxError> = [
+  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time || '-') },
+  {
+    title: '级别',
+    key: 'level',
+    width: 88,
+    render: (row) =>
+      h(
+        NTag,
+        { size: 'small', bordered: false, type: nginxLevelTagType(row.level) },
+        () => (row.level === 'unknown' ? '未知' : row.level.toUpperCase()),
+      ),
+  },
+  {
+    title: '消息',
+    key: 'message',
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { class: 'log-message mono' }, row.message),
+  },
 ]
 
 const systemColumns: DataTableColumns<SystemLogEntry> = [
-  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time) },
-  { title: '级别', key: 'level', width: 80 },
-  { title: '模块', key: 'module', width: 100 },
-  { title: '消息', key: 'message', ellipsis: { tooltip: true } },
+  { title: '时间', key: 'time', width: 168, render: (row) => logTimeCell(row.time) },
+  {
+    title: '级别',
+    key: 'level',
+    width: 80,
+    render: (row) => {
+      const display = displaySystemLog(row)
+      return h(
+        NTag,
+        { size: 'small', bordered: false, type: systemLevelTagType(display.displayLevel) },
+        () => display.displayLevel,
+      )
+    },
+  },
+  {
+    title: '模块',
+    key: 'module',
+    width: 108,
+    render: (row) => {
+      const display = displaySystemLog(row)
+      return h(
+        NTag,
+        {
+          size: 'small',
+          bordered: false,
+          type: systemModuleTagType(display.displayModule),
+          class: 'log-module-tag',
+        },
+        () => display.displayModule,
+      )
+    },
+  },
+  {
+    title: '消息',
+    key: 'message',
+    ellipsis: { tooltip: true },
+    render: (row) => {
+      const display = displaySystemLog(row)
+      return h('span', { class: 'log-message' }, display.message)
+    },
+  },
 ]
+
+async function loadProxyRules() {
+  try {
+    proxyRules.value = asList(await api.listProxies())
+  } catch {
+    proxyRules.value = []
+  }
+}
 
 async function loadAccess() {
   loadingAccess.value = true
   try {
+    await loadProxyRules()
     accessLogs.value = asList(await api.getAccessLogs({ limit: 100 }))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载访问日志失败')
@@ -347,7 +469,7 @@ async function loadErrorLogs() {
   loadingError.value = true
   try {
     const errors = asList(await api.getErrorLogs({ limit: 100 }))
-    errorLogs.value = errors.map((line) => ({ line }))
+    errorLogs.value = errors.map((line) => parseNginxErrorLine(line))
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载错误日志失败')
   } finally {
@@ -375,45 +497,6 @@ async function loadAll() {
   }
 }
 
-function stopStream() {
-  eventSource?.close()
-  eventSource = null
-}
-
-function startStream() {
-  if (eventSource) return
-  eventSource = new EventSource(`/api/logs/stream?type=${streamType.value}&tail=100`, {
-    withCredentials: true,
-  })
-  eventSource.addEventListener('log', (event) => {
-    streamLines.value.push(event.data)
-    if (streamLines.value.length > 500) streamLines.value = streamLines.value.slice(-400)
-    requestAnimationFrame(() => {
-      streamBox.value?.scrollTo({ top: streamBox.value.scrollHeight })
-    })
-  })
-  eventSource.addEventListener('info', (event) => {
-    streamLines.value.push(event.data)
-  })
-  eventSource.onerror = () => {
-    message.warning('实时日志连接中断，请刷新页面重试')
-    stopStream()
-  }
-}
-
-function clearStream() {
-  streamLines.value = []
-}
-
-function lineClass(line: string) {
-  const lower = line.toLowerCase()
-  if (lower.includes('[error]') || lower.includes(' emerg ') || lower.includes(' alert ') || lower.includes(' crit ')) {
-    return 'level-error'
-  }
-  if (lower.includes('[warn]') || lower.includes(' warning ')) return 'level-warn'
-  return ''
-}
-
 watch([accessKeyword, accessStatus], () => {
   accessPage.value = 1
 })
@@ -424,12 +507,6 @@ watch(errorKeyword, () => {
 
 watch([systemKeyword, systemLevel], () => {
   systemPage.value = 1
-})
-
-watch(streamType, () => {
-  if (tab.value !== 'stream') return
-  stopStream()
-  startStream()
 })
 
 watch(autoRefresh, (on) => {
@@ -446,19 +523,15 @@ watch(
 
 watch(tab, (name) => {
   if (name === 'access') loadAccess()
-  else if (name === 'error') loadErrorLogs()
+  else if (name === 'nginx') loadErrorLogs()
   else if (name === 'system') loadSystemLogs()
-  else if (name === 'stream') startStream()
-  else stopStream()
 })
 
 onMounted(() => {
   tab.value = resolveTab(route.query.tab)
   loadAll()
-  if (tab.value === 'stream') startStream()
 })
 onUnmounted(() => {
-  stopStream()
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
@@ -489,37 +562,76 @@ onUnmounted(() => {
   border-top: 1px solid var(--fonu-border);
 }
 
-.stream-box {
-  margin-top: var(--fonu-space-4);
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: var(--fonu-radius);
-  border: 1px solid var(--fonu-border);
-  padding: var(--fonu-space-4);
-  min-height: 360px;
-  max-height: 520px;
-  overflow: auto;
+.logs-card :deep(.log-table .n-data-table-th) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text-secondary);
+}
+
+.logs-card :deep(.log-table .n-data-table-base-table) {
+  table-layout: fixed;
+}
+
+.logs-card :deep(.log-table .n-data-table-td) {
+  font-size: 13px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.logs-card :deep(.log-table .n-data-table-tr.log-row--error .n-data-table-td) {
+  background: color-mix(in srgb, #ef4444 7%, transparent);
+}
+
+.logs-card :deep(.log-table .n-data-table-tr.log-row--warn .n-data-table-td) {
+  background: color-mix(in srgb, #f59e0b 7%, transparent);
+}
+
+.logs-card :deep(.log-table .n-data-table-tr.log-row:hover .n-data-table-td) {
+  background: color-mix(in srgb, var(--fonu-brand) 5%, var(--fonu-surface));
+}
+
+.log-time {
+  white-space: nowrap;
+  color: var(--fonu-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-service {
+  font-weight: 500;
+}
+
+.log-path {
+  color: var(--fonu-text-secondary);
+}
+
+.log-message {
+  line-height: 1.5;
+}
+
+.mono {
   font-family: var(--fonu-mono);
   font-size: 12px;
-  line-height: 1.7;
 }
 
-html[data-theme='dark'] .stream-box,
-html.dark .stream-box {
-  background: #020617;
+.log-duration {
+  font-variant-numeric: tabular-nums;
 }
 
-.stream-line {
-  white-space: pre-wrap;
-  word-break: break-all;
+.log-duration--slow {
+  color: #d97706;
+  font-weight: 600;
 }
 
-.stream-line.level-info { color: #7dd3fc; }
-.stream-line.level-warn { color: #fbbf24; }
-.stream-line.level-error { color: #f87171; }
+.log-duration--critical {
+  color: #dc2626;
+  font-weight: 600;
+}
 
-.stream-empty {
-  padding: var(--fonu-space-6);
-  text-align: center;
+.logs-card :deep(.log-module-tag) {
+  white-space: nowrap;
 }
 </style>

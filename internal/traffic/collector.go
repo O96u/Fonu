@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/logstore"
+	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/proxy"
 )
 
@@ -37,8 +38,9 @@ type ClientConn struct {
 }
 
 type Collector struct {
-	path  string
-	store *Store
+	path   string
+	store  *Store
+	notify *notify.Service
 
 	mu    sync.RWMutex
 	hosts map[string]*hostState
@@ -57,11 +59,12 @@ type sample struct {
 	down int64
 }
 
-func NewCollector(db *sql.DB, accessLogPath string) *Collector {
+func NewCollector(db *sql.DB, accessLogPath string, notifySvc *notify.Service) *Collector {
 	return &Collector{
-		path:  accessLogPath,
-		store: NewStore(db),
-		hosts: map[string]*hostState{},
+		path:   accessLogPath,
+		store:  NewStore(db),
+		notify: notifySvc,
+		hosts:  map[string]*hostState{},
 	}
 }
 
@@ -186,6 +189,9 @@ func (c *Collector) ingestLine(line string, trackLive bool) {
 		}
 		if entry.ClientIP != "" && entry.ClientIP != "-" {
 			st.clients[entry.ClientIP] = now
+			if c.notify != nil {
+				c.notify.RecordAccessHit(context.Background(), entry.ClientIP)
+			}
 		}
 		c.pruneHost(st, now)
 	}

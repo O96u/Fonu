@@ -12,6 +12,7 @@ import (
 	"github.com/fonu/fonu/internal/ddns"
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/frp"
+	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
 	"github.com/fonu/fonu/internal/traffic"
@@ -30,6 +31,7 @@ type Deps struct {
 	Discovery  *discovery.Service
 	FRP        *frp.Manager
 	Traffic    *traffic.Collector
+	Notify     *notify.Service
 	StaticFS   fs.FS
 	StartedAt  string
 }

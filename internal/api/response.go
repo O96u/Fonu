@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"reflect"
 )
@@ -34,6 +35,30 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
+func writeError(r *http.Request, w http.ResponseWriter, status int, message string, cause ...error) {
+	logAPIError(r, status, message, cause)
 	writeJSON(w, status, ErrorBody{Error: message})
+}
+
+func logAPIError(r *http.Request, status int, message string, cause []error) {
+	if status < 400 {
+		return
+	}
+	attrs := []any{
+		"module", "API",
+		"status", status,
+		"message", message,
+	}
+	if r != nil {
+		attrs = append(attrs, "method", r.Method, "path", r.URL.Path)
+	}
+	if len(cause) > 0 && cause[0] != nil {
+		attrs = append(attrs, "error", cause[0].Error())
+	}
+	switch {
+	case status >= 500:
+		slog.Error("request failed", attrs...)
+	default:
+		slog.Warn("request rejected", attrs...)
+	}
 }

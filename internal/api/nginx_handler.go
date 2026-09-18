@@ -27,12 +27,12 @@ type rollbackNginxRequest struct {
 func (h *NginxHandler) GetRule(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	view, err := h.proxy.GetRuleNginx(r.Context(), id)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -41,12 +41,12 @@ func (h *NginxHandler) GetRule(w http.ResponseWriter, r *http.Request) {
 func (h *NginxHandler) PutRule(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	var req saveRuleNginxRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	view, err := h.proxy.SaveRuleNginx(r.Context(), id, service.SaveRuleNginxInput{
@@ -54,7 +54,7 @@ func (h *NginxHandler) PutRule(w http.ResponseWriter, r *http.Request) {
 		Content: req.Content,
 	})
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -63,19 +63,19 @@ func (h *NginxHandler) PutRule(w http.ResponseWriter, r *http.Request) {
 func (h *NginxHandler) RollbackRule(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "无效的规则 ID")
+		writeError(r, w, http.StatusBadRequest, "无效的规则 ID")
 		return
 	}
 	var req rollbackNginxRequest
 	if r.Body != nil && r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "请求格式无效")
+			writeError(r, w, http.StatusBadRequest, "请求格式无效")
 			return
 		}
 	}
 	view, err := h.proxy.RollbackRuleNginx(r.Context(), id, req.Backup)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -84,7 +84,7 @@ func (h *NginxHandler) RollbackRule(w http.ResponseWriter, r *http.Request) {
 func (h *NginxHandler) GetGlobal(w http.ResponseWriter, r *http.Request) {
 	view, err := h.proxy.GetGlobalNginx(r.Context())
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -93,7 +93,7 @@ func (h *NginxHandler) GetGlobal(w http.ResponseWriter, r *http.Request) {
 func (h *NginxHandler) PutGlobal(w http.ResponseWriter, r *http.Request) {
 	var req saveRuleNginxRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求格式无效")
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	view, err := h.proxy.SaveGlobalNginx(r.Context(), service.SaveGlobalNginxInput{
@@ -101,7 +101,7 @@ func (h *NginxHandler) PutGlobal(w http.ResponseWriter, r *http.Request) {
 		Content: req.Content,
 	})
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -111,26 +111,26 @@ func (h *NginxHandler) RollbackGlobal(w http.ResponseWriter, r *http.Request) {
 	var req rollbackNginxRequest
 	if r.Body != nil && r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "请求格式无效")
+			writeError(r, w, http.StatusBadRequest, "请求格式无效")
 			return
 		}
 	}
 	view, err := h.proxy.RollbackGlobalNginx(r.Context(), req.Backup)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(r, w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
 }
 
-func writeServiceError(w http.ResponseWriter, err error) {
+func writeServiceError(r *http.Request, w http.ResponseWriter, err error) {
 	if err == nil {
 		return
 	}
 	msg := err.Error()
 	if msg == "规则不存在" {
-		writeError(w, http.StatusNotFound, msg)
+		writeError(r, w, http.StatusNotFound, msg, err)
 		return
 	}
-	writeError(w, http.StatusBadRequest, msg)
+	writeError(r, w, http.StatusBadRequest, msg, err)
 }
