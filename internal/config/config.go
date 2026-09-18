@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -55,6 +56,34 @@ func (c Config) NginxDir() string {
 
 func (c Config) NginxConfigPath() string {
 	return c.NginxDir() + "/nginx.conf"
+}
+
+func (c Config) NginxCustomDir() string {
+	return c.NginxDir() + "/custom"
+}
+
+func (c Config) NginxGlobalCustomPath() string {
+	return c.NginxCustomDir() + "/global.conf"
+}
+
+func (c Config) NginxRulesDir() string {
+	return c.NginxDir() + "/rules"
+}
+
+func (c Config) NginxRuleCustomPath(ruleID int64) string {
+	return filepath.Join(c.NginxRulesDir(), fmt.Sprintf("rule_%d.conf", ruleID))
+}
+
+func (c Config) NginxBackupsDir() string {
+	return c.NginxDir() + "/backups"
+}
+
+func (c Config) NginxGlobalBackupsDir() string {
+	return c.NginxBackupsDir() + "/global"
+}
+
+func (c Config) NginxRuleBackupsDir(ruleID int64) string {
+	return filepath.Join(c.NginxBackupsDir(), "rules", fmt.Sprintf("%d", ruleID))
 }
 
 func (c Config) LogsDir() string {

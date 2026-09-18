@@ -77,6 +77,7 @@ func (c TrustedProxyConfig) effectiveHeader() string {
 }
 
 func writeRealIPDirectives(b *strings.Builder, cfg TrustedProxyConfig) {
+	writeRealIPComment(b, cfg)
 	cidrs := cfg.effectiveCIDRs()
 	if len(cidrs) == 0 {
 		b.WriteString("    map $remote_addr $fonu_client_ip {\n")

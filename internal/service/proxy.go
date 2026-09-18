@@ -85,6 +85,7 @@ func (s *ProxyService) Delete(ctx context.Context, id int64) error {
 	if err := s.store.Delete(ctx, id); err != nil {
 		return err
 	}
+	_ = nginx.RemoveRuleCustom(s.cfg, id)
 	if err := s.applyNginx(ctx); err != nil {
 		return fmt.Errorf("规则已删除，但 Nginx 重载失败：%w", err)
 	}

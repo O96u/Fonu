@@ -94,6 +94,9 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 	if err := EnsureErrorPages(m.cfg); err != nil {
 		return ApplyResult{}, err
 	}
+	if err := EnsureCustomDirs(m.cfg); err != nil {
+		return ApplyResult{}, err
+	}
 	if err := SyncHtpasswdFiles(m.cfg, rules); err != nil {
 		return ApplyResult{}, err
 	}
@@ -113,13 +116,17 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 		return ApplyResult{}, err
 	}
 
+	if err := ValidateConfigSyntax(content); err != nil {
+		_ = os.Remove(tmpPath)
+		return ApplyResult{}, err
+	}
 	if m.available() {
 		if err := m.validate(ctx, tmpPath); err != nil {
 			_ = os.Remove(tmpPath)
 			return ApplyResult{}, err
 		}
 	} else {
-		m.logger.Warn("nginx binary not found, skipping validation", "bin", m.cfg.NginxBin)
+		m.logger.Warn("nginx binary not found, applied syntax-only validation", "bin", m.cfg.NginxBin)
 	}
 
 	currentPath := m.cfg.NginxConfigPath()
@@ -176,8 +183,11 @@ func (m *Manager) ValidateOnlyWithOptions(ctx context.Context, rules []proxy.Rul
 	if err != nil {
 		return err
 	}
+	if err := ValidateConfigSyntax(content); err != nil {
+		return err
+	}
 	if !m.available() {
-		m.logger.Warn("nginx binary not found, skipping validation", "bin", m.cfg.NginxBin)
+		m.logger.Warn("nginx binary not found, syntax-only validation", "bin", m.cfg.NginxBin)
 		return nil
 	}
 	tmpPath := filepath.Join(m.cfg.NginxDir(), "validate.tmp.conf")
@@ -370,6 +380,26 @@ func (m *Manager) isRunning() (bool, error) {
 func (m *Manager) isRunningQuick() bool {
 	ok, _ := m.isRunning()
 	return ok
+}
+
+func (m *Manager) ValidateContent(ctx context.Context, content string) error {
+	if err := ValidateConfigSyntax(content); err != nil {
+		return err
+	}
+	if !m.available() {
+		m.logger.Warn("nginx binary not found, syntax-only validation", "bin", m.cfg.NginxBin)
+		return nil
+	}
+	tmpPath := filepath.Join(m.cfg.NginxDir(), "validate.tmp.conf")
+	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+	return m.validate(ctx, tmpPath)
+}
+
+func ChinaCIDRExists(cfg config.Config) bool {
+	return chinaCIDRExists(cfg)
 }
 
 func copyFile(src, dst string) error {

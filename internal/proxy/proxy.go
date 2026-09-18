@@ -28,6 +28,7 @@ type Rule struct {
 	HTTPSEnabled bool           `json:"https_enabled"`
 	HTTPRedirect bool           `json:"http_redirect"`
 	Enabled      bool           `json:"enabled"`
+	NginxMode    string         `json:"nginx_mode"`
 	Name         string         `json:"name"`
 	SortOrder    int            `json:"sort_order"`
 	Security     SecurityConfig `json:"security"`
@@ -174,7 +175,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 	}
 	q := s.querier()
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules
 		ORDER BY sort_order ASC, id ASC
 	`)
@@ -199,7 +200,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 	row := s.querier().QueryRowContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE id = ?
 	`, id)
 	rule, err := scanRule(row)
@@ -373,6 +374,27 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	return s.Get(ctx, id)
 }
 
+func (s *Store) SetNginxMode(ctx context.Context, id int64, mode string) error {
+	mode = strings.TrimSpace(mode)
+	if mode != "auto" && mode != "custom" {
+		return fmt.Errorf("无效的 nginx 模式")
+	}
+	res, err := s.querier().ExecContext(ctx, `
+		UPDATE proxy_rules SET nginx_mode = ?, updated_at = datetime('now') WHERE id = ?
+	`, mode, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("规则不存在")
+	}
+	return nil
+}
+
 func (s *Store) Delete(ctx context.Context, id int64) error {
 	res, err := s.querier().ExecContext(ctx, `DELETE FROM proxy_rules WHERE id = ?`, id)
 	if err != nil {
@@ -390,7 +412,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
 	rows, err := s.querier().QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, created_at, updated_at
+		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE enabled = 1 ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
@@ -580,6 +602,7 @@ func scanRule(row rowScanner) (Rule, error) {
 	var httpsEnabled int
 	var httpRedirect int
 	var enabled int
+	var nginxMode string
 	var securityJSON string
 	var createdAt string
 	var updatedAt string
@@ -592,6 +615,7 @@ func scanRule(row rowScanner) (Rule, error) {
 		&httpsEnabled,
 		&httpRedirect,
 		&enabled,
+		&nginxMode,
 		&rule.Name,
 		&rule.SortOrder,
 		&securityJSON,
@@ -605,6 +629,10 @@ func scanRule(row rowScanner) (Rule, error) {
 	rule.HTTPSEnabled = httpsEnabled == 1
 	rule.HTTPRedirect = httpRedirect == 1
 	rule.Enabled = enabled == 1
+	if nginxMode == "" {
+		nginxMode = "auto"
+	}
+	rule.NginxMode = nginxMode
 	security, err := ParseSecurityJSON(securityJSON)
 	if err != nil {
 		return Rule{}, err

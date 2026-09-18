@@ -38,6 +38,7 @@ const (
 	KeyFRPCustomDomains      = "frp_custom_domains"
 	KeyFRPLastError          = "frp_last_error"
 	KeyFRPStartedAt          = "frp_started_at"
+	KeyNginxGlobalMode       = "nginx_global_mode"
 )
 
 var Defaults = map[string]string{
@@ -48,6 +49,7 @@ var Defaults = map[string]string{
 	KeyCertRenewThreshold: "30",
 	KeyACMECA:                    "letsencrypt",
 	KeyChinaCIDRUpdateHours:      "24",
+	KeyNginxGlobalMode:           "auto",
 }
 
 type Store struct {

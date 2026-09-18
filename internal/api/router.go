@@ -15,6 +15,7 @@ func NewRouter(deps Deps) http.Handler {
 	r := &Router{
 		authHandler:     NewAuthHandler(deps.Auth),
 		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
+		nginxHandler:    NewNginxHandler(deps.Proxy),
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME),
@@ -48,6 +49,12 @@ func NewRouter(deps Deps) http.Handler {
 	protect("DELETE /api/proxies/{id}", r.proxyHandler.Delete)
 	protect("GET /api/proxies/{id}/logs/stream", r.proxyHandler.StreamLogs)
 	protect("GET /api/proxies/{id}/clients", r.proxyHandler.Clients)
+	protect("GET /api/proxies/{id}/nginx", r.nginxHandler.GetRule)
+	protect("PUT /api/proxies/{id}/nginx", r.nginxHandler.PutRule)
+	protect("POST /api/proxies/{id}/nginx/rollback", r.nginxHandler.RollbackRule)
+	protect("GET /api/settings/nginx/global", r.nginxHandler.GetGlobal)
+	protect("PUT /api/settings/nginx/global", r.nginxHandler.PutGlobal)
+	protect("POST /api/settings/nginx/global/rollback", r.nginxHandler.RollbackGlobal)
 	protect("GET /api/ddns", r.ddnsHandler.List)
 	protect("POST /api/ddns", r.ddnsHandler.Create)
 	protect("PUT /api/ddns/{id}", r.ddnsHandler.Update)
@@ -99,6 +106,7 @@ func NewRouter(deps Deps) http.Handler {
 type Router struct {
 	authHandler     *AuthHandler
 	proxyHandler    *ProxyHandler
+	nginxHandler    *NginxHandler
 	statusHandler   *StatusHandler
 	ddnsHandler     *DDNSHandler
 	certHandler     *CertHandler

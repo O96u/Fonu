@@ -5,7 +5,7 @@
     :class="{
       'proxy-log-box--embedded': embedded,
       'proxy-log-box--fullscreen': fullscreen,
-      'is-empty': lines.length === 0,
+      'is-empty': parsedLines.length === 0,
     }"
     @scroll="onScroll"
   >
@@ -15,21 +15,21 @@
         class="proxy-log-entry"
         :class="logEntryStatusClass(item.parsed.status)"
       >
-        <time class="proxy-log-entry__time">{{ item.parsed.time }}</time>
+        <time class="proxy-log-entry__time" :title="item.parsed.time">{{ formatLogTime(item.parsed.time) }}</time>
         <span class="proxy-log-entry__method" :class="`is-${item.parsed.method.toLowerCase()}`">
           {{ item.parsed.method }}
         </span>
-        <span class="proxy-log-entry__path" :title="item.parsed.path">{{ item.parsed.path }}</span>
+        <span class="proxy-log-entry__path" :title="pathTitle(item.parsed)">{{ item.parsed.path }}</span>
         <span class="proxy-log-entry__status">{{ item.parsed.status }}</span>
         <span class="proxy-log-entry__ms">{{ item.parsed.ms }}ms</span>
         <span class="proxy-log-entry__client mono">{{ item.parsed.client }}</span>
-        <span class="proxy-log-entry__upstream mono" :title="item.parsed.upstream">
-          → {{ item.parsed.upstream }}
+        <span v-if="!hideUpstream" class="proxy-log-entry__upstream mono" :title="item.parsed.upstream">
+          → {{ formatUpstream(item.parsed.upstream) }}
         </span>
       </div>
       <div v-else class="proxy-log-line proxy-log-line--raw">{{ item.raw }}</div>
     </template>
-    <div v-if="lines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
+    <div v-if="parsedLines.length === 0" class="proxy-log-empty">暂无记录，通过反代域名访问后会显示在这里。</div>
   </div>
 </template>
 
@@ -47,11 +47,17 @@ type AccessLogEntry = {
   upstream: string
 }
 
-const props = defineProps<{
-  lines: string[]
-  embedded?: boolean
-  fullscreen?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    lines: string[]
+    embedded?: boolean
+    fullscreen?: boolean
+    hideUpstream?: boolean
+  }>(),
+  {
+    hideUpstream: true,
+  },
+)
 
 const emit = defineEmits<{
   scroll: [el: HTMLElement]
@@ -67,21 +73,25 @@ const accessLineReLegacy =
 function parseAccessLog(line: string): AccessLogEntry | null {
   let m = line.match(accessLineReWithPort)
   if (m) {
-    const [, time, , , method, path, status, rt, client, upstream] = m
-    return {
-      time: time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, ''),
-      host: '',
-      method,
-      path,
-      status: Number(status),
-      ms: (parseFloat(rt) * 1000).toFixed(1),
-      client,
-      upstream,
-    }
+    const [, time, host, , method, path, status, rt, client, upstream] = m
+    return buildEntry(time, host, method, path, status, rt, client, upstream)
   }
   m = line.match(accessLineReLegacy)
   if (!m) return null
   const [, time, host, method, path, status, rt, client, upstream] = m
+  return buildEntry(time, host, method, path, status, rt, client, upstream)
+}
+
+function buildEntry(
+  time: string,
+  host: string,
+  method: string,
+  path: string,
+  status: string,
+  rt: string,
+  client: string,
+  upstream: string,
+): AccessLogEntry {
   return {
     time: time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, ''),
     host,
@@ -97,6 +107,25 @@ function parseAccessLog(line: string): AccessLogEntry | null {
 const parsedLines = computed(() =>
   props.lines.map((raw) => ({ raw, parsed: parseAccessLog(raw) })),
 )
+
+function formatLogTime(raw: string): string {
+  const normalized = raw.replace('T', ' ')
+  const space = normalized.indexOf(' ')
+  if (space >= 0 && space < normalized.length - 1) {
+    return normalized.slice(space + 1).replace(/([+-]\d{2}:\d{2}|Z)$/, '')
+  }
+  return raw
+}
+
+function formatUpstream(upstream: string): string {
+  if (!upstream || upstream === '-') return '-'
+  return upstream
+}
+
+function pathTitle(entry: AccessLogEntry): string {
+  if (entry.host) return `${entry.host}${entry.path}`
+  return entry.path
+}
 
 function logEntryStatusClass(status: number): string {
   if (status >= 500) return 'is-error'
@@ -120,7 +149,7 @@ defineExpose({ scrollToBottom })
   background: #0f172a;
   color: #e2e8f0;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding: var(--fonu-space-3);
   font-family: var(--fonu-mono);
   font-size: 12px;
@@ -136,6 +165,7 @@ defineExpose({ scrollToBottom })
 
 .proxy-log-box::-webkit-scrollbar {
   width: 7px;
+  height: 7px;
 }
 
 .proxy-log-box::-webkit-scrollbar-track {
@@ -154,7 +184,6 @@ defineExpose({ scrollToBottom })
 .proxy-log-box--embedded {
   flex: 1 1 0;
   min-height: 0;
-  overflow-y: auto;
 }
 
 .proxy-log-box--embedded.is-empty {
@@ -170,19 +199,20 @@ defineExpose({ scrollToBottom })
 }
 
 .proxy-log-entry {
-  display: grid;
-  grid-template-columns: 132px 52px minmax(0, 1fr) 44px 56px 108px minmax(80px, auto);
-  gap: 6px 10px;
+  display: flex;
   align-items: center;
-  padding: 8px 10px;
+  gap: 10px;
+  padding: 6px 10px;
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.45;
   border: 1px solid transparent;
+  white-space: nowrap;
+  min-width: max-content;
 }
 
 .proxy-log-entry + .proxy-log-entry {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .proxy-log-entry:hover {
@@ -191,22 +221,22 @@ defineExpose({ scrollToBottom })
 }
 
 .proxy-log-entry__time {
+  flex: 0 0 auto;
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .proxy-log-entry__method {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(59, 130, 246, 0.18);
-  color: #93c5fd;
 }
 
 .proxy-log-entry__method.is-get { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
@@ -216,13 +246,16 @@ defineExpose({ scrollToBottom })
 .proxy-log-entry__method.is-delete { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
 
 .proxy-log-entry__path {
+  flex: 1 1 auto;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   color: #e2e8f0;
 }
 
 .proxy-log-entry__status {
+  flex: 0 0 auto;
+  min-width: 28px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -233,24 +266,21 @@ defineExpose({ scrollToBottom })
 .proxy-log-entry.is-error .proxy-log-entry__status { color: #f87171; }
 
 .proxy-log-entry__ms {
+  flex: 0 0 auto;
+  min-width: 52px;
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  white-space: nowrap;
 }
 
 .proxy-log-entry__client {
+  flex: 0 0 auto;
   color: #cbd5e1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .proxy-log-entry__upstream {
+  flex: 0 0 auto;
   color: #64748b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 11px;
 }
 
@@ -270,16 +300,8 @@ defineExpose({ scrollToBottom })
   padding: var(--fonu-space-5);
   text-align: center;
   color: #94a3b8;
+  white-space: normal;
 }
 
 .mono { font-family: var(--fonu-mono); }
-
-@media (max-width: 767px) {
-  .proxy-log-entry {
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 8px;
-  }
-  .proxy-log-entry__path { grid-column: 1 / -1; }
-  .proxy-log-entry__upstream { grid-column: 1 / -1; }
-}
 </style>

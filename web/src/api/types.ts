@@ -46,6 +46,7 @@ export interface ProxyRule {
   https_enabled: boolean
   http_redirect: boolean
   enabled: boolean
+  nginx_mode?: string
   name: string
   sort_order: number
   security: ProxySecurityConfig
@@ -316,4 +317,26 @@ export interface FRPSavePayload {
   auth_token?: string
   tls_enabled: boolean
   custom_domains: string[]
+}
+
+export interface NginxBackupEntry {
+  name: string
+  created_at: string
+}
+
+export interface RuleNginxView {
+  mode: 'auto' | 'custom'
+  enabled: boolean
+  active: boolean
+  generated: string
+  content: string
+  backups: NginxBackupEntry[]
+}
+
+export interface GlobalNginxView {
+  mode: 'auto' | 'custom'
+  generated_framework: string
+  generated_snippet: string
+  content: string
+  backups: NginxBackupEntry[]
 }

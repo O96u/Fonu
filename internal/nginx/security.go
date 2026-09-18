@@ -10,25 +10,33 @@ import (
 )
 
 type GenerateOptions struct {
-	TrustedProxy         TrustedProxyConfig
-	GlobalIPBlacklist    []string
-	ChinaCIDRAvailable   bool
-	ChinaCIDRPathOverride string
+	TrustedProxy               TrustedProxyConfig
+	GlobalIPBlacklist          []string
+	ChinaCIDRAvailable         bool
+	ChinaCIDRPathOverride      string
+	GlobalCustomOverride       string
+	GlobalCustomPathOverride   string
+	RuleCustomOverrides        map[int64]string
 }
 
 func writeGlobalDenyList(b *strings.Builder, cidrs []string) {
+	if len(cidrs) == 0 {
+		return
+	}
+	writeGlobalDenyListComment(b)
 	for _, cidr := range cidrs {
 		b.WriteString(fmt.Sprintf("    deny %s;\n", cidr))
 	}
-	if len(cidrs) > 0 {
-		b.WriteString("\n")
-	}
+	b.WriteString("\n")
 }
 
 func writeLimitZones(b *strings.Builder, rules []proxy.Rule) {
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
+		}
+		if rule.Security.RateLimitEnabled() || rule.Security.ConnLimitEnabled() {
+			writeLimitZoneComments(b, rule)
 		}
 		if rule.Security.RateLimitEnabled() {
 			rl := rule.Security.RateLimit
@@ -77,6 +85,7 @@ func writeChinaGeoBlocks(b *strings.Builder, cfg config.Config, opts GenerateOpt
 	if !needsChina {
 		return
 	}
+	writeChinaGeoComment(b)
 	writePrivateIPGeo(b)
 	if !opts.ChinaCIDRAvailable {
 		return
@@ -103,6 +112,7 @@ func writeChinaOnlyBypassGeo(b *strings.Builder, rules []proxy.Rule, opts Genera
 		}
 		sec := rule.Security.Normalize()
 		cidrs := proxy.ChinaBypassCIDRs(sec.IPWhitelist)
+		writeChinaBypassComment(b, rule)
 		b.WriteString(fmt.Sprintf("    geo $fonu_client_ip $fonu_rule_%d_china_bypass {\n", rule.ID))
 		b.WriteString("        default 0;\n")
 		for _, cidr := range cidrs {
@@ -146,6 +156,7 @@ func writeServerSecurityHeaders(b *strings.Builder, sec proxy.SecurityConfig, ht
 	if !https || !sec.SecurityHeaders {
 		return
 	}
+	writeSecurityHeadersComment(b)
 	b.WriteString(`    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -154,6 +165,7 @@ func writeServerSecurityHeaders(b *strings.Builder, sec proxy.SecurityConfig, ht
 }
 
 func writeTLSProtocols(b *strings.Builder, sec proxy.SecurityConfig) {
+	writeTLSProtocolComment(b, sec)
 	if sec.TLSMin13Only {
 		b.WriteString("    ssl_protocols TLSv1.3;\n\n")
 	} else {
@@ -163,6 +175,7 @@ func writeTLSProtocols(b *strings.Builder, sec proxy.SecurityConfig) {
 
 func writeErrorPages(b *strings.Builder, cfg config.Config) {
 	errorsDir := absNginxPath(cfg.ErrorsDir())
+	writeErrorPagesComment(b)
 	// HTML is served via internal error_page redirect; images are fetched by the browser
 	// as separate requests and must not use the internal-only location.
 	b.WriteString(`    error_page 403 /fonu-errors/403.html;
@@ -188,6 +201,7 @@ func writeErrorPages(b *strings.Builder, cfg config.Config) {
 
 func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rule, opts GenerateOptions) {
 	sec := rule.Security.Normalize()
+	writeLocationSecurityComments(b, rule, opts)
 
 	for _, cidr := range sec.IPBlacklist {
 		b.WriteString(fmt.Sprintf("        deny %s;\n", cidr))

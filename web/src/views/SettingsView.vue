@@ -128,6 +128,87 @@
         </div>
       </FonuCard>
 
+      <FonuCard title="Nginx 全局配置" subtitle="http 块内自定义片段">
+        <p class="field-hint">
+          仅作用于 <code>http {}</code> 内部、各反代 <code>server {}</code> 之前。单条规则的 server 块请在反代详情 → Nginx 中编辑。
+        </p>
+        <details class="nginx-framework">
+          <summary>查看自动生成的框架说明</summary>
+          <NginxCodeEditor
+            :model-value="globalNginxFramework"
+            readonly
+            min-height="240px"
+            class="nginx-framework__editor"
+          />
+        </details>
+        <div class="log-panel-head global-nginx-head">
+          <div class="nginx-mode-toggle">
+            <n-button
+              size="tiny"
+              quaternary
+              :type="globalNginxEditMode === 'auto' ? 'primary' : 'default'"
+              @click="setGlobalNginxEditMode('auto')"
+            >
+              自动生成
+            </n-button>
+            <n-button
+              size="tiny"
+              quaternary
+              :type="globalNginxEditMode === 'custom' ? 'primary' : 'default'"
+              @click="setGlobalNginxEditMode('custom')"
+            >
+              手动编辑
+            </n-button>
+          </div>
+          <div class="log-panel-actions">
+            <n-button
+              v-if="globalNginxEditMode === 'custom'"
+              size="tiny"
+              quaternary
+              type="primary"
+              :loading="globalNginxSaving"
+              :disabled="!globalNginxDirty"
+              @click="saveGlobalNginx"
+            >
+              保存
+            </n-button>
+            <n-button
+              v-if="globalNginxEditMode === 'custom' && globalNginxBackups.length > 0"
+              size="tiny"
+              quaternary
+              :loading="globalNginxSaving"
+              @click="rollbackGlobalNginx()"
+            >
+              回滚
+            </n-button>
+            <n-button
+              v-if="globalNginxEditMode === 'custom' && globalNginxServerMode === 'custom'"
+              size="tiny"
+              quaternary
+              :loading="globalNginxSaving"
+              @click="resetGlobalNginxAuto"
+            >
+              恢复自动生成
+            </n-button>
+          </div>
+        </div>
+        <NginxCodeEditor
+          v-model="globalNginxDraft"
+          class="nginx-editor global-nginx-editor"
+          :readonly="globalNginxEditMode === 'auto'"
+          min-height="280px"
+          placeholder="# 在此添加 http 块内的自定义指令&#10;# 例如：gzip on;"
+          @update:model-value="onGlobalNginxDraftInput"
+        />
+        <p class="global-nginx-upload-hint field-hint">
+          上传大小默认 50M。如需针对单条规则单独设置，请到对应反代 → 编辑 → Nginx 中修改
+          <code>client_max_body_size</code>。
+        </p>
+        <n-alert type="warning" :bordered="false" class="global-nginx-warn">
+          小白勿碰。若保存后 Nginx 启动失败，请点「恢复自动生成」或「回滚」还原配置。
+        </n-alert>
+      </FonuCard>
+
       <FonuCard title="安全" subtitle="管理员账户" class="settings-card settings-card--security">
         <div class="security-form">
           <div class="settings-fields">
@@ -252,8 +333,9 @@ import {
   SunnyOutline,
 } from '@vicons/ionicons5'
 import { api } from '../api/client'
-import type { ChinaCIDRStatus } from '../api/types'
+import type { ChinaCIDRStatus, GlobalNginxView } from '../api/types'
 import FonuCard from '../components/FonuCard.vue'
+import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -293,6 +375,21 @@ const chinaCIDRHours = ref(24)
 const refreshingCIDR = ref(false)
 const chinaCIDR = ref<ChinaCIDRStatus>({ entry_count_v4: 0, entry_count_v6: 0 })
 let chinaCIDRPollTimer: ReturnType<typeof setInterval> | undefined
+
+const globalNginxFramework = ref('')
+const globalNginxGeneratedSnippet = ref('')
+const globalNginxDraft = ref('')
+const globalNginxEditMode = ref<'auto' | 'custom'>('auto')
+const globalNginxServerMode = ref<'auto' | 'custom'>('auto')
+const globalNginxDirty = ref(false)
+const globalNginxSaving = ref(false)
+const globalNginxBackups = ref<{ name: string; created_at: string }[]>([])
+
+const globalNginxCustomHint = `# 在此添加 http 块内的自定义指令
+# 上传大小限制（全局默认 50M，单条规则可在 server 块覆盖）
+client_max_body_size 50m;
+# 例如：gzip on;
+`
 
 const chinaCIDRBadgeKind = computed((): StatusKind => {
   if (refreshingCIDR.value || chinaCIDR.value.updating) return 'warning'
@@ -395,6 +492,86 @@ function buildGlobalBlacklistJSON() {
   return JSON.stringify(list)
 }
 
+function applyGlobalNginxView(view: GlobalNginxView) {
+  globalNginxFramework.value = view.generated_framework
+  globalNginxGeneratedSnippet.value = view.generated_snippet || globalNginxCustomHint
+  globalNginxServerMode.value = view.mode
+  globalNginxEditMode.value = view.mode
+  globalNginxBackups.value = view.backups ?? []
+  globalNginxDraft.value =
+    view.mode === 'auto' ? globalNginxGeneratedSnippet.value : view.content || globalNginxCustomHint
+  globalNginxDirty.value = false
+}
+
+async function loadGlobalNginx() {
+  try {
+    applyGlobalNginxView(await api.getGlobalNginx())
+  } catch {
+    // optional on load
+  }
+}
+
+function setGlobalNginxEditMode(mode: 'auto' | 'custom') {
+  if (mode === globalNginxEditMode.value) return
+  if (mode === 'custom') {
+    if (!globalNginxDraft.value.trim() || globalNginxDraft.value === globalNginxGeneratedSnippet.value) {
+      globalNginxDraft.value = globalNginxCustomHint
+      globalNginxDirty.value = false
+    } else {
+      globalNginxDirty.value = globalNginxServerMode.value !== 'custom'
+    }
+  } else {
+    globalNginxDraft.value = globalNginxGeneratedSnippet.value
+    globalNginxDirty.value = false
+  }
+  globalNginxEditMode.value = mode
+}
+
+function onGlobalNginxDraftInput() {
+  if (globalNginxEditMode.value === 'custom') {
+    globalNginxDirty.value = true
+  }
+}
+
+async function saveGlobalNginx() {
+  globalNginxSaving.value = true
+  try {
+    applyGlobalNginxView(await api.saveGlobalNginx({
+      mode: 'custom',
+      content: globalNginxDraft.value,
+    }))
+    message.success('全局 Nginx 配置已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    globalNginxSaving.value = false
+  }
+}
+
+async function rollbackGlobalNginx(backup?: string) {
+  globalNginxSaving.value = true
+  try {
+    applyGlobalNginxView(await api.rollbackGlobalNginx(backup))
+    message.success('已回滚到上一版本')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '回滚失败')
+  } finally {
+    globalNginxSaving.value = false
+  }
+}
+
+async function resetGlobalNginxAuto() {
+  globalNginxSaving.value = true
+  try {
+    applyGlobalNginxView(await api.saveGlobalNginx({ mode: 'auto' }))
+    message.success('已恢复自动生成')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '操作失败')
+  } finally {
+    globalNginxSaving.value = false
+  }
+}
+
 async function loadChinaCIDRStatus() {
   try {
     chinaCIDR.value = await api.getChinaCIDRStatus()
@@ -467,7 +644,7 @@ async function load() {
   pageError.value = ''
   try {
     applySettingsToForm(await api.getSettings())
-    await loadChinaCIDRStatus()
+    await Promise.all([loadChinaCIDRStatus(), loadGlobalNginx()])
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -639,6 +816,54 @@ onMounted(load)
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.5;
+}
+
+.nginx-framework {
+  margin: 12px 0;
+}
+
+.nginx-framework__editor {
+  margin-top: 8px;
+}
+
+.global-nginx-head {
+  margin-top: 12px;
+}
+
+.nginx-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.log-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.log-panel-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.log-panel-actions :deep(.n-button) {
+  min-width: 56px;
+}
+
+.global-nginx-editor,
+.nginx-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.global-nginx-upload-hint {
+  margin: 10px 0 0;
+}
+
+.global-nginx-warn {
+  margin-top: 12px;
 }
 
 .settings-fields {

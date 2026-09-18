@@ -159,7 +159,7 @@
           type="button"
           class="proxy-detail__tab"
           :class="{ 'proxy-detail__tab--active': detailTab === 'overview' }"
-          @click="detailTab = 'overview'"
+          @click="switchDetailTab('overview')"
         >
           概览
         </button>
@@ -167,9 +167,17 @@
           type="button"
           class="proxy-detail__tab"
           :class="{ 'proxy-detail__tab--active': detailTab === 'logs' }"
-          @click="detailTab = 'logs'"
+          @click="switchDetailTab('logs')"
         >
           日志
+        </button>
+        <button
+          type="button"
+          class="proxy-detail__tab"
+          :class="{ 'proxy-detail__tab--active': detailTab === 'nginx' }"
+          @click="switchDetailTab('nginx')"
+        >
+          Nginx
         </button>
       </div>
 
@@ -285,13 +293,10 @@
         <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
                 <span class="text-muted">实时访问日志</span>
-                <n-space :size="4">
-                  <n-button size="tiny" quaternary @click="openLogFullscreen">
-                    <template #icon><n-icon :component="ExpandOutline" /></template>
-                    全屏
-                  </n-button>
+                <div class="log-panel-actions">
+                  <n-button size="tiny" quaternary @click="openLogFullscreen">全屏</n-button>
                   <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
-                </n-space>
+                </div>
               </div>
               <ProxyAccessLogBox
                 ref="logBox"
@@ -300,24 +305,43 @@
                 @scroll="onLogBoxScroll"
               />
         </div>
+
+        <div v-show="detailTab === 'nginx'" class="proxy-detail__pane proxy-detail__pane--nginx">
+            <n-alert v-if="!nginxEnabled" type="warning" :bordered="false" class="nginx-pane-alert">
+              规则已停用，以下配置不会写入 Nginx。
+            </n-alert>
+            <n-alert
+              v-if="nginxServerMode === 'custom'"
+              type="info"
+              :bordered="false"
+              class="nginx-pane-alert"
+            >
+              当前为手动编辑配置。如需修改，请使用右上角「编辑」。
+            </n-alert>
+            <n-spin :show="nginxLoading" class="nginx-editor-spin">
+              <NginxCodeEditor
+                :model-value="detailNginxText"
+                embedded
+                readonly
+                placeholder="server { ... }"
+              />
+            </n-spin>
+        </div>
       </div>
     </div>
   </n-modal>
 
   <Teleport to="body">
     <div v-if="logFullscreen && selectedRule" class="proxy-log-fullscreen">
-      <div class="proxy-log-fullscreen__head">
+      <div class="log-panel-head proxy-log-fullscreen__head">
         <div class="proxy-log-fullscreen__title">
-          <span>实时访问日志</span>
+          <span class="text-muted">实时访问日志</span>
           <span class="proxy-log-fullscreen__rule">{{ ruleName(selectedRule) }}</span>
         </div>
-        <n-space :size="4">
-          <n-button size="small" quaternary @click="clearLogLines">清空</n-button>
-          <n-button size="small" quaternary @click="logFullscreen = false">
-            <template #icon><n-icon :component="ContractOutline" /></template>
-            退出全屏
-          </n-button>
-        </n-space>
+        <div class="log-panel-actions">
+          <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
+          <n-button size="tiny" quaternary @click="logFullscreen = false">退出全屏</n-button>
+        </div>
       </div>
       <ProxyAccessLogBox
         ref="logBoxFullscreen"
@@ -333,7 +357,7 @@
       <div class="proxy-modal__form">
         <div class="proxy-modal__header">
           <h3 class="modal-title">{{ editing ? '编辑规则' : '新增规则' }}</h3>
-          <n-button size="small" quaternary @click="showModal = false">
+          <n-button size="small" quaternary @click="closeModal">
             <template #icon><n-icon :component="CloseOutline" /></template>
           </n-button>
         </div>
@@ -343,7 +367,7 @@
             type="button"
             class="proxy-modal__tab"
             :class="{ 'proxy-modal__tab--active': formTab === 'basic' }"
-            @click="formTab = 'basic'"
+            @click="switchFormTab('basic')"
           >
             基础配置
           </button>
@@ -351,7 +375,7 @@
             type="button"
             class="proxy-modal__tab"
             :class="{ 'proxy-modal__tab--active': formTab === 'security' }"
-            @click="formTab = 'security'"
+            @click="switchFormTab('security')"
           >
             <span class="proxy-modal__tab-label">
               安全设置
@@ -359,6 +383,14 @@
                 {{ activeSecurityFeatures.length }}
               </n-tag>
             </span>
+          </button>
+          <button
+            type="button"
+            class="proxy-modal__tab"
+            :class="{ 'proxy-modal__tab--active': formTab === 'nginx' }"
+            @click="switchFormTab('nginx')"
+          >
+            Nginx
           </button>
         </div>
 
@@ -618,11 +650,88 @@
               </n-collapse>
               </div>
           </div>
+
+          <div v-show="formTab === 'nginx'" class="proxy-modal__pane proxy-modal__pane--nginx">
+            <template v-if="!editing">
+              <n-empty description="请先保存规则后再配置 Nginx">
+                <template #extra>
+                  <n-button type="primary" @click="switchFormTab('basic')">去填写基础配置</n-button>
+                </template>
+              </n-empty>
+            </template>
+            <template v-else>
+              <n-alert v-if="nginxEditMode === 'custom'" type="info" :bordered="false" class="nginx-pane-alert">
+                手动模式下，修改基础/安全设置后需先保存规则，再在此处同步 Nginx 文本。
+              </n-alert>
+              <div class="log-panel-head">
+                <div class="nginx-mode-toggle">
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    :type="nginxEditMode === 'auto' ? 'primary' : 'default'"
+                    @click="setNginxEditMode('auto')"
+                  >
+                    自动生成
+                  </n-button>
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    :type="nginxEditMode === 'custom' ? 'primary' : 'default'"
+                    @click="setNginxEditMode('custom')"
+                  >
+                    手动编辑
+                  </n-button>
+                </div>
+                <div class="log-panel-actions">
+                  <n-button
+                    v-if="nginxEditMode === 'custom'"
+                    size="tiny"
+                    quaternary
+                    type="primary"
+                    :loading="nginxSaving"
+                    :disabled="!nginxDirty"
+                    @click="saveRuleNginx"
+                  >
+                    保存 Nginx
+                  </n-button>
+                  <n-button
+                    v-if="nginxEditMode === 'custom' && nginxBackups.length > 0"
+                    size="tiny"
+                    quaternary
+                    :loading="nginxSaving"
+                    @click="rollbackRuleNginx()"
+                  >
+                    回滚
+                  </n-button>
+                  <n-button
+                    v-if="nginxEditMode === 'custom' && nginxServerMode === 'custom'"
+                    size="tiny"
+                    quaternary
+                    :loading="nginxSaving"
+                    @click="resetRuleNginxAuto"
+                  >
+                    恢复自动生成
+                  </n-button>
+                </div>
+              </div>
+              <n-spin :show="nginxLoading" class="nginx-editor-spin nginx-editor-spin--modal">
+                <NginxCodeEditor
+                  v-model="nginxDraft"
+                  embedded
+                  :readonly="nginxEditMode === 'auto'"
+                  placeholder="server { ... }"
+                  @update:model-value="onNginxDraftInput"
+                />
+              </n-spin>
+            </template>
+          </div>
         </div>
 
         <div class="modal-footer">
-          <n-button @click="showModal = false">取消</n-button>
-          <n-button type="primary" :loading="saving" @click="save">{{ editing ? '保存' : '创建' }}</n-button>
+          <n-button @click="closeModal">取消</n-button>
+          <n-button v-if="formTab !== 'nginx'" type="primary" :loading="saving" @click="save">
+            {{ editing ? '保存' : '创建' }}
+          </n-button>
         </div>
       </div>
 
@@ -644,6 +753,22 @@
           <div class="proxy-modal__tip">
             <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
             <span>请确保域名已解析到本机，且内网服务可访问。</span>
+          </div>
+        </template>
+        <template v-else-if="formTab === 'nginx'">
+          <h4>Nginx 说明</h4>
+          <ol>
+            <li><strong>自动生成</strong>：根据基础配置与安全设置生成，并附带中文注释。</li>
+            <li><strong>手动编辑</strong>：保存前会自动备份，支持回滚。</li>
+            <li>修改基础/安全项后请先点「保存」，再回到此页刷新预览。</li>
+          </ol>
+          <div class="proxy-modal__tip">
+            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
+            <span>详情页的 Nginx 页签仅展示当前生效配置。</span>
+          </div>
+          <div class="proxy-modal__tip proxy-modal__tip--warn">
+            <n-icon :component="WarningOutline" class="proxy-modal__tip-icon" />
+            <span>小白勿碰。若保存后 Nginx 启动失败，请点「恢复自动生成」或「回滚」还原配置。</span>
           </div>
         </template>
         <template v-else>
@@ -673,11 +798,13 @@
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Component, type VNode } from 'vue'
 import Sortable from 'sortablejs'
 import {
+  NAlert,
   NButton,
   NCheckbox,
   NCollapse,
   NCollapseItem,
   NDataTable,
+  NEmpty,
   NForm,
   NFormItem,
   NIcon,
@@ -700,9 +827,7 @@ import {
   ArrowDownOutline,
   ArrowUpOutline,
   CloseOutline,
-  ContractOutline,
   CopyOutline,
-  ExpandOutline,
   OpenOutline,
   ReorderThreeOutline,
   CloudDownloadOutline,
@@ -714,12 +839,14 @@ import {
   PeopleOutline,
   RefreshOutline,
   SearchOutline,
+  WarningOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
 import type { ProxyClientConn, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
+import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import LoadError from '../components/LoadError.vue'
 import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -734,7 +861,7 @@ const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const showModal = ref(false)
-const formTab = ref<'basic' | 'security'>('basic')
+const formTab = ref<'basic' | 'security' | 'nginx'>('basic')
 const securityExpanded = ref<string[]>(['ip'])
 const editing = ref<ProxyRule | null>(null)
 const search = ref('')
@@ -743,7 +870,17 @@ const httpsFilter = ref<string | null>(null)
 const scanning = ref(false)
 const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
-const detailTab = ref<'overview' | 'logs'>('overview')
+const detailTab = ref<'overview' | 'logs' | 'nginx'>('overview')
+const nginxLoading = ref(false)
+const nginxSaving = ref(false)
+const nginxEditMode = ref<'auto' | 'custom'>('auto')
+const nginxServerMode = ref<'auto' | 'custom'>('auto')
+const nginxGenerated = ref('')
+const nginxDraft = ref('')
+const nginxDirty = ref(false)
+const nginxEnabled = ref(true)
+const nginxBackups = ref<{ name: string; created_at: string }[]>([])
+let nginxRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const logLines = ref<string[]>([])
 const logBox = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
 const logBoxFullscreen = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
@@ -894,6 +1031,9 @@ const selectedRule = computed(() => rules.value.find((r) => r.id === selectedRul
 const selectedTraffic = computed(() =>
   selectedRule.value ? trafficByRule.value[selectedRule.value.id] : undefined,
 )
+const detailNginxText = computed(() =>
+  nginxServerMode.value === 'custom' ? nginxDraft.value : nginxGenerated.value,
+)
 
 function securityFeatureLabels(rule: ProxyRule): string[] {
   const sec = rule.security ?? {}
@@ -965,12 +1105,200 @@ watch(filteredRules, (list) => {
   }
 })
 
-function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' = 'overview') {
+function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' | 'nginx' = 'overview') {
   selectedRuleId.value = rule.id
   detailTab.value = tab
   showDetailPanel.value = true
   clearRateHistory()
   recordRateSample(rule.id)
+  if (tab === 'nginx') {
+    void loadRuleNginxPreview()
+  }
+}
+
+function confirmDiscardNginxDraft(): Promise<boolean> {
+  if (!nginxDirty.value || nginxEditMode.value !== 'custom') {
+    return Promise.resolve(true)
+  }
+  return new Promise((resolve) => {
+    dialog.warning({
+      title: '未保存的 Nginx 配置',
+      content: '当前手动编辑尚未保存，确定放弃更改吗？',
+      positiveText: '放弃更改',
+      negativeText: '继续编辑',
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
+    })
+  })
+}
+
+async function switchDetailTab(tab: 'overview' | 'logs' | 'nginx') {
+  if (tab === detailTab.value) return
+  detailTab.value = tab
+  if (tab === 'nginx') {
+    await loadRuleNginxPreview()
+  }
+}
+
+async function switchFormTab(tab: 'basic' | 'security' | 'nginx') {
+  if (tab === formTab.value) return
+  if (formTab.value === 'nginx') {
+    const ok = await confirmDiscardNginxDraft()
+    if (!ok) return
+  }
+  formTab.value = tab
+  if (tab === 'nginx' && editing.value) {
+    nginxDirty.value = false
+    await loadRuleNginxForEdit(editing.value.id)
+  }
+}
+
+function closeModal() {
+  if (formTab.value === 'nginx' && nginxDirty.value && nginxEditMode.value === 'custom') {
+    void confirmDiscardNginxDraft().then((ok) => {
+      if (ok) showModal.value = false
+    })
+    return
+  }
+  showModal.value = false
+}
+
+async function loadRuleNginxPreview() {
+  const rule = selectedRule.value
+  if (!rule) return
+  nginxLoading.value = true
+  try {
+    const view = await api.getProxyNginx(rule.id)
+    nginxServerMode.value = view.mode
+    nginxGenerated.value = view.generated
+    nginxEnabled.value = view.enabled
+    nginxDraft.value = view.mode === 'custom' ? view.content : view.generated
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
+  } finally {
+    nginxLoading.value = false
+  }
+}
+
+async function loadRuleNginxForEdit(ruleId: number) {
+  nginxLoading.value = true
+  try {
+    const view = await api.getProxyNginx(ruleId)
+    nginxServerMode.value = view.mode
+    nginxEditMode.value = view.mode
+    nginxGenerated.value = view.generated
+    nginxEnabled.value = view.enabled
+    nginxBackups.value = view.backups ?? []
+    if (view.mode === 'auto') {
+      nginxDraft.value = view.generated
+      nginxDirty.value = false
+    } else if (!nginxDirty.value) {
+      nginxDraft.value = view.content
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
+  } finally {
+    nginxLoading.value = false
+  }
+}
+
+function scheduleNginxRefresh() {
+  if (detailTab.value !== 'nginx' || showDetailPanel.value === false) return
+  if (nginxRefreshTimer) clearTimeout(nginxRefreshTimer)
+  nginxRefreshTimer = setTimeout(() => {
+    void loadRuleNginxPreview()
+  }, 300)
+}
+
+function setNginxEditMode(mode: 'auto' | 'custom') {
+  if (mode === nginxEditMode.value) return
+  if (mode === 'custom' && nginxEditMode.value === 'auto') {
+    nginxDraft.value = nginxGenerated.value
+    nginxDirty.value = nginxServerMode.value !== 'custom'
+  }
+  if (mode === 'auto') {
+    nginxDraft.value = nginxGenerated.value
+    nginxDirty.value = false
+  }
+  nginxEditMode.value = mode
+}
+
+function onNginxDraftInput() {
+  if (nginxEditMode.value === 'custom') {
+    nginxDirty.value = true
+  }
+}
+
+async function saveRuleNginx() {
+  const ruleId = editing.value?.id
+  if (!ruleId) return
+  nginxSaving.value = true
+  try {
+    const view = await api.saveProxyNginx(ruleId, {
+      mode: 'custom',
+      content: nginxDraft.value,
+    })
+    nginxServerMode.value = view.mode
+    nginxEditMode.value = view.mode
+    nginxGenerated.value = view.generated
+    nginxDraft.value = view.content
+    nginxBackups.value = view.backups ?? []
+    nginxDirty.value = false
+    message.success('Nginx 配置已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    nginxSaving.value = false
+  }
+}
+
+async function rollbackRuleNginx(backup?: string) {
+  const ruleId = editing.value?.id
+  if (!ruleId) return
+  nginxSaving.value = true
+  try {
+    const view = await api.rollbackProxyNginx(ruleId, backup)
+    nginxServerMode.value = view.mode
+    nginxEditMode.value = view.mode
+    nginxGenerated.value = view.generated
+    nginxDraft.value = view.content
+    nginxBackups.value = view.backups ?? []
+    nginxDirty.value = false
+    message.success('已回滚到上一版本')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '回滚失败')
+  } finally {
+    nginxSaving.value = false
+  }
+}
+
+function resetRuleNginxAuto() {
+  dialog.warning({
+    title: '恢复自动生成',
+    content: '将切回自动生成模式，手动保存的配置文件仍保留在备份中。',
+    positiveText: '确认',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      const ruleId = editing.value?.id
+      if (!ruleId) return
+      nginxSaving.value = true
+      try {
+        const view = await api.saveProxyNginx(ruleId, { mode: 'auto' })
+        nginxServerMode.value = view.mode
+        nginxEditMode.value = view.mode
+        nginxGenerated.value = view.generated
+        nginxDraft.value = view.generated
+        nginxBackups.value = view.backups ?? []
+        nginxDirty.value = false
+        message.success('已恢复自动生成')
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '操作失败')
+      } finally {
+        nginxSaving.value = false
+      }
+    },
+  })
 }
 
 function closeDetail() {
@@ -979,6 +1307,14 @@ function closeDetail() {
   detailTab.value = 'overview'
   clearRateHistory()
 }
+
+watch(selectedRule, () => scheduleNginxRefresh(), { deep: true })
+
+watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab], [, , prevTab]) => {
+  if (visible && id && tab === 'nginx' && prevTab !== 'nginx') {
+    await loadRuleNginxPreview()
+  }
+})
 
 watch(selectedRuleId, (id, prev) => {
   if (id !== prev) clearRateHistory()
@@ -1689,7 +2025,7 @@ function openDuplicate(rule: ProxyRule) {
   message.info('已填入复制内容，请修改域名后保存')
 }
 
-function openEdit(rule: ProxyRule) {
+function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
   closeDetail()
   editing.value = rule
   selectedRuleId.value = rule.id
@@ -1706,8 +2042,18 @@ function openEdit(rule: ProxyRule) {
   })
   loadSecurityToForm(rule)
   syncSecurityExpanded()
-  formTab.value = activeSecurityFeatures.value.length > 0 ? 'security' : 'basic'
+  if (tab === 'nginx') {
+    formTab.value = 'nginx'
+  } else if (tab === 'security' || activeSecurityFeatures.value.length > 0) {
+    formTab.value = 'security'
+  } else {
+    formTab.value = 'basic'
+  }
   showModal.value = true
+  if (tab === 'nginx') {
+    nginxDirty.value = false
+    void loadRuleNginxForEdit(rule.id)
+  }
 }
 
 function destroyRowSortable() {
@@ -2443,13 +2789,43 @@ onUnmounted(() => {
   margin-bottom: 6px;
 }
 
-.proxy-detail__pane--logs {
+.proxy-detail__pane--logs,
+.proxy-detail__pane--nginx {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding-top: var(--fonu-space-3);
+}
+
+.nginx-pane-alert {
+  margin-bottom: var(--fonu-space-2);
+  flex-shrink: 0;
+}
+
+.nginx-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.nginx-editor-spin--modal {
+  min-height: min(420px, 50vh);
+}
+
+.nginx-editor-spin {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nginx-editor-spin :deep(.n-spin-container),
+.nginx-editor-spin :deep(.n-spin-content) {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .live-badge {
@@ -2507,7 +2883,22 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.log-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.log-panel-actions :deep(.n-button) {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .proxy-log-fullscreen {
@@ -2522,21 +2913,14 @@ onUnmounted(() => {
 }
 
 .proxy-log-fullscreen__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
+  margin-bottom: 8px;
 }
 
 .proxy-log-fullscreen__title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   min-width: 0;
-  color: #e2e8f0;
-  font-size: 15px;
-  font-weight: 600;
 }
 
 .proxy-log-fullscreen__rule {
@@ -2628,6 +3012,17 @@ onUnmounted(() => {
   width: 100%;
   box-sizing: border-box;
   padding: var(--fonu-space-4) var(--fonu-space-5) 0;
+}
+
+.proxy-modal__pane--nginx {
+  display: flex;
+  flex-direction: column;
+  min-height: min(480px, 55vh);
+}
+
+.proxy-modal__pane--nginx .nginx-editor-spin {
+  flex: 1;
+  min-height: 0;
 }
 
 .proxy-modal__pane :deep(.n-form) {
@@ -2869,6 +3264,11 @@ onUnmounted(() => {
   flex-shrink: 0;
   margin-top: 1px;
   font-size: 16px;
+}
+
+.proxy-modal__tip--warn {
+  background: #fffbeb;
+  color: #b45309;
 }
 
 .form-label {

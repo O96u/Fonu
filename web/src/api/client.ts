@@ -19,6 +19,8 @@ import type {
   ProxyRule,
   ProxySavePayload,
   ProxyTraffic,
+  GlobalNginxView,
+  RuleNginxView,
   SettingsMap,
   SystemLogEntry,
 } from './types'
@@ -105,6 +107,14 @@ export const api = {
     request<void>('/api/proxies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   getProxyTraffic: () => request<ProxyTraffic[]>('/api/proxies/traffic'),
   getProxyClients: (id: number) => request<ProxyClientConn[]>(`/api/proxies/${id}/clients`),
+  getProxyNginx: (id: number) => request<RuleNginxView>(`/api/proxies/${id}/nginx`),
+  saveProxyNginx: (id: number, payload: { mode: 'auto' | 'custom'; content?: string }) =>
+    request<RuleNginxView>(`/api/proxies/${id}/nginx`, { method: 'PUT', body: JSON.stringify(payload) }),
+  rollbackProxyNginx: (id: number, backup?: string) =>
+    request<RuleNginxView>(`/api/proxies/${id}/nginx/rollback`, {
+      method: 'POST',
+      body: JSON.stringify(backup ? { backup } : {}),
+    }),
 
   listDDNS: () => request<DDNSConfig[]>('/api/ddns'),
   listDDNSLite: () => request<DDNSConfig[]>('/api/ddns?lite=1'),
@@ -192,6 +202,14 @@ export const api = {
   getSettings: () => request<SettingsMap>('/api/settings'),
   saveSettings: (payload: SettingsMap) =>
     request<SettingsMap>('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  getGlobalNginx: () => request<GlobalNginxView>('/api/settings/nginx/global'),
+  saveGlobalNginx: (payload: { mode: 'auto' | 'custom'; content?: string }) =>
+    request<GlobalNginxView>('/api/settings/nginx/global', { method: 'PUT', body: JSON.stringify(payload) }),
+  rollbackGlobalNginx: (backup?: string) =>
+    request<GlobalNginxView>('/api/settings/nginx/global/rollback', {
+      method: 'POST',
+      body: JSON.stringify(backup ? { backup } : {}),
+    }),
   getChinaCIDRStatus: () => request<ChinaCIDRStatus>('/api/settings/china-cidr'),
   refreshChinaCIDR: () =>
     request<ChinaCIDRStatus>('/api/settings/china-cidr/refresh', { method: 'POST' }),
