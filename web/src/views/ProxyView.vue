@@ -1224,6 +1224,7 @@ import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
+import { copyToClipboard } from '../utils/clipboard'
 import { formatBytes, formatRate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -2086,10 +2087,9 @@ function hostAccessUrlWithoutListenPort(rule: ProxyRule, hostPart: string): stri
 }
 
 async function copyAccessUrl(url: string) {
-  try {
-    await navigator.clipboard.writeText(url)
+  if (await copyToClipboard(url)) {
     message.success('链接已复制')
-  } catch {
+  } else {
     message.error('复制失败')
   }
 }

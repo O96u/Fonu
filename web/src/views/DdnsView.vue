@@ -486,6 +486,7 @@ import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import TaskProviderForm, { type ProviderForm } from '../components/TaskProviderForm.vue'
+import { copyToClipboard } from '../utils/clipboard'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { statusLabel } from '../utils/status'
 
@@ -796,10 +797,9 @@ function hasCredentialInput(form: ProviderForm) {
 }
 
 async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
+  if (await copyToClipboard(text)) {
     message.success('已复制')
-  } catch {
+  } else {
     message.error('复制失败')
   }
 }

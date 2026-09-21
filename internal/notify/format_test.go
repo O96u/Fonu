@@ -6,6 +6,18 @@ import (
 	"time"
 )
 
+func TestFormatFooterUsesProvidedTimezone(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	at := time.Date(2026, 9, 21, 14, 0, 0, 0, time.UTC).In(loc)
+	footer := formatFooter(at)
+	if footer != "Fonu · 2026-09-21 22:00:00" {
+		t.Fatalf("unexpected footer: %s", footer)
+	}
+}
+
 func TestFormatAlert(t *testing.T) {
 	at := time.Date(2026, 9, 18, 15, 49, 0, 0, time.FixedZone("CST", 8*3600))
 	content := FormatAlertAt(EventDDNSIPChange, "DDNS IP 已变更", "example.com\nIPv4: 1.2.3.4 → 5.6.7.8", at)

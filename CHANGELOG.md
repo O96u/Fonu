@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.0.4] - 2026-09-21
+
+### 修复
+
+- 非 HTTPS 访问时添加 TCP 隧道失败（`crypto.randomUUID` 不可用）
+- 非 HTTPS 环境下复制到剪贴板失败（内网穿透、DDNS、反向代理）
+- 通知消息时间未按系统设置时区显示（如 Telegram 测试通知）
+
 ## [v1.0.3] - 2026-09-21
 
 ### 新增

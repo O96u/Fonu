@@ -748,6 +748,8 @@ import LoadError from "../components/LoadError.vue";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { formatDate } from "../utils/format";
+import { copyToClipboard } from "../utils/clipboard";
+import { createId } from "../utils/id";
 
 const message = useMessage();
 const loading = ref(false);
@@ -885,10 +887,9 @@ function tcpExternalAccess(row: FRPTCPProxy) {
 }
 
 async function copyText(text: string, successMsg: string) {
-  try {
-    await navigator.clipboard.writeText(text);
+  if (await copyToClipboard(text)) {
     message.success(successMsg);
-  } catch {
+  } else {
     message.error("复制失败");
   }
 }
@@ -1161,7 +1162,7 @@ async function saveTcpModal() {
     return;
   }
   const payload: FRPTCPProxy = {
-    id: tcpEditingId.value ?? crypto.randomUUID(),
+    id: tcpEditingId.value ?? createId(),
     name: tcpForm.name.trim(),
     local_ip: tcpForm.local_ip.trim() || "127.0.0.1",
     local_port: tcpForm.local_port,
@@ -1367,10 +1368,9 @@ function ensureFrpsConfigReady() {
 
 async function copyFrpsConfig() {
   if (!ensureFrpsConfigReady()) return;
-  try {
-    await navigator.clipboard.writeText(resolveFrpsConfigText());
+  if (await copyToClipboard(resolveFrpsConfigText())) {
     message.success("已复制 frps 配置");
-  } catch {
+  } else {
     message.error("复制失败");
   }
 }

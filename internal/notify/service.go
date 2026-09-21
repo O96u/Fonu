@@ -207,8 +207,15 @@ func (s *Service) Store() *Store {
 	return s.store
 }
 
+func (s *Service) alertTime(ctx context.Context) time.Time {
+	if s == nil || s.settings == nil {
+		return time.Now()
+	}
+	return s.settings.Now(ctx)
+}
+
 func (s *Service) send(ctx context.Context, cfg RuntimeConfig, event, title, message string) error {
-	content := FormatAlert(event, title, message)
+	content := FormatAlertAt(event, title, message, s.alertTime(ctx))
 	switch cfg.Type {
 	case NotifyTypeEmail:
 		return SendEmail(cfg, content.Subject, content.PlainBody)
