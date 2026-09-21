@@ -27,12 +27,13 @@ type frpResponse struct {
 }
 
 type frpSaveRequest struct {
-	Enabled       bool     `json:"enabled"`
-	ServerAddr    string   `json:"server_addr"`
-	ServerPort    int      `json:"server_port"`
-	AuthToken     string   `json:"auth_token"`
-	TLSEnabled    bool     `json:"tls_enabled"`
-	CustomDomains []string `json:"custom_domains"`
+	Enabled       bool           `json:"enabled"`
+	ServerAddr    string         `json:"server_addr"`
+	ServerPort    int            `json:"server_port"`
+	AuthToken     string         `json:"auth_token"`
+	TLSEnabled    bool           `json:"tls_enabled"`
+	CustomDomains []string       `json:"custom_domains"`
+	TCPProxies    []frp.TCPProxy `json:"tcp_proxies"`
 }
 
 func (h *FRPHandler) buildResponse(ctx context.Context, cfg frp.Config) frpResponse {
@@ -71,6 +72,7 @@ func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
 		AuthToken:     req.AuthToken,
 		TLSEnabled:    req.TLSEnabled,
 		CustomDomains: req.CustomDomains,
+		TCPProxies:    req.TCPProxies,
 	})
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())

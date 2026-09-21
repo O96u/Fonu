@@ -16,10 +16,11 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 		return "", fmt.Errorf("FRP 认证 Token 未配置")
 	}
 	domains := normalizeDomains(frpCfg.CustomDomains)
-	if len(domains) == 0 {
-		return "", fmt.Errorf("请至少填写一个穿透域名")
+	tcpProxies := enabledTCPProxies(frpCfg.TCPProxies)
+	if len(domains) == 0 && len(tcpProxies) == 0 {
+		return "", fmt.Errorf("请至少填写一个穿透域名或启用一条 TCP 隧道")
 	}
-	if httpPort <= 0 || httpsPort <= 0 {
+	if len(domains) > 0 && (httpPort <= 0 || httpsPort <= 0) {
 		return "", fmt.Errorf("Nginx 端口未配置")
 	}
 
@@ -39,20 +40,34 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 		b.WriteString("transport.tls.enable = false\n\n")
 	}
 
-	b.WriteString("[[proxies]]\n")
-	b.WriteString("name = \"fonu-nginx-http\"\n")
-	b.WriteString("type = \"http\"\n")
-	b.WriteString("localIP = \"127.0.0.1\"\n")
-	b.WriteString(fmt.Sprintf("localPort = %d\n", httpPort))
-	b.WriteString(fmt.Sprintf("customDomains = %s\n\n", formatTOMLStringArray(domains)))
+	if len(domains) > 0 {
+		b.WriteString("[[proxies]]\n")
+		b.WriteString("name = \"fonu-nginx-http\"\n")
+		b.WriteString("type = \"http\"\n")
+		b.WriteString("localIP = \"127.0.0.1\"\n")
+		b.WriteString(fmt.Sprintf("localPort = %d\n", httpPort))
+		b.WriteString(fmt.Sprintf("customDomains = %s\n\n", formatTOMLStringArray(domains)))
 
-	b.WriteString("[[proxies]]\n")
-	b.WriteString("name = \"fonu-nginx-https\"\n")
-	b.WriteString("type = \"https\"\n")
-	b.WriteString(fmt.Sprintf("customDomains = %s\n", formatTOMLStringArray(domains)))
-	b.WriteString("[proxies.plugin]\n")
-	b.WriteString("type = \"https2https\"\n")
-	b.WriteString(fmt.Sprintf("localAddr = \"127.0.0.1:%d\"\n", httpsPort))
+		b.WriteString("[[proxies]]\n")
+		b.WriteString("name = \"fonu-nginx-https\"\n")
+		b.WriteString("type = \"https\"\n")
+		b.WriteString(fmt.Sprintf("customDomains = %s\n", formatTOMLStringArray(domains)))
+		b.WriteString("[proxies.plugin]\n")
+		b.WriteString("type = \"https2https\"\n")
+		b.WriteString(fmt.Sprintf("localAddr = \"127.0.0.1:%d\"\n\n", httpsPort))
+	}
+
+	for _, p := range tcpProxies {
+		if p.RemotePort <= 0 {
+			continue
+		}
+		b.WriteString("[[proxies]]\n")
+		b.WriteString(fmt.Sprintf("name = %q\n", frpcTCPProxyName(p.Name)))
+		b.WriteString("type = \"tcp\"\n")
+		b.WriteString(fmt.Sprintf("localIP = %q\n", p.LocalIP))
+		b.WriteString(fmt.Sprintf("localPort = %d\n", p.LocalPort))
+		b.WriteString(fmt.Sprintf("remotePort = %d\n\n", p.RemotePort))
+	}
 
 	return b.String(), nil
 }

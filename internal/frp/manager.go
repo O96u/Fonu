@@ -70,6 +70,16 @@ func (m *Manager) Apply(ctx context.Context, in SaveInput) (ApplyResult, error) 
 		return ApplyResult{}, err
 	}
 
+	if !hasActiveRoutes(runtimeCfg) {
+		if err := m.Stop(ctx); err != nil {
+			return ApplyResult{}, err
+		}
+		m.clearStarted(ctx)
+		msg := "配置已保存，请添加穿透域名或 TCP 隧道后再连接"
+		_ = m.store.SetLastError(ctx, msg)
+		return ApplyResult{Message: msg}, nil
+	}
+
 	if err := m.EnsureDirs(); err != nil {
 		return ApplyResult{}, err
 	}
@@ -180,6 +190,7 @@ func (m *Manager) SyncDomains(ctx context.Context, domains []string) (ApplyResul
 		AuthToken:     maskedToken,
 		TLSEnabled:    cfg.TLSEnabled,
 		CustomDomains: merged,
+		TCPProxies:    cfg.TCPProxies,
 	})
 }
 
@@ -200,7 +211,7 @@ func (m *Manager) FRPSConfig(ctx context.Context) (string, error) {
 	if port <= 0 {
 		port = 7000
 	}
-	return BuildFRPSConfig(port, m.cfg.NginxDefaultHTTPPort, m.cfg.NginxDefaultHTTPSPort, token), nil
+	return BuildFRPSConfig(port, m.cfg.NginxDefaultHTTPPort, m.cfg.NginxDefaultHTTPSPort, token, tcpRemotePorts(cfg.TCPProxies)), nil
 }
 
 func (m *Manager) NginxHTTPPort() int {

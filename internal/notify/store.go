@@ -276,6 +276,11 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	}
 
 	telegram := in.Telegram
+	normalizedProxyURL, err := normalizeProxyURL(telegram.ProxyURL)
+	if err != nil {
+		return err
+	}
+	telegram.ProxyURL = normalizedProxyURL
 	if strings.TrimSpace(in.TelegramToken) != "" && in.TelegramToken != MaskedSecret {
 		telegram.HasBotToken = true
 	}
@@ -383,6 +388,9 @@ func validateSaveInput(in SaveInput) error {
 		}
 		if strings.TrimSpace(in.Telegram.ChatID) == "" {
 			return fmt.Errorf("请填写 Telegram Chat ID")
+		}
+		if _, err := normalizeProxyURL(in.Telegram.ProxyURL); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("不支持的通知类型")

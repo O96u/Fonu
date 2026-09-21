@@ -1,7 +1,7 @@
 <template>
   <PageHeader
     title="日志中心"
-    description="系统日志记录 Fonu 全部运行输出；访问日志与 Nginx 错误日志来自反向代理"
+    description="系统日志记录 Fonu 全部运行输出；访问日志与 Nginx 错误日志来自反向代理；FRP 日志来自 frpc 客户端"
   />
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
@@ -92,6 +92,32 @@
           description="Nginx 出现 SSL、上游或配置相关错误时会记录在这里。"
         />
       </n-tab-pane>
+
+      <n-tab-pane name="frp" tab="FRP 日志">
+        <p class="tab-hint">
+          frpc 运行日志（frpc.log），记录连接 frps、代理启停与隧道状态变化。
+        </p>
+        <LogToolbar v-model:keyword="frpKeyword" @refresh="loadFrpLogs" />
+        <n-data-table
+          v-if="filteredFrpLogs.length > 0"
+          class="log-table"
+          :columns="frpColumns"
+          :data="pagedFrpLogs"
+          :loading="loadingFrp"
+          :bordered="false"
+          :row-class-name="frpRowClassName"
+        />
+        <LogPagination
+          v-if="filteredFrpLogs.length > 0"
+          v-model:page="frpPage"
+          :item-count="filteredFrpLogs.length"
+        />
+        <EmptyState
+          v-if="!loadingFrp && frpLogs.length === 0"
+          title="暂无 FRP 日志"
+          description="启用内网穿透并启动 frpc 后，连接与隧道相关输出会记录在这里。"
+        />
+      </n-tab-pane>
     </n-tabs>
   </FonuCard>
 </template>
@@ -125,9 +151,12 @@ import {
 } from '../utils/accessService'
 import { formatLogTime, formatMs } from '../utils/format'
 import {
+  frpLevelTagType,
   latencyClass,
   nginxLevelTagType,
+  parseFrpLogLine,
   parseNginxErrorLine,
+  type ParsedFrpLog,
   type ParsedNginxError,
   displaySystemLog,
   systemLevelTagType,
@@ -216,12 +245,13 @@ const LogToolbar = defineComponent({
 
 const message = useMessage()
 const route = useRoute()
-const LOG_TABS = ['system', 'access', 'nginx'] as const
+const LOG_TABS = ['system', 'access', 'nginx', 'frp'] as const
 type LogTab = (typeof LOG_TABS)[number]
 
 function resolveTab(queryTab: unknown): LogTab {
   if (queryTab === 'error' || queryTab === 'nginx') return 'nginx'
   if (queryTab === 'stream') return 'access'
+  if (queryTab === 'frp') return 'frp'
   if (typeof queryTab === 'string' && (LOG_TABS as readonly string[]).includes(queryTab)) {
     return queryTab as LogTab
   }
@@ -237,19 +267,23 @@ const accessLogs = ref<AccessLogEntry[]>([])
 const proxyRules = ref<ProxyRule[]>([])
 const proxyBindingIndex = computed(() => buildProxyBindingIndex(proxyRules.value))
 const errorLogs = ref<ParsedNginxError[]>([])
+const frpLogs = ref<ParsedFrpLog[]>([])
 const systemLogs = ref<SystemLogEntry[]>([])
 const loadingAccess = ref(false)
 const loadingError = ref(false)
+const loadingFrp = ref(false)
 const loadingSystem = ref(false)
 
 const accessKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const accessStatus = ref<number | null>(null)
 const errorKeyword = ref('')
+const frpKeyword = ref('')
 const systemKeyword = ref('')
 const systemLevel = ref('')
 
 const accessPage = ref(1)
 const errorPage = ref(1)
+const frpPage = ref(1)
 const systemPage = ref(1)
 
 const filteredAccessLogs = computed(() => {
@@ -269,6 +303,14 @@ const filteredErrorLogs = computed(() => {
   if (!errorKeyword.value) return errorLogs.value
   const kw = errorKeyword.value.toLowerCase()
   return errorLogs.value.filter((entry) => entry.raw.toLowerCase().includes(kw))
+})
+
+const filteredFrpLogs = computed(() => {
+  if (!frpKeyword.value) return frpLogs.value
+  const kw = frpKeyword.value.toLowerCase()
+  return frpLogs.value.filter((entry) =>
+    `${entry.source} ${entry.message} ${entry.raw}`.toLowerCase().includes(kw),
+  )
 })
 
 const filteredSystemLogs = computed(() => {
@@ -292,6 +334,7 @@ function paginate<T>(items: T[], page: number) {
 
 const pagedAccessLogs = computed(() => paginate(filteredAccessLogs.value, accessPage.value))
 const pagedErrorLogs = computed(() => paginate(filteredErrorLogs.value, errorPage.value))
+const pagedFrpLogs = computed(() => paginate(filteredFrpLogs.value, frpPage.value))
 const pagedSystemLogs = computed(() => paginate(filteredSystemLogs.value, systemPage.value))
 
 const methodTagType = (method: string) => {
@@ -323,6 +366,13 @@ function accessRowClassName(row: AccessLogEntry) {
 
 function errorRowClassName(row: ParsedNginxError) {
   const type = nginxLevelTagType(row.level)
+  if (type === 'error') return 'log-row log-row--error'
+  if (type === 'warning') return 'log-row log-row--warn'
+  return 'log-row'
+}
+
+function frpRowClassName(row: ParsedFrpLog) {
+  const type = frpLevelTagType(row.level)
   if (type === 'error') return 'log-row log-row--error'
   if (type === 'warning') return 'log-row log-row--warn'
   return 'log-row'
@@ -392,6 +442,35 @@ const errorColumns: DataTableColumns<ParsedNginxError> = [
         { size: 'small', bordered: false, type: nginxLevelTagType(row.level) },
         () => (row.level === 'unknown' ? '未知' : row.level.toUpperCase()),
       ),
+  },
+  {
+    title: '消息',
+    key: 'message',
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { class: 'log-message mono' }, row.message),
+  },
+]
+
+const frpColumns: DataTableColumns<ParsedFrpLog> = [
+  { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time || '-') },
+  {
+    title: '级别',
+    key: 'level',
+    width: 88,
+    render: (row) =>
+      h(
+        NTag,
+        { size: 'small', bordered: false, type: frpLevelTagType(row.level) },
+        () => (row.level === 'unknown' ? '未知' : row.level),
+      ),
+  },
+  {
+    title: '来源',
+    key: 'source',
+    width: 180,
+    ellipsis: { tooltip: true },
+    render: (row) =>
+      h('span', { class: 'mono nowrap', title: row.source }, row.source || '—'),
   },
   {
     title: '消息',
@@ -477,6 +556,18 @@ async function loadErrorLogs() {
   }
 }
 
+async function loadFrpLogs() {
+  loadingFrp.value = true
+  try {
+    const lines = asList(await api.getFRPLogs(200))
+    frpLogs.value = lines.map((line) => parseFrpLogLine(line))
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加载 FRP 日志失败')
+  } finally {
+    loadingFrp.value = false
+  }
+}
+
 async function loadSystemLogs() {
   loadingSystem.value = true
   try {
@@ -505,6 +596,10 @@ watch(errorKeyword, () => {
   errorPage.value = 1
 })
 
+watch(frpKeyword, () => {
+  frpPage.value = 1
+})
+
 watch([systemKeyword, systemLevel], () => {
   systemPage.value = 1
 })
@@ -531,6 +626,7 @@ watch(
 watch(tab, (name) => {
   if (name === 'access') loadAccess()
   else if (name === 'nginx') loadErrorLogs()
+  else if (name === 'frp') loadFrpLogs()
   else if (name === 'system') loadSystemLogs()
 })
 

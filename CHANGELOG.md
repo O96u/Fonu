@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+## [v1.0.3] - 2026-09-21
+
+### 新增
+
+- FRP：支持独立 TCP 隧道列表（如 SSH、数据库），可与 Web 网关同时使用；纯 TCP 模式无需配置穿透域名
+- FRP：允许先保存连接设置（地址/端口/Token），待配置域名或 TCP 隧道后再启动 frpc
+- FRP：frps 参考配置自动生成 `allowPorts`，并提示在 VPS 防火墙放行 TCP 远程端口
+- 日志中心：新增 FRP 日志 Tab，解析 frpc 运行日志（时间、级别、来源、消息）
+
+### 改进
+
+- FRP：内网穿透页重构为状态卡 + 连接设置 + Web/TCP/高级/运行日志分栏
+- FRP：状态区展示已配置 Web 域名与 TCP 隧道，标签单行展示，超出可跳转对应 Tab
+- FRP：连接设置中服务器地址与端口合并为一行；左侧卡片内提供重启 frp 服务按钮
+- 通知：Telegram 代理地址支持 socks5，保存时校验格式并自动补全 `http://` 前缀
+
 ## [v1.0.2] - 2026-09-18
 
 ### 新增

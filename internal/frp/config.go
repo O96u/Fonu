@@ -15,13 +15,14 @@ const (
 )
 
 type Config struct {
-	Enabled       bool     `json:"enabled"`
-	ServerAddr    string   `json:"server_addr"`
-	ServerPort    int      `json:"server_port"`
-	AuthToken     string   `json:"auth_token"`
-	HasAuthToken  bool     `json:"has_auth_token"`
-	TLSEnabled    bool     `json:"tls_enabled"`
-	CustomDomains []string `json:"custom_domains"`
+	Enabled       bool       `json:"enabled"`
+	ServerAddr    string     `json:"server_addr"`
+	ServerPort    int        `json:"server_port"`
+	AuthToken     string     `json:"auth_token"`
+	HasAuthToken  bool       `json:"has_auth_token"`
+	TLSEnabled    bool       `json:"tls_enabled"`
+	CustomDomains []string   `json:"custom_domains"`
+	TCPProxies    []TCPProxy `json:"tcp_proxies"`
 }
 
 type SaveInput struct {
@@ -31,6 +32,7 @@ type SaveInput struct {
 	AuthToken     string
 	TLSEnabled    bool
 	CustomDomains []string
+	TCPProxies    []TCPProxy
 }
 
 type Store struct {
@@ -54,6 +56,10 @@ func (s *Store) Load(ctx context.Context) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	tcpProxies, err := s.loadTCPProxies(ctx)
+	if err != nil {
+		return Config{}, err
+	}
 	encToken, _ := s.settings.Get(ctx, settings.KeyFRPAuthToken)
 	hasToken := strings.TrimSpace(encToken) != ""
 	token := ""
@@ -68,6 +74,7 @@ func (s *Store) Load(ctx context.Context) (Config, error) {
 		HasAuthToken:  hasToken,
 		TLSEnabled:    tlsEnabled,
 		CustomDomains: domains,
+		TCPProxies:    tcpProxies,
 	}, nil
 }
 
@@ -115,6 +122,17 @@ func (s *Store) Save(ctx context.Context, in SaveInput, keepToken bool) error {
 	if err := s.settings.Set(ctx, settings.KeyFRPCustomDomains, string(raw)); err != nil {
 		return err
 	}
+	tcpProxies, err := prepareTCPProxies(in.TCPProxies)
+	if err != nil {
+		return err
+	}
+	tcpRaw, err := json.Marshal(tcpProxies)
+	if err != nil {
+		return err
+	}
+	if err := s.settings.Set(ctx, settings.KeyFRPTCPProxies, string(tcpRaw)); err != nil {
+		return err
+	}
 	token := strings.TrimSpace(in.AuthToken)
 	if token != "" && token != maskedToken {
 		enc, err := s.secretBox.Encrypt(token)
@@ -146,6 +164,19 @@ func (s *Store) StartedAt(ctx context.Context) string {
 
 func (s *Store) SetStartedAt(ctx context.Context, value string) error {
 	return s.settings.Set(ctx, settings.KeyFRPStartedAt, strings.TrimSpace(value))
+}
+
+func (s *Store) loadTCPProxies(ctx context.Context) ([]TCPProxy, error) {
+	raw, _ := s.settings.Get(ctx, settings.KeyFRPTCPProxies)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var proxies []TCPProxy
+	if err := json.Unmarshal([]byte(raw), &proxies); err != nil {
+		return nil, fmt.Errorf("FRP TCP 隧道配置无效")
+	}
+	return normalizeTCPProxies(proxies), nil
 }
 
 func (s *Store) loadDomains(ctx context.Context) ([]string, error) {
@@ -195,8 +226,10 @@ func validateSaveInput(in SaveInput, keepToken bool) error {
 	if in.ServerPort < 0 || in.ServerPort > 65535 {
 		return fmt.Errorf("FRP 服务器端口无效")
 	}
-	if len(normalizeDomains(in.CustomDomains)) == 0 {
-		return fmt.Errorf("请至少填写一个穿透域名")
+	if len(normalizeTCPProxies(in.TCPProxies)) > 0 {
+		if _, err := prepareTCPProxies(in.TCPProxies); err != nil {
+			return err
+		}
 	}
 	token := strings.TrimSpace(in.AuthToken)
 	if token == "" || token == maskedToken {

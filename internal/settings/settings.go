@@ -56,6 +56,7 @@ const (
 	KeyFRPAuthToken          = "frp_auth_token"
 	KeyFRPTLSEnabled         = "frp_tls_enabled"
 	KeyFRPCustomDomains      = "frp_custom_domains"
+	KeyFRPTCPProxies         = "frp_tcp_proxies"
 	KeyFRPLastError          = "frp_last_error"
 	KeyFRPStartedAt          = "frp_started_at"
 	KeyNginxGlobalMode       = "nginx_global_mode"

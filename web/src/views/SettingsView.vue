@@ -229,7 +229,7 @@
             <div class="settings-field">
               <div class="settings-field__label">代理地址（可选）</div>
               <n-input v-model:value="notifyTelegram.proxy_url" placeholder="http://127.0.0.1:7890" />
-              <p class="field-hint">仅在无法直连 Telegram API 时填写 HTTP 代理</p>
+              <p class="field-hint">无法直连时填写，如 127.0.0.1:7890 或 http://127.0.0.1:7890（支持 socks5）</p>
             </div>
           </div>
 

@@ -56,3 +56,54 @@ func TestGenerateDisablesTLSByDefault(t *testing.T) {
 		t.Fatalf("expected tls disabled: %s", out)
 	}
 }
+
+func TestGenerateTCPOnly(t *testing.T) {
+	cfg := config.Config{DataDir: "/data", FrpPIDFile: "/data/frp/frpc.pid"}
+	frpCfg := Config{
+		ServerAddr: "vps.example.com",
+		ServerPort: 7000,
+		TCPProxies: []TCPProxy{
+			{ID: "1", Name: "ssh", LocalIP: "127.0.0.1", LocalPort: 22, RemotePort: 6000, Enabled: true},
+		},
+	}
+	out, err := Generate(cfg, frpCfg, "secret-token", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, `fonu-nginx-http`) {
+		t.Fatalf("expected no http gateway: %s", out)
+	}
+	for _, want := range []string{
+		`name = "fonu-tcp-ssh"`,
+		`type = "tcp"`,
+		`localIP = "127.0.0.1"`,
+		`localPort = 22`,
+		`remotePort = 6000`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestGenerateMixedWebAndTCP(t *testing.T) {
+	cfg := config.Config{DataDir: "/data", FrpPIDFile: "/data/frp/frpc.pid"}
+	frpCfg := Config{
+		ServerAddr:    "vps.example.com",
+		ServerPort:    7000,
+		CustomDomains: []string{"nas.example.com"},
+		TCPProxies: []TCPProxy{
+			{ID: "1", Name: "mysql", LocalIP: "127.0.0.1", LocalPort: 3306, RemotePort: 13306, Enabled: true},
+		},
+	}
+	out, err := Generate(cfg, frpCfg, "secret-token", 18080, 9443)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `fonu-nginx-http`) {
+		t.Fatalf("missing http gateway: %s", out)
+	}
+	if !strings.Contains(out, `name = "fonu-tcp-mysql"`) {
+		t.Fatalf("missing tcp proxy: %s", out)
+	}
+}

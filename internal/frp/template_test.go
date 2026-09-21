@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildFRPSConfig(t *testing.T) {
-	out := BuildFRPSConfig(7000, 18080, 9443, "fonu-dev-token")
+	out := BuildFRPSConfig(7000, 18080, 9443, "fonu-dev-token", []int{6000, 13306})
 	if out == "" {
 		t.Fatal("empty config")
 	}
@@ -15,6 +15,7 @@ func TestBuildFRPSConfig(t *testing.T) {
 		"vhostHTTPPort = 18080",
 		"vhostHTTPSPort = 9443",
 		`token = "fonu-dev-token"`,
+		`allowPorts = ["6000", "13306"]`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)

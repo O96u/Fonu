@@ -40,16 +40,25 @@ func SendTelegram(ctx context.Context, client *http.Client, cfg RuntimeConfig, c
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
 	}
-	if proxyURL := strings.TrimSpace(cfg.Telegram.ProxyURL); proxyURL != "" {
+	if proxyURL, err := normalizeProxyURL(cfg.Telegram.ProxyURL); err != nil {
+		return err
+	} else if proxyURL != "" {
 		parsed, err := url.Parse(proxyURL)
 		if err != nil {
 			return fmt.Errorf("Telegram 代理地址无效")
 		}
+		base := client
+		if base == nil {
+			base = &http.Client{Timeout: 15 * time.Second}
+		}
+		transport := cloneHTTPTransport(base)
+		transport.Proxy = http.ProxyURL(parsed)
 		httpClient = &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				Proxy: http.ProxyURL(parsed),
-			},
+			Timeout:   base.Timeout,
+			Transport: transport,
+		}
+		if httpClient.Timeout == 0 {
+			httpClient.Timeout = 15 * time.Second
 		}
 	}
 

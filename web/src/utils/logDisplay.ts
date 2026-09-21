@@ -101,6 +101,71 @@ export function nginxLevelTagType(level: string): LogTagType {
   }
 }
 
+export interface ParsedFrpLog {
+  time: string
+  level: string
+  source: string
+  message: string
+  raw: string
+}
+
+const FRP_LEVEL_LABELS: Record<string, string> = {
+  I: 'INFO',
+  W: 'WARN',
+  E: 'ERROR',
+  D: 'DEBUG',
+}
+
+export function frpLevelLabel(level: string): string {
+  const upper = level.trim().toUpperCase()
+  return FRP_LEVEL_LABELS[upper] ?? upper
+}
+
+export function parseFrpLogLine(line: string): ParsedFrpLog {
+  const raw = line.trim()
+  const match = raw.match(
+    /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+\[([^\]]+)\]\s+(.+)$/,
+  )
+  if (!match) {
+    return { time: '', level: 'unknown', source: '', message: raw, raw }
+  }
+
+  let rest = match[3]
+  let source = ''
+  const sourceMatch = rest.match(/^\[([^\]]+)\]\s*/)
+  if (sourceMatch) {
+    source = sourceMatch[1]
+    rest = rest.slice(sourceMatch[0].length)
+  }
+
+  return {
+    time: formatLogTime(match[1]),
+    level: frpLevelLabel(match[2]),
+    source,
+    message: rest,
+    raw,
+  }
+}
+
+export function frpLevelTagType(level: string): LogTagType {
+  switch (level.trim().toUpperCase()) {
+    case 'E':
+    case 'ERROR':
+      return 'error'
+    case 'W':
+    case 'WARN':
+      return 'warning'
+    case 'I':
+    case 'INFO':
+      return 'info'
+    case 'D':
+    case 'DEBUG':
+      return 'default'
+    default:
+      return 'default'
+  }
+}
+
 export function systemLevelTagType(level: string): LogTagType {
   const upper = level.trim().toUpperCase()
   if (upper === 'ERROR' || level === '错误') return 'error'

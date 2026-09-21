@@ -353,6 +353,15 @@ export interface FRPStatus {
   synced_domain_count?: number
 }
 
+export interface FRPTCPProxy {
+  id: string
+  name: string
+  local_ip: string
+  local_port: number
+  remote_port: number
+  enabled: boolean
+}
+
 export interface FRPConfig {
   enabled: boolean
   server_addr: string
@@ -361,6 +370,7 @@ export interface FRPConfig {
   has_auth_token: boolean
   tls_enabled: boolean
   custom_domains: string[]
+  tcp_proxies: FRPTCPProxy[]
 }
 
 export interface FRPResponse {
@@ -371,6 +381,7 @@ export interface FRPResponse {
   has_auth_token: boolean
   tls_enabled: boolean
   custom_domains: string[]
+  tcp_proxies: FRPTCPProxy[]
   status: FRPStatus
   frps_config: string
   nginx_http_port: number
@@ -393,6 +404,7 @@ export interface FRPSavePayload {
   auth_token?: string
   tls_enabled: boolean
   custom_domains: string[]
+  tcp_proxies: FRPTCPProxy[]
 }
 
 export interface NginxBackupEntry {
