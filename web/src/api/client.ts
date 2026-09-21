@@ -16,6 +16,8 @@ import type {
   DiscoveredService,
   ProxyClientConn,
   ChinaCIDRStatus,
+  ProxyEntry,
+  ProxyEntrySavePayload,
   ProxyRule,
   ProxySavePayload,
   ProxyTraffic,
@@ -99,6 +101,14 @@ export const api = {
 
   getStatus: () => request<DashboardStatus>('/api/status'),
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
+  listProxyEntries: () => request<ProxyEntry[]>('/api/proxy-entries'),
+  createProxyEntry: (payload: ProxyEntrySavePayload) =>
+    request<ProxyEntry>('/api/proxy-entries', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProxyEntry: (id: number, payload: Partial<ProxyEntrySavePayload>) =>
+    request<ProxyEntry>(`/api/proxy-entries/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteProxyEntry: (id: number) => request<void>(`/api/proxy-entries/${id}`, { method: 'DELETE' }),
+  reorderProxyEntries: (ids: number[]) =>
+    request<void>('/api/proxy-entries/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   createProxy: (payload: ProxySavePayload) =>
     request<ProxyRule>('/api/proxies', { method: 'POST', body: JSON.stringify(payload) }),
   updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>

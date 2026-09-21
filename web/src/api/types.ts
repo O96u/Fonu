@@ -37,6 +37,7 @@ export interface ProxySecurityConfig {
 
 export interface ProxyRule {
   id: number
+  entry_id?: number | null
   domain: string
   upstream: string
   listen_port: number
@@ -98,6 +99,7 @@ export interface ProxySecurityPayload {
 }
 
 export interface ProxySavePayload {
+  entry_id?: number
   upstream: string
   listen_port?: number
   listen_ipv4?: boolean
@@ -108,6 +110,29 @@ export interface ProxySavePayload {
   enabled?: boolean
   name?: string
   security?: ProxySecurityPayload
+}
+
+export interface ProxyEntry {
+  id: number
+  name: string
+  listen_port: number
+  listen_ipv4: boolean
+  listen_ipv6: boolean
+  https_enabled: boolean
+  http_redirect: boolean
+  sort_order: number
+  rule_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProxyEntrySavePayload {
+  name?: string
+  listen_port: number
+  listen_ipv4?: boolean
+  listen_ipv6?: boolean
+  https_enabled?: boolean
+  http_redirect?: boolean
 }
 
 export interface AuthStatus {

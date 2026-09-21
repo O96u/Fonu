@@ -4,10 +4,6 @@
     description="通过 Nginx 反向代理，让内网服务可以通过域名安全访问"
   >
     <template #actions>
-      <n-button :loading="scanning" @click="scanServices">
-        <template #icon><n-icon :component="SearchOutline" /></template>
-        扫描服务
-      </n-button>
       <n-button type="primary" @click="openCreate">
         <template #icon><n-icon :component="AddOutline" /></template>
         新建规则
@@ -95,16 +91,186 @@
           <n-spin size="medium" />
         </div>
 
+        <template v-else-if="showEntryGroups && entryGroups.length > 0">
+          <div
+            ref="entryStackRef"
+            class="proxy-entry-stack"
+            :class="{ 'proxy-entry-stack--sortable': canReorderEntries }"
+          >
+            <section
+              v-for="group in entryGroups"
+              :key="group.key"
+              class="proxy-entry-card"
+              :class="{ 'proxy-entry-card--collapsed': isEntryCollapsed(group.key) }"
+            >
+              <header class="proxy-entry-card__head">
+                <span
+                  v-if="canReorderEntries"
+                  class="proxy-entry-drag-handle"
+                  title="拖动排序"
+                  @click.stop
+                >
+                  <n-icon :component="ReorderThreeOutline" />
+                </span>
+                <button
+                  type="button"
+                  class="proxy-entry-card__toggle"
+                  @click="toggleEntryCollapsed(group.key)"
+                >
+                  <n-icon :component="isEntryCollapsed(group.key) ? ChevronForwardOutline : ChevronDownOutline" />
+                </button>
+                <div
+                  class="proxy-entry-card__intro"
+                  role="button"
+                  tabindex="0"
+                  @click="toggleEntryCollapsed(group.key)"
+                  @keydown.enter.prevent="toggleEntryCollapsed(group.key)"
+                  @keydown.space.prevent="toggleEntryCollapsed(group.key)"
+                >
+                  <div class="proxy-entry-card__title-row">
+                    <span class="proxy-entry-card__name">{{ entryGroupDisplayName(group) }}</span>
+                    <n-tag size="small" round :bordered="false" type="info">{{ group.listen.listen_port }}</n-tag>
+                    <n-tag size="small" round :bordered="false" :type="group.listen.https_enabled ? 'success' : 'default'">
+                      {{ group.listen.https_enabled ? 'HTTPS' : 'HTTP' }}
+                    </n-tag>
+                    <n-tag v-if="group.listen.listen_ipv4" size="small" round :bordered="false">IPv4</n-tag>
+                    <n-tag v-if="group.listen.listen_ipv6" size="small" round :bordered="false">IPv6</n-tag>
+                    <span class="proxy-entry-card__count">{{ group.rules.length }} 条规则</span>
+                    <span v-if="group.enabledCount > 0" class="proxy-entry-card__running">{{ group.enabledCount }} 运行</span>
+                  </div>
+                  <div v-if="group.portHasMixedEntries" class="proxy-entry-card__warn">
+                    同端口存在不同监听配置，建议统一
+                  </div>
+                  <div v-if="isEntryCollapsed(group.key) && group.rules.length > 0" class="proxy-entry-card__preview">
+                    {{ entryGroupRuleNames(group, ruleName) }}
+                  </div>
+                </div>
+                <div class="proxy-entry-card__stats">
+                  <span class="proxy-entry-card__stat" :title="'当前连接 ' + entryGroupTraffic(group).connections">
+                    <n-icon :component="PeopleOutline" />
+                    {{ entryGroupTraffic(group).connections }}
+                  </span>
+                  <span class="proxy-entry-card__stat" title="当前上传">
+                    <n-icon :component="ArrowUpOutline" />
+                    {{ formatRate(entryGroupTraffic(group).uploadRate) }}
+                  </span>
+                  <span class="proxy-entry-card__stat" title="当前下载">
+                    <n-icon :component="ArrowDownOutline" />
+                    {{ formatRate(entryGroupTraffic(group).downloadRate) }}
+                  </span>
+                </div>
+                <div class="proxy-entry-card__actions" @click.stop>
+                  <n-space :size="4" align="center">
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button
+                          size="small"
+                          quaternary
+                          circle
+                          class="proxy-entry-card__action-btn proxy-entry-card__action-btn--accent"
+                          @click="openCreateWithEntry(group.listen, group.entryId)"
+                        >
+                          <template #icon><n-icon :component="AddOutline" :size="16" /></template>
+                        </n-button>
+                      </template>
+                      新增规则
+                    </n-tooltip>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button
+                          size="small"
+                          quaternary
+                          circle
+                          class="proxy-entry-card__action-btn"
+                          @click="openDiscoveryModal(group)"
+                        >
+                          <template #icon><n-icon :component="GlobeOutline" :size="16" /></template>
+                        </n-button>
+                      </template>
+                      发现内网服务
+                    </n-tooltip>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button
+                          size="small"
+                          quaternary
+                          circle
+                          class="proxy-entry-card__action-btn"
+                          :disabled="!group.entryId"
+                          @click="openEntryEdit(group)"
+                        >
+                          <template #icon><n-icon :component="CreateOutline" :size="16" /></template>
+                        </n-button>
+                      </template>
+                      编辑
+                    </n-tooltip>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button
+                          size="small"
+                          quaternary
+                          circle
+                          class="proxy-entry-card__action-btn"
+                          :disabled="!group.entryId"
+                          @click="duplicateEntry(group)"
+                        >
+                          <template #icon><n-icon :component="CopyOutline" :size="16" /></template>
+                        </n-button>
+                      </template>
+                      复制
+                    </n-tooltip>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button
+                          size="small"
+                          quaternary
+                          circle
+                          class="proxy-entry-card__action-btn proxy-entry-card__action-btn--danger"
+                          :disabled="!group.entryId"
+                          @click="confirmDeleteEntry(group)"
+                        >
+                          <template #icon><n-icon :component="TrashOutline" :size="16" /></template>
+                        </n-button>
+                      </template>
+                      删除
+                    </n-tooltip>
+                  </n-space>
+                </div>
+              </header>
+              <div v-show="!isEntryCollapsed(group.key)" class="proxy-entry-card__body" :data-entry-key="group.key">
+                <n-data-table
+                  v-if="group.rules.length > 0"
+                  class="proxy-table proxy-table--nested"
+                  :class="{ 'proxy-table--sortable': canReorderInGroups && group.rules.length > 1 }"
+                  :columns="entryGroupColumnsFor(group)"
+                  :data="group.rules"
+                  :bordered="false"
+                  size="small"
+                  :scroll-x="canReorderInGroups ? 1220 : 1180"
+                  :row-key="(r: ProxyRule) => r.id"
+                  :row-props="rowProps"
+                />
+                <div v-else class="proxy-entry-card__empty">
+                  <span class="text-muted">此入口下还没有规则</span>
+                  <n-button size="small" quaternary type="primary" @click="openCreateWithEntry(group.listen, group.entryId)">
+                    在此入口下新增
+                  </n-button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </template>
+
         <template v-else-if="tableRules.length > 0">
           <div ref="tableWrapRef" class="proxy-table-wrap">
             <n-data-table
               class="proxy-table"
-              :class="{ 'proxy-table--sortable': canReorder }"
+              :class="{ 'proxy-table--sortable': canReorderGlobally }"
               :columns="columns"
               :data="tableRules"
               :bordered="false"
               size="small"
-              :scroll-x="canReorder ? 1460 : 1420"
+              :scroll-x="canReorderGlobally ? 1460 : 1420"
               :row-key="(r: ProxyRule) => r.id"
               :row-props="rowProps"
             />
@@ -114,7 +280,7 @@
         <EmptyState
           v-else-if="rules.length === 0"
           title="还没有反向代理规则"
-          description="创建第一条规则，让域名访问你的 NAS 服务。"
+          description="同一内网服务多个域名：一条规则多行域名即可。同一端口多个不同服务：先建入口，再在同一入口下新增规则。"
         >
           <template #action>
             <n-button type="primary" @click="openCreate">新建规则</n-button>
@@ -424,11 +590,13 @@
                     :rows="3"
                     placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
                   />
-                  <p class="field-hint">支持多个域名，每行一个，可包含端口</p>
+                  <p class="field-hint">
+                    多个域名指向<strong>同一</strong>内网服务时，在此每行填一个域名即可，无需新建多条规则
+                  </p>
                 </div>
               </n-form-item>
 
-              <div class="listen-row">
+              <div v-if="!bindEntryListen" class="listen-row">
                 <div class="listen-col listen-col--port">
                   <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
                   <div class="listen-col__control">
@@ -445,6 +613,16 @@
                   </div>
                 </div>
               </div>
+              <div v-else class="listen-row listen-row--readonly">
+                <div class="listen-col listen-col--port">
+                  <div class="listen-col__label">监听入口</div>
+                  <div class="listen-col__control">
+                    <n-tag size="small" round :bordered="false">
+                      {{ entryGroupDisplayName({ key: '', name: '', listen: form, rules: [], enabledCount: 0, portHasMixedEntries: false }) }}
+                    </n-tag>
+                  </div>
+                </div>
+              </div>
 
               <n-form-item label="目标地址" required>
                 <div class="field-stack">
@@ -453,7 +631,7 @@
                 </div>
               </n-form-item>
 
-              <div class="form-switch-list form-switch-list--compact">
+              <div v-if="!bindEntryListen" class="form-switch-list form-switch-list--compact">
                 <div class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用 HTTPS</div>
@@ -468,6 +646,15 @@
                   </div>
                   <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
                 </div>
+                <div class="form-switch-row">
+                  <div class="form-switch-row__text">
+                    <div class="form-switch-row__label">启用规则</div>
+                    <div class="form-switch-row__hint">保存后立即开始转发请求</div>
+                  </div>
+                  <n-switch v-model:value="form.enabled" />
+                </div>
+              </div>
+              <div v-else-if="editing" class="form-switch-list form-switch-list--compact">
                 <div class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用规则</div>
@@ -757,6 +944,9 @@
           <h4>配置说明</h4>
           <ol>
             <li>
+              <strong>入口分组</strong>：同一端口、不同内网服务应放在同一入口下分别建规则；同一服务多域名写在一条规则里。
+            </li>
+            <li>
               <strong>前端域名</strong>：支持多个域名，每行一个；单独端口可写
               <code>example.com:6893</code>。
             </li>
@@ -809,6 +999,158 @@
       </div>
     </div>
   </n-modal>
+
+  <n-modal v-model:show="showEntryModal" :mask-closable="false" transform-origin="center">
+    <div class="proxy-entry-edit-modal">
+      <div class="proxy-entry-edit-modal__header">
+        <h3 class="modal-title">编辑入口</h3>
+        <n-button size="small" quaternary @click="showEntryModal = false">
+          <template #icon><n-icon :component="CloseOutline" /></template>
+        </n-button>
+      </div>
+      <n-form label-placement="top" class="proxy-entry-edit-modal__body">
+        <n-form-item label="名称">
+          <n-input v-model:value="entryForm.name" maxlength="100" show-count placeholder="选填，便于识别该入口" />
+        </n-form-item>
+        <div class="listen-row">
+          <div class="listen-col listen-col--port">
+            <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
+            <div class="listen-col__control">
+              <n-input-number v-model:value="entryForm.listen_port" :min="1" :max="65535" class="port-input" />
+            </div>
+          </div>
+          <div class="listen-col listen-col--protocol">
+            <div class="listen-col__label">监听协议</div>
+            <div class="listen-col__control">
+              <div class="listen-types">
+                <n-checkbox v-model:checked="entryForm.listen_ipv4">IPv4</n-checkbox>
+                <n-checkbox v-model:checked="entryForm.listen_ipv6">IPv6</n-checkbox>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-switch-list form-switch-list--compact">
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">启用 HTTPS</div>
+            </div>
+            <n-switch v-model:value="entryForm.https_enabled" />
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
+            </div>
+            <n-switch v-model:value="entryForm.http_redirect" :disabled="!entryForm.https_enabled" />
+          </div>
+        </div>
+        <p class="field-hint">修改后将同步应用到该入口下的全部规则。</p>
+      </n-form>
+      <div class="modal-footer">
+        <n-button @click="showEntryModal = false">取消</n-button>
+        <n-button type="primary" :loading="savingEntry" @click="saveEntry">保存</n-button>
+      </div>
+    </div>
+  </n-modal>
+
+  <n-modal v-model:show="showDiscoveryModal" :mask-closable="false" transform-origin="center">
+    <div class="discovery-modal">
+      <div class="discovery-modal__header">
+        <div>
+          <h3 class="modal-title">发现内网服务</h3>
+          <p class="discovery-modal__subtitle">
+            {{ discoveryTarget ? '扫描常见端口并识别 HTTP 服务，勾选后填写前端域名添加到当前入口' : '扫描常见端口并识别 HTTP 服务，勾选后批量创建反向代理规则' }}
+          </p>
+        </div>
+        <n-button size="small" quaternary @click="showDiscoveryModal = false">
+          <template #icon><n-icon :component="CloseOutline" /></template>
+        </n-button>
+      </div>
+
+      <div class="discovery-modal__toolbar">
+        <n-input
+          v-model:value="discoveryHost"
+          size="small"
+          placeholder="扫描地址，如 127.0.0.1"
+          class="discovery-modal__host"
+          :disabled="discoveryLoading"
+          @keydown.enter.prevent="runDiscoveryScan"
+        />
+        <n-button size="small" type="primary" :loading="discoveryLoading" @click="runDiscoveryScan">
+          {{ discoveryLoading ? '扫描中…' : '开始发现' }}
+        </n-button>
+        <span v-if="discoveryLoading" class="discovery-modal__status discovery-modal__status--loading">
+          <n-spin size="small" />
+          正在扫描 {{ discoveryScanHost }} …
+        </span>
+        <span v-else-if="discoverySummary" class="discovery-modal__summary">{{ discoverySummary }}</span>
+      </div>
+
+      <div class="discovery-modal__content">
+        <div v-if="discoveryLoading && discoveryRows.length === 0" class="discovery-modal__loading">
+          <n-spin size="medium" />
+          <span>正在扫描 {{ discoveryScanHost }} 的常见 Web 端口…</span>
+        </div>
+        <n-empty
+          v-else-if="!discoveryLoading && discoveryRows.length === 0"
+          description="暂未发现可添加的服务，请确认目标地址后重试"
+        />
+        <div v-else class="discovery-modal__list-wrap">
+          <div v-if="discoveryLoading" class="discovery-modal__scan-overlay">
+            <n-spin size="medium" />
+            <span>正在重新扫描 {{ discoveryScanHost }} …</span>
+          </div>
+          <div class="discovery-modal__list">
+            <div class="discovery-modal__list-head">
+              <span>选择</span>
+              <span>服务</span>
+              <span>规则名称</span>
+              <span>前端域名</span>
+            </div>
+            <div
+              v-for="row in discoveryRows"
+              :key="row.id"
+              class="discovery-item"
+            >
+              <n-checkbox v-model:checked="row.selected" :disabled="discoveryLoading" />
+              <div class="discovery-item__info">
+                <div class="discovery-item__title mono">{{ row.service.upstream }}</div>
+                <div class="discovery-item__meta">{{ row.service.name }}</div>
+                <div v-if="row.service.suggestion" class="discovery-item__hint">{{ row.service.suggestion }}</div>
+              </div>
+              <n-input
+                v-model:value="row.ruleName"
+                size="small"
+                maxlength="100"
+                placeholder="规则名称"
+                :disabled="!row.selected || discoveryLoading"
+              />
+              <n-input
+                v-model:value="row.hostname"
+                size="small"
+                placeholder="例如 nas.example.com"
+                :disabled="!row.selected || discoveryLoading"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer discovery-modal__footer">
+        <n-button @click="showDiscoveryModal = false" :disabled="discoveryLoading">取消</n-button>
+        <n-button :loading="discoveryLoading" @click="runDiscoveryScan">
+          {{ discoveryLoading ? '扫描中…' : '重新扫描' }}
+        </n-button>
+        <n-button
+          type="primary"
+          :loading="discoveryAdding"
+          :disabled="!hasSelectedDiscoveryRows || discoveryLoading"
+          @click="submitDiscovery"
+        >
+          {{ discoveryTarget ? '添加为子规则' : '批量创建规则' }}
+        </n-button>
+      </div>
+    </div>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
@@ -843,23 +1185,36 @@ import {
   AddOutline,
   ArrowDownOutline,
   ArrowUpOutline,
+  ChevronDownOutline,
+  ChevronForwardOutline,
   CloseOutline,
   CopyOutline,
+  CreateOutline,
   OpenOutline,
   ReorderThreeOutline,
   CloudDownloadOutline,
   CloudUploadOutline,
   FlashOutline,
+  GlobeOutline,
   HelpCircleOutline,
   InformationCircleOutline,
   LayersOutline,
   PeopleOutline,
   RefreshOutline,
   SearchOutline,
+  TrashOutline,
   WarningOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
-import type { ProxyClientConn, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
+import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
+import {
+  applyEntryListen,
+  buildProxyEntryGroups,
+  entryGroupDisplayName,
+  entryGroupRuleNames,
+  type ProxyEntryGroup,
+  type ProxyEntryListen,
+} from '../utils/proxyEntries'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
@@ -874,7 +1229,45 @@ import { renderTableRowActions } from '../utils/tableActions'
 
 const message = useMessage()
 const dialog = useDialog()
+const showDiscoveryModal = ref(false)
+const discoveryHost = ref('127.0.0.1')
+const discoveryScanHost = ref('127.0.0.1')
+const discoveryLoading = ref(false)
+const discoveryAdding = ref(false)
+const discoveryTarget = ref<ProxyEntryGroup | null>(null)
+
+interface DiscoveryRow {
+  id: string
+  selected: boolean
+  service: DiscoveredService
+  ruleName: string
+  hostname: string
+}
+
+const discoveryRows = ref<DiscoveryRow[]>([])
+
+const discoverySummary = computed(() => {
+  if (discoveryLoading.value || discoveryRows.value.length === 0) return ''
+  return `扫描完成，发现 ${discoveryRows.value.length} 个 HTTP 服务`
+})
+
+const hasSelectedDiscoveryRows = computed(() =>
+  discoveryRows.value.some((row) => row.selected && row.hostname.trim()),
+)
+
+const showEntryModal = ref(false)
+const savingEntry = ref(false)
+const editingEntryId = ref<number | null>(null)
+const entryForm = reactive({
+  name: '',
+  listen_port: 443,
+  listen_ipv4: true,
+  listen_ipv6: false,
+  https_enabled: true,
+  http_redirect: true,
+})
 const rules = ref<ProxyRule[]>([])
+const entries = ref<ProxyEntry[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
@@ -885,7 +1278,6 @@ const editing = ref<ProxyRule | null>(null)
 const search = ref('')
 const statusFilter = ref<string | null>(null)
 const httpsFilter = ref<string | null>(null)
-const scanning = ref(false)
 const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
 const detailTab = ref<'overview' | 'logs' | 'nginx'>('overview')
@@ -965,7 +1357,10 @@ const form = reactive({
 })
 
 const tableWrapRef = ref<HTMLElement | null>(null)
-let rowSortable: Sortable | null = null
+const entryStackRef = ref<HTMLElement | null>(null)
+const collapsedEntryKeys = ref<Set<string>>(new Set())
+const formEntryId = ref<number | null>(null)
+const bindEntryListen = computed(() => formEntryId.value != null)
 const reordering = ref(false)
 const togglingRuleId = ref<number | null>(null)
 
@@ -988,8 +1383,23 @@ const trafficTotals = computed(() => {
   return { upload, download, uploadRate, downloadRate, connections }
 })
 
+const showEntryGroups = computed(
+  () => !search.value.trim() && !statusFilter.value && !httpsFilter.value && rules.value.length > 0,
+)
+
 const canReorder = computed(
   () => !search.value.trim() && !statusFilter.value && !httpsFilter.value && rules.value.length > 1,
+)
+
+const canReorderGlobally = computed(() => canReorder.value && !showEntryGroups.value)
+const canReorderInGroups = computed(() => canReorder.value && showEntryGroups.value)
+const canReorderEntries = computed(
+  () =>
+    canReorderInGroups.value &&
+    entries.value.length > 0 &&
+    entryGroups.value.length > 1 &&
+    entryGroups.value.every((group) => group.entryId != null) &&
+    entryGroups.value.length === entries.value.length,
 )
 
 const filteredRules = computed(() =>
@@ -1006,7 +1416,38 @@ const filteredRules = computed(() =>
   }),
 )
 
-const tableRules = computed(() => (canReorder.value ? rules.value : filteredRules.value))
+const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
+
+function isEntryCollapsed(key: string): boolean {
+  return collapsedEntryKeys.value.has(key)
+}
+
+function toggleEntryCollapsed(key: string) {
+  const next = new Set(collapsedEntryKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedEntryKeys.value = next
+}
+
+function entryGroupTraffic(group: ProxyEntryGroup) {
+  let upload = 0
+  let download = 0
+  let uploadRate = 0
+  let downloadRate = 0
+  let connections = 0
+  for (const rule of group.rules) {
+    const stats = trafficByRule.value[rule.id]
+    if (!stats) continue
+    upload += stats.upload_total
+    download += stats.download_total
+    uploadRate += stats.upload_rate
+    downloadRate += stats.download_rate
+    connections += stats.connections
+  }
+  return { upload, download, uploadRate, downloadRate, connections }
+}
+
+const tableRules = computed(() => (canReorderGlobally.value ? rules.value : filteredRules.value))
 
 const activeSecurityFeatures = computed(() => {
   const tags: string[] = []
@@ -1094,6 +1535,230 @@ const trafficChart = computed(() => {
   return { labels, upload, download }
 })
 
+function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
+  editing.value = null
+  formTab.value = 'basic'
+  resetForm()
+  applyEntryListen(form, listen)
+  formEntryId.value = entryId ?? null
+  securityExpanded.value = ['ip']
+  showModal.value = true
+}
+
+
+function openEntryEdit(group: ProxyEntryGroup) {
+  if (!group.entryId) return
+  editingEntryId.value = group.entryId
+  Object.assign(entryForm, {
+    name: group.name,
+    listen_port: group.listen.listen_port,
+    listen_ipv4: group.listen.listen_ipv4,
+    listen_ipv6: group.listen.listen_ipv6,
+    https_enabled: group.listen.https_enabled,
+    http_redirect: group.listen.http_redirect,
+  })
+  showEntryModal.value = true
+}
+
+async function saveEntry() {
+  if (!editingEntryId.value) return
+  if (!entryForm.listen_ipv4 && !entryForm.listen_ipv6) {
+    message.error('至少需要启用 IPv4 或 IPv6 监听')
+    return
+  }
+  savingEntry.value = true
+  try {
+    await api.updateProxyEntry(editingEntryId.value, {
+      name: entryForm.name.trim(),
+      listen_port: entryForm.listen_port,
+      listen_ipv4: entryForm.listen_ipv4,
+      listen_ipv6: entryForm.listen_ipv6,
+      https_enabled: entryForm.https_enabled,
+      http_redirect: entryForm.http_redirect,
+    })
+    showEntryModal.value = false
+    message.success('入口已保存')
+    await load()
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '保存失败'
+    if (msg.startsWith('入口已保存')) {
+      message.warning(msg)
+      showEntryModal.value = false
+      await load()
+    } else {
+      message.error(msg)
+    }
+  } finally {
+    savingEntry.value = false
+  }
+}
+
+function duplicateEntryHosts(rule: ProxyRule): string[] {
+  return ruleHosts(rule).map((host) => {
+    const idx = host.lastIndexOf(':')
+    if (idx > 0 && /^\d+$/.test(host.slice(idx + 1))) {
+      return `${host.slice(0, idx)}-copy${host.slice(idx)}`
+    }
+    return `${host}-copy`
+  })
+}
+
+async function duplicateEntry(group: ProxyEntryGroup) {
+  if (!group.entryId) return
+  try {
+    const entry = await api.createProxyEntry({
+      name: duplicateLabel(group.name || entryGroupDisplayName(group)),
+      listen_port: group.listen.listen_port,
+      listen_ipv4: group.listen.listen_ipv4,
+      listen_ipv6: group.listen.listen_ipv6,
+      https_enabled: group.listen.https_enabled,
+      http_redirect: group.listen.http_redirect,
+    })
+    for (const rule of group.rules) {
+      await api.createProxy({
+        entry_id: entry.id,
+        upstream: rule.upstream,
+        hosts: duplicateEntryHosts(rule),
+        enabled: rule.enabled,
+        name: duplicateName(rule),
+        security: rule.security,
+      })
+    }
+    message.success('入口已复制，域名已追加 -copy 后缀')
+    await load()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '复制失败')
+  }
+}
+
+function confirmDeleteEntry(group: ProxyEntryGroup) {
+  if (!group.entryId) return
+  const title = entryGroupDisplayName(group)
+  dialog.warning({
+    title: `确定删除入口「${title}」？`,
+    content: `将删除该入口下的 ${group.rules.length} 条规则，相关域名将停止反向代理。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () =>
+      api
+        .deleteProxyEntry(group.entryId!)
+        .then(async () => {
+          message.success('入口已删除')
+          await load()
+        })
+        .catch(async (error: unknown) => {
+          const msg = error instanceof Error ? error.message : '删除失败'
+          if (msg.startsWith('入口已删除')) {
+            message.warning(msg)
+            await load()
+          } else {
+            message.error(msg)
+            return false
+          }
+        }),
+  })
+}
+
+function suggestDiscoveryHostname(service: DiscoveredService): string {
+  const slug = (service.platform || service.name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug ? `${slug}.example.com` : ''
+}
+
+function buildDiscoveryRows(items: DiscoveredService[]): DiscoveryRow[] {
+  return items
+    .filter((service) => service.detected)
+    .map((service, idx) => ({
+      id: `${service.platform}-${service.port}-${idx}`,
+      selected: true,
+      service,
+      ruleName: service.name,
+      hostname: suggestDiscoveryHostname(service),
+    }))
+}
+
+function openDiscoveryModal(group?: ProxyEntryGroup) {
+  discoveryTarget.value = group ?? null
+  discoveryHost.value = '127.0.0.1'
+  discoveryRows.value = []
+  showDiscoveryModal.value = true
+  void runDiscoveryScan()
+}
+
+async function runDiscoveryScan() {
+  if (discoveryLoading.value) return
+
+  const host = discoveryHost.value.trim() || '127.0.0.1'
+  discoveryScanHost.value = host
+  discoveryLoading.value = true
+  const loadingMsg = message.loading(`正在扫描 ${host} …`, { duration: 0 })
+
+  try {
+    const items = asList(await api.scanDiscovery(host))
+    discoveryRows.value = buildDiscoveryRows(items)
+    loadingMsg.destroy()
+    if (discoveryRows.value.length === 0) {
+      message.info(`扫描完成：${host} 未发现可添加的 HTTP 服务`)
+    } else {
+      message.success(`扫描完成：发现 ${discoveryRows.value.length} 个 HTTP 服务`)
+    }
+  } catch (error) {
+    loadingMsg.destroy()
+    message.error(error instanceof Error ? error.message : '扫描失败')
+  } finally {
+    discoveryLoading.value = false
+  }
+}
+
+async function submitDiscovery() {
+  const selected = discoveryRows.value.filter(
+    (row) => row.selected && row.hostname.trim(),
+  )
+  if (selected.length === 0) {
+    message.warning('请至少选择一项并填写前端域名')
+    return
+  }
+
+  discoveryAdding.value = true
+  try {
+    const group = discoveryTarget.value
+    for (const row of selected) {
+      const payload: ProxySavePayload = {
+        upstream: row.service.upstream,
+        hosts: [row.hostname.trim()],
+        name: row.ruleName.trim() || row.service.name,
+        enabled: true,
+      }
+      if (group?.entryId) {
+        payload.entry_id = group.entryId
+      } else if (group) {
+        payload.listen_port = group.listen.listen_port
+        payload.listen_ipv4 = group.listen.listen_ipv4
+        payload.listen_ipv6 = group.listen.listen_ipv6
+        payload.https_enabled = group.listen.https_enabled
+        payload.http_redirect = group.listen.http_redirect
+      }
+      await api.createProxy(payload)
+    }
+    message.success(`已添加 ${selected.length} 条规则`)
+    showDiscoveryModal.value = false
+    await load()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '添加失败')
+  } finally {
+    discoveryAdding.value = false
+  }
+}
+
+watch(entryGroups, (groups) => {
+  if (!showEntryGroups.value) return
+  const validKeys = new Set(groups.map((group) => group.key))
+  const next = new Set([...collapsedEntryKeys.value].filter((key) => validKeys.has(key)))
+  collapsedEntryKeys.value = next
+})
+
 function clearRateHistory() {
   rateHistory.value = []
 }
@@ -1175,10 +1840,14 @@ async function switchFormTab(tab: 'basic' | 'security' | 'nginx') {
 function closeModal() {
   if (formTab.value === 'nginx' && nginxDirty.value && nginxEditMode.value === 'custom') {
     void confirmDiscardNginxDraft().then((ok) => {
-      if (ok) showModal.value = false
+      if (ok) {
+        formEntryId.value = null
+        showModal.value = false
+      }
     })
     return
   }
+  formEntryId.value = null
   showModal.value = false
 }
 
@@ -1363,6 +2032,10 @@ function ruleName(rule: ProxyRule): string {
 
 function duplicateName(rule: ProxyRule): string {
   const base = rule.name?.trim() || primaryHost(rule)
+  return duplicateLabel(base)
+}
+
+function duplicateLabel(base: string): string {
   const suffix = '-复制'
   const maxBase = 100 - suffix.length
   const trimmedBase = base.length > maxBase ? base.slice(0, maxBase) : base
@@ -1401,8 +2074,15 @@ function hostAccessUrl(rule: ProxyRule, hostPart: string): string {
   return `${scheme}://${hostPart}`
 }
 
-function ruleAccessUrls(rule: ProxyRule): string[] {
-  return ruleHosts(rule).map((host) => hostAccessUrl(rule, host))
+function hostAccessUrlWithoutListenPort(rule: ProxyRule, hostPart: string): string {
+  const scheme = rule.https_enabled ? 'https' : 'http'
+  const hasExplicitPort = hostPart.startsWith('[')
+    ? /]:\d+$/.test(hostPart)
+    : /^[^:[\]]+:\d+$/.test(hostPart)
+  if (hasExplicitPort) {
+    return `${scheme}://${hostPart}`
+  }
+  return `${scheme}://${hostPart}`
 }
 
 async function copyAccessUrl(url: string) {
@@ -1430,7 +2110,8 @@ function renderLinkAction(icon: Component, title: string, onClick: () => void): 
   )
 }
 
-function renderAccessLinkRow(url: string): VNode {
+function renderAccessLinkRow(href: string, displayText?: string): VNode {
+  const label = displayText ?? href
   return h(
     'div',
     { class: 'domain-cell__link-row', onClick: (e: Event) => e.stopPropagation() },
@@ -1439,33 +2120,45 @@ function renderAccessLinkRow(url: string): VNode {
         'a',
         {
           class: 'domain-cell__link',
-          href: url,
+          href,
           target: '_blank',
           rel: 'noopener noreferrer',
-          title: url,
+          title: href,
           onClick: (e: Event) => e.stopPropagation(),
         },
-        url,
+        label,
       ),
-      renderLinkAction(CopyOutline, '复制链接', () => copyAccessUrl(url)),
-      renderLinkAction(OpenOutline, '新窗口打开', () => window.open(url, '_blank', 'noopener,noreferrer')),
+      renderLinkAction(CopyOutline, '复制链接', () => copyAccessUrl(href)),
+      renderLinkAction(OpenOutline, '新窗口打开', () => window.open(href, '_blank', 'noopener,noreferrer')),
     ],
   )
 }
 
-function renderDomainAccessLinks(rule: ProxyRule): VNode | null {
+interface DomainLinkOptions {
+  hideListenPort?: boolean
+  showWhenSingleHost?: boolean
+}
+
+function accessLinkPairs(rule: ProxyRule, options: DomainLinkOptions = {}) {
+  return ruleHosts(rule).map((host) => ({
+    href: hostAccessUrl(rule, host),
+    display: options.hideListenPort ? hostAccessUrlWithoutListenPort(rule, host) : hostAccessUrl(rule, host),
+  }))
+}
+
+function renderDomainAccessLinks(rule: ProxyRule, options: DomainLinkOptions = {}): VNode | null {
   const hosts = ruleHosts(rule)
   if (hosts.length === 0) return null
 
-  const showLinks = hosts.length > 1 || !!rule.name?.trim()
+  const showLinks = options.showWhenSingleHost || hosts.length > 1 || !!rule.name?.trim()
   if (!showLinks) return null
 
-  const urls = ruleAccessUrls(rule)
+  const pairs = accessLinkPairs(rule, options)
   const maxInline = 2
-  const inline = urls.slice(0, maxInline)
-  const rest = urls.slice(maxInline)
+  const inline = pairs.slice(0, maxInline)
+  const rest = pairs.slice(maxInline)
 
-  const children: VNode[] = inline.map((url) => renderAccessLinkRow(url))
+  const children: VNode[] = inline.map((pair) => renderAccessLinkRow(pair.href, pair.display))
   if (rest.length > 0) {
     children.push(
       h(
@@ -1483,13 +2176,34 @@ function renderDomainAccessLinks(rule: ProxyRule): VNode | null {
               `还有 ${rest.length} 个域名`,
             ),
           default: () =>
-            h('div', { class: 'domain-cell__popover-links' }, rest.map((url) => renderAccessLinkRow(url))),
+            h(
+              'div',
+              { class: 'domain-cell__popover-links' },
+              rest.map((pair) => renderAccessLinkRow(pair.href, pair.display)),
+            ),
         },
       ),
     )
   }
 
   return h('div', { class: 'domain-cell__links' }, children)
+}
+
+function renderEntryGroupRuleNameCell(rule: ProxyRule, group: ProxyEntryGroup): VNode {
+  const label = ruleName(rule)
+  const headerName = entryGroupDisplayName(group)
+  const singleRuleWithHeaderName = group.rules.length === 1 && !!label && label === headerName
+
+  const children: VNode[] = []
+  if (label && !singleRuleWithHeaderName) {
+    children.push(h('div', { class: 'domain-cell__main' }, label))
+  }
+  const links = renderDomainAccessLinks(rule, {
+    hideListenPort: true,
+    showWhenSingleHost: singleRuleWithHeaderName || !label,
+  })
+  if (links) children.push(links)
+  return h('div', { class: 'domain-cell' }, children)
 }
 
 function parseHostsText(text: string): string[] {
@@ -1562,7 +2276,7 @@ function rowProps(row: ProxyRule) {
 const columns = computed<DataTableColumns<ProxyRule>>(() => {
   const cols: DataTableColumns<ProxyRule> = []
 
-  if (canReorder.value) {
+  if (canReorderGlobally.value) {
     cols.push({
       title: '',
       key: 'sort',
@@ -1693,6 +2407,38 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
 
   return cols
 })
+
+function entryGroupColumnsFor(group: ProxyEntryGroup): DataTableColumns<ProxyRule> {
+  const cols = columns.value
+    .filter((col) => {
+      if (!('key' in col)) return true
+      const key = String(col.key ?? '')
+      return key !== 'listen_port' && key !== 'https_enabled'
+    })
+    .map((col) => {
+      if ('key' in col && col.key === 'name') {
+        return {
+          ...col,
+          render: (row: ProxyRule) => renderEntryGroupRuleNameCell(row, group),
+        }
+      }
+      return col
+    })
+  if (!canReorderInGroups.value) return cols
+
+  return [
+    {
+      title: '',
+      key: 'sort',
+      width: 40,
+      render: () =>
+        h('span', { class: 'proxy-drag-handle', title: '拖动排序' }, [
+          h(NIcon, { component: ReorderThreeOutline, size: 16 }),
+        ]),
+    },
+    ...cols,
+  ]
+}
 
 function isLogAtBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= LOG_SCROLL_BOTTOM_THRESHOLD
@@ -1858,7 +2604,12 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    rules.value = asList(await api.listProxies())
+    const [ruleRows, entryRows] = await Promise.all([
+      api.listProxies(),
+      api.listProxyEntries().catch(() => [] as ProxyEntry[]),
+    ])
+    rules.value = asList(ruleRows)
+    entries.value = asList(entryRows)
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -1959,35 +2710,19 @@ function buildPayload(): ProxySavePayload {
   }
   return {
     upstream: form.upstream,
-    listen_port: form.listen_port,
-    listen_ipv4: form.listen_ipv4,
-    listen_ipv6: form.listen_ipv6,
+    ...(formEntryId.value
+      ? { entry_id: formEntryId.value }
+      : {
+          listen_port: form.listen_port,
+          listen_ipv4: form.listen_ipv4,
+          listen_ipv6: form.listen_ipv6,
+          https_enabled: form.https_enabled,
+          http_redirect: form.http_redirect,
+        }),
     hosts,
-    https_enabled: form.https_enabled,
-    http_redirect: form.http_redirect,
     enabled: form.enabled,
     name: form.name.trim(),
     security: buildSecurityPayload(),
-  }
-}
-
-async function scanServices() {
-  scanning.value = true
-  try {
-    const items = await api.scanDiscovery('127.0.0.1')
-    const found = items.find((i) => i.detected)
-    if (found) {
-      resetForm()
-      form.upstream = found.upstream
-      showModal.value = true
-      message.success(`检测到 ${found.name}，请填写前端域名`)
-    } else {
-      message.info('未检测到常见服务')
-    }
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '扫描失败')
-  } finally {
-    scanning.value = false
   }
 }
 
@@ -1995,6 +2730,7 @@ function openCreate() {
   editing.value = null
   formTab.value = 'basic'
   resetForm()
+  formEntryId.value = null
   securityExpanded.value = ['ip']
   showModal.value = true
 }
@@ -2022,17 +2758,29 @@ async function toggleRuleEnabled(row: ProxyRule, enabled: boolean) {
   }
 }
 
+function findEntryGroupForRule(rule: ProxyRule): ProxyEntryGroup | undefined {
+  return entryGroups.value.find((group) => group.rules.some((item) => item.id === rule.id))
+}
+
 function openDuplicate(rule: ProxyRule) {
   closeDetail()
   editing.value = null
+  const parentGroup = findEntryGroupForRule(rule)
+  formEntryId.value = rule.entry_id ?? parentGroup?.entryId ?? null
+
+  if (parentGroup && formEntryId.value) {
+    applyEntryListen(form, parentGroup.listen)
+  } else {
+    form.listen_port = rule.listen_port || defaultListenPort(rule.https_enabled)
+    form.listen_ipv4 = rule.listen_ipv4 ?? true
+    form.listen_ipv6 = rule.listen_ipv6 ?? false
+    form.https_enabled = rule.https_enabled
+    form.http_redirect = rule.http_redirect
+  }
+
   Object.assign(form, {
-    listen_port: rule.listen_port || defaultListenPort(rule.https_enabled),
-    listen_ipv4: rule.listen_ipv4 ?? true,
-    listen_ipv6: rule.listen_ipv6 ?? false,
-    hostsText: hostsToText(rule),
+    hostsText: duplicateEntryHosts(rule).join('\n'),
     upstream: rule.upstream,
-    https_enabled: rule.https_enabled,
-    http_redirect: rule.http_redirect,
     enabled: rule.enabled,
     name: duplicateName(rule),
   })
@@ -2040,21 +2788,29 @@ function openDuplicate(rule: ProxyRule) {
   syncSecurityExpanded()
   formTab.value = 'basic'
   showModal.value = true
-  message.info('已填入复制内容，请修改域名后保存')
+  message.info('已填入复制内容，域名已追加 -copy 后缀')
 }
 
 function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
   closeDetail()
   editing.value = rule
   selectedRuleId.value = rule.id
+  const parentGroup = findEntryGroupForRule(rule)
+  formEntryId.value = rule.entry_id ?? parentGroup?.entryId ?? null
+
+  if (parentGroup && formEntryId.value) {
+    applyEntryListen(form, parentGroup.listen)
+  } else {
+    form.listen_port = rule.listen_port || defaultListenPort(rule.https_enabled)
+    form.listen_ipv4 = rule.listen_ipv4 ?? true
+    form.listen_ipv6 = rule.listen_ipv6 ?? false
+    form.https_enabled = rule.https_enabled
+    form.http_redirect = rule.http_redirect
+  }
+
   Object.assign(form, {
-    listen_port: rule.listen_port || defaultListenPort(rule.https_enabled),
-    listen_ipv4: rule.listen_ipv4 ?? true,
-    listen_ipv6: rule.listen_ipv6 ?? false,
     hostsText: hostsToText(rule),
     upstream: rule.upstream,
-    https_enabled: rule.https_enabled,
-    http_redirect: rule.http_redirect,
     enabled: rule.enabled,
     name: rule.name ?? '',
   })
@@ -2074,49 +2830,146 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
   }
 }
 
+let rowSortables: Sortable[] = []
+let entryStackSortable: Sortable | null = null
+
 function destroyRowSortable() {
-  rowSortable?.destroy()
-  rowSortable = null
+  for (const instance of rowSortables) instance.destroy()
+  rowSortables = []
 }
 
-async function setupRowSortable() {
-  destroyRowSortable()
-  if (!canReorder.value) return
+async function persistRuleOrder(next: ProxyRule[]) {
+  rules.value = next
+  reordering.value = true
+  try {
+    await api.reorderProxies(next.map((rule) => rule.id))
+    message.success('排序已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '排序保存失败')
+    await load()
+  } finally {
+    reordering.value = false
+  }
+}
+
+function mergeGroupOrder(groupKey: string, groupRules: ProxyRule[]): ProxyRule[] {
+  const next: ProxyRule[] = []
+  for (const group of entryGroups.value) {
+    if (group.key === groupKey) next.push(...groupRules)
+    else next.push(...group.rules)
+  }
+  return next
+}
+
+function attachSortable(tbody: HTMLElement, onEnd: (oldIndex: number, newIndex: number) => void) {
+  rowSortables.push(
+    Sortable.create(tbody, {
+      handle: '.proxy-drag-handle',
+      animation: 150,
+      draggable: '.n-data-table-tr',
+      onEnd: async (evt) => {
+        if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex || reordering.value) {
+          return
+        }
+        onEnd(evt.oldIndex, evt.newIndex)
+      },
+    }),
+  )
+}
+
+function destroyEntryStackSortable() {
+  entryStackSortable?.destroy()
+  entryStackSortable = null
+}
+
+async function persistEntryOrder(reorderedGroups: ProxyEntryGroup[]) {
+  const ids = reorderedGroups.map((group) => group.entryId).filter((id): id is number => id != null)
+  if (ids.length !== entries.value.length) return
+
+  const byId = new Map(entries.value.map((entry) => [entry.id, entry]))
+  entries.value = ids.map((id) => byId.get(id)!).filter(Boolean)
+  reordering.value = true
+  try {
+    await api.reorderProxyEntries(ids)
+    message.success('入口排序已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '入口排序保存失败')
+    await load()
+  } finally {
+    reordering.value = false
+  }
+}
+
+async function setupEntryStackSortable() {
+  destroyEntryStackSortable()
+  if (!canReorderEntries.value) return
   await nextTick()
-  const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
-  if (!tbody) return
-  rowSortable = Sortable.create(tbody, {
-    handle: '.proxy-drag-handle',
+  const stack = entryStackRef.value
+  if (!stack) return
+
+  entryStackSortable = Sortable.create(stack, {
+    handle: '.proxy-entry-drag-handle',
     animation: 150,
-    draggable: '.n-data-table-tr',
-    onEnd: async (evt) => {
+    draggable: '.proxy-entry-card',
+    onEnd: (evt) => {
       if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex || reordering.value) {
         return
       }
-      const next = [...rules.value]
-      const [moved] = next.splice(evt.oldIndex, 1)
-      next.splice(evt.newIndex, 0, moved)
-      rules.value = next
-      reordering.value = true
-      try {
-        await api.reorderProxies(next.map((rule) => rule.id))
-        message.success('排序已保存')
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '排序保存失败')
-        await load()
-      } finally {
-        reordering.value = false
-      }
+      const groups = [...entryGroups.value]
+      const [moved] = groups.splice(evt.oldIndex, 1)
+      groups.splice(evt.newIndex, 0, moved)
+      void persistEntryOrder(groups)
     },
   })
 }
 
-watch([canReorder, () => rules.value.length, tableRules], () => {
+async function setupRowSortable() {
+  destroyRowSortable()
+  destroyEntryStackSortable()
+  if (!canReorder.value) return
+  await nextTick()
+
+  if (canReorderGlobally.value) {
+    const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
+    if (!tbody) return
+    attachSortable(tbody, (oldIndex, newIndex) => {
+      const next = [...rules.value]
+      const [moved] = next.splice(oldIndex, 1)
+      next.splice(newIndex, 0, moved)
+      void persistRuleOrder(next)
+    })
+    return
+  }
+
+  if (!canReorderInGroups.value) return
+
+  for (const group of entryGroups.value) {
+    if (group.rules.length < 2) continue
+    const body = document.querySelector(
+      `.proxy-entry-card__body[data-entry-key="${CSS.escape(group.key)}"] .n-data-table-tbody`,
+    ) as HTMLElement | null
+    if (!body) continue
+    const groupKey = group.key
+    attachSortable(body, (oldIndex, newIndex) => {
+      const nextGroupRules = [...(entryGroups.value.find((item) => item.key === groupKey)?.rules ?? [])]
+      const [moved] = nextGroupRules.splice(oldIndex, 1)
+      nextGroupRules.splice(newIndex, 0, moved)
+      void persistRuleOrder(mergeGroupOrder(groupKey, nextGroupRules))
+    })
+  }
+
+  await setupEntryStackSortable()
+}
+
+watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, collapsedEntryKeys], () => {
   void setupRowSortable()
 })
 
 watch(showModal, (open) => {
-  if (!open) editing.value = null
+  if (!open) {
+    editing.value = null
+    formEntryId.value = null
+  }
 })
 
 async function save() {
@@ -2200,6 +3053,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   destroyRowSortable()
+  destroyEntryStackSortable()
   stopLogStream()
   stopTrafficPoll()
   stopClientsPoll()
@@ -2299,6 +3153,395 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   padding: var(--fonu-space-6) 0;
+}
+
+.proxy-entry-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-4);
+}
+
+.proxy-entry-stack--sortable .proxy-entry-drag-handle {
+  cursor: grab;
+}
+
+.proxy-entry-stack--sortable .proxy-entry-drag-handle:active {
+  cursor: grabbing;
+}
+
+.proxy-entry-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--fonu-text-secondary);
+  flex-shrink: 0;
+}
+
+.proxy-entry-card__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fonu-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.proxy-entry-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fonu-space-2);
+  padding: 12px 14px;
+  background: var(--fonu-bg-subtle, rgba(0, 0, 0, 0.02));
+  border-bottom: 1px solid transparent;
+}
+
+.proxy-entry-card__intro {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
+  outline: none;
+}
+
+.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
+  outline: none;
+}
+
+.proxy-entry-card {
+  border: 1px solid var(--fonu-border);
+  border-radius: var(--fonu-radius-lg, 12px);
+  background: var(--fonu-surface, #fff);
+  overflow: hidden;
+}
+
+.proxy-entry-card--collapsed .proxy-entry-card__head {
+  border-bottom-color: transparent;
+}
+
+.proxy-entry-card:not(.proxy-entry-card--collapsed) .proxy-entry-card__head {
+  border-bottom-color: var(--fonu-border);
+}
+
+.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.45);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.proxy-entry-card__chevron {
+  display: none;
+}
+
+.proxy-entry-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.proxy-entry-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fonu-text);
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-entry-card__preview {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-entry-card__count,
+.proxy-entry-card__running {
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.proxy-entry-card__running {
+  color: #059669;
+}
+
+.proxy-entry-card__warn {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #d97706;
+  line-height: 1.3;
+}
+
+.proxy-entry-card__stats {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 960px) {
+  .proxy-entry-card__stats {
+    display: flex;
+  }
+}
+
+.proxy-entry-card__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-family: var(--fonu-mono);
+  color: var(--fonu-text-secondary);
+  white-space: nowrap;
+}
+
+.proxy-entry-card__actions {
+  flex-shrink: 0;
+}
+
+.proxy-entry-card__actions :deep(.n-space) {
+  flex-wrap: nowrap;
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn) {
+  width: 32px;
+  height: 32px;
+  color: var(--fonu-text-secondary);
+  transition: color 0.15s, background 0.15s;
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn:hover) {
+  color: var(--fonu-text);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent) {
+  color: #059669;
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--danger) {
+  color: #ef4444;
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--danger:hover) {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn.n-button--disabled) {
+  opacity: 0.35;
+}
+
+.discovery-modal {
+  width: min(760px, 94vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--fonu-space-4);
+  background: var(--fonu-surface, #fff);
+  border-radius: var(--fonu-radius-lg, 12px);
+}
+
+.discovery-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  margin-bottom: var(--fonu-space-3);
+}
+
+.discovery-modal__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--fonu-text-secondary);
+}
+
+.discovery-modal__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--fonu-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--fonu-space-3);
+}
+
+.discovery-modal__host {
+  width: 180px;
+}
+
+.discovery-modal__summary {
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.discovery-modal__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.discovery-modal__status--loading {
+  color: var(--fonu-accent, #18a058);
+}
+
+.discovery-modal__content {
+  position: relative;
+  flex: 1;
+  min-height: 180px;
+  overflow: hidden;
+}
+
+.discovery-modal__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-6) 0;
+  color: var(--fonu-text-secondary);
+  font-size: 13px;
+}
+
+.discovery-modal__list-wrap {
+  position: relative;
+  min-height: 120px;
+}
+
+.discovery-modal__scan-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fonu-space-3);
+  background: color-mix(in srgb, var(--fonu-surface, #fff) 82%, transparent);
+  backdrop-filter: blur(1px);
+  font-size: 13px;
+  color: var(--fonu-text-secondary);
+}
+
+.discovery-modal__list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--fonu-border);
+  border-radius: var(--fonu-radius-md, 8px);
+}
+
+.discovery-modal__list-head,
+.discovery-item {
+  display: grid;
+  grid-template-columns: 36px minmax(180px, 1.2fr) minmax(120px, 0.9fr) minmax(160px, 1fr);
+  gap: var(--fonu-space-2);
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.discovery-modal__list-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fonu-text-secondary);
+  background: var(--fonu-bg-subtle, rgba(0, 0, 0, 0.02));
+  border-bottom: 1px solid var(--fonu-border);
+}
+
+.discovery-item + .discovery-item {
+  border-top: 1px solid var(--fonu-border);
+}
+
+.discovery-item--offline {
+  opacity: 0.55;
+}
+
+.discovery-item__title {
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+  word-break: break-all;
+}
+
+.discovery-item__meta {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text-primary);
+}
+
+.discovery-item__hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fonu-text-secondary);
+}
+
+.discovery-modal__footer {
+  margin-top: var(--fonu-space-4);
+}
+
+.proxy-entry-edit-modal {
+  width: min(480px, 92vw);
+  padding: var(--fonu-space-4);
+  background: var(--fonu-surface, #fff);
+  border-radius: var(--fonu-radius-lg, 12px);
+}
+
+.proxy-entry-edit-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--fonu-space-4);
+}
+
+.proxy-entry-edit-modal__body {
+  margin-bottom: var(--fonu-space-4);
+}
+
+.proxy-entry-card__body {
+  padding: 0;
+}
+
+.proxy-entry-card__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-5) var(--fonu-space-4);
+}
+
+.proxy-table--nested :deep(.n-data-table-th) {
+  background: transparent;
+}
+
+.listen-row--readonly {
+  padding: 8px 0 4px;
+}
+
+.listen-row--readonly .listen-col__label {
+  margin-bottom: 6px;
 }
 
 .proxy-drag-handle {

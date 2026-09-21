@@ -242,7 +242,7 @@ const loadingAccess = ref(false)
 const loadingError = ref(false)
 const loadingSystem = ref(false)
 
-const accessKeyword = ref('')
+const accessKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const accessStatus = ref<number | null>(null)
 const errorKeyword = ref('')
 const systemKeyword = ref('')
@@ -513,6 +513,13 @@ watch(autoRefresh, (on) => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (on) refreshTimer = setInterval(() => loadAccess(), 10000)
 })
+
+watch(
+  () => route.query.keyword,
+  (keyword) => {
+    if (typeof keyword === 'string') accessKeyword.value = keyword
+  },
+)
 
 watch(
   () => route.query.tab,

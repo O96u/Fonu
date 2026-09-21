@@ -33,6 +33,50 @@ func (s *ProxyService) SetNotify(notifySvc *notify.Service) {
 	s.notify = notifySvc
 }
 
+func (s *ProxyService) ListEntries(ctx context.Context) ([]proxy.Entry, error) {
+	return s.store.ListEntries(ctx)
+}
+
+func (s *ProxyService) ReorderEntries(ctx context.Context, ids []int64) error {
+	return s.store.ReorderEntries(ctx, ids)
+}
+
+func (s *ProxyService) CreateEntry(ctx context.Context, in proxy.EntryCreateInput) (proxy.Entry, error) {
+	entry, err := s.store.CreateEntry(ctx, in)
+	if err != nil {
+		return proxy.Entry{}, err
+	}
+	return entry, nil
+}
+
+func (s *ProxyService) UpdateEntry(ctx context.Context, id int64, in proxy.EntryUpdateInput) (proxy.Entry, error) {
+	entry, err := s.store.UpdateEntry(ctx, id, in)
+	if err != nil {
+		return proxy.Entry{}, err
+	}
+	if err := s.applyNginx(ctx); err != nil {
+		return entry, fmt.Errorf("入口已保存，但 Nginx 重载失败：%w", err)
+	}
+	return entry, nil
+}
+
+func (s *ProxyService) DeleteEntry(ctx context.Context, id int64) error {
+	ruleIDs, err := s.store.RuleIDsByEntry(ctx, id)
+	if err != nil {
+		return err
+	}
+	for _, ruleID := range ruleIDs {
+		_ = nginx.RemoveRuleCustom(s.cfg, ruleID)
+	}
+	if err := s.store.DeleteEntry(ctx, id); err != nil {
+		return err
+	}
+	if err := s.applyNginx(ctx); err != nil {
+		return fmt.Errorf("入口已删除，但 Nginx 重载失败：%w", err)
+	}
+	return nil
+}
+
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {
 	return s.store.List(ctx)
 }

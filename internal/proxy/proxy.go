@@ -19,6 +19,7 @@ type Host struct {
 
 type Rule struct {
 	ID           int64          `json:"id"`
+	EntryID      *int64         `json:"entry_id,omitempty"`
 	Domain       string         `json:"domain"`
 	Upstream     string         `json:"upstream"`
 	ListenPort   int            `json:"listen_port"`
@@ -120,6 +121,7 @@ func (r Rule) PortGroups() []PortGroup {
 }
 
 type CreateInput struct {
+	EntryID      *int64
 	Upstream     string
 	ListenPort   int
 	ListenIPv4   bool
@@ -133,6 +135,7 @@ type CreateInput struct {
 }
 
 type UpdateInput struct {
+	EntryID      *int64
 	Upstream     *string
 	ListenPort   *int
 	ListenIPv4   *bool
@@ -175,7 +178,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 	}
 	q := s.querier()
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
+		SELECT id, entry_id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules
 		ORDER BY sort_order ASC, id ASC
 	`)
@@ -200,7 +203,7 @@ func (s *Store) List(ctx context.Context) ([]Rule, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 	row := s.querier().QueryRowContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
+		SELECT id, entry_id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE id = ?
 	`, id)
 	rule, err := scanRule(row)
@@ -218,6 +221,39 @@ func (s *Store) Get(ctx context.Context, id int64) (Rule, error) {
 }
 
 func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
+	listenPort := in.ListenPort
+	listenIPv4 := in.ListenIPv4
+	listenIPv6 := in.ListenIPv6
+	httpsEnabled := in.HTTPSEnabled
+	httpRedirect := in.HTTPRedirect
+	var entryID *int64
+
+	if in.EntryID != nil && *in.EntryID > 0 {
+		entry, err := s.GetEntry(ctx, *in.EntryID)
+		if err != nil {
+			return Rule{}, err
+		}
+		listenPort = entry.ListenPort
+		listenIPv4 = entry.ListenIPv4
+		listenIPv6 = entry.ListenIPv6
+		httpsEnabled = entry.HTTPSEnabled
+		httpRedirect = entry.HTTPRedirect
+		id := entry.ID
+		entryID = &id
+	} else {
+		foundID, err := s.findOrCreateEntryForListen(ctx, listenPort, listenIPv4, listenIPv6, httpsEnabled, httpRedirect)
+		if err != nil {
+			return Rule{}, err
+		}
+		entryID = foundID
+	}
+
+	in.ListenPort = listenPort
+	in.ListenIPv4 = listenIPv4
+	in.ListenIPv6 = listenIPv6
+	in.HTTPSEnabled = httpsEnabled
+	in.HTTPRedirect = httpRedirect
+
 	upstream, hosts, err := validateCreateInput(in)
 	if err != nil {
 		return Rule{}, err
@@ -245,9 +281,9 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 	}
 
 	res, err := s.querier().ExecContext(ctx, `
-		INSERT INTO proxy_rules(upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), name, sortOrder, securityJSON)
+		INSERT INTO proxy_rules(entry_id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, name, sort_order, security_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, entryID, upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(in.Enabled), name, sortOrder, securityJSON)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -278,7 +314,24 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 	enabled := current.Enabled
 	name := current.Name
 	hosts := current.Hosts
+	entryID := current.EntryID
 
+	if in.EntryID != nil {
+		if *in.EntryID <= 0 {
+			entryID = nil
+		} else {
+			entry, err := s.GetEntry(ctx, *in.EntryID)
+			if err != nil {
+				return Rule{}, err
+			}
+			entryID = in.EntryID
+			listenPort = entry.ListenPort
+			listenIPv4 = entry.ListenIPv4
+			listenIPv6 = entry.ListenIPv6
+			httpsEnabled = entry.HTTPSEnabled
+			httpRedirect = entry.HTTPRedirect
+		}
+	}
 	if in.Upstream != nil {
 		upstream, err = validate.Upstream(*in.Upstream)
 		if err != nil {
@@ -350,9 +403,9 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 
 	_, err = s.querier().ExecContext(ctx, `
 		UPDATE proxy_rules
-		SET upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, name = ?, security_json = ?, updated_at = datetime('now')
+		SET entry_id = ?, upstream = ?, listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, enabled = ?, name = ?, security_json = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), name, securityJSON, id)
+	`, entryID, upstream, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), boolInt(enabled), name, securityJSON, id)
 	if err != nil {
 		return Rule{}, err
 	}
@@ -412,7 +465,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 
 func (s *Store) ListEnabled(ctx context.Context) ([]Rule, error) {
 	rows, err := s.querier().QueryContext(ctx, `
-		SELECT id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
+		SELECT id, entry_id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, created_at, updated_at
 		FROM proxy_rules WHERE enabled = 1 ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
@@ -597,6 +650,7 @@ type rowScanner interface {
 
 func scanRule(row rowScanner) (Rule, error) {
 	var rule Rule
+	var entryID sql.NullInt64
 	var listenIPv4 int
 	var listenIPv6 int
 	var httpsEnabled int
@@ -608,6 +662,7 @@ func scanRule(row rowScanner) (Rule, error) {
 	var updatedAt string
 	if err := row.Scan(
 		&rule.ID,
+		&entryID,
 		&rule.Upstream,
 		&rule.ListenPort,
 		&listenIPv4,
@@ -623,6 +678,10 @@ func scanRule(row rowScanner) (Rule, error) {
 		&updatedAt,
 	); err != nil {
 		return Rule{}, err
+	}
+	if entryID.Valid {
+		id := entryID.Int64
+		rule.EntryID = &id
 	}
 	rule.ListenIPv4 = listenIPv4 == 1
 	rule.ListenIPv6 = listenIPv6 == 1

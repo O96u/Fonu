@@ -24,6 +24,7 @@ func NewProxyHandler(cfg config.Config, svc *service.ProxyService, logs *LogsHan
 }
 
 type proxyRequest struct {
+	EntryID      *int64           `json:"entry_id"`
 	Domain       string           `json:"domain"`
 	Upstream     string           `json:"upstream"`
 	ListenPort   *int             `json:"listen_port"`
@@ -70,6 +71,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		name = *resolved
 	}
 	in := proxy.CreateInput{
+		EntryID:      req.EntryID,
 		Upstream:     req.Upstream,
 		ListenPort:   listenPort,
 		ListenIPv4:   boolDefault(req.ListenIPv4, true),
@@ -104,6 +106,9 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := proxy.UpdateInput{}
+	if req.EntryID != nil {
+		in.EntryID = req.EntryID
+	}
 	if req.Upstream != "" {
 		in.Upstream = &req.Upstream
 	}
@@ -205,6 +210,117 @@ func (h *ProxyHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Reorder(r.Context(), req.IDs); err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ProxyHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.svc.ListEntries(r.Context())
+	if err != nil {
+		writeError(r, w, http.StatusInternalServerError, "读取反向代理入口失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, proxy.EntriesForAPI(entries))
+}
+
+type proxyEntryRequest struct {
+	Name         *string `json:"name"`
+	ListenPort   *int    `json:"listen_port"`
+	ListenIPv4   *bool   `json:"listen_ipv4"`
+	ListenIPv6   *bool   `json:"listen_ipv6"`
+	HTTPSEnabled *bool   `json:"https_enabled"`
+	HTTPRedirect *bool   `json:"http_redirect"`
+}
+
+func (h *ProxyHandler) CreateEntry(w http.ResponseWriter, r *http.Request) {
+	var req proxyEntryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	if req.ListenPort == nil {
+		writeError(r, w, http.StatusBadRequest, "监听端口不能为空")
+		return
+	}
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+	}
+	entry, err := h.svc.CreateEntry(r.Context(), proxy.EntryCreateInput{
+		Name:         name,
+		ListenPort:   *req.ListenPort,
+		ListenIPv4:   boolDefault(req.ListenIPv4, true),
+		ListenIPv6:   boolDefault(req.ListenIPv6, false),
+		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
+		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
+	})
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, entry)
+}
+
+func (h *ProxyHandler) UpdateEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, "无效的入口 ID")
+		return
+	}
+	var req proxyEntryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	in := proxy.EntryUpdateInput{}
+	if req.Name != nil {
+		in.Name = req.Name
+	}
+	if req.ListenPort != nil {
+		in.ListenPort = req.ListenPort
+	}
+	if req.ListenIPv4 != nil {
+		in.ListenIPv4 = req.ListenIPv4
+	}
+	if req.ListenIPv6 != nil {
+		in.ListenIPv6 = req.ListenIPv6
+	}
+	if req.HTTPSEnabled != nil {
+		in.HTTPSEnabled = req.HTTPSEnabled
+	}
+	if req.HTTPRedirect != nil {
+		in.HTTPRedirect = req.HTTPRedirect
+	}
+	entry, err := h.svc.UpdateEntry(r.Context(), id, in)
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, entry)
+}
+
+func (h *ProxyHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, "无效的入口 ID")
+		return
+	}
+	if err := h.svc.DeleteEntry(r.Context(), id); err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ProxyHandler) ReorderEntries(w http.ResponseWriter, r *http.Request) {
+	var req proxyReorderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	if err := h.svc.ReorderEntries(r.Context(), req.IDs); err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
