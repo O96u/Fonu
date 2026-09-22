@@ -31,16 +31,16 @@
 
 ## 功能特性
 
-| 模块           | 说明                                                                         |
-| -------------- | ---------------------------------------------------------------------------- |
-| **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP  |
-| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎 DNS；单任务多根域名，自动同步公网 IP |
-| **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                    |
-| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                      |
-| **日志中心**   | 系统日志、Nginx 访问日志、Nginx 错误日志；分页筛选与自动刷新                   |
-| **内网穿透**   | FRP 客户端（Nginx 网关穿透）：无公网 IP 时经 VPS 中转，反代与安全策略不变    |
-| **系统设置**   | 常规 / 通知 / 安全 / 高级分栏；邮件/Webhook/Telegram 告警、备份与恢复        |
-| **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                             |
+| 模块           | 说明                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP                    |
+| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎 DNS；单任务多根域名，自动同步公网 IP         |
+| **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；申请进度实时日志                                      |
+| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                                        |
+| **日志中心**   | 系统日志、Nginx 访问日志、Nginx 错误日志；分页筛选与自动刷新                                   |
+| **内网穿透**   | FRP 客户端：Nginx Web 网关穿透 + 独立 TCP 隧道（SSH/数据库等）；连接设置与隧道可分开保存后启动 |
+| **系统设置**   | 常规 / 通知 / 安全 / 高级分栏；邮件/Webhook/Telegram 告警、备份与恢复                          |
+| **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                                               |
 
 ## 界面展示
 
@@ -90,9 +90,19 @@
       <b>反向代理 · Nginx 配置</b><br>
       <a href="docs/screenshots/proxy-rule-nginx.png"><img src="docs/screenshots/proxy-rule-nginx.png" alt="反向代理 Nginx 配置" width="100%" /></a>
     </td>
-    <td align="center">
-      <b>内网穿透</b><br>
-      <a href="docs/screenshots/frp.png"><img src="docs/screenshots/frp.png" alt="内网穿透" width="100%" /></a>
+     <td align="center" colspan="2">
+      <b>日志中心</b><br>
+      <a href="docs/screenshots/logs.png"><img src="docs/screenshots/logs.png" alt="日志中心" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+  <td align="center">
+      <b>内网穿透 · Web 网关</b><br>
+      <a href="docs/screenshots/frp.png"><img src="docs/screenshots/frp.png" alt="内网穿透 Web 网关" width="100%" /></a>
+    </td>
+    <td align="center" colspan="2">
+      <b>内网穿透 · TCP 转发</b><br>
+      <a href="docs/screenshots/frp-tcp.png"><img src="docs/screenshots/frp-tcp.png" alt="内网穿透 TCP 转发" width="100%" /></a>
     </td>
   </tr>
   <tr>
@@ -105,25 +115,19 @@
       <a href="docs/screenshots/settings-advanced.png"><img src="docs/screenshots/settings-advanced.png" alt="系统设置高级" width="100%" /></a>
     </td>
   </tr>
-  <tr>
-    <td align="center" colspan="2">
-      <b>日志中心</b><br>
-      <a href="docs/screenshots/logs.png"><img src="docs/screenshots/logs.png" alt="日志中心" width="100%" /></a>
-    </td>
-  </tr>
 </table>
 
 ## 技术栈
 
-| 层级         | 技术                                                  |
-| ------------ | ----------------------------------------------------- |
-| **后端**     | Go 1.23、标准库 HTTP、SQLite（modernc.org/sqlite）    |
-| **反向代理** | 内置 Nginx（动态生成配置、热重载）                    |
-| **证书**     | go-acme/lego（Let's Encrypt）                         |
-| **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 DNS API |
-| **内网穿透** | 内置 frpc（v0.71.x），固定穿透 Fonu Nginx 端口        |
-| **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts            |
-| **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI |
+| 层级         | 技术                                                                   |
+| ------------ | ---------------------------------------------------------------------- |
+| **后端**     | Go 1.23、标准库 HTTP、SQLite（modernc.org/sqlite）                     |
+| **反向代理** | 内置 Nginx（动态生成配置、热重载）                                     |
+| **证书**     | go-acme/lego（Let's Encrypt）                                          |
+| **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 DNS API               |
+| **内网穿透** | 内置 frpc（v0.71.x）；Web 网关穿透 Fonu Nginx，另支持 TCP 远程端口映射 |
+| **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts                             |
+| **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI                  |
 
 ## 部署
 
@@ -189,13 +193,21 @@ docker compose up -d --build
 
 ### FRP 内网穿透（无公网 IP）
 
-适用于无法端口映射、无公网 IPv4 的场景。Fonu 内置 **frpc**，仅做 **Nginx 网关穿透**：外网流量经 VPS 上的 frps 中转，再转发到本地 Nginx（默认 `18080` / `9443`）。域名分流、HTTPS 证书、访问控制、日志仍全部由 Fonu Nginx 处理。
+适用于无法端口映射、无公网 IPv4 的场景。Fonu 内置 **frpc**，在 **内网穿透** 页面统一管理：
 
-**流量路径**：用户 → DNS（解析到 VPS）→ frps → frpc → Fonu Nginx → 内网服务
+- **Web 网关**：外网 HTTP/HTTPS 经 VPS 上的 frps 中转至本地 Fonu Nginx（默认 `18080` / `9443`），域名分流、证书、访问控制、日志仍由 Nginx 处理
+- **TCP 转发**：将 VPS 上的远程端口映射到内网 TCP 服务（如 SSH `22`、数据库）；可与 Web 网关同时启用，纯 TCP 场景可不配置穿透域名
+- **连接设置**：填写 frps 地址、端口、Token、TLS；可先保存连接信息，待配置 Web 域名或 TCP 隧道后再启动 frpc
+
+**Web 流量路径**：用户 → DNS（解析到 VPS）→ frps → frpc → Fonu Nginx → 内网服务
+
+**TCP 流量路径**：用户 → VPS 公网 IP:远程端口 → frps → frpc → 内网 `IP:端口`
 
 #### 1. VPS 部署 frps
 
-在具有公网 IP 的 VPS 上安装 [frp](https://github.com/fatedier/frp)（建议 v0.71.x，与 Fonu 内置 frpc 同版本），创建 `frps.toml`：
+在具有公网 IP 的 VPS 上安装 [frp](https://github.com/fatedier/frp)（建议 **v0.71.x**，与 Fonu 内置 frpc 同版本）。Fonu **高级设置** 中可查看根据当前连接与 TCP 隧道自动生成的 `frps.toml` 参考（含 `allowPorts` 等）。
+
+典型 Web 网关示例：
 
 ```toml
 bindAddr = "0.0.0.0"
@@ -208,22 +220,23 @@ vhostHTTPPort = 80
 vhostHTTPSPort = 443
 ```
 
-启动：`frps -c frps.toml`。安全组/防火墙需放行 **7000**（控制连接）及 **80/443**（HTTP/HTTPS 虚拟主机）。
+启动：`frps -c frps.toml`。安全组/防火墙需放行 **7000**（控制连接）、**80/443**（Web 虚拟主机），以及 **TCP 隧道使用的远程端口**（在 Fonu 页面添加 TCP 规则后按提示放行）。
 
 #### 2. Fonu 配置 frpc
 
-在侧栏 **内网穿透** 页面填写：
+在侧栏 **内网穿透** 页面：
 
-- FRP 服务器地址 / 端口（默认 7000）
-- 与 frps 一致的认证 Token
-- 穿透域名列表（与反代规则中的域名一致，支持 `*.example.com`）
+1. **连接设置**：FRP 服务器地址 / 端口（默认 7000）、与 frps 一致的 Token、是否启用 TLS
+2. **Web 穿透**：从反向代理同步域名，或手动维护「已同步域名」；保存后创建 HTTP → Nginx HTTP 端口、HTTPS → Nginx HTTPS 端口隧道
+3. **TCP 转发**：添加隧道（名称、VPS 远程端口、内网目标地址），单独启停
 
-保存后 Fonu 自动生成 `frpc.toml` 并启动 frpc，固定创建 HTTP → Nginx HTTP 端口、HTTPS → Nginx HTTPS 端口两条隧道。
+启用内网穿透并保存后，Fonu 自动生成 `frpc.toml` 并启动 frpc。**运行日志** Tab 与 **日志中心 → FRP** 可查看 frpc 输出。
 
 #### 3. DNS 与证书
 
-- **DDNS**：启用 FRP 后，域名应解析到 **VPS 公网 IP**，而非 NAS IP（DDNS 页会有提示）
-- **HTTPS 证书**：推荐继续使用 **DNS-01** 验证（Cloudflare、阿里云、腾讯云、DNSPod、火山引擎等已支持）；证书仍在 NAS 侧 Nginx 终结
+- **DDNS**：启用 FRP 后，Web 域名应解析到 **VPS 公网 IP**，而非 NAS IP（DDNS 页会有提示）
+- **HTTPS 证书**：Web 网关推荐继续使用 **DNS-01** 验证（Cloudflare、阿里云、腾讯云、DNSPod、火山引擎等已支持）；证书仍在 NAS 侧 Nginx 终结
+- **纯 TCP**：无需为 TCP 隧道单独配置域名证书
 
 ## 环境变量
 
