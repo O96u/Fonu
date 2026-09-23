@@ -88,6 +88,9 @@ func (s *Store) CreateEntry(ctx context.Context, in EntryCreateInput) (Entry, er
 	if err := validateEntryInput(in.ListenPort, in.ListenIPv4, in.ListenIPv6); err != nil {
 		return Entry{}, err
 	}
+	if err := s.ensureEntryListenPortAvailable(ctx, in.ListenPort, 0); err != nil {
+		return Entry{}, err
+	}
 	name, err := normalizeName(in.Name)
 	if err != nil {
 		return Entry{}, err
@@ -150,6 +153,12 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, in EntryUpdateInput) 
 	}
 	if in.HTTPRedirect != nil {
 		httpRedirect = *in.HTTPRedirect
+	}
+
+	if listenPort != current.ListenPort {
+		if err := s.ensureEntryListenPortAvailable(ctx, listenPort, id); err != nil {
+			return Entry{}, err
+		}
 	}
 
 	_, err = s.querier().ExecContext(ctx, `
@@ -250,6 +259,30 @@ func validateEntryInput(listenPort int, listenIPv4, listenIPv6 bool) error {
 	}
 	if !listenIPv4 && !listenIPv6 {
 		return fmt.Errorf("至少需要启用 IPv4 或 IPv6 监听")
+	}
+	return nil
+}
+
+func entryDisplayLabel(entry Entry) string {
+	name := strings.TrimSpace(entry.Name)
+	if name != "" {
+		return name
+	}
+	return fmt.Sprintf("端口 %d", entry.ListenPort)
+}
+
+func (s *Store) ensureEntryListenPortAvailable(ctx context.Context, listenPort int, excludeID int64) error {
+	entries, err := s.ListEntries(ctx)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if excludeID > 0 && entry.ID == excludeID {
+			continue
+		}
+		if entry.ListenPort == listenPort {
+			return fmt.Errorf("监听端口 %d 已被入口「%s」占用，请更换端口", listenPort, entryDisplayLabel(entry))
+		}
 	}
 	return nil
 }

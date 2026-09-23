@@ -152,11 +152,11 @@
                   </span>
                   <span class="proxy-entry-card__stat" title="当前上传">
                     <n-icon :component="ArrowUpOutline" />
-                    {{ formatRate(entryGroupTraffic(group).uploadRate) }}
+                    {{ formatRateIdle(entryGroupTraffic(group).uploadRate) }}
                   </span>
                   <span class="proxy-entry-card__stat" title="当前下载">
                     <n-icon :component="ArrowDownOutline" />
-                    {{ formatRate(entryGroupTraffic(group).downloadRate) }}
+                    {{ formatRateIdle(entryGroupTraffic(group).downloadRate) }}
                   </span>
                 </div>
                 <div class="proxy-entry-card__actions" @click.stop>
@@ -246,7 +246,6 @@
                   :data="group.rules"
                   :bordered="false"
                   size="small"
-                  :scroll-x="canReorderInGroups ? 1220 : 1180"
                   :row-key="(r: ProxyRule) => r.id"
                   :row-props="rowProps"
                 />
@@ -1003,7 +1002,7 @@
   <n-modal v-model:show="showEntryModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-entry-edit-modal">
       <div class="proxy-entry-edit-modal__header">
-        <h3 class="modal-title">编辑入口</h3>
+        <h3 class="modal-title">{{ editingEntryId ? '编辑入口' : '新建入口' }}</h3>
         <n-button size="small" quaternary @click="showEntryModal = false">
           <template #icon><n-icon :component="CloseOutline" /></template>
         </n-button>
@@ -1043,7 +1042,9 @@
             <n-switch v-model:value="entryForm.http_redirect" :disabled="!entryForm.https_enabled" />
           </div>
         </div>
-        <p class="field-hint">修改后将同步应用到该入口下的全部规则。</p>
+        <p class="field-hint">
+          {{ editingEntryId ? '修改后将同步应用到该入口下的全部规则。' : '每个入口需使用未被占用的监听端口。' }}
+        </p>
       </n-form>
       <div class="modal-footer">
         <n-button @click="showEntryModal = false">取消</n-button>
@@ -1225,7 +1226,7 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
-import { formatBytes, formatRate, formatRelativeTime } from '../utils/format'
+import { formatBytes, formatRate, formatRateIdle, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
 const message = useMessage()
@@ -1359,7 +1360,7 @@ const form = reactive({
 
 const tableWrapRef = ref<HTMLElement | null>(null)
 const entryStackRef = ref<HTMLElement | null>(null)
-const collapsedEntryKeys = ref<Set<string>>(new Set())
+const expandedEntryKeys = ref<Set<string>>(new Set())
 const formEntryId = ref<number | null>(null)
 const bindEntryListen = computed(() => formEntryId.value != null)
 const reordering = ref(false)
@@ -1420,14 +1421,14 @@ const filteredRules = computed(() =>
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
 
 function isEntryCollapsed(key: string): boolean {
-  return collapsedEntryKeys.value.has(key)
+  return !expandedEntryKeys.value.has(key)
 }
 
 function toggleEntryCollapsed(key: string) {
-  const next = new Set(collapsedEntryKeys.value)
+  const next = new Set(expandedEntryKeys.value)
   if (next.has(key)) next.delete(key)
   else next.add(key)
-  collapsedEntryKeys.value = next
+  expandedEntryKeys.value = next
 }
 
 function entryGroupTraffic(group: ProxyEntryGroup) {
@@ -1561,24 +1562,48 @@ function openEntryEdit(group: ProxyEntryGroup) {
   showEntryModal.value = true
 }
 
+function entryPortConflict(port: number, excludeId?: number | null): string | null {
+  const other = entries.value.find(
+    (entry) => entry.listen_port === port && entry.id !== (excludeId ?? undefined),
+  )
+  if (!other) return null
+  const label = other.name?.trim() || `端口 ${other.listen_port}`
+  return `监听端口 ${port} 已被入口「${label}」占用，请更换端口`
+}
+
 async function saveEntry() {
-  if (!editingEntryId.value) return
   if (!entryForm.listen_ipv4 && !entryForm.listen_ipv6) {
     message.error('至少需要启用 IPv4 或 IPv6 监听')
     return
   }
+  const port = entryForm.listen_port
+  if (!port || port < 1 || port > 65535) {
+    message.error('监听端口无效')
+    return
+  }
+  const portErr = entryPortConflict(port, editingEntryId.value)
+  if (portErr) {
+    message.warning(portErr)
+    return
+  }
   savingEntry.value = true
   try {
-    await api.updateProxyEntry(editingEntryId.value, {
+    const payload = {
       name: entryForm.name.trim(),
-      listen_port: entryForm.listen_port,
+      listen_port: port,
       listen_ipv4: entryForm.listen_ipv4,
       listen_ipv6: entryForm.listen_ipv6,
       https_enabled: entryForm.https_enabled,
       http_redirect: entryForm.http_redirect,
-    })
+    }
+    if (editingEntryId.value) {
+      await api.updateProxyEntry(editingEntryId.value, payload)
+      message.success('入口已保存')
+    } else {
+      await api.createProxyEntry(payload)
+      message.success('入口已创建')
+    }
     showEntryModal.value = false
-    message.success('入口已保存')
     await load()
   } catch (error) {
     const msg = error instanceof Error ? error.message : '保存失败'
@@ -1594,42 +1619,19 @@ async function saveEntry() {
   }
 }
 
-function duplicateEntryHosts(rule: ProxyRule): string[] {
-  return ruleHosts(rule).map((host) => {
-    const idx = host.lastIndexOf(':')
-    if (idx > 0 && /^\d+$/.test(host.slice(idx + 1))) {
-      return `${host.slice(0, idx)}-copy${host.slice(idx)}`
-    }
-    return `${host}-copy`
-  })
-}
-
-async function duplicateEntry(group: ProxyEntryGroup) {
+function duplicateEntry(group: ProxyEntryGroup) {
   if (!group.entryId) return
-  try {
-    const entry = await api.createProxyEntry({
-      name: duplicateLabel(group.name || entryGroupDisplayName(group)),
-      listen_port: group.listen.listen_port,
-      listen_ipv4: group.listen.listen_ipv4,
-      listen_ipv6: group.listen.listen_ipv6,
-      https_enabled: group.listen.https_enabled,
-      http_redirect: group.listen.http_redirect,
-    })
-    for (const rule of group.rules) {
-      await api.createProxy({
-        entry_id: entry.id,
-        upstream: rule.upstream,
-        hosts: duplicateEntryHosts(rule),
-        enabled: rule.enabled,
-        name: duplicateName(rule),
-        security: rule.security,
-      })
-    }
-    message.success('入口已复制，域名已追加 -copy 后缀')
-    await load()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '复制失败')
-  }
+  editingEntryId.value = null
+  Object.assign(entryForm, {
+    name: group.name,
+    listen_port: group.listen.listen_port,
+    listen_ipv4: group.listen.listen_ipv4,
+    listen_ipv6: group.listen.listen_ipv6,
+    https_enabled: group.listen.https_enabled,
+    http_redirect: group.listen.http_redirect,
+  })
+  showEntryModal.value = true
+  message.info('已填入复制内容，请修改监听端口等信息后保存')
 }
 
 function confirmDeleteEntry(group: ProxyEntryGroup) {
@@ -1756,8 +1758,7 @@ async function submitDiscovery() {
 watch(entryGroups, (groups) => {
   if (!showEntryGroups.value) return
   const validKeys = new Set(groups.map((group) => group.key))
-  const next = new Set([...collapsedEntryKeys.value].filter((key) => validKeys.has(key)))
-  collapsedEntryKeys.value = next
+  expandedEntryKeys.value = new Set([...expandedEntryKeys.value].filter((key) => validKeys.has(key)))
 })
 
 function clearRateHistory() {
@@ -2031,18 +2032,6 @@ function ruleName(rule: ProxyRule): string {
   return name || primaryHost(rule)
 }
 
-function duplicateName(rule: ProxyRule): string {
-  const base = rule.name?.trim() || primaryHost(rule)
-  return duplicateLabel(base)
-}
-
-function duplicateLabel(base: string): string {
-  const suffix = '-复制'
-  const maxBase = 100 - suffix.length
-  const trimmedBase = base.length > maxBase ? base.slice(0, maxBase) : base
-  return `${trimmedBase}${suffix}`
-}
-
 function hostsToText(rule: ProxyRule): string {
   return ruleHosts(rule).join('\n')
 }
@@ -2137,13 +2126,23 @@ function renderAccessLinkRow(href: string, displayText?: string): VNode {
 interface DomainLinkOptions {
   hideListenPort?: boolean
   showWhenSingleHost?: boolean
+  /** 入口分组内表格：链接文案仅显示域名，完整 URL 保留在 href/title */
+  displayHostOnly?: boolean
 }
 
 function accessLinkPairs(rule: ProxyRule, options: DomainLinkOptions = {}) {
-  return ruleHosts(rule).map((host) => ({
-    href: hostAccessUrl(rule, host),
-    display: options.hideListenPort ? hostAccessUrlWithoutListenPort(rule, host) : hostAccessUrl(rule, host),
-  }))
+  return ruleHosts(rule).map((host) => {
+    const href = options.hideListenPort
+      ? hostAccessUrlWithoutListenPort(rule, host)
+      : hostAccessUrl(rule, host)
+    let display = href
+    if (options.displayHostOnly) {
+      display = host
+    } else if (options.hideListenPort) {
+      display = hostAccessUrlWithoutListenPort(rule, host)
+    }
+    return { href, display }
+  })
 }
 
 function renderDomainAccessLinks(rule: ProxyRule, options: DomainLinkOptions = {}): VNode | null {
@@ -2200,6 +2199,7 @@ function renderEntryGroupRuleNameCell(rule: ProxyRule, group: ProxyEntryGroup): 
   }
   const links = renderDomainAccessLinks(rule, {
     hideListenPort: true,
+    displayHostOnly: true,
     showWhenSingleHost: singleRuleWithHeaderName || !label,
   })
   if (links) children.push(links)
@@ -2268,9 +2268,35 @@ function renderProtocol(row: ProxyRule): VNode {
 }
 
 function rowProps(row: ProxyRule) {
-  return {
-    class: showDetailPanel.value && selectedRuleId.value === row.id ? 'proxy-row--active' : '',
+  const classes: string[] = []
+  if (showDetailPanel.value && selectedRuleId.value === row.id) {
+    classes.push('proxy-row--active')
   }
+  if (!row.enabled) {
+    classes.push('proxy-row--disabled')
+  }
+  return {
+    class: classes.join(' '),
+  }
+}
+
+function renderRuleEnabledSwitch(row: ProxyRule): VNode {
+  return h(
+    'div',
+    {
+      class: 'proxy-enable-cell',
+      onClick: (e: Event) => e.stopPropagation(),
+    },
+    [
+      h(NSwitch, {
+        value: row.enabled,
+        size: 'small',
+        loading: togglingRuleId.value === row.id,
+        onUpdateValue: (enabled: boolean) => toggleRuleEnabled(row, enabled),
+        'aria-label': row.enabled ? '启用规则' : '停用规则',
+      }),
+    ],
+  )
 }
 
 const columns = computed<DataTableColumns<ProxyRule>>(() => {
@@ -2335,30 +2361,8 @@ const columns = computed<DataTableColumns<ProxyRule>>(() => {
   {
     title: '状态',
     key: 'enabled',
-    width: 108,
-    render: (row) =>
-      h(
-        'div',
-        {
-          class: 'proxy-enable-cell',
-          onClick: (e: Event) => e.stopPropagation(),
-        },
-        [
-          h(
-            NSwitch,
-            {
-              value: row.enabled,
-              size: 'small',
-              loading: togglingRuleId.value === row.id,
-              onUpdateValue: (enabled: boolean) => toggleRuleEnabled(row, enabled),
-            },
-            {
-              checked: () => '启用',
-              unchecked: () => '停用',
-            },
-          ),
-        ],
-      ),
+    width: 72,
+    render: (row) => renderRuleEnabledSwitch(row),
   },
   {
     title: '当前连接',
@@ -2419,7 +2423,21 @@ function entryGroupColumnsFor(group: ProxyEntryGroup): DataTableColumns<ProxyRul
       if ('key' in col && col.key === 'name') {
         return {
           ...col,
+          minWidth: 220,
           render: (row: ProxyRule) => renderEntryGroupRuleNameCell(row, group),
+        }
+      }
+      if ('key' in col && col.key === 'actions') {
+        return {
+          ...col,
+          width: 148,
+          render: (row: ProxyRule) =>
+            renderTableRowActions([
+              { label: '复制', icon: CopyOutline, onClick: () => openDuplicate(row) },
+              { label: '详情', icon: InformationCircleOutline, onClick: () => openDetail(row) },
+              { label: '编辑', icon: CreateOutline, type: 'primary', onClick: () => openEdit(row) },
+              { label: '删除', icon: TrashOutline, type: 'error', onClick: () => confirmDelete(row) },
+            ]),
         }
       }
       return col
@@ -2779,16 +2797,16 @@ function openDuplicate(rule: ProxyRule) {
   }
 
   Object.assign(form, {
-    hostsText: duplicateEntryHosts(rule).join('\n'),
+    hostsText: hostsToText(rule),
     upstream: rule.upstream,
     enabled: rule.enabled,
-    name: duplicateName(rule),
+    name: rule.name ?? '',
   })
   loadSecurityToForm(rule)
   syncSecurityExpanded()
   formTab.value = 'basic'
   showModal.value = true
-  message.info('已填入复制内容，域名已追加 -copy 后缀')
+  message.info('已填入复制内容，确认后保存为新规则')
 }
 
 function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
@@ -2961,7 +2979,7 @@ async function setupRowSortable() {
   await setupEntryStackSortable()
 }
 
-watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, collapsedEntryKeys], () => {
+watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys], () => {
   void setupRowSortable()
 })
 
@@ -3210,11 +3228,9 @@ onUnmounted(() => {
 }
 
 .proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
-  outline: none;
-}
-
-.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
-  outline: none;
+  outline: 2px solid rgba(16, 185, 129, 0.45);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .proxy-entry-card {
@@ -3230,16 +3246,6 @@ onUnmounted(() => {
 
 .proxy-entry-card:not(.proxy-entry-card--collapsed) .proxy-entry-card__head {
   border-bottom-color: var(--fonu-border);
-}
-
-.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
-  outline: 2px solid rgba(16, 185, 129, 0.45);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-
-.proxy-entry-card__chevron {
-  display: none;
 }
 
 .proxy-entry-card__title-row {
@@ -3524,16 +3530,53 @@ onUnmounted(() => {
   padding: 0;
 }
 
+.proxy-table--nested {
+  width: 100%;
+}
+
+.proxy-table--nested :deep(.n-data-table-wrapper) {
+  padding: 0;
+}
+
+.proxy-table--nested :deep(.n-data-table-base-table) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.proxy-table--nested :deep(.n-data-table-th) {
+  background: transparent;
+  font-size: 12px;
+  color: var(--fonu-text-secondary);
+}
+
+.proxy-table--nested :deep(.n-data-table-td) {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.proxy-table--nested :deep(.domain-cell__main) {
+  font-size: 13px;
+}
+
+.proxy-table--nested :deep(.domain-cell__link) {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 0 1 auto;
+  max-width: calc(100% - 52px);
+}
+
+.proxy-table--nested :deep(.domain-cell__link-row) {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
 .proxy-entry-card__empty {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--fonu-space-3);
   padding: var(--fonu-space-5) var(--fonu-space-4);
-}
-
-.proxy-table--nested :deep(.n-data-table-th) {
-  background: transparent;
 }
 
 .listen-row--readonly {
@@ -3569,6 +3612,14 @@ onUnmounted(() => {
   background: rgba(16, 185, 129, 0.06);
 }
 
+.proxy-table :deep(.proxy-row--disabled td) {
+  opacity: 0.72;
+}
+
+.proxy-table :deep(.proxy-row--disabled.proxy-row--active td) {
+  opacity: 1;
+}
+
 .proxy-enable-cell {
   display: inline-flex;
   align-items: center;
@@ -3588,14 +3639,15 @@ onUnmounted(() => {
 }
 
 .proxy-table :deep(.domain-cell__link-row) {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 2px;
-  min-width: 0;
+  max-width: 100%;
 }
 
 .proxy-table :deep(.domain-cell__link) {
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: calc(100% - 52px);
   min-width: 0;
   font-size: 12px;
   font-family: var(--fonu-mono);

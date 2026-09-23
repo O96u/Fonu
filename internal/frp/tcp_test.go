@@ -48,6 +48,15 @@ func TestValidateSaveInputAllowsConnectionOnly(t *testing.T) {
 	}
 }
 
+func TestValidateTCPProxiesAllowsLowRemotePort(t *testing.T) {
+	err := validateTCPProxies([]TCPProxy{
+		{ID: "1", Name: "http", LocalIP: "127.0.0.1", LocalPort: 80, RemotePort: 81, Enabled: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateSaveInputAllowsTCPOnly(t *testing.T) {
 	err := validateSaveInput(SaveInput{
 		Enabled:    true,

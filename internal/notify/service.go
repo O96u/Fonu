@@ -54,10 +54,15 @@ func (s *Service) Alert(ctx context.Context, event, title, message string) {
 		return
 	}
 	if !s.enabledFor(cfg, event) {
+		s.logger.Debug("notify skipped",
+			"event", event,
+			"type", string(cfg.Type),
+			"enabled", false,
+		)
 		return
 	}
 	if err := s.send(ctx, cfg, event, title, message); err != nil {
-		s.logger.Warn("notify send failed", "event", event, "error", err.Error())
+		s.logger.Warn("notify send failed", "event", event, "type", string(cfg.Type), "error", err.Error())
 	}
 }
 
@@ -224,7 +229,7 @@ func (s *Service) send(ctx context.Context, cfg RuntimeConfig, event, title, mes
 	case NotifyTypeTelegram:
 		return SendTelegram(ctx, s.client, cfg, content)
 	default:
-		return nil
+		return fmt.Errorf("未配置有效的通知方式")
 	}
 }
 

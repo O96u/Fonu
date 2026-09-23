@@ -660,7 +660,7 @@
           :disabled="!frpForm.enabled"
         />
         <p class="field-hint field-hint--inline">
-          填 0 表示自动分配未占用的随机端口（1024–65535），或手动指定固定端口
+          填 0 表示自动分配未占用的随机端口（1024–65535），或手动指定 1–65535 的固定端口
         </p>
       </div>
       <div class="form-switch-row">
@@ -1119,9 +1119,9 @@ function validateTcpForm() {
   if (
     tcpForm.remote_port < 0 ||
     (tcpForm.remote_port > 0 &&
-      (tcpForm.remote_port < 1024 || tcpForm.remote_port > 65535))
+      (tcpForm.remote_port < 1 || tcpForm.remote_port > 65535))
   ) {
-    message.warning("远程端口请填 0（自动分配）或 1024–65535");
+    message.warning("远程端口请填 0（自动分配）或 1–65535");
     return false;
   }
   const duplicate =

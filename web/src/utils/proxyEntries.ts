@@ -69,16 +69,16 @@ export function entryGroupKey(listen: ProxyEntryListen): string {
 }
 
 function applyPortMixedFlags(groups: ProxyEntryGroup[]) {
-  const portKeys = new Map<number, Set<string>>()
+  const portListenKeys = new Map<number, Set<string>>()
   for (const group of groups) {
-    if (!portKeys.has(group.listen.listen_port)) {
-      portKeys.set(group.listen.listen_port, new Set())
+    if (!portListenKeys.has(group.listen.listen_port)) {
+      portListenKeys.set(group.listen.listen_port, new Set())
     }
-    portKeys.get(group.listen.listen_port)!.add(group.key)
+    portListenKeys.get(group.listen.listen_port)!.add(entryGroupKey(group.listen))
   }
   for (const group of groups) {
-    const keysOnPort = portKeys.get(group.listen.listen_port)!
-    group.portHasMixedEntries = keysOnPort.size > 1
+    const listenKeysOnPort = portListenKeys.get(group.listen.listen_port)!
+    group.portHasMixedEntries = listenKeysOnPort.size > 1
   }
 }
 

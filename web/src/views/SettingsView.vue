@@ -944,7 +944,10 @@ function applyNotifySettings(settings: Record<string, string>) {
     settings.notify_on_ddns_failure != null ||
     settings.notify_on_cert_expiry != null ||
     settings.notify_on_cert_renew_success != null ||
-    settings.notify_on_ip_frequent_access != null
+    settings.notify_on_cert_renew_failure != null ||
+    settings.notify_on_ip_frequent_access != null ||
+    settings.notify_on_login_failure != null ||
+    settings.notify_on_nginx_reload_failure != null
 
   if (hasNewNotifyEvents) {
     notifyEventFlags.on_ddns_ip_change = flagOn('notify_on_ddns_ip_change')

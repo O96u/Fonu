@@ -103,11 +103,9 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if smtpEnc != "" {
 		cfg.Email.HasPassword = true
 		if decrypt && s.secret != nil {
-			plain, err := s.secret.Decrypt(smtpEnc)
-			if err != nil {
-				return Config{}, runtimeSecrets{}, secret.DecryptHint(err)
+			if plain, err := s.secret.Decrypt(smtpEnc); err == nil {
+				secrets.smtpPassword = plain
 			}
-			secrets.smtpPassword = plain
 		}
 	}
 
@@ -115,11 +113,9 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if webhookEnc != "" {
 		cfg.Webhook.HasSecret = true
 		if decrypt && s.secret != nil {
-			plain, err := s.secret.Decrypt(webhookEnc)
-			if err != nil {
-				return Config{}, runtimeSecrets{}, secret.DecryptHint(err)
+			if plain, err := s.secret.Decrypt(webhookEnc); err == nil {
+				secrets.webhookSecret = plain
 			}
-			secrets.webhookSecret = plain
 		}
 	}
 
@@ -127,11 +123,9 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if telegramEnc != "" {
 		cfg.Telegram.HasBotToken = true
 		if decrypt && s.secret != nil {
-			plain, err := s.secret.Decrypt(telegramEnc)
-			if err != nil {
-				return Config{}, runtimeSecrets{}, secret.DecryptHint(err)
+			if plain, err := s.secret.Decrypt(telegramEnc); err == nil {
+				secrets.telegramToken = plain
 			}
-			secrets.telegramToken = plain
 		}
 	}
 
@@ -405,13 +399,7 @@ func SanitizeSettings(values map[string]string) {
 }
 
 func ParseSaveInputFromMap(values map[string]string) (SaveInput, bool) {
-	if values[settings.KeyNotifyType] == "" &&
-		values[settings.KeyNotifyEmailJSON] == "" &&
-		values[settings.KeyNotifyWebhookJSON] == "" &&
-		values[settings.KeyNotifyTelegramJSON] == "" &&
-		values[settings.KeyNotifySMTPPassword] == "" &&
-		values[settings.KeyNotifyWebhookSecret] == "" &&
-		values[settings.KeyNotifyTelegramToken] == "" {
+	if !mapHasNotifySavePayload(values) {
 		return SaveInput{}, false
 	}
 
@@ -430,25 +418,71 @@ func ParseSaveInputFromMap(values map[string]string) (SaveInput, bool) {
 	if raw := values[settings.KeyNotifyTelegramJSON]; raw != "" {
 		_ = json.Unmarshal([]byte(raw), &in.Telegram)
 	}
-	in.OnDDNSIPChange = values[settings.KeyNotifyOnDDNSIPChange] == "1" || strings.EqualFold(values[settings.KeyNotifyOnDDNSIPChange], "true")
-	in.OnDDNSFailure = values[settings.KeyNotifyOnDDNSFailure] == "1" || strings.EqualFold(values[settings.KeyNotifyOnDDNSFailure], "true")
+	in.OnDDNSIPChange = boolFromMap(values, settings.KeyNotifyOnDDNSIPChange)
+	in.OnDDNSFailure = boolFromMap(values, settings.KeyNotifyOnDDNSFailure)
 	if !in.OnDDNSFailure {
-		in.OnDDNSFailure = values[settings.KeyNotifyOnDDNSError] == "1" || strings.EqualFold(values[settings.KeyNotifyOnDDNSError], "true")
+		in.OnDDNSFailure = boolFromMap(values, settings.KeyNotifyOnDDNSError)
 	}
-	in.OnCertExpiry = values[settings.KeyNotifyOnCertExpiry] == "1" || strings.EqualFold(values[settings.KeyNotifyOnCertExpiry], "true")
+	in.OnCertExpiry = boolFromMap(values, settings.KeyNotifyOnCertExpiry)
 	if !in.OnCertExpiry {
-		in.OnCertExpiry = values[settings.KeyNotifyOnCertError] == "1" || strings.EqualFold(values[settings.KeyNotifyOnCertError], "true")
+		in.OnCertExpiry = boolFromMap(values, settings.KeyNotifyOnCertError)
 	}
-	in.OnCertRenewSuccess = values[settings.KeyNotifyOnCertRenewSuccess] == "1" || strings.EqualFold(values[settings.KeyNotifyOnCertRenewSuccess], "true")
-	in.OnIPFrequentAccess = values[settings.KeyNotifyOnIPFrequentAccess] == "1" || strings.EqualFold(values[settings.KeyNotifyOnIPFrequentAccess], "true")
-	in.OnCertRenewFailure = values[settings.KeyNotifyOnCertRenewFailure] == "1" || strings.EqualFold(values[settings.KeyNotifyOnCertRenewFailure], "true")
-	in.OnLoginFailure = values[settings.KeyNotifyOnLoginFailure] == "1" || strings.EqualFold(values[settings.KeyNotifyOnLoginFailure], "true")
-	in.OnNginxReloadFailure = values[settings.KeyNotifyOnNginxReloadFailure] == "1" || strings.EqualFold(values[settings.KeyNotifyOnNginxReloadFailure], "true")
+	in.OnCertRenewSuccess = boolFromMap(values, settings.KeyNotifyOnCertRenewSuccess)
+	in.OnIPFrequentAccess = boolFromMap(values, settings.KeyNotifyOnIPFrequentAccess)
+	in.OnCertRenewFailure = boolFromMap(values, settings.KeyNotifyOnCertRenewFailure)
+	in.OnLoginFailure = boolFromMap(values, settings.KeyNotifyOnLoginFailure)
+	in.OnNginxReloadFailure = boolFromMap(values, settings.KeyNotifyOnNginxReloadFailure)
 	in.IPFrequentThreshold = intSettingFromMap(values, settings.KeyNotifyIPFrequentThreshold, DefaultIPFrequentThreshold)
 	in.IPFrequentWindowSec = intSettingFromMap(values, settings.KeyNotifyIPFrequentWindowSec, DefaultIPFrequentWindowSec)
 	in.LoginFailureThreshold = intSettingFromMap(values, settings.KeyNotifyLoginFailureThreshold, DefaultLoginFailureThreshold)
 	in.LoginFailureWindowSec = intSettingFromMap(values, settings.KeyNotifyLoginFailureWindowSec, DefaultLoginFailureWindowSec)
 	return in, true
+}
+
+func mapHasNotifySavePayload(values map[string]string) bool {
+	if values[settings.KeyNotifyType] != "" ||
+		values[settings.KeyNotifyEmailJSON] != "" ||
+		values[settings.KeyNotifyWebhookJSON] != "" ||
+		values[settings.KeyNotifyTelegramJSON] != "" ||
+		values[settings.KeyNotifySMTPPassword] != "" ||
+		values[settings.KeyNotifyWebhookSecret] != "" ||
+		values[settings.KeyNotifyTelegramToken] != "" {
+		return true
+	}
+	keys := []string{
+		settings.KeyNotifyOnDDNSIPChange,
+		settings.KeyNotifyOnDDNSFailure,
+		settings.KeyNotifyOnCertExpiry,
+		settings.KeyNotifyOnCertRenewSuccess,
+		settings.KeyNotifyOnIPFrequentAccess,
+		settings.KeyNotifyOnCertRenewFailure,
+		settings.KeyNotifyOnLoginFailure,
+		settings.KeyNotifyOnNginxReloadFailure,
+		settings.KeyNotifyIPFrequentThreshold,
+		settings.KeyNotifyIPFrequentWindowSec,
+		settings.KeyNotifyLoginFailureThreshold,
+		settings.KeyNotifyLoginFailureWindowSec,
+		settings.KeyNotifyWebhookURL,
+	}
+	for _, key := range keys {
+		if _, ok := values[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func boolFromMap(values map[string]string, key string) bool {
+	raw, ok := values[key]
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func intSettingFromMap(values map[string]string, key string, fallback int) int {

@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	tcpProxyNameMaxLen = 32
-	tcpRemotePortMin   = 1024
+	tcpProxyNameMaxLen   = 32
+	tcpRemotePortMin     = 1
+	tcpAutoRemotePortMin = 1024
 )
 
 var tcpProxyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -58,17 +59,17 @@ func assignTCPRemotePorts(proxies []TCPProxy) []TCPProxy {
 func nextTCPRemotePort(used map[int]bool) int {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for attempt := 0; attempt < 256; attempt++ {
-		port := tcpRemotePortMin + rng.Intn(65535-tcpRemotePortMin+1)
+		port := tcpAutoRemotePortMin + rng.Intn(65535-tcpAutoRemotePortMin+1)
 		if !used[port] {
 			return port
 		}
 	}
-	for port := tcpRemotePortMin; port <= 65535; port++ {
+	for port := tcpAutoRemotePortMin; port <= 65535; port++ {
 		if !used[port] {
 			return port
 		}
 	}
-	return tcpRemotePortMin
+	return tcpAutoRemotePortMin
 }
 
 func normalizeTCPProxies(proxies []TCPProxy) []TCPProxy {
