@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.0.6] - 2026-09-23
+
+### 修复
+
+- DDNS：开启 FRP 后页面主内容被隐藏、仅显示提示条的问题（[#8](https://github.com/O96u/Fonu/issues/8)）
+
 ## [v1.0.5] - 2026-09-23
 
 ### 新增
