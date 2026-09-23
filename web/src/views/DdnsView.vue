@@ -21,7 +21,7 @@
     <router-link :to="{ name: 'frp' }">内网穿透</router-link> 页管理 FRP 配置。
   </n-alert>
 
-  <template v-else-if="!loadError">
+  <template v-if="!loadError">
     <div class="stats-row">
       <div class="stat-card stat-card--ip">
         <div class="stat-card__head">
