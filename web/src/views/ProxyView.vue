@@ -2198,7 +2198,6 @@ function renderEntryGroupRuleNameCell(rule: ProxyRule, group: ProxyEntryGroup): 
     children.push(h('div', { class: 'domain-cell__main' }, label))
   }
   const links = renderDomainAccessLinks(rule, {
-    hideListenPort: true,
     displayHostOnly: true,
     showWhenSingleHost: singleRuleWithHeaderName || !label,
   })
