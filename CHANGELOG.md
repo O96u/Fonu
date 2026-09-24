@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.0.7] - 2026-09-24
+
+### 修复
+
+- 反代：入口分组内域名「复制链接 / 新窗口打开」未带上非默认监听端口（如 HTTPS 8007）
+
 ## [v1.0.6] - 2026-09-23
 
 ### 修复
