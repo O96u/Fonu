@@ -98,6 +98,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ old_password, new_password }),
     }),
+  changeUsername: (password: string, new_username: string) =>
+    request<{ message: string }>('/api/auth/username', {
+      method: 'POST',
+      body: JSON.stringify({ password, new_username }),
+    }),
 
   getStatus: () => request<DashboardStatus>('/api/status'),
   listProxies: () => request<ProxyRule[]>('/api/proxies'),

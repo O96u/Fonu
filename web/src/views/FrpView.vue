@@ -120,7 +120,7 @@
                     </div>
                   </div>
                   <div v-if="tcpProxies.length" class="status-overview__group">
-                    <div class="status-overview__group-label">TCP 隧道</div>
+                    <div class="status-overview__group-label">端口隧道</div>
                     <div ref="tcpChipsRef" class="status-overview__chips">
                       <span
                         v-for="item in tcpProxies.slice(0, tcpVisibleCount)"
@@ -142,12 +142,12 @@
                   </div>
                 </div>
                 <div v-else class="status-overview__empty">
-                  尚未配置 Web 域名或 TCP 隧道
+                  尚未配置 Web 域名或端口隧道
                 </div>
               </template>
 
               <div v-else class="status-overview__empty">
-                启用内网穿透后，这里将显示已配置的 Web 域名和 TCP 隧道
+                启用内网穿透后，这里将显示已配置的 Web 域名和端口隧道
               </div>
             </div>
 
@@ -378,15 +378,15 @@
             <template #tab>
               <span class="routes-tab">
                 <n-icon :component="SwapHorizontalOutline" />
-                TCP 穿透
+                端口穿透
               </span>
             </template>
 
             <div class="routes-panel">
               <div class="routes-panel__head">
                 <p class="section-desc">
-                  将 VPS 上的远程端口直接转发到内网 TCP 服务（如
-                  SSH、数据库、RDP）。需在 VPS 防火墙放行对应远程端口。
+                  将 VPS 上的远程端口转发到内网服务。可选 TCP（如 SSH、数据库）或
+                  UDP（如 DNS、游戏/VoIP）。需在 VPS 防火墙对对应远程端口放行 TCP 与/或 UDP。
                 </p>
                 <n-button
                   size="small"
@@ -408,8 +408,8 @@
               />
               <EmptyState
                 v-else
-                title="暂无 TCP 隧道"
-                description="添加隧道后，外网可通过 VPS 远程端口访问内网 TCP 服务。"
+                title="暂无端口隧道"
+                description="添加隧道后，外网可通过 VPS 远程端口访问内网 TCP/UDP 服务。"
               >
                 <template #action>
                   <n-button
@@ -455,8 +455,8 @@
                   {{ frpForm.server_port || 7000 }}、{{ nginxHttpPort }}、{{
                     nginxHttpsPort
                   }}<template v-if="tcpRemotePorts.length">
-                    ，以及 TCP 远程端口
-                    {{ tcpRemotePorts.join("、") }}</template
+                    ，以及隧道远程端口
+                    {{ tcpRemotePorts.join("、") }}（TCP/UDP 均需放行）</template
                   >。
                 </p>
                 <div class="frps-config-actions">
@@ -558,13 +558,13 @@
     <div class="help-content">
       <p>
         1. 在 VPS 部署 frps，放行控制端口（默认 7000）、Web
-        网关端口（HTTP/HTTPS）及 TCP 远程端口。
+        网关端口（HTTP/HTTPS）及隧道远程端口（TCP/UDP）。
       </p>
       <p>2. 在本页填写 frps 地址、端口与 Token，保存并连接。</p>
       <p>3. Web 服务：点击「同步域名」，从反代规则导入域名到 FRP Web 网关。</p>
       <p>
-        4. TCP 服务：在「TCP 穿透」添加隧道，例如 VPS:6000 →
-        127.0.0.1:22（SSH）。
+        4. 端口穿透：在「端口穿透」添加隧道并选择 TCP 或 UDP，例如 VPS:6000 →
+        127.0.0.1:22（SSH），或 UDP 53 → 127.0.0.1:53（DNS）。
       </p>
       <p>
         5. 在
@@ -617,11 +617,21 @@
     <div class="settings-fields">
       <div class="settings-field">
         <div class="settings-field__label">
+          协议 <span class="required">*</span>
+        </div>
+        <n-select
+          v-model:value="tcpForm.protocol"
+          :options="tunnelProtocolOptions"
+          :disabled="!frpForm.enabled"
+        />
+      </div>
+      <div class="settings-field">
+        <div class="settings-field__label">
           名称 <span class="required">*</span>
         </div>
         <n-input
           v-model:value="tcpForm.name"
-          placeholder="如 ssh、mysql"
+          placeholder="如 ssh、dns"
           :disabled="!frpForm.enabled"
         />
         <p class="field-hint field-hint--inline">
@@ -706,6 +716,7 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NSelect,
   NSpin,
   NSwitch,
   NTabPane,
@@ -775,7 +786,12 @@ const frpForm = reactive({
 });
 const frpDomainsText = ref("");
 const tcpProxies = ref<FRPTCPProxy[]>([]);
+const tunnelProtocolOptions = [
+  { label: "TCP", value: "tcp" as const },
+  { label: "UDP", value: "udp" as const },
+];
 const tcpForm = reactive({
+  protocol: "tcp" as "tcp" | "udp",
   name: "",
   local_ip: "127.0.0.1",
   local_port: 22,
@@ -817,7 +833,7 @@ const tcpRemotePorts = computed(() =>
   ].sort((a, b) => a - b),
 );
 const tcpModalTitle = computed(() =>
-  tcpEditingId.value ? "编辑 TCP 隧道" : "添加 TCP 隧道",
+  tcpEditingId.value ? "编辑端口隧道" : "添加端口隧道",
 );
 const logText = computed(() => logLines.value.join("\n"));
 const httpGatewayOn = computed(
@@ -870,9 +886,14 @@ function tcpStatusBadge(row: FRPTCPProxy) {
   return { kind: "warning" as const, text: "待连接" };
 }
 
+function tunnelProtocolOf(row: FRPTCPProxy): "tcp" | "udp" {
+  return row.protocol === "udp" ? "udp" : "tcp";
+}
+
 function tcpOverviewLabel(row: FRPTCPProxy) {
   const port = row.remote_port > 0 ? `:${row.remote_port}` : "";
-  return `${row.name}${port}`;
+  const proto = tunnelProtocolOf(row).toUpperCase();
+  return `${proto} ${row.name}${port}`;
 }
 
 function tcpMappingLabel(row: FRPTCPProxy) {
@@ -900,6 +921,23 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
     key: "name",
     minWidth: 88,
     render: (row) => h("span", { class: "route-name" }, row.name),
+  },
+  {
+    title: "协议",
+    key: "protocol",
+    width: 72,
+    render: (row) => {
+      const proto = tunnelProtocolOf(row);
+      return h(
+        NTag,
+        {
+          size: "small",
+          bordered: false,
+          type: proto === "udp" ? "info" : "default",
+        },
+        { default: () => proto.toUpperCase() },
+      );
+    },
   },
   {
     title: "端口映射",
@@ -1017,7 +1055,7 @@ function buildFrpsConfig(opts: {
   const token = opts.token.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const allowPorts =
     opts.tcpRemotePorts.length > 0
-      ? `\n# TCP 隧道远程端口，需在 VPS 防火墙放行\nallowPorts = [${opts.tcpRemotePorts.map((port) => `"${port}"`).join(", ")}]\n`
+      ? `\n# TCP/UDP 隧道远程端口，需在 VPS 防火墙放行（TCP 与 UDP 均需放行对应端口）\nallowPorts = [${opts.tcpRemotePorts.map((port) => `"${port}"`).join(", ")}]\n`
       : "";
   return `bindAddr = "0.0.0.0"
 bindPort = ${opts.bindPort}
@@ -1069,6 +1107,7 @@ function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
   frpDomainsText.value = (data.custom_domains ?? []).join("\n");
   tcpProxies.value = (data.tcp_proxies ?? []).map((item) => ({
     ...item,
+    protocol: item.protocol === "udp" ? "udp" : "tcp",
     local_ip: item.local_ip || "127.0.0.1",
   }));
   applyFrpsMeta(data);
@@ -1076,6 +1115,7 @@ function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
 }
 
 function resetTcpForm() {
+  tcpForm.protocol = "tcp";
   tcpForm.name = "";
   tcpForm.local_ip = "127.0.0.1";
   tcpForm.local_port = 22;
@@ -1086,6 +1126,7 @@ function resetTcpForm() {
 function openTcpModal(row?: FRPTCPProxy) {
   if (row) {
     tcpEditingId.value = row.id;
+    tcpForm.protocol = tunnelProtocolOf(row);
     tcpForm.name = row.name;
     tcpForm.local_ip = row.local_ip || "127.0.0.1";
     tcpForm.local_port = row.local_port;
@@ -1164,6 +1205,7 @@ async function saveTcpModal() {
   const payload: FRPTCPProxy = {
     id: tcpEditingId.value ?? createId(),
     name: tcpForm.name.trim(),
+    protocol: tcpForm.protocol,
     local_ip: tcpForm.local_ip.trim() || "127.0.0.1",
     local_port: tcpForm.local_port,
     remote_port: tcpForm.remote_port,
@@ -1176,7 +1218,7 @@ async function saveTcpModal() {
   } else {
     tcpProxies.value = [...tcpProxies.value, payload];
   }
-  if (await save({ quiet: true, successText: "TCP 隧道已保存" })) {
+  if (await save({ quiet: true, successText: "隧道已保存" })) {
     showTcpModal.value = false;
   }
 }
@@ -1184,7 +1226,7 @@ async function saveTcpModal() {
 async function removeTcpProxy(id: string) {
   tcpProxies.value = tcpProxies.value.filter((item) => item.id !== id);
   if (!canPersistRoutes()) return;
-  await save({ quiet: true, successText: "TCP 隧道已删除" });
+  await save({ quiet: true, successText: "隧道已删除" });
 }
 
 async function toggleTcpEnabled(id: string, enabled: boolean) {
@@ -1254,6 +1296,7 @@ async function save(opts?: {
     frpDomainsText.value = (result.config.custom_domains ?? []).join("\n");
     tcpProxies.value = (result.config.tcp_proxies ?? []).map((item) => ({
       ...item,
+      protocol: item.protocol === "udp" ? "udp" : "tcp",
       local_ip: item.local_ip || "127.0.0.1",
     }));
     applyFrpsMeta(result);
@@ -1302,6 +1345,7 @@ async function restartFrpc() {
     frpDomainsText.value = (result.config.custom_domains ?? []).join("\n");
     tcpProxies.value = (result.config.tcp_proxies ?? []).map((item) => ({
       ...item,
+      protocol: item.protocol === "udp" ? "udp" : "tcp",
       local_ip: item.local_ip || "127.0.0.1",
     }));
     applyFrpsMeta(result);

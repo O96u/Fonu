@@ -57,6 +57,40 @@ func TestValidateTCPProxiesAllowsLowRemotePort(t *testing.T) {
 	}
 }
 
+func TestNormalizeTunnelProtocolDefaultsTCP(t *testing.T) {
+	proxies := normalizeTCPProxies([]TCPProxy{
+		{ID: "1", Name: "ssh", LocalIP: "127.0.0.1", LocalPort: 22, RemotePort: 6000, Enabled: true},
+	})
+	if len(proxies) != 1 || proxies[0].Protocol != "tcp" {
+		t.Fatalf("expected default tcp protocol, got %+v", proxies)
+	}
+}
+
+func TestValidateTCPProxiesRejectsSameRemotePortAcrossProtocols(t *testing.T) {
+	err := validateTCPProxies([]TCPProxy{
+		{ID: "1", Name: "ssh", Protocol: "tcp", LocalIP: "127.0.0.1", LocalPort: 22, RemotePort: 6000, Enabled: true},
+		{ID: "2", Name: "game", Protocol: "udp", LocalIP: "127.0.0.1", LocalPort: 7777, RemotePort: 6000, Enabled: true},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate remote port across tcp/udp")
+	}
+}
+
+func TestValidateSaveInputAllowsUDPOnly(t *testing.T) {
+	err := validateSaveInput(SaveInput{
+		Enabled:    true,
+		ServerAddr: "vps.example.com",
+		ServerPort: 7000,
+		AuthToken:  "token",
+		TCPProxies: []TCPProxy{
+			{ID: "1", Name: "dns", Protocol: "udp", LocalIP: "127.0.0.1", LocalPort: 53, RemotePort: 60053, Enabled: true},
+		},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateSaveInputAllowsTCPOnly(t *testing.T) {
 	err := validateSaveInput(SaveInput{
 		Enabled:    true,

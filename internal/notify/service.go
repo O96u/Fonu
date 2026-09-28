@@ -50,14 +50,17 @@ func (s *Service) Alert(ctx context.Context, event, title, message string) {
 	}
 	cfg, err := s.store.LoadRuntime(ctx)
 	if err != nil {
-		s.logger.Warn("notify load config failed", "error", err.Error())
+		s.logger.Warn("notify load config failed", "event", event, "error", err.Error())
+		return
+	}
+	if cfg.Type == "" {
+		s.logger.Warn("notify skipped: no channel configured", "event", event)
 		return
 	}
 	if !s.enabledFor(cfg, event) {
-		s.logger.Debug("notify skipped",
+		s.logger.Debug("notify skipped: event disabled",
 			"event", event,
 			"type", string(cfg.Type),
-			"enabled", false,
 		)
 		return
 	}

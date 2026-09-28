@@ -75,7 +75,7 @@ func (m *Manager) Apply(ctx context.Context, in SaveInput) (ApplyResult, error) 
 			return ApplyResult{}, err
 		}
 		m.clearStarted(ctx)
-		msg := "配置已保存，请添加穿透域名或 TCP 隧道后再连接"
+		msg := "配置已保存，请添加穿透域名或 TCP/UDP 隧道后再连接"
 		_ = m.store.SetLastError(ctx, msg)
 		return ApplyResult{Message: msg}, nil
 	}
@@ -144,14 +144,7 @@ func (m *Manager) Bootstrap(ctx context.Context) error {
 		m.logger.Warn("frpc binary not found, skipping bootstrap", "bin", m.cfg.FrpcBin)
 		return nil
 	}
-	_, err = m.Apply(ctx, SaveInput{
-		Enabled:       cfg.Enabled,
-		ServerAddr:    cfg.ServerAddr,
-		ServerPort:    cfg.ServerPort,
-		AuthToken:     maskedToken,
-		TLSEnabled:    cfg.TLSEnabled,
-		CustomDomains: cfg.CustomDomains,
-	})
+	_, err = m.Apply(ctx, saveInputFromConfig(cfg))
 	if err != nil {
 		m.logger.Warn("initial frpc apply skipped", "error", err.Error())
 	}
@@ -183,15 +176,21 @@ func (m *Manager) SyncDomains(ctx context.Context, domains []string) (ApplyResul
 		return ApplyResult{}, err
 	}
 	merged := MergeDomains(cfg.CustomDomains, domains)
-	return m.Apply(ctx, SaveInput{
+	in := saveInputFromConfig(cfg)
+	in.CustomDomains = merged
+	return m.Apply(ctx, in)
+}
+
+func saveInputFromConfig(cfg Config) SaveInput {
+	return SaveInput{
 		Enabled:       cfg.Enabled,
 		ServerAddr:    cfg.ServerAddr,
 		ServerPort:    cfg.ServerPort,
 		AuthToken:     maskedToken,
 		TLSEnabled:    cfg.TLSEnabled,
-		CustomDomains: merged,
+		CustomDomains: cfg.CustomDomains,
 		TCPProxies:    cfg.TCPProxies,
-	})
+	}
 }
 
 func (m *Manager) Logs(ctx context.Context, limit int) ([]string, error) {

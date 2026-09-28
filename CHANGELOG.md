@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.0.8] - 2026-09-28
+
+### 新增
+
+- 设置：管理员账户支持修改登录用户名（需验证当前密码）
+- FRP：端口穿透支持 UDP，与 TCP 在同一列表管理（`protocol` 字段，旧规则默认 TCP）
+
+### 修复
+
+- FRP：应用重启后 TCP 穿透记录被清空（启动时 Bootstrap 未带上已保存的 TCP 隧道）
+- 定时任务：DDNS / 中国 IP 段检查间隔改为每次调度前读取设置，修改间隔后无需重启 Fonu
+- 通知：未配置通知方式时在日志中明确提示；保存设置时合并已有通知配置，避免误清空通道
+
 ## [v1.0.7] - 2026-09-24
 
 ### 修复

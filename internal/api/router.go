@@ -40,6 +40,7 @@ func NewRouter(deps Deps) http.Handler {
 	}
 
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
+	protect("POST /api/auth/username", r.authHandler.ChangeUsername)
 	protect("GET /api/status", r.statusHandler.Get)
 	protect("GET /api/proxies", r.proxyHandler.List)
 	protect("GET /api/proxy-entries", r.proxyHandler.ListEntries)

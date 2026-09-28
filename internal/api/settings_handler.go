@@ -87,7 +87,8 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		filtered[key] = value
 	}
 	if h.notify != nil && h.notify.Store() != nil {
-		if in, ok := notify.ParseSaveInputFromMap(filtered); ok {
+		existingNotify, _ := h.notify.Store().Load(r.Context())
+		if in, ok := notify.ParseSaveInputFromMap(filtered, existingNotify); ok {
 			if err := h.notify.Store().Save(r.Context(), in); err != nil {
 				writeError(r, w, http.StatusBadRequest, err.Error())
 				return

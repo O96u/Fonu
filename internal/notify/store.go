@@ -182,6 +182,10 @@ func hasNotifyEventSettings(ctx context.Context, store *settings.Store) bool {
 }
 
 func (s *Store) Save(ctx context.Context, in SaveInput) error {
+	existing, _ := s.Load(ctx)
+	if in.Type == "" {
+		in.Type = existing.Type
+	}
 	if err := validateSaveInput(in); err != nil {
 		return err
 	}
@@ -398,16 +402,22 @@ func SanitizeSettings(values map[string]string) {
 	delete(values, settings.KeyNotifyTelegramToken)
 }
 
-func ParseSaveInputFromMap(values map[string]string) (SaveInput, bool) {
+func ParseSaveInputFromMap(values map[string]string, existing Config) (SaveInput, bool) {
 	if !mapHasNotifySavePayload(values) {
 		return SaveInput{}, false
 	}
 
 	in := SaveInput{
-		Type:           NotifyType(values[settings.KeyNotifyType]),
-		SMTPPassword:   values[settings.KeyNotifySMTPPassword],
-		WebhookSecret:  values[settings.KeyNotifyWebhookSecret],
-		TelegramToken:  values[settings.KeyNotifyTelegramToken],
+		Type:          existing.Type,
+		Email:         existing.Email,
+		Webhook:       existing.Webhook,
+		Telegram:      existing.Telegram,
+		SMTPPassword:  values[settings.KeyNotifySMTPPassword],
+		WebhookSecret: values[settings.KeyNotifyWebhookSecret],
+		TelegramToken: values[settings.KeyNotifyTelegramToken],
+	}
+	if raw, ok := values[settings.KeyNotifyType]; ok {
+		in.Type = NotifyType(strings.TrimSpace(raw))
 	}
 	if raw := values[settings.KeyNotifyEmailJSON]; raw != "" {
 		_ = json.Unmarshal([]byte(raw), &in.Email)
@@ -418,24 +428,28 @@ func ParseSaveInputFromMap(values map[string]string) (SaveInput, bool) {
 	if raw := values[settings.KeyNotifyTelegramJSON]; raw != "" {
 		_ = json.Unmarshal([]byte(raw), &in.Telegram)
 	}
-	in.OnDDNSIPChange = boolFromMap(values, settings.KeyNotifyOnDDNSIPChange)
-	in.OnDDNSFailure = boolFromMap(values, settings.KeyNotifyOnDDNSFailure)
-	if !in.OnDDNSFailure {
-		in.OnDDNSFailure = boolFromMap(values, settings.KeyNotifyOnDDNSError)
+	in.OnDDNSIPChange = boolFromMapOr(values, settings.KeyNotifyOnDDNSIPChange, existing.OnDDNSIPChange)
+	in.OnDDNSFailure = boolFromMapOr(values, settings.KeyNotifyOnDDNSFailure, existing.OnDDNSFailure)
+	if _, ok := values[settings.KeyNotifyOnDDNSFailure]; !ok {
+		if _, legacyOk := values[settings.KeyNotifyOnDDNSError]; legacyOk {
+			in.OnDDNSFailure = boolFromMap(values, settings.KeyNotifyOnDDNSError)
+		}
 	}
-	in.OnCertExpiry = boolFromMap(values, settings.KeyNotifyOnCertExpiry)
-	if !in.OnCertExpiry {
-		in.OnCertExpiry = boolFromMap(values, settings.KeyNotifyOnCertError)
+	in.OnCertExpiry = boolFromMapOr(values, settings.KeyNotifyOnCertExpiry, existing.OnCertExpiry)
+	if _, ok := values[settings.KeyNotifyOnCertExpiry]; !ok {
+		if _, legacyOk := values[settings.KeyNotifyOnCertError]; legacyOk {
+			in.OnCertExpiry = boolFromMap(values, settings.KeyNotifyOnCertError)
+		}
 	}
-	in.OnCertRenewSuccess = boolFromMap(values, settings.KeyNotifyOnCertRenewSuccess)
-	in.OnIPFrequentAccess = boolFromMap(values, settings.KeyNotifyOnIPFrequentAccess)
-	in.OnCertRenewFailure = boolFromMap(values, settings.KeyNotifyOnCertRenewFailure)
-	in.OnLoginFailure = boolFromMap(values, settings.KeyNotifyOnLoginFailure)
-	in.OnNginxReloadFailure = boolFromMap(values, settings.KeyNotifyOnNginxReloadFailure)
-	in.IPFrequentThreshold = intSettingFromMap(values, settings.KeyNotifyIPFrequentThreshold, DefaultIPFrequentThreshold)
-	in.IPFrequentWindowSec = intSettingFromMap(values, settings.KeyNotifyIPFrequentWindowSec, DefaultIPFrequentWindowSec)
-	in.LoginFailureThreshold = intSettingFromMap(values, settings.KeyNotifyLoginFailureThreshold, DefaultLoginFailureThreshold)
-	in.LoginFailureWindowSec = intSettingFromMap(values, settings.KeyNotifyLoginFailureWindowSec, DefaultLoginFailureWindowSec)
+	in.OnCertRenewSuccess = boolFromMapOr(values, settings.KeyNotifyOnCertRenewSuccess, existing.OnCertRenewSuccess)
+	in.OnIPFrequentAccess = boolFromMapOr(values, settings.KeyNotifyOnIPFrequentAccess, existing.OnIPFrequentAccess)
+	in.OnCertRenewFailure = boolFromMapOr(values, settings.KeyNotifyOnCertRenewFailure, existing.OnCertRenewFailure)
+	in.OnLoginFailure = boolFromMapOr(values, settings.KeyNotifyOnLoginFailure, existing.OnLoginFailure)
+	in.OnNginxReloadFailure = boolFromMapOr(values, settings.KeyNotifyOnNginxReloadFailure, existing.OnNginxReloadFailure)
+	in.IPFrequentThreshold = intSettingFromMapOr(values, settings.KeyNotifyIPFrequentThreshold, existing.IPFrequentThreshold, DefaultIPFrequentThreshold)
+	in.IPFrequentWindowSec = intSettingFromMapOr(values, settings.KeyNotifyIPFrequentWindowSec, existing.IPFrequentWindowSec, DefaultIPFrequentWindowSec)
+	in.LoginFailureThreshold = intSettingFromMapOr(values, settings.KeyNotifyLoginFailureThreshold, existing.LoginFailureThreshold, DefaultLoginFailureThreshold)
+	in.LoginFailureWindowSec = intSettingFromMapOr(values, settings.KeyNotifyLoginFailureWindowSec, existing.LoginFailureWindowSec, DefaultLoginFailureWindowSec)
 	return in, true
 }
 
@@ -485,6 +499,13 @@ func boolFromMap(values map[string]string, key string) bool {
 	}
 }
 
+func boolFromMapOr(values map[string]string, key string, fallback bool) bool {
+	if _, ok := values[key]; !ok {
+		return fallback
+	}
+	return boolFromMap(values, key)
+}
+
 func intSettingFromMap(values map[string]string, key string, fallback int) int {
 	raw := strings.TrimSpace(values[key])
 	if raw == "" {
@@ -495,4 +516,14 @@ func intSettingFromMap(values map[string]string, key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func intSettingFromMapOr(values map[string]string, key string, existing, fallback int) int {
+	if _, ok := values[key]; !ok {
+		if existing > 0 {
+			return existing
+		}
+		return fallback
+	}
+	return intSettingFromMap(values, key, fallback)
 }

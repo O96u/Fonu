@@ -138,7 +138,14 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		scheduler.Job{
 			Name:     "ddns",
 			Interval: time.Duration(intervalMinutes) * time.Minute,
-			Run:      ddnsSvc.Tick,
+			IntervalOf: func(ctx context.Context) time.Duration {
+				m, _ := settingsStore.GetInt(ctx, settings.KeyDDNSCheckInterval)
+				if m <= 0 {
+					m = 5
+				}
+				return time.Duration(m) * time.Minute
+			},
+			Run: ddnsSvc.Tick,
 		},
 		scheduler.Job{
 			Name:     "acme",
@@ -148,7 +155,14 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		scheduler.Job{
 			Name:     "china_cidr",
 			Interval: time.Duration(chinaHours) * time.Hour,
-			Run:      chinaCIDRSvc.Tick,
+			IntervalOf: func(ctx context.Context) time.Duration {
+				h, _ := settingsStore.GetInt(ctx, settings.KeyChinaCIDRUpdateHours)
+				if h <= 0 {
+					h = 24
+				}
+				return time.Duration(h) * time.Hour
+			},
+			Run: chinaCIDRSvc.Tick,
 		},
 	)
 	sched.Start(ctx)

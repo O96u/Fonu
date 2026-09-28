@@ -6,9 +6,10 @@ import (
 )
 
 type Job struct {
-	Name     string
-	Interval time.Duration
-	Run      func(ctx context.Context)
+	Name       string
+	Interval   time.Duration
+	IntervalOf func(ctx context.Context) time.Duration
+	Run        func(ctx context.Context)
 }
 
 type Scheduler struct {
@@ -26,15 +27,23 @@ func (s *Scheduler) Start(ctx context.Context) {
 }
 
 func (s *Scheduler) runJob(ctx context.Context, job Job) {
-	ticker := time.NewTicker(job.Interval)
-	defer ticker.Stop()
-	job.Run(ctx)
 	for {
+		job.Run(ctx)
+		interval := job.Interval
+		if job.IntervalOf != nil {
+			if d := job.IntervalOf(ctx); d > 0 {
+				interval = d
+			}
+		}
+		if interval <= 0 {
+			interval = time.Minute
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			job.Run(ctx)
+		case <-timer.C:
 		}
 	}
 }

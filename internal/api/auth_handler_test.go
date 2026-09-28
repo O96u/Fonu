@@ -85,6 +85,33 @@ func TestAuthSetupAndLoginFlow(t *testing.T) {
 	if !authStatus.Initialized || !authStatus.Authenticated {
 		t.Fatalf("expected authenticated status, got %+v", authStatus)
 	}
+	if authStatus.Username == nil || *authStatus.Username != "admin" {
+		t.Fatalf("expected username admin in status, got %+v", authStatus.Username)
+	}
+
+	usernameBody, _ := json.Marshal(map[string]string{
+		"password":     "password123",
+		"new_username": "superuser",
+	})
+	usernameReq := httptest.NewRequest(http.MethodPost, "/api/auth/username", bytes.NewReader(usernameBody))
+	usernameReq.AddCookie(cookie)
+	usernameRec := httptest.NewRecorder()
+	handler.ServeHTTP(usernameRec, usernameReq)
+	if usernameRec.Code != http.StatusOK {
+		t.Fatalf("change username status: %d body=%s", usernameRec.Code, usernameRec.Body.String())
+	}
+
+	authStatusReq2 := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	authStatusReq2.AddCookie(cookie)
+	authStatusRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(authStatusRec2, authStatusReq2)
+	var authStatus2 authStatusResponse
+	if err := json.Unmarshal(authStatusRec2.Body.Bytes(), &authStatus2); err != nil {
+		t.Fatalf("decode auth status: %v", err)
+	}
+	if authStatus2.Username == nil || *authStatus2.Username != "superuser" {
+		t.Fatalf("expected updated username in status, got %+v", authStatus2.Username)
+	}
 
 	proxiesReq := httptest.NewRequest(http.MethodGet, "/api/proxies", nil)
 	proxiesReq.AddCookie(cookie)

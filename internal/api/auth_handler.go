@@ -27,8 +27,9 @@ type loginRequest struct {
 }
 
 type authStatusResponse struct {
-	Initialized bool `json:"initialized"`
-	Authenticated bool `json:"authenticated"`
+	Initialized   bool    `json:"initialized"`
+	Authenticated bool    `json:"authenticated"`
+	Username      *string `json:"username,omitempty"`
 }
 
 func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
@@ -38,14 +39,21 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authenticated := false
+	var username *string
 	if sessionID := sessionIDFromContext(r.Context()); sessionID != "" {
 		if err := h.auth.ValidateSession(r.Context(), sessionID); err == nil {
 			authenticated = true
+			if adminID, err := h.auth.AdminIDForSession(r.Context(), sessionID); err == nil {
+				if name, err := h.auth.Username(r.Context(), adminID); err == nil {
+					username = &name
+				}
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, authStatusResponse{
 		Initialized:   initialized,
 		Authenticated: authenticated,
+		Username:      username,
 	})
 }
 
@@ -91,6 +99,28 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "密码已更新"})
+}
+
+func (h *AuthHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Password    string `json:"password"`
+		NewUsername string `json:"new_username"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	sessionID := sessionIDFromContext(r.Context())
+	adminID, err := h.auth.AdminIDForSession(r.Context(), sessionID)
+	if err != nil {
+		writeError(r, w, http.StatusUnauthorized, "未登录或会话已过期")
+		return
+	}
+	if err := h.auth.ChangeUsername(r.Context(), adminID, req.Password, req.NewUsername); err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "用户名已更新"})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {

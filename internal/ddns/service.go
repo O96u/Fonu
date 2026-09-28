@@ -276,18 +276,26 @@ func (s *Service) UpdateAll(ctx context.Context) ([]Config, error) {
 func (s *Service) Tick(ctx context.Context) {
 	configs, err := s.store.List(ctx)
 	if err != nil {
+		s.logger.Warn("ddns scheduled check skipped", "error", err.Error())
 		return
 	}
+	var enabled int
+	var failed int
 	for _, cfg := range configs {
 		if !cfg.Enabled {
 			continue
 		}
+		enabled++
 		if err := s.runUpdate(ctx, cfg); err != nil {
+			failed++
 			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
 			if s.notify != nil {
 				s.notify.Alert(ctx, notify.EventDDNSFailure, "DDNS 更新失败", cfg.RootDomain+": "+err.Error())
 			}
 		}
+	}
+	if enabled > 0 {
+		s.logger.Info("ddns scheduled check finished", "enabled_tasks", enabled, "failed", failed)
 	}
 }
 

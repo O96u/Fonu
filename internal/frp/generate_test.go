@@ -107,3 +107,28 @@ func TestGenerateMixedWebAndTCP(t *testing.T) {
 		t.Fatalf("missing tcp proxy: %s", out)
 	}
 }
+
+func TestGenerateUDPOnly(t *testing.T) {
+	cfg := config.Config{DataDir: "/data", FrpPIDFile: "/data/frp/frpc.pid"}
+	frpCfg := Config{
+		ServerAddr: "vps.example.com",
+		ServerPort: 7000,
+		TCPProxies: []TCPProxy{
+			{ID: "1", Name: "dns", Protocol: "udp", LocalIP: "127.0.0.1", LocalPort: 53, RemotePort: 60053, Enabled: true},
+		},
+	}
+	out, err := Generate(cfg, frpCfg, "secret-token", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`name = "fonu-udp-dns"`,
+		`type = "udp"`,
+		`localPort = 53`,
+		`remotePort = 60053`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}

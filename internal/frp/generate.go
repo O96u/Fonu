@@ -18,7 +18,7 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 	domains := normalizeDomains(frpCfg.CustomDomains)
 	tcpProxies := enabledTCPProxies(frpCfg.TCPProxies)
 	if len(domains) == 0 && len(tcpProxies) == 0 {
-		return "", fmt.Errorf("请至少填写一个穿透域名或启用一条 TCP 隧道")
+		return "", fmt.Errorf("请至少填写一个穿透域名或启用一条 TCP/UDP 隧道")
 	}
 	if len(domains) > 0 && (httpPort <= 0 || httpsPort <= 0) {
 		return "", fmt.Errorf("Nginx 端口未配置")
@@ -62,8 +62,8 @@ func Generate(cfg config.Config, frpCfg Config, authToken string, httpPort, http
 			continue
 		}
 		b.WriteString("[[proxies]]\n")
-		b.WriteString(fmt.Sprintf("name = %q\n", frpcTCPProxyName(p.Name)))
-		b.WriteString("type = \"tcp\"\n")
+		b.WriteString(fmt.Sprintf("name = %q\n", frpcTunnelProxyName(p.Protocol, p.Name)))
+		b.WriteString(fmt.Sprintf("type = %q\n", normalizeTunnelProtocol(p.Protocol)))
 		b.WriteString(fmt.Sprintf("localIP = %q\n", p.LocalIP))
 		b.WriteString(fmt.Sprintf("localPort = %d\n", p.LocalPort))
 		b.WriteString(fmt.Sprintf("remotePort = %d\n\n", p.RemotePort))

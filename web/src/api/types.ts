@@ -138,6 +138,7 @@ export interface ProxyEntrySavePayload {
 export interface AuthStatus {
   initialized: boolean
   authenticated: boolean
+  username?: string
 }
 
 export interface AppVersion {
@@ -356,6 +357,7 @@ export interface FRPStatus {
 export interface FRPTCPProxy {
   id: string
   name: string
+  protocol?: 'tcp' | 'udp'
   local_ip: string
   local_port: number
   remote_port: number

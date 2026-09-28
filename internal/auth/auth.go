@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -136,6 +137,42 @@ func (s *Service) ChangePassword(ctx context.Context, adminID int, oldPassword, 
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE admins SET password_hash = ? WHERE id = ?`, string(newHash), adminID)
 	return err
+}
+
+func (s *Service) Username(ctx context.Context, adminID int) (string, error) {
+	var username string
+	err := s.db.QueryRowContext(ctx, `SELECT username FROM admins WHERE id = ?`, adminID).Scan(&username)
+	return username, err
+}
+
+func (s *Service) ChangeUsername(ctx context.Context, adminID int, password, newUsername string) error {
+	newUsername = strings.TrimSpace(newUsername)
+	if err := validate.Username(newUsername); err != nil {
+		return err
+	}
+	var hash string
+	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM admins WHERE id = ?`, adminID).Scan(&hash)
+	if err != nil {
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		return fmt.Errorf("当前密码不正确")
+	}
+	current, err := s.Username(ctx, adminID)
+	if err != nil {
+		return err
+	}
+	if current == newUsername {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE admins SET username = ? WHERE id = ?`, newUsername, adminID)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return fmt.Errorf("用户名已被使用")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) Logout(ctx context.Context, sessionID string) error {

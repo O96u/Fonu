@@ -382,9 +382,33 @@
         </div>
       </FonuCard>
 
-      <FonuCard title="管理员账户" subtitle="修改登录密码" class="settings-card settings-card--security">
+      <FonuCard title="管理员账户" subtitle="修改登录用户名与密码" class="settings-card settings-card--security">
         <div class="security-form">
           <div class="settings-fields">
+            <div class="settings-field">
+              <div class="settings-field__label">登录用户名</div>
+              <n-input v-model:value="usernameForm.new_username" placeholder="用户名" />
+            </div>
+            <div class="settings-field">
+              <div class="settings-field__label">当前密码</div>
+              <n-input
+                v-model:value="usernameForm.password"
+                type="password"
+                show-password-on="click"
+                placeholder="修改用户名时需验证"
+              />
+            </div>
+          </div>
+          <n-button
+            type="primary"
+            class="password-btn"
+            :loading="changingUsername"
+            :disabled="!usernameChanged"
+            @click="changeUsername"
+          >
+            保存用户名
+          </n-button>
+          <div class="settings-fields settings-fields--password">
             <div class="settings-field">
               <div class="settings-field__label">当前密码</div>
               <n-input v-model:value="passwordForm.old_password" type="password" show-password-on="click" />
@@ -564,6 +588,12 @@ const saving = ref(false)
 const loading = ref(false)
 const pageError = ref('')
 const changingPassword = ref(false)
+const changingUsername = ref(false)
+const adminUsername = ref('')
+const usernameForm = reactive({ new_username: '', password: '' })
+const usernameChanged = computed(
+  () => usernameForm.new_username.trim() !== '' && usernameForm.new_username.trim() !== adminUsername.value,
+)
 const exporting = ref(false)
 const restoring = ref(false)
 
@@ -1102,12 +1132,19 @@ function buildSavePayload() {
   return payload
 }
 
+async function loadAdminUsername() {
+  const status = await api.authStatus()
+  adminUsername.value = status.username ?? ''
+  usernameForm.new_username = adminUsername.value
+  usernameForm.password = ''
+}
+
 async function load() {
   loading.value = true
   pageError.value = ''
   try {
     applySettingsToForm(await api.getSettings())
-    await Promise.all([loadChinaCIDRStatus(), loadGlobalNginx()])
+    await Promise.all([loadChinaCIDRStatus(), loadGlobalNginx(), loadAdminUsername()])
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -1126,6 +1163,30 @@ async function save() {
     message.error(error instanceof Error ? error.message : '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+async function changeUsername() {
+  const newUsername = usernameForm.new_username.trim()
+  if (!newUsername) {
+    message.warning('请填写登录用户名')
+    return
+  }
+  if (!usernameForm.password) {
+    message.warning('修改用户名需填写当前密码')
+    return
+  }
+  changingUsername.value = true
+  try {
+    await api.changeUsername(usernameForm.password, newUsername)
+    adminUsername.value = newUsername
+    usernameForm.new_username = newUsername
+    usernameForm.password = ''
+    message.success('用户名已更新')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '更新用户名失败')
+  } finally {
+    changingUsername.value = false
   }
 }
 
@@ -1524,6 +1585,12 @@ onMounted(load)
   margin-top: var(--fonu-space-4);
   align-self: flex-start;
   flex-shrink: 0;
+}
+
+.settings-fields--password {
+  margin-top: var(--fonu-space-6);
+  padding-top: var(--fonu-space-6);
+  border-top: 1px solid var(--fonu-border-subtle);
 }
 
 .form-switch-list {

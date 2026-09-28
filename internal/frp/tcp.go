@@ -20,13 +20,28 @@ const (
 
 var tcpProxyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+const (
+	tunnelProtocolTCP = "tcp"
+	tunnelProtocolUDP = "udp"
+)
+
 type TCPProxy struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
+	Protocol   string `json:"protocol"`
 	LocalIP    string `json:"local_ip"`
 	LocalPort  int    `json:"local_port"`
 	RemotePort int    `json:"remote_port"`
 	Enabled    bool   `json:"enabled"`
+}
+
+func normalizeTunnelProtocol(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case tunnelProtocolUDP:
+		return tunnelProtocolUDP
+	default:
+		return tunnelProtocolTCP
+	}
 }
 
 func prepareTCPProxies(proxies []TCPProxy) ([]TCPProxy, error) {
@@ -89,6 +104,7 @@ func normalizeTCPProxies(proxies []TCPProxy) []TCPProxy {
 			p.ID = uuid.NewString()
 		}
 		seenID[p.ID] = true
+		p.Protocol = normalizeTunnelProtocol(p.Protocol)
 		out = append(out, p)
 	}
 	return out
@@ -99,7 +115,7 @@ func validateTCPProxies(proxies []TCPProxy) error {
 	remotePorts := make(map[int]string)
 	names := make(map[string]string)
 	for i, p := range proxies {
-		label := fmt.Sprintf("TCP 隧道「%s」", p.Name)
+		label := fmt.Sprintf("隧道「%s」", p.Name)
 		if len(p.Name) > tcpProxyNameMaxLen {
 			return fmt.Errorf("%s：名称过长（最多 %d 个字符）", label, tcpProxyNameMaxLen)
 		}
@@ -107,7 +123,7 @@ func validateTCPProxies(proxies []TCPProxy) error {
 			return fmt.Errorf("%s：名称仅允许字母、数字、下划线和连字符", label)
 		}
 		if other, ok := names[strings.ToLower(p.Name)]; ok {
-			return fmt.Errorf("TCP 隧道名称重复：%s 与 %s", p.Name, other)
+			return fmt.Errorf("隧道名称重复：%s 与 %s", p.Name, other)
 		}
 		names[strings.ToLower(p.Name)] = p.Name
 		if ip := net.ParseIP(p.LocalIP); ip == nil {
@@ -123,7 +139,7 @@ func validateTCPProxies(proxies []TCPProxy) error {
 			continue
 		}
 		if other, ok := remotePorts[p.RemotePort]; ok {
-			return fmt.Errorf("TCP 远程端口 %d 重复（%s 与 %s）", p.RemotePort, p.Name, other)
+			return fmt.Errorf("远程端口 %d 重复（%s 与 %s）", p.RemotePort, p.Name, other)
 		}
 		remotePorts[p.RemotePort] = p.Name
 		proxies[i] = p
@@ -173,8 +189,16 @@ func sanitizeTCPProxyName(name string) string {
 	return out
 }
 
+func frpcTunnelProxyName(protocol, name string) string {
+	prefix := "fonu-tcp-"
+	if normalizeTunnelProtocol(protocol) == tunnelProtocolUDP {
+		prefix = "fonu-udp-"
+	}
+	return prefix + sanitizeTCPProxyName(name)
+}
+
 func frpcTCPProxyName(name string) string {
-	return "fonu-tcp-" + sanitizeTCPProxyName(name)
+	return frpcTunnelProxyName(tunnelProtocolTCP, name)
 }
 
 func hasActiveRoutes(cfg Config) bool {
