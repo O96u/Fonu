@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.0.9] - 2026-09-29
+
 ### 新增
 
 - DDNS / ACME：支持 [DNSHE](https://www.dnshe.com/)（API Key + Secret）
