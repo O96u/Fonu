@@ -33,6 +33,7 @@ func NewService(store *Store, settings *settings.Store, secretBox *secret.Box, l
 			"alidns":       NewAliDNS(),
 			"tencentcloud": NewTencentCloud(),
 			"volcengine":   NewVolcengine(),
+			"dnshe":        NewDNSHE(),
 		},
 		logger: logger.With("module", "DDNS"),
 		notify: notifySvc,
@@ -690,7 +691,7 @@ func validateSaveInput(in SaveInput) error {
 		return err
 	}
 	switch strings.TrimSpace(in.Provider) {
-	case "dnspod", "cloudflare", "alidns", "tencentcloud", "volcengine", "":
+	case "dnspod", "cloudflare", "alidns", "tencentcloud", "volcengine", "dnshe", "":
 	default:
 		return fmt.Errorf("不支持的 DNS Provider")
 	}

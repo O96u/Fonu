@@ -58,6 +58,25 @@ func TestZeroSSLAPIErrorMessage(t *testing.T) {
 	}
 }
 
+func TestResolveZeroSSLEABPrefersConfigured(t *testing.T) {
+	t.Parallel()
+	kid, hmac, err := resolveZeroSSLEAB(context.Background(), "", "my-kid", "my-hmac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kid != "my-kid" || hmac != "my-hmac" {
+		t.Fatalf("kid=%q hmac=%q", kid, hmac)
+	}
+}
+
+func TestResolveZeroSSLEABPartialConfigured(t *testing.T) {
+	t.Parallel()
+	_, _, err := resolveZeroSSLEAB(context.Background(), "key", "kid-only", "")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestZeroSSLEABCredentialsLegacySuccessInt(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

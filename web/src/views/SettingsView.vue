@@ -72,12 +72,28 @@
             <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册</p>
           </div>
           <ConfiguredSecretField
-            v-model="zerosslApiKey"
-            label="ZeroSSL API Key"
-            :configured="zerosslHasKey"
-            placeholder="申请 ZeroSSL 证书时填写"
+            v-model="zerosslEabKid"
+            label="ZeroSSL EAB KID"
+            :configured="zerosslHasEabKid"
+            placeholder="ACME 外部账户绑定 KID"
           />
-          <p class="field-hint zerossl-key-hint">申请 ZeroSSL 证书时必填，可在 ZeroSSL 控制台获取</p>
+          <ConfiguredSecretField
+            v-model="zerosslEabHmac"
+            label="ZeroSSL EAB HMAC Key"
+            :configured="zerosslHasEabHmac"
+            placeholder="与 KID 成对使用"
+          />
+          <p class="field-hint zerossl-key-hint">
+            申请 ZeroSSL 证书时必填：在
+            <a href="https://app.zerossl.com/developer" target="_blank" rel="noopener noreferrer">ZeroSSL 开发者页面</a>
+            生成 ACME EAB 凭据并填入上方两项（可长期使用）。API Key 仅用于自动拉取 EAB，部分账户可能不可用。
+          </p>
+          <ConfiguredSecretField
+            v-model="zerosslApiKey"
+            label="ZeroSSL API Key（可选）"
+            :configured="zerosslHasKey"
+            placeholder="未填写 EAB 时可尝试用 API Key 自动获取"
+          />
         </div>
       </FonuCard>
 
@@ -650,6 +666,10 @@ const logRetention = ref(30)
 const acmeEmail = ref('')
 const zerosslApiKey = ref('')
 const zerosslHasKey = ref(false)
+const zerosslEabKid = ref('')
+const zerosslHasEabKid = ref(false)
+const zerosslEabHmac = ref('')
+const zerosslHasEabHmac = ref(false)
 const trustedProxyEnabled = ref(false)
 const trustedProxyPreset = ref('cloudflare')
 const trustedProxyCIDRs = ref('')
@@ -731,6 +751,10 @@ function applySettingsToForm(settings: Record<string, string>) {
   acmeEmail.value = settings.acme_email ?? ''
   zerosslHasKey.value = Boolean(settings.zerossl_api_key?.trim())
   zerosslApiKey.value = ''
+  zerosslHasEabKid.value = Boolean(settings.zerossl_eab_kid?.trim())
+  zerosslEabKid.value = ''
+  zerosslHasEabHmac.value = Boolean(settings.zerossl_eab_hmac_key?.trim())
+  zerosslEabHmac.value = ''
   chinaCIDRHours.value = Number(settings.china_cidr_update_interval_hours ?? 24)
   try {
     const tp = JSON.parse(settings.trusted_proxy_json || '{}') as {
@@ -1128,6 +1152,14 @@ function buildSavePayload() {
   const zerosslKey = zerosslApiKey.value.trim()
   if (zerosslKey) {
     payload.zerossl_api_key = zerosslKey
+  }
+  const eabKid = zerosslEabKid.value.trim()
+  if (eabKid) {
+    payload.zerossl_eab_kid = eabKid
+  }
+  const eabHmac = zerosslEabHmac.value.trim()
+  if (eabHmac) {
+    payload.zerossl_eab_hmac_key = eabHmac
   }
   return payload
 }

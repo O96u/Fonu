@@ -12,6 +12,17 @@ func TestValidateDNSCredentialsVolcengine(t *testing.T) {
 	}
 }
 
+func TestNewDNSHEDNSProvider(t *testing.T) {
+	_, err := newDNSHEDNSProvider(ddns.Credentials{Provider: "dnshe", Token: "key"})
+	if err == nil {
+		t.Fatal("expected validation error without secret")
+	}
+	p, err := newDNSHEDNSProvider(ddns.Credentials{Provider: "dnshe", Token: "key", Secret: "sec"})
+	if err != nil || p == nil {
+		t.Fatalf("provider: %v err=%v", p, err)
+	}
+}
+
 func TestNewVolcengineDNSProvider(t *testing.T) {
 	p, err := newVolcengineDNSProvider(ddns.Credentials{Token: "ak", Secret: "sk"})
 	if err != nil {

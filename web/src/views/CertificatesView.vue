@@ -213,8 +213,8 @@
               <div class="ca-card__sub">{{ caCardSub(opt.value) }}</div>
             </button>
           </div>
-          <p v-if="applyCA === 'zerossl' && !zerosslApiKey" class="ca-hint ca-hint--warn">
-            使用 ZeroSSL 需在「设置」中配置 API Key
+          <p v-if="applyCA === 'zerossl' && !zerosslReady" class="ca-hint ca-hint--warn">
+            使用 ZeroSSL 需在「设置」中配置 ACME EAB 凭据（或可用的 API Key）
           </p>
           <p v-if="applyCA === 'buypass'" class="ca-hint">
             Buypass 不支持通配符，单张证书最多 5 个域名
@@ -267,7 +267,7 @@
           :class="{ 'verify-option--active': applyDdnsConfigId === cfg.id }"
           @click="selectVerificationChannel(cfg)"
         >
-          <span class="provider-logo">
+          <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
             <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
           </span>
           <div class="verify-option__body">
@@ -467,6 +467,7 @@ import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
+import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -490,7 +491,7 @@ const applyCAOptions = [
   { value: 'buypass', label: 'Buypass' },
 ]
 const applyCA = ref('letsencrypt')
-const zerosslApiKey = ref('')
+const zerosslReady = ref(false)
 const applyEmail = ref('')
 const applyCertName = ref('')
 const applyDomainsText = ref('')
@@ -535,6 +536,7 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
   volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
+  dnshe: { label: 'DNSHE', icon: dnsheIcon },
 }
 
 const caLogoMap: Record<string, string> = {
@@ -743,8 +745,8 @@ function validateApplyCA(domains: string[]) {
       return 'Buypass 单张证书最多支持 5 个域名'
     }
   }
-  if (applyCA.value === 'zerossl' && !zerosslApiKey.value.trim()) {
-    return '请先在设置中配置 ZeroSSL API Key'
+  if (applyCA.value === 'zerossl' && !zerosslReady.value) {
+    return '请先在设置中配置 ZeroSSL ACME EAB 凭据'
   }
   return ''
 }
@@ -971,7 +973,10 @@ async function loadCAOptions() {
   caOptions.value = options
   ddnsConfigs.value = ddns
   applyEmail.value = settings.acme_email ?? ''
-  zerosslApiKey.value = settings.zerossl_api_key ?? ''
+  zerosslReady.value = Boolean(
+    settings.zerossl_api_key?.trim()
+      || (settings.zerossl_eab_kid?.trim() && settings.zerossl_eab_hmac_key?.trim()),
+  )
   const defaultCA = settings.acme_ca || 'letsencrypt'
   applyCA.value = applyCAOptions.some((o) => o.value === defaultCA) ? defaultCA : 'letsencrypt'
 }
@@ -1786,6 +1791,11 @@ html.dark .apply-log-box {
   width: 28px;
   height: 28px;
   object-fit: contain;
+}
+
+.provider-logo--dnshe {
+  background: #e0f2fe;
+  padding: 3px;
 }
 
 .verify-option__body {

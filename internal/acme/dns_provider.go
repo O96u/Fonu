@@ -31,6 +31,8 @@ func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provide
 		return tencentcloud.NewDNSProviderConfig(cfg)
 	case "volcengine":
 		return newVolcengineDNSProvider(cred)
+	case "dnshe":
+		return newDNSHEDNSProvider(cred)
 	default:
 		cfg := cloudflare.NewDefaultConfig()
 		cfg.AuthToken = cred.Token
@@ -40,7 +42,7 @@ func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provide
 
 func dnsProviderName(provider string) string {
 	switch provider {
-	case "dnspod", "alidns", "tencentcloud", "volcengine":
+	case "dnspod", "alidns", "tencentcloud", "volcengine", "dnshe":
 		return provider
 	default:
 		return "cloudflare"
@@ -91,7 +93,10 @@ func validateDNSCredentials(provider string, cred ddns.Credentials) error {
 	if provider == "volcengine" && cred.Secret == "" {
 		return fmt.Errorf("请先在 DDNS 页面配置火山引擎 Secret Access Key")
 	}
-	if provider != "dnspod" && provider != "alidns" && provider != "tencentcloud" && provider != "volcengine" && cred.Token == "" {
+	if provider == "dnshe" && cred.Secret == "" {
+		return fmt.Errorf("请先在 DDNS 页面配置 DNSHE API Secret")
+	}
+	if provider != "dnspod" && provider != "alidns" && provider != "tencentcloud" && provider != "volcengine" && provider != "dnshe" && cred.Token == "" {
 		return fmt.Errorf("请先在 DDNS 页面配置 Cloudflare API Token")
 	}
 	return nil

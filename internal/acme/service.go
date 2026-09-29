@@ -403,7 +403,15 @@ func (s *Service) registerACMEAccount(ctx context.Context, client *lego.Client, 
 		if err != nil {
 			return nil, err
 		}
-		kid, hmac, err := zerosslEABCredentials(ctx, apiKey)
+		eabKid, err := s.settings.Get(ctx, settings.KeyZeroSSLEABKid)
+		if err != nil {
+			return nil, err
+		}
+		eabHmac, err := s.settings.Get(ctx, settings.KeyZeroSSLEABHmac)
+		if err != nil {
+			return nil, err
+		}
+		kid, hmac, err := resolveZeroSSLEAB(ctx, apiKey, eabKid, eabHmac)
 		if err != nil {
 			return nil, err
 		}

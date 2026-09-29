@@ -42,6 +42,26 @@ func zerosslEABCredentials(ctx context.Context, apiKey string) (kid, hmac string
 	return zerosslEABCredentialsAt(ctx, apiKey, zeroSSLEABCredentialsURL)
 }
 
+// resolveZeroSSLEAB prefers manually configured EAB (ZeroSSL 控制台生成)，否则尝试用 API Key 调用 EAB 接口。
+func resolveZeroSSLEAB(ctx context.Context, apiKey, configuredKid, configuredHmac string) (kid, hmac string, err error) {
+	configuredKid = strings.TrimSpace(configuredKid)
+	configuredHmac = strings.TrimSpace(configuredHmac)
+	if configuredKid != "" && configuredHmac != "" {
+		return configuredKid, configuredHmac, nil
+	}
+	if configuredKid != "" || configuredHmac != "" {
+		return "", "", fmt.Errorf("请同时配置 ZeroSSL EAB KID 与 EAB HMAC Key")
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return "", "", fmt.Errorf("请在设置中配置 ZeroSSL ACME EAB 凭据（在 zerossl.com 开发者页面生成），或填写 API Key")
+	}
+	kid, hmac, err = zerosslEABCredentials(ctx, apiKey)
+	if err != nil {
+		return "", "", err
+	}
+	return kid, hmac, nil
+}
+
 func zerosslEABCredentialsAt(ctx context.Context, apiKey string, endpoint string) (kid, hmac string, err error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {

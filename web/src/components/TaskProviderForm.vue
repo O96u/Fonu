@@ -7,7 +7,7 @@
     <div class="provider-form__field">
       <label class="provider-form__label">DNS 服务商</label>
       <div class="provider-select">
-        <span class="provider-logo provider-logo--md">
+        <span class="provider-logo provider-logo--md" :class="{ 'provider-logo--dnshe': form.provider === 'dnshe' }">
           <img :src="providerIcon(form.provider)" :alt="providerLabel(form.provider)" />
         </span>
         <n-select
@@ -41,7 +41,10 @@
       />
     </div>
 
-    <div v-if="form.provider === 'alidns' || form.provider === 'tencentcloud' || form.provider === 'volcengine'" class="provider-form__field">
+    <div
+      v-if="form.provider === 'dnshe' || form.provider === 'alidns' || form.provider === 'tencentcloud' || form.provider === 'volcengine'"
+      class="provider-form__field"
+    >
       <label class="provider-form__label provider-secret-label">
         <span>{{ secretLabel }}</span>
         <n-tag v-if="editing?.has_token" size="small" type="success" :bordered="false">
@@ -89,6 +92,7 @@ import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
+import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import type { DDNSConfig } from '../api/types'
 
 export type ProviderForm = {
@@ -120,6 +124,7 @@ const providerOptions = [
   { label: '阿里云 DNS', value: 'alidns' },
   { label: '腾讯云 DNS', value: 'tencentcloud' },
   { label: '火山引擎 DNS', value: 'volcengine' },
+  { label: 'DNSHE', value: 'dnshe' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
@@ -128,21 +133,25 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
   volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
+  dnshe: { label: 'DNSHE', icon: dnsheIcon },
 }
 
 const credentialLabel = computed(() => {
   if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
   if (props.form.provider === 'tencentcloud') return 'SecretId'
   if (props.form.provider === 'dnspod') return 'Token'
+  if (props.form.provider === 'dnshe') return 'API Key'
   return 'API Token'
 })
 
 const secretLabel = computed(() => {
+  if (props.form.provider === 'dnshe') return 'API Secret'
   if (props.form.provider === 'tencentcloud') return 'SecretKey'
   return 'AccessKey Secret'
 })
 
 const secretPlaceholder = computed(() => {
+  if (props.form.provider === 'dnshe') return 'DNSHE API Secret'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretKey'
   return 'AccessKey Secret'
 })
@@ -152,6 +161,7 @@ const credentialPlaceholder = computed(() => {
   if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretId'
   if (props.form.provider === 'dnspod') return 'DNSPod Token'
+  if (props.form.provider === 'dnshe') return '在 DNSHE 控制台 API 管理创建'
   return 'Cloudflare API Token'
 })
 
@@ -223,6 +233,12 @@ function providerIcon(v: string) {
   object-fit: contain;
 }
 
+.provider-logo--dnshe {
+  background: #e0f2fe;
+  border-color: #bae6fd;
+  padding: 3px;
+}
+
 .provider-form__switches {
   display: flex;
   flex-wrap: wrap;
@@ -249,5 +265,12 @@ function providerIcon(v: string) {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.provider-form__hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fonu-text-secondary);
 }
 </style>

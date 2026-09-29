@@ -127,7 +127,7 @@
           >
             <div class="task-item__top">
               <div class="task-item__brand">
-                <span class="provider-logo">
+                <span class="provider-logo" :class="{ 'provider-logo--dnshe': providerDraft.provider === 'dnshe' }">
                   <img :src="providerIcon(providerDraft.provider)" :alt="providerLabel(providerDraft.provider)" />
                 </span>
                 <span class="task-item__name">{{ providerLabel(providerDraft.provider) }}</span>
@@ -162,7 +162,7 @@
             >
               <div class="task-item__top">
                 <div class="task-item__brand">
-                  <span class="provider-logo">
+                  <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
                     <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
                   </span>
                   <span class="task-item__name">{{ providerLabel(cfg.provider) }}</span>
@@ -202,7 +202,10 @@
       <section v-if="selectedTask" class="task-detail">
         <div class="task-detail__head">
           <div class="task-detail__title-wrap">
-            <span class="provider-logo provider-logo--lg">
+            <span
+              class="provider-logo provider-logo--lg"
+              :class="{ 'provider-logo--dnshe': selectedTask.provider === 'dnshe' }"
+            >
               <img :src="providerIcon(selectedTask.provider)" :alt="providerLabel(selectedTask.provider)" />
             </span>
             <div>
@@ -478,6 +481,7 @@ import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
+import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import { api, asList } from '../api/client'
 import type { DDNSConfig, DDNSDomainRecord } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
@@ -522,6 +526,7 @@ const providerOptions = [
   { label: '阿里云 DNS', value: 'alidns' },
   { label: '腾讯云 DNS', value: 'tencentcloud' },
   { label: '火山引擎 DNS', value: 'volcengine' },
+  { label: 'DNSHE', value: 'dnshe' },
 ]
 
 const providerMap: Record<string, { label: string; icon: string }> = {
@@ -530,6 +535,7 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
   volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
+  dnshe: { label: 'DNSHE', icon: dnsheIcon },
 }
 
 const taskForm = reactive<ProviderForm>({
@@ -1342,6 +1348,12 @@ onMounted(init)
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.provider-logo--dnshe {
+  background: #e0f2fe;
+  border-color: #bae6fd;
+  padding: 3px;
 }
 
 .task-item__name {

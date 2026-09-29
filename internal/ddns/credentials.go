@@ -7,10 +7,10 @@ import (
 )
 
 type Credentials struct {
-	Provider string `json:"provider,omitempty"`
-	Token    string `json:"token,omitempty"`
-	TokenID  string `json:"token_id,omitempty"`
-	Secret   string `json:"secret,omitempty"`
+	Provider   string            `json:"provider,omitempty"`
+	Token      string            `json:"token,omitempty"`
+	TokenID    string            `json:"token_id,omitempty"`
+	Secret     string            `json:"secret,omitempty"`
 }
 
 func CredentialsFromSave(in SaveInput) Credentials {
@@ -27,6 +27,8 @@ func CredentialsFromSave(in SaveInput) Credentials {
 		return Credentials{Provider: "tencentcloud", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
 	case "volcengine":
 		return Credentials{Provider: "volcengine", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
+	case "dnshe":
+		return Credentials{Provider: "dnshe", Token: strings.TrimSpace(in.APIToken), Secret: strings.TrimSpace(in.APISecret)}
 	default:
 		return Credentials{Provider: "cloudflare", Token: strings.TrimSpace(in.APIToken)}
 	}
@@ -37,6 +39,8 @@ func (c Credentials) HasValues() bool {
 	case "dnspod":
 		return c.TokenID != "" && c.Token != ""
 	case "alidns", "tencentcloud", "volcengine":
+		return c.Token != "" && c.Secret != ""
+	case "dnshe":
 		return c.Token != "" && c.Secret != ""
 	default:
 		return c.Token != ""
@@ -60,6 +64,10 @@ func (c Credentials) Validate(provider string) error {
 	case "volcengine":
 		if c.Token == "" || c.Secret == "" {
 			return fmt.Errorf("请填写火山引擎 AccessKey ID 和 Secret Access Key")
+		}
+	case "dnshe":
+		if c.Token == "" || c.Secret == "" {
+			return fmt.Errorf("请填写 DNSHE API Key 与 API Secret")
 		}
 	default:
 		if c.Token == "" {

@@ -17,6 +17,8 @@ const (
 	KeyACMEEmail             = "acme_email"
 	KeyACMECA                = "acme_ca"
 	KeyZeroSSLAPIKey         = "zerossl_api_key"
+	KeyZeroSSLEABKid         = "zerossl_eab_kid"
+	KeyZeroSSLEABHmac        = "zerossl_eab_hmac_key"
 	KeyNotifyWebhookURL      = "notify_webhook_url"
 	KeyNotifyType            = "notify_type"
 	KeyNotifyEmailJSON       = "notify_email_json"

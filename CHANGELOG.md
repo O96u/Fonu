@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- DDNS / ACME：支持 [DNSHE](https://www.dnshe.com/)（API Key + Secret）
+
+### 修复
+
+- ACME：ZeroSSL 支持在设置中直接配置 ACME EAB 凭据（API 自动获取 EAB 对部分账户已不可用）
+
 ## [v1.0.8] - 2026-09-28
 
 ### 新增
