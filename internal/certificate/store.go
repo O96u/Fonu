@@ -13,6 +13,7 @@ import (
 type Record struct {
 	ID          int64      `json:"id"`
 	Domain      string     `json:"domain"`
+	Name        string     `json:"name"`
 	Domains     []string   `json:"domains,omitempty"`
 	Wildcard    bool       `json:"wildcard"`
 	ACMECA      string     `json:"acme_ca,omitempty"`
@@ -35,7 +36,7 @@ func NewStore(db *sql.DB) *Store {
 
 func (s *Store) List(ctx context.Context) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, domain, COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
+		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
 		       expires_at, last_renew_at, status, COALESCE(last_error, '')
 		FROM certificates ORDER BY id ASC
 	`)
@@ -84,6 +85,14 @@ func (s *Store) UpdateStatus(ctx context.Context, domain, status, lastError stri
 	return err
 }
 
+// SetName 更新证书的自定义显示名称（仅用于本地识别，不影响域名匹配）。
+func (s *Store) SetName(ctx context.Context, domain, name string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE certificates SET name = ?, updated_at = datetime('now') WHERE domain = ?
+	`, strings.TrimSpace(name), domain)
+	return err
+}
+
 func (s *Store) Delete(ctx context.Context, domain string) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM certificates WHERE domain = ?`, domain)
 	if err != nil {
@@ -101,7 +110,7 @@ func (s *Store) Delete(ctx context.Context, domain string) error {
 
 func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, domain, COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
+		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
 		       expires_at, last_renew_at, status, COALESCE(last_error, '')
 		FROM certificates WHERE domain = ?
 	`, domain)
@@ -117,7 +126,7 @@ func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var wildcard int
 	var domainsJSON string
 	var expiresAt, lastRenewAt sql.NullString
-	if err := row.Scan(&rec.ID, &rec.Domain, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError); err != nil {
+	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError); err != nil {
 		return Record{}, err
 	}
 	rec.Wildcard = wildcard == 1

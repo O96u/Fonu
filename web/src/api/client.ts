@@ -155,6 +155,7 @@ export const api = {
     domains: string[]
     ca?: string
     email?: string
+    name?: string
   }) =>
     request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
@@ -164,6 +165,7 @@ export const api = {
         domains: payload.domains,
         ca: payload.ca ?? '',
         email: payload.email ?? '',
+        name: payload.name ?? '',
       }),
     }),
   certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,

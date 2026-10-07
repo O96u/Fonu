@@ -43,6 +43,7 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		Domains      []string `json:"domains"`
 		CA           string   `json:"ca"`
 		Email        string   `json:"email"`
+		Name         string   `json:"name"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	domains := req.Domains
@@ -53,7 +54,7 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusBadRequest, "请选择 DNS 任务")
 		return
 	}
-	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, req.DDNSConfigID)
+	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, req.DDNSConfigID, req.Name)
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return

@@ -226,6 +226,7 @@ export interface CertificateJobEvent {
 export interface CertificateRecord {
   id: number
   domain: string
+  name?: string
   domains?: string[]
   wildcard: boolean
   acme_ca?: string

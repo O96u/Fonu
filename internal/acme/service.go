@@ -63,7 +63,7 @@ func (s *Service) List(ctx context.Context) ([]certstore.Record, error) {
 	return s.store.List(ctx)
 }
 
-func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, ddnsConfigID int64) (string, error) {
+func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, ddnsConfigID int64, name string) (string, error) {
 	if ddnsConfigID <= 0 {
 		return "", fmt.Errorf("请选择 DNS 任务")
 	}
@@ -72,7 +72,7 @@ func (s *Service) StartApply(ctx context.Context, domains []string, ca, email st
 		return "", err
 	}
 	job := s.jobs.Create()
-	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred)
+	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name)
 	return job.ID(), nil
 }
 
@@ -151,7 +151,7 @@ func (s *Service) prepareApplyByZone(ctx context.Context, dnsZone string, domain
 	return domains, ca, email, primary, dnsZone, provider, cred, nil
 }
 
-func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials) {
+func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string) {
 	ctx := context.Background()
 	job.Info("开始申请证书…")
 	job.Info(fmt.Sprintf("主域名: %s", primary))
@@ -161,10 +161,12 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 	rec, err := s.obtain(ctx, job, ca, email, provider, cred, primary, domains)
 	if err != nil {
 		s.markCertError(ctx, primary, domains, ca, err)
+		s.setCertName(ctx, primary, name)
 		job.Error(err.Error())
 		job.Finish(JobDonePayload{OK: false, Error: err.Error(), Domain: primary})
 		return
 	}
+	s.setCertName(ctx, primary, name)
 	if err := s.settings.Set(ctx, settings.KeyACMECA, ca); err != nil {
 		job.Warn("保存 ACME 颁发机构设置失败: " + err.Error())
 	}
@@ -363,6 +365,17 @@ func (s *Service) maybeAlertCertExpiry(ctx context.Context, domain string, daysL
 		msg = fmt.Sprintf("%s 已到期或即将失效", domain)
 	}
 	s.notify.Alert(ctx, notify.EventCertExpiry, "证书即将到期", msg)
+}
+
+// setCertName 保存证书自定义名称（仅本地识别用途）；名称为空则跳过，保留原名。
+func (s *Service) setCertName(ctx context.Context, primary, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if err := s.store.SetName(ctx, primary, name); err != nil {
+		s.logger.Warn("save cert name failed", "domain", primary, "error", err.Error())
+	}
 }
 
 func (s *Service) markCertError(ctx context.Context, primary string, domains []string, ca string, err error) {
