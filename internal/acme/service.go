@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	legocert "github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
 
@@ -412,21 +413,75 @@ func (s *Service) registerACMEAccount(ctx context.Context, client *lego.Client, 
 	logStep("注册 ACME 账户…")
 	switch NormalizeCA(ca) {
 	case CAZeroSSL:
-		apiKey, err := s.settings.Get(ctx, settings.KeyZeroSSLAPIKey)
-		if err != nil {
-			return nil, err
+		apiKey, _ := s.settings.Get(ctx, settings.KeyZeroSSLAPIKey)
+		kid, _ := s.settings.Get(ctx, settings.KeyZeroSSLEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeyZeroSSLEABHmac)
+		kid, hmac, eabErr := resolveZeroSSLEAB(ctx, apiKey, kid, hmac)
+		if eabErr != nil {
+			return nil, eabErr
 		}
-		eabKid, err := s.settings.Get(ctx, settings.KeyZeroSSLEABKid)
-		if err != nil {
-			return nil, err
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	case CAGoogle:
+		kid, _ := s.settings.Get(ctx, settings.KeyGoogleEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeyGoogleEABHmac)
+		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
+		if kid == "" || hmac == "" {
+			return nil, fmt.Errorf("请先在设置中配置 Google Trust Services EAB Kid 和 Hmac")
 		}
-		eabHmac, err := s.settings.Get(ctx, settings.KeyZeroSSLEABHmac)
-		if err != nil {
-			return nil, err
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	case CASSLcom:
+		kid, _ := s.settings.Get(ctx, settings.KeySSLcomEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeySSLcomEABHmac)
+		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
+		if kid == "" || hmac == "" {
+			return nil, fmt.Errorf("请先在设置中配置 SSL.com EAB Kid 和 Hmac")
 		}
-		kid, hmac, err := resolveZeroSSLEAB(ctx, apiKey, eabKid, eabHmac)
-		if err != nil {
-			return nil, err
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	case CAFreeSSL:
+		kid, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABHmac)
+		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
+		if kid == "" || hmac == "" {
+			return nil, fmt.Errorf("请先在设置中配置 FreeSSL EAB Kid 和 Hmac（freessl.cn/automation/eab-manager 获取）")
+		}
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	case CAActalis:
+		kid, _ := s.settings.Get(ctx, settings.KeyActalisEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeyActalisEABHmac)
+		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
+		if kid == "" || hmac == "" {
+			return nil, fmt.Errorf("请先在设置中配置 Actalis EAB Kid 和 Hmac（actalis.com 客户区 → Manage with ACME → ACME Credentials 获取）")
+		}
+		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
+			TermsOfServiceAgreed: true,
+			Kid:                  kid,
+			HmacEncoded:          hmac,
+		})
+	case CACustom:
+		kid, _ := s.settings.Get(ctx, settings.KeyCustomACMEEABKid)
+		hmac, _ := s.settings.Get(ctx, settings.KeyCustomACMEEABHmac)
+		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
+		if kid == "" && hmac == "" {
+			return client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+		}
+		if kid == "" || hmac == "" {
+			return nil, fmt.Errorf("自定义 ACME 的 EAB Kid 和 Hmac 需成对配置，或同时留空")
 		}
 		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
 			TermsOfServiceAgreed: true,
@@ -448,6 +503,24 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 	if err != nil {
 		return certstore.Record{}, err
 	}
+	if NormalizeCA(ca) == CAFreeSSL {
+		customURL, _ := s.settings.Get(ctx, settings.KeyFreeSSLDirectoryURL)
+		customURL = strings.Trim(strings.TrimSpace(customURL), "`")
+		if customURL != "" {
+			caDir = customURL
+		}
+	}
+	if NormalizeCA(ca) == CACustom {
+		customURL, _ := s.settings.Get(ctx, settings.KeyCustomACMEDirectoryURL)
+		customURL = strings.Trim(strings.TrimSpace(customURL), "`")
+		if customURL == "" {
+			return certstore.Record{}, fmt.Errorf("请先在设置中配置自定义 ACME Directory URL")
+		}
+		if !strings.HasPrefix(customURL, "https://") && !strings.HasPrefix(customURL, "http://") {
+			return certstore.Record{}, fmt.Errorf("自定义 ACME Directory URL 需以 https:// 开头")
+		}
+		caDir = customURL
+	}
 	logStep(fmt.Sprintf("连接 ACME 服务器 (%s)", CALabel(ca)))
 	user, err := newUser(email)
 	if err != nil {
@@ -467,7 +540,16 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 		return certstore.Record{}, fmt.Errorf("初始化 DNS Provider 失败：%w", err)
 	}
 	dnsProvider = wrapDNSProvider(dnsProvider, job)
-	if err := client.Challenge.SetDNS01Provider(dnsProvider); err != nil {
+	// 使用公共递归 DNS 服务器做传播检查，避免部分网络无法直连权威 NS（UDP 53）导致超时
+	if err := client.Challenge.SetDNS01Provider(dnsProvider,
+		dns01.AddRecursiveNameservers([]string{
+			"223.5.5.5:53",
+			"119.29.29.29:53",
+			"114.114.114.114:53",
+			"1.1.1.1:53",
+			"8.8.8.8:53",
+		}),
+	); err != nil {
 		return certstore.Record{}, err
 	}
 
