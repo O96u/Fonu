@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -297,55 +299,115 @@ func (d *DNSHE) request(ctx context.Context, cred Credentials, method, endpoint,
 	}
 	u.RawQuery = q.Encode()
 
-	var reqBody io.Reader
-	if body != nil {
-		raw, err := json.Marshal(body)
+	// DNSHE API（经 Cloudflare）偶发 TLS 握手超时/响应卡顿：
+	// GET 类请求遇到临时网络故障或 429/5xx 时最多重试 2 次（间隔 2s、4s）。
+	maxAttempts := 1
+	if method == http.MethodGet {
+		maxAttempts = 3
+	}
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+
+		var reqBody io.Reader
+		if body != nil {
+			raw, err := json.Marshal(body)
+			if err != nil {
+				return nil, err
+			}
+			reqBody = bytes.NewReader(raw)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u.String(), reqBody)
 		if err != nil {
 			return nil, err
 		}
-		reqBody = bytes.NewReader(raw)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), reqBody)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-API-Key", strings.TrimSpace(cred.Token))
-	req.Header.Set("X-API-Secret", strings.TrimSpace(cred.Secret))
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求 DNSHE API 失败：%w", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	var envelope struct {
-		Success bool            `json:"success"`
-		Error   string            `json:"error"`
-		Message string            `json:"message"`
-		Data    json.RawMessage   `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		if resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("DNSHE API 返回 %d", resp.StatusCode)
+		req.Header.Set("X-API-Key", strings.TrimSpace(cred.Token))
+		req.Header.Set("X-API-Secret", strings.TrimSpace(cred.Secret))
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
-		return nil, fmt.Errorf("解析 DNSHE 响应失败：%w", err)
-	}
-	if !envelope.Success {
-		msg := strings.TrimSpace(envelope.Error)
-		if msg == "" {
-			msg = strings.TrimSpace(envelope.Message)
+		resp, err := d.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("请求 DNSHE API 失败：%w", err)
+			if attempt < maxAttempts && isTransientNetErr(err) {
+				continue
+			}
+			return nil, lastErr
 		}
-		if msg == "" {
-			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			if attempt < maxAttempts && isTransientNetErr(readErr) {
+				continue
+			}
+			return nil, readErr
 		}
-		return nil, fmt.Errorf("DNSHE API 错误：%s", msg)
+
+		var envelope struct {
+			Success bool          `json:"success"`
+			Error   string        `json:"error"`
+			Message string        `json:"message"`
+			Data    json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			if resp.StatusCode >= 400 {
+				return nil, fmt.Errorf("DNSHE API 返回 %d", resp.StatusCode)
+			}
+			return nil, fmt.Errorf("解析 DNSHE 响应失败：%w", err)
+		}
+		if !envelope.Success {
+			// 429/5xx 视为临时故障，可重试
+			if attempt < maxAttempts && (resp.StatusCode == 429 || resp.StatusCode >= 500) {
+				lastErr = fmt.Errorf("DNSHE API 临时故障（HTTP %d）", resp.StatusCode)
+				continue
+			}
+			msg := strings.TrimSpace(envelope.Error)
+			if msg == "" {
+				msg = strings.TrimSpace(envelope.Message)
+			}
+			if msg == "" {
+				msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			}
+			return nil, fmt.Errorf("DNSHE API 错误：%s", msg)
+		}
+		return raw, nil
 	}
-	return raw, nil
+	return nil, lastErr
+}
+
+// isTransientNetErr 判断是否为值得重试的临时网络错误
+// （超时、连接重置、TLS 握手超时、临时 DNS 故障等）。
+func isTransientNetErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	for _, marker := range []string{
+		"TLS handshake timeout",
+		"context deadline exceeded",
+		"connection reset by peer",
+		"EOF",
+		"broken pipe",
+		"no such host",
+		"i/o timeout",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeDNSHEHost(host string) string {
