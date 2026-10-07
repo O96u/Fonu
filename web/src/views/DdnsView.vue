@@ -165,7 +165,8 @@
                   <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
                     <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
                   </span>
-                  <span class="task-item__name">{{ providerLabel(cfg.provider) }}</span>
+                  <span class="task-item__name">{{ cfg.remark || providerLabel(cfg.provider) }}</span>
+                  <span v-if="cfg.remark" class="task-item__provider">{{ providerLabel(cfg.provider) }}</span>
                 </div>
                 <StatusBadge :value="taskStatusKind(cfg)" :text="taskStatusText(cfg)" />
               </div>
@@ -209,7 +210,7 @@
               <img :src="providerIcon(selectedTask.provider)" :alt="providerLabel(selectedTask.provider)" />
             </span>
             <div>
-              <h3 class="task-detail__title">{{ providerLabel(selectedTask.provider) }}</h3>
+              <h3 class="task-detail__title">{{ selectedTask.remark || providerLabel(selectedTask.provider) }}</h3>
               <div class="task-detail__meta">
                 <StatusBadge
                   v-if="!isDraftSelected"
@@ -546,6 +547,7 @@ const taskForm = reactive<ProviderForm>({
   ipv4_enabled: true,
   ipv6_enabled: false,
   enabled: true,
+  remark: '',
 })
 
 const isDraftSelected = computed(() => selectedKey.value === DRAFT_KEY)
@@ -732,6 +734,7 @@ function resetTaskForm() {
     ipv4_enabled: true,
     ipv6_enabled: false,
     enabled: true,
+    remark: '',
   })
 }
 
@@ -777,6 +780,7 @@ function startEditTask(cfg: DDNSConfig) {
     ipv4_enabled: cfg.ipv4_enabled,
     ipv6_enabled: cfg.ipv6_enabled,
     enabled: cfg.enabled,
+    remark: cfg.remark ?? '',
   })
   taskEditMode.value = cfg.id
 }
@@ -877,6 +881,7 @@ async function saveTask() {
         api_token: taskForm.api_token,
         api_token_id: taskForm.api_token_id,
         api_secret: taskForm.api_secret,
+        remark: taskForm.remark,
       })
       configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
       message.success('服务商已更新')
@@ -1360,6 +1365,12 @@ onMounted(init)
   font-size: 14px;
   font-weight: 600;
   color: var(--fonu-text);
+}
+
+.task-item__provider {
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  margin-left: 6px;
 }
 
 .task-item__row {

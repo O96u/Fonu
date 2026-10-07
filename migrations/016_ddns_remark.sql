@@ -1,0 +1,1 @@
+ALTER TABLE ddns_configs ADD COLUMN remark TEXT NOT NULL DEFAULT '';

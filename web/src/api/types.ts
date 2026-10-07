@@ -189,6 +189,7 @@ export interface DDNSConfig {
   root_domain: string
   record_name: string
   record_names?: string[]
+  remark?: string
   ipv4_enabled: boolean
   ipv6_enabled: boolean
   enabled: boolean
@@ -330,6 +331,7 @@ export interface DDNSSavePayload {
   api_token?: string
   api_token_id?: string
   api_secret?: string
+  remark?: string
 }
 
 export interface DDNSTestPayload {

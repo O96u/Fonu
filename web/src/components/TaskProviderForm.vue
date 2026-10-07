@@ -5,6 +5,11 @@
     </div>
 
     <div class="provider-form__field">
+      <label class="provider-form__label">备注</label>
+      <n-input v-model:value="form.remark" placeholder="选填，用于区分不同任务" size="small" />
+    </div>
+
+    <div class="provider-form__field">
       <label class="provider-form__label">DNS 服务商</label>
       <div class="provider-select">
         <span class="provider-logo provider-logo--md" :class="{ 'provider-logo--dnshe': form.provider === 'dnshe' }">
@@ -103,6 +108,7 @@ export type ProviderForm = {
   ipv4_enabled: boolean
   ipv6_enabled: boolean
   enabled: boolean
+  remark: string
 }
 
 const props = defineProps<{
