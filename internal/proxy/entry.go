@@ -43,6 +43,26 @@ type EntryUpdateInput struct {
 	HTTPRedirect *bool
 }
 
+type EntryCloneInput struct {
+	Name         string
+	ListenPort   int
+	ListenIPv4   bool
+	ListenIPv6   bool
+	HTTPSEnabled bool
+	HTTPRedirect bool
+}
+
+type cloneSourceRule struct {
+	ID           int64
+	Upstream     string
+	Enabled      bool
+	Name         string
+	NginxMode    string
+	SortOrder    int
+	SecurityJSON string
+	Hostnames    []string
+}
+
 func (s *Store) ListEntries(ctx context.Context) ([]Entry, error) {
 	rows, err := s.querier().QueryContext(ctx, `
 		SELECT
@@ -196,6 +216,204 @@ func (s *Store) DeleteEntry(ctx context.Context, id int64) error {
 		return fmt.Errorf("入口不存在")
 	}
 	return nil
+}
+
+// CloneEntry duplicates an entry together with all its rules (frontend
+// hosts and security settings included). The clone listens on the settings
+// provided in in. It returns the new entry and a mapping from source rule
+// IDs to cloned rule IDs.
+func (s *Store) CloneEntry(ctx context.Context, sourceID int64, in EntryCloneInput) (Entry, map[int64]int64, error) {
+	if _, err := s.GetEntry(ctx, sourceID); err != nil {
+		return Entry{}, nil, err
+	}
+	if err := validateEntryInput(in.ListenPort, in.ListenIPv4, in.ListenIPv6); err != nil {
+		return Entry{}, nil, err
+	}
+	if err := s.ensureEntryListenPortAvailable(ctx, in.ListenPort, sourceID); err != nil {
+		return Entry{}, nil, err
+	}
+	name, err := normalizeName(in.Name)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+
+	sourceRules, err := s.loadCloneSourceRules(ctx, sourceID)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	if conflict, err := s.clonePortConflicts(ctx, in.ListenPort, sourceRules); err != nil {
+		return Entry{}, nil, err
+	} else if conflict != "" {
+		return Entry{}, nil, fmt.Errorf("%s", conflict)
+	}
+
+	sortOrder, err := s.nextEntrySortOrder(ctx)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO proxy_entries(name, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, sort_order, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, name, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), sortOrder)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	newEntryID, err := res.LastInsertId()
+	if err != nil {
+		return Entry{}, nil, err
+	}
+
+	ruleIDMap := make(map[int64]int64, len(sourceRules))
+	for _, src := range sourceRules {
+		res, err := tx.ExecContext(ctx, `
+			INSERT INTO proxy_rules(entry_id, upstream, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, enabled, nginx_mode, name, sort_order, security_json, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		`, newEntryID, src.Upstream, in.ListenPort, boolInt(in.ListenIPv4), boolInt(in.ListenIPv6), boolInt(in.HTTPSEnabled), boolInt(in.HTTPRedirect), boolInt(src.Enabled), src.NginxMode, src.Name, src.SortOrder, src.SecurityJSON)
+		if err != nil {
+			return Entry{}, nil, err
+		}
+		newRuleID, err := res.LastInsertId()
+		if err != nil {
+			return Entry{}, nil, err
+		}
+		ruleIDMap[src.ID] = newRuleID
+		for _, hostname := range src.Hostnames {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO proxy_hosts(rule_id, hostname, listen_port)
+				VALUES (?, ?, ?)
+			`, newRuleID, hostname, in.ListenPort); err != nil {
+				return Entry{}, nil, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Entry{}, nil, err
+	}
+	entry, err := s.GetEntry(ctx, newEntryID)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	return entry, ruleIDMap, nil
+}
+
+func (s *Store) loadCloneSourceRules(ctx context.Context, entryID int64) ([]cloneSourceRule, error) {
+	rows, err := s.querier().QueryContext(ctx, `
+		SELECT id, upstream, enabled, name, nginx_mode, sort_order, security_json
+		FROM proxy_rules
+		WHERE entry_id = ?
+		ORDER BY sort_order ASC, id ASC
+	`, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []cloneSourceRule
+	for rows.Next() {
+		var rule cloneSourceRule
+		var enabled int
+		if err := rows.Scan(&rule.ID, &rule.Upstream, &enabled, &rule.Name, &rule.NginxMode, &rule.SortOrder, &rule.SecurityJSON); err != nil {
+			return nil, err
+		}
+		rule.Enabled = enabled == 1
+		if rule.NginxMode == "" {
+			rule.NginxMode = "auto"
+		}
+		out = append(out, rule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range out {
+		hostRows, err := s.querier().QueryContext(ctx, `
+			SELECT hostname FROM proxy_hosts WHERE rule_id = ? ORDER BY id ASC
+		`, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for hostRows.Next() {
+			var hostname string
+			if err := hostRows.Scan(&hostname); err != nil {
+				hostRows.Close()
+				return nil, err
+			}
+			names = append(names, hostname)
+		}
+		hostRows.Close()
+		if err := hostRows.Err(); err != nil {
+			return nil, err
+		}
+		out[i].Hostnames = names
+	}
+	return out, nil
+}
+
+func (s *Store) clonePortConflicts(ctx context.Context, port int, rules []cloneSourceRule) (string, error) {
+	seen := make(map[string]struct{})
+	names := make([]string, 0)
+	for _, rule := range rules {
+		for _, hostname := range rule.Hostnames {
+			key := strings.ToLower(strings.TrimSpace(hostname))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			names = append(names, hostname)
+		}
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+
+	placeholders := make([]string, len(names))
+	args := make([]any, 0, len(names)+1)
+	args = append(args, port)
+	for i, name := range names {
+		placeholders[i] = "?"
+		args = append(args, name)
+	}
+
+	rows, err := s.querier().QueryContext(ctx, `
+		SELECT DISTINCT hostname
+		FROM proxy_hosts
+		WHERE listen_port = ? AND hostname COLLATE NOCASE IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var conflicts []string
+	for rows.Next() {
+		var hostname string
+		if err := rows.Scan(&hostname); err != nil {
+			return "", err
+		}
+		conflicts = append(conflicts, hostname)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if len(conflicts) == 0 {
+		return "", nil
+	}
+	if len(conflicts) > 5 {
+		conflicts = append(conflicts[:5], "…")
+	}
+	return fmt.Sprintf("目标端口 %d 上以下域名已被其他规则使用：%s，请更换端口或调整原规则", port, strings.Join(conflicts, "、")), nil
 }
 
 func (s *Store) RuleIDsByEntry(ctx context.Context, entryID int64) ([]int64, error) {

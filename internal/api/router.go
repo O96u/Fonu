@@ -47,6 +47,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/proxy-entries", r.proxyHandler.CreateEntry)
 	protect("PUT /api/proxy-entries/reorder", r.proxyHandler.ReorderEntries)
 	protect("PUT /api/proxy-entries/{id}", r.proxyHandler.UpdateEntry)
+	protect("POST /api/proxy-entries/{id}/clone", r.proxyHandler.CloneEntry)
 	protect("DELETE /api/proxy-entries/{id}", r.proxyHandler.DeleteEntry)
 	protect("GET /api/proxies/traffic", r.proxyHandler.Traffic)
 	protect("POST /api/proxies", r.proxyHandler.Create)

@@ -1002,7 +1002,7 @@
   <n-modal v-model:show="showEntryModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-entry-edit-modal">
       <div class="proxy-entry-edit-modal__header">
-        <h3 class="modal-title">{{ editingEntryId ? '编辑入口' : '新建入口' }}</h3>
+        <h3 class="modal-title">{{ editingEntryId ? '编辑入口' : cloningSourceId ? '复制入口' : '新建入口' }}</h3>
         <n-button size="small" quaternary @click="showEntryModal = false">
           <template #icon><n-icon :component="CloseOutline" /></template>
         </n-button>
@@ -1042,7 +1042,10 @@
             <n-switch v-model:value="entryForm.http_redirect" :disabled="!entryForm.https_enabled" />
           </div>
         </div>
-        <p class="field-hint">
+        <p v-if="cloningSourceId" class="field-hint">
+          保存后将新建监听入口，并把原入口下的 {{ cloneRuleCount }} 条规则（前端域名、上游地址与安全设置）一并复制到新端口；复制后两份规则相互独立。
+        </p>
+        <p v-else class="field-hint">
           {{ editingEntryId ? '修改后将同步应用到该入口下的全部规则。' : '每个入口需使用未被占用的监听端口。' }}
         </p>
       </n-form>
@@ -1260,6 +1263,8 @@ const hasSelectedDiscoveryRows = computed(() =>
 const showEntryModal = ref(false)
 const savingEntry = ref(false)
 const editingEntryId = ref<number | null>(null)
+const cloningSourceId = ref<number | null>(null)
+const cloneRuleCount = ref(0)
 const entryForm = reactive({
   name: '',
   listen_port: 443,
@@ -1551,6 +1556,7 @@ function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
 function openEntryEdit(group: ProxyEntryGroup) {
   if (!group.entryId) return
   editingEntryId.value = group.entryId
+  cloningSourceId.value = null
   Object.assign(entryForm, {
     name: group.name,
     listen_port: group.listen.listen_port,
@@ -1599,6 +1605,10 @@ async function saveEntry() {
     if (editingEntryId.value) {
       await api.updateProxyEntry(editingEntryId.value, payload)
       message.success('入口已保存')
+    } else if (cloningSourceId.value) {
+      const cloned = await api.cloneProxyEntry(cloningSourceId.value, payload)
+      const count = cloned.rule_count ?? cloneRuleCount.value
+      message.success(`入口已复制，${count} 条规则已同步创建`)
     } else {
       await api.createProxyEntry(payload)
       message.success('入口已创建')
@@ -1607,7 +1617,7 @@ async function saveEntry() {
     await load()
   } catch (error) {
     const msg = error instanceof Error ? error.message : '保存失败'
-    if (msg.startsWith('入口已保存')) {
+    if (msg.startsWith('入口已保存') || msg.startsWith('入口已复制')) {
       message.warning(msg)
       showEntryModal.value = false
       await load()
@@ -1619,19 +1629,30 @@ async function saveEntry() {
   }
 }
 
+function suggestClonePort(start: number): number {
+  const used = new Set(entries.value.map((entry) => entry.listen_port))
+  let port = start + 1
+  while (port <= 65535 && used.has(port)) {
+    port++
+  }
+  return port > 65535 ? start : port
+}
+
 function duplicateEntry(group: ProxyEntryGroup) {
   if (!group.entryId) return
   editingEntryId.value = null
+  cloningSourceId.value = group.entryId
+  cloneRuleCount.value = group.rules.length
   Object.assign(entryForm, {
-    name: group.name,
-    listen_port: group.listen.listen_port,
+    name: group.name ? `${group.name} 副本` : '',
+    listen_port: suggestClonePort(group.listen.listen_port),
     listen_ipv4: group.listen.listen_ipv4,
     listen_ipv6: group.listen.listen_ipv6,
     https_enabled: group.listen.https_enabled,
     http_redirect: group.listen.http_redirect,
   })
   showEntryModal.value = true
-  message.info('已填入复制内容，请修改监听端口等信息后保存')
+  message.info('将连同该入口下的全部规则一起复制，请确认监听端口')
 }
 
 function confirmDeleteEntry(group: ProxyEntryGroup) {
