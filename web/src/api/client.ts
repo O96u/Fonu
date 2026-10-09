@@ -118,6 +118,8 @@ export const api = {
   updateProxyEntry: (id: number, payload: Partial<ProxyEntrySavePayload>) =>
     request<ProxyEntry>(`/api/proxy-entries/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxyEntry: (id: number) => request<void>(`/api/proxy-entries/${id}`, { method: 'DELETE' }),
+  cloneProxyEntry: (id: number, payload: ProxyEntrySavePayload) =>
+    request<ProxyEntry>(`/api/proxy-entries/${id}/clone`, { method: 'POST', body: JSON.stringify(payload) }),
   reorderProxyEntries: (ids: number[]) =>
     request<void>('/api/proxy-entries/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   createProxy: (payload: ProxySavePayload) =>

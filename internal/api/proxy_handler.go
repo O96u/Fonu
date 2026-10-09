@@ -314,6 +314,42 @@ func (h *ProxyHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *ProxyHandler) CloneEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, "无效的入口 ID")
+		return
+	}
+
+	var req proxyEntryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	if req.ListenPort == nil {
+		writeError(r, w, http.StatusBadRequest, "监听端口不能为空")
+		return
+	}
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+	}
+
+	entry, _, err := h.svc.CloneEntry(r.Context(), id, proxy.EntryCloneInput{
+		Name:         name,
+		ListenPort:   *req.ListenPort,
+		ListenIPv4:   boolDefault(req.ListenIPv4, true),
+		ListenIPv6:   boolDefault(req.ListenIPv6, false),
+		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
+		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
+	})
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, entry)
+}
+
 func (h *ProxyHandler) ReorderEntries(w http.ResponseWriter, r *http.Request) {
 	var req proxyReorderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
