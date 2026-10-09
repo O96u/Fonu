@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.1] - 2026-10-09
+
+### 修复
+
+- 反代：开启「HTTP 跳转 HTTPS」时改为在 SSL server 内使用 `error_page 497` 跳转，避免同端口额外明文 server 块导致 `conflicting server name`（[#15](https://github.com/O96u/Fonu/pull/15)，DNSHE API 自动重试已在 v1.1.0 随 DNSHE 重构合入）
+
 ## [v1.1.0] - 2026-10-09
 
 本版本合并了社区贡献（[#16](https://github.com/O96u/Fonu/pull/16)、[#17](https://github.com/O96u/Fonu/pull/17)、[#18](https://github.com/O96u/Fonu/pull/18)–[#22](https://github.com/O96u/Fonu/pull/22)，经 [#23](https://github.com/O96u/Fonu/pull/23) 集成），并在合并后统一了 DNSHE/DDNS、反代与证书相关界面。

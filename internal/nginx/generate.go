@@ -133,18 +133,6 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			}
 			wroteBlock = true
 		}
-		if rule.HTTPRedirect && useHTTPS {
-			writeServerBlockHeaderComment(b, rule, serverNames, group.Port, "redirect")
-			b.WriteString("server {\n")
-			writeListenComments(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
-			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
-			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
-			writeErrorPages(b, cfg)
-			writeCommentLine(b, 4, "301 跳转至 HTTPS")
-			b.WriteString("    return 301 https://$host:$server_port$request_uri;\n")
-			b.WriteString("}\n")
-			wroteBlock = true
-		}
 
 		if !wroteBlock {
 			writeServerBlockHeaderComment(b, rule, serverNames, group.Port, "http")
@@ -176,6 +164,13 @@ func appendSSLServerBlock(b *strings.Builder, cfg config.Config, port int, serve
 	writeTLSProtocols(&block, rule.Security)
 	writeServerSecurityHeaders(&block, rule.Security, true)
 	writeErrorPages(&block, cfg)
+	if rule.HTTPRedirect {
+		// 同端口再生成一个普通 HTTP server 块会与 SSL 块/其他 HTTP 块冲突，
+		// nginx 会报 conflicting server name 并忽略它。
+		// 改用 497（明文 HTTP 请求发到 HTTPS 端口）在 SSL 块内实现跳转。
+		writeCommentLine(&block, 4, "HTTP 访问自动跳转 HTTPS")
+		block.WriteString("    error_page 497 =301 https://$host:$server_port$request_uri;\n")
+	}
 	writeLocationWithSecurity(&block, cfg, rule, opts)
 	block.WriteString("}\n")
 	b.WriteString(block.String())

@@ -51,11 +51,14 @@ func TestGenerateHTTPSBlockBeforeHTTPRedirect(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	sslIdx := strings.Index(content, "listen 8017 ssl;")
-	redirectIdx := strings.Index(content, "return 301 https://")
+	redirectIdx := strings.Index(content, "error_page 497 =301 https://")
 	if sslIdx < 0 || redirectIdx < 0 {
 		t.Fatalf("missing expected directives:\n%s", content)
 	}
 	if sslIdx > redirectIdx {
-		t.Fatalf("expected ssl server block before http redirect:\n%s", content)
+		t.Fatalf("expected ssl listen before 497 redirect in same server block:\n%s", content)
+	}
+	if strings.Count(content, "server {") != 1 {
+		t.Fatalf("expected single server block (no extra HTTP redirect server):\n%s", content)
 	}
 }
