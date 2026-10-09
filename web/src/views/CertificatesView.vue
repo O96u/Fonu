@@ -762,7 +762,7 @@ const columns: DataTableColumns<CertificateRecord> = [
     minWidth: 130,
     render: (row) =>
       h('div', { class: 'cert-name-cell' }, [
-        h('div', { class: 'cert-name-cell__title' }, certDisplayName(row.domain)),
+        h('div', { class: 'cert-name-cell__title' }, row.name?.trim() || certDisplayName(row.domain)),
         h('div', { class: 'cert-name-cell__sub' }, certSubtitle(row)),
       ]),
   },
@@ -824,6 +824,11 @@ const columns: DataTableColumns<CertificateRecord> = [
       const canDownload = row.status !== 'error' || !!row.expires_at
       return renderTableRowActions([
         {
+          label: '编辑',
+          show: row.acme_ca !== 'imported',
+          onClick: () => editCert(row),
+        },
+        {
           label: '续签',
           show: row.acme_ca !== 'imported',
           onClick: () => confirmRenew(row),
@@ -879,6 +884,23 @@ function confirmRenew(row: CertificateRecord) {
       }
     },
   })
+}
+
+const editingCertDomain = ref('')
+
+function editCert(row: CertificateRecord) {
+  editingCertDomain.value = row.domain
+  applyCA.value = row.acme_ca || 'letsencrypt'
+  // 保留设置中的 ACME 邮箱，不清空
+  const domains = row.domains ?? [row.domain]
+  applyDomainsText.value = domains.join('\n')
+  applyCertName.value = row.name?.trim() || certDisplayName(row.domain)
+  applyStep.value = 1
+  applyError.value = ''
+  applyLogLines.value = []
+  applyResult.value = null
+  applyFinished.value = false
+  showApply.value = true
 }
 
 function confirmDelete(row: CertificateRecord) {
@@ -1097,6 +1119,7 @@ async function submitApply() {
       domains,
       ca: applyCA.value,
       email: applyEmail.value.trim(),
+      name: applyCertName.value.trim(),
     })
     applyStep.value = 3
     resetApplyProgress()
