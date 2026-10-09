@@ -38,7 +38,7 @@
         </div>
       </FonuCard>
 
-      <FonuCard title="自动任务" subtitle="DDNS 与证书维护策略">
+      <FonuCard title="自动任务" subtitle="DDNS 与日志维护">
         <div class="settings-fields">
           <div class="settings-field">
             <div class="settings-field__row">
@@ -49,113 +49,11 @@
           </div>
           <div class="settings-field">
             <div class="settings-field__row">
-              <span class="settings-field__label">证书续签检查（天）</span>
-              <n-input-number v-model:value="certThreshold" :min="1" :max="90" class="settings-field__input" />
-            </div>
-            <p class="field-hint">当证书剩余有效期少于此天数时自动续签</p>
-          </div>
-          <div class="settings-field">
-            <div class="settings-field__row">
               <span class="settings-field__label">日志保留天数</span>
               <n-input-number v-model:value="logRetention" :min="1" :max="365" class="settings-field__input" />
             </div>
             <p class="field-hint">超过保留天数的日志将被自动清理</p>
           </div>
-        </div>
-      </FonuCard>
-
-      <FonuCard title="ACME 证书" subtitle="申请与续签所需账户信息">
-        <div class="settings-fields">
-          <div class="settings-field">
-            <div class="settings-field__label">ACME 邮箱</div>
-            <n-input v-model:value="acmeEmail" placeholder="admin@example.com" />
-            <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册</p>
-          </div>
-          <ConfiguredSecretField
-            v-model="zerosslEabKid"
-            label="ZeroSSL EAB Kid"
-            :configured="zerosslEabKidHasKey"
-            placeholder="app.zerossl.com/developer → EAB"
-          />
-          <ConfiguredSecretField
-            v-model="zerosslEabHmac"
-            label="ZeroSSL EAB Hmac"
-            :configured="zerosslEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <p class="field-hint zerossl-key-hint">申请 ZeroSSL 证书时必填，在 ZeroSSL 控制台 Developer 页面获取 EAB 凭证</p>
-          <ConfiguredSecretField
-            v-model="googleEabKid"
-            label="Google Trust Services EAB Kid"
-            :configured="googleEabKidHasKey"
-            placeholder="Google Cloud Console → Certificate Manager → EAB"
-          />
-          <ConfiguredSecretField
-            v-model="googleEabHmac"
-            label="Google Trust Services EAB Hmac"
-            :configured="googleEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <ConfiguredSecretField
-            v-model="sslcomEabKid"
-            label="SSL.com EAB Kid"
-            :configured="sslcomEabKidHasKey"
-            placeholder="SSL.com 控制台 → ACME → EAB"
-          />
-          <ConfiguredSecretField
-            v-model="sslcomEabHmac"
-            label="SSL.com EAB Hmac"
-            :configured="sslcomEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <ConfiguredSecretField
-            v-model="freesslEabKid"
-            label="FreeSSL EAB Kid"
-            :configured="freesslEabKidHasKey"
-            placeholder="freessl.cn → 证书自动化 → ACME 管理"
-          />
-          <ConfiguredSecretField
-            v-model="freesslEabHmac"
-            label="FreeSSL EAB Hmac"
-            :configured="freesslEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <div class="settings-field">
-            <div class="settings-field__label">FreeSSL ACME 地址（可选）</div>
-            <n-input v-model:value="freesslDirectoryUrl" placeholder="留空使用默认 https://acme.freessl.cn/v2/DV90/directory" />
-            <p class="field-hint">如果 FreeSSL 分配了专属 ACME 地址（含路径），粘贴到此处</p>
-          </div>
-          <ConfiguredSecretField
-            v-model="actalisEabKid"
-            label="Actalis EAB Kid"
-            :configured="actalisEabKidHasKey"
-            placeholder="actalis.com 客户区 → Manage with ACME → ACME Credentials"
-          />
-          <ConfiguredSecretField
-            v-model="actalisEabHmac"
-            label="Actalis EAB Hmac"
-            :configured="actalisEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <p class="field-hint">申请 Actalis 证书时必填；Actalis 免费套餐为单域名 90 天证书，不支持通配符</p>
-          <div class="settings-field">
-            <div class="settings-field__label">自定义 ACME Directory URL</div>
-            <n-input v-model:value="customAcmeDirectoryUrl" placeholder="https://acme.example.com/directory" />
-            <p class="field-hint">任意 ACME v2 服务器（内网 step-ca、Vault、EJBCA 或其他新 CA），申请时选择「自定义 ACME」</p>
-          </div>
-          <ConfiguredSecretField
-            v-model="customAcmeEabKid"
-            label="自定义 ACME EAB Kid（可选）"
-            :configured="customAcmeEabKidHasKey"
-            placeholder="服务器要求 EAB 时填写"
-          />
-          <ConfiguredSecretField
-            v-model="customAcmeEabHmac"
-            label="自定义 ACME EAB Hmac（可选）"
-            :configured="customAcmeEabHmacHasKey"
-            placeholder="与 Kid 配对"
-          />
-          <p class="field-hint">提示：同一 Fonu 实例内多组域名证书可共用同一组 EAB 凭据；多个 Fonu 实例之间不可共用同一组 EAB 凭据</p>
         </div>
       </FonuCard>
 
@@ -186,6 +84,152 @@
         </div>
         <p class="field-hint data-note">恢复配置将覆盖当前数据，操作前请确保已备份。</p>
       </FonuCard>
+        </div>
+      </n-tab-pane>
+
+      <n-tab-pane name="acme" tab="ACME 证书">
+        <div class="settings-grid settings-grid--single">
+          <FonuCard title="续签策略" subtitle="自动检查与续签">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__row">
+                  <span class="settings-field__label">证书续签检查（天）</span>
+                  <n-input-number v-model:value="certThreshold" :min="1" :max="90" class="settings-field__input" />
+                </div>
+                <p class="field-hint">当证书剩余有效期少于此天数时自动续签</p>
+              </div>
+            </div>
+          </FonuCard>
+
+          <FonuCard title="ACME 账户" subtitle="申请与续签所需凭据">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__label">ACME 邮箱</div>
+                <n-input v-model:value="acmeEmail" placeholder="admin@example.com" />
+                <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册</p>
+              </div>
+
+              <div class="acme-provider-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.zerossl.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.zerossl.url" :link-text="ACME_APPLY_LINKS.zerossl.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="zerosslEabKid"
+                  label="EAB Kid"
+                  :configured="zerosslEabKidHasKey"
+                  placeholder="Developer 页面生成的 Kid"
+                />
+                <ConfiguredSecretField
+                  v-model="zerosslEabHmac"
+                  label="EAB Hmac"
+                  :configured="zerosslEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <p class="field-hint">申请 ZeroSSL 证书时必填</p>
+              </div>
+
+              <div class="acme-provider-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.google.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.google.url" :link-text="ACME_APPLY_LINKS.google.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="googleEabKid"
+                  label="EAB Kid"
+                  :configured="googleEabKidHasKey"
+                  placeholder="Certificate Manager 申请的 Kid"
+                />
+                <ConfiguredSecretField
+                  v-model="googleEabHmac"
+                  label="EAB Hmac"
+                  :configured="googleEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+              </div>
+
+              <div class="acme-provider-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.sslcom.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.sslcom.url" :link-text="ACME_APPLY_LINKS.sslcom.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="sslcomEabKid"
+                  label="EAB Kid"
+                  :configured="sslcomEabKidHasKey"
+                  placeholder="控制台 ACME 凭据"
+                />
+                <ConfiguredSecretField
+                  v-model="sslcomEabHmac"
+                  label="EAB Hmac"
+                  :configured="sslcomEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+              </div>
+
+              <div class="acme-provider-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.freessl.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.freessl.url" :link-text="ACME_APPLY_LINKS.freessl.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="freesslEabKid"
+                  label="EAB Kid"
+                  :configured="freesslEabKidHasKey"
+                  placeholder="EAB 管理页生成"
+                />
+                <ConfiguredSecretField
+                  v-model="freesslEabHmac"
+                  label="EAB Hmac"
+                  :configured="freesslEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <div class="settings-field">
+                  <div class="settings-field__label">ACME 地址（可选）</div>
+                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空使用默认 https://acme.freessl.cn/v2/DV90/directory" />
+                  <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处</p>
+                </div>
+              </div>
+
+              <div class="acme-provider-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.actalis.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.actalis.url" :link-text="ACME_APPLY_LINKS.actalis.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="actalisEabKid"
+                  label="EAB Kid"
+                  :configured="actalisEabKidHasKey"
+                  placeholder="客户区 ACME Credentials"
+                />
+                <ConfiguredSecretField
+                  v-model="actalisEabHmac"
+                  label="EAB Hmac"
+                  :configured="actalisEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <p class="field-hint">免费套餐为单域名 90 天证书，不支持通配符</p>
+              </div>
+              <div class="settings-field">
+                <div class="settings-field__label">自定义 ACME Directory URL</div>
+                <n-input v-model:value="customAcmeDirectoryUrl" placeholder="https://acme.example.com/directory" />
+                <p class="field-hint">任意 ACME v2 服务器（内网 step-ca、Vault、EJBCA 或其他新 CA），申请时选择「自定义 ACME」</p>
+              </div>
+              <ConfiguredSecretField
+                v-model="customAcmeEabKid"
+                label="自定义 ACME EAB Kid（可选）"
+                :configured="customAcmeEabKidHasKey"
+                placeholder="服务器要求 EAB 时填写"
+              />
+              <ConfiguredSecretField
+                v-model="customAcmeEabHmac"
+                label="自定义 ACME EAB Hmac（可选）"
+                :configured="customAcmeEabHmacHasKey"
+                placeholder="与 Kid 配对"
+              />
+              <p class="field-hint">提示：同一 Fonu 实例内多组域名证书可共用同一组 EAB 凭据；多个 Fonu 实例之间不可共用同一组 EAB 凭据</p>
+            </div>
+          </FonuCard>
         </div>
       </n-tab-pane>
 
@@ -602,6 +646,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NButton,
   NIcon,
@@ -637,7 +682,9 @@ import type {
   NotifyWebhookConfig,
   WebhookProvider,
 } from '../api/types'
+import AcmeApplyLink from '../components/AcmeApplyLink.vue'
 import ConfiguredSecretField from '../components/ConfiguredSecretField.vue'
+import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import FonuCard from '../components/FonuCard.vue'
 import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import LoadError from '../components/LoadError.vue'
@@ -661,6 +708,9 @@ import { formatDate, formatRelativeTime } from '../utils/format'
 import type { StatusKind } from '../utils/status'
 
 const message = useMessage()
+const route = useRoute()
+
+const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced'])
 const { setThemeMode } = useTheme()
 const saving = ref(false)
 const loading = ref(false)
@@ -1420,7 +1470,13 @@ async function onRestoreFile({ file }: { file: UploadFileInfo }) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  const tab = route.query.tab
+  if (typeof tab === 'string' && SETTINGS_TAB_NAMES.has(tab)) {
+    settingsTab.value = tab
+  }
+  void load()
+})
 </script>
 
 <style scoped>
@@ -1704,6 +1760,30 @@ onMounted(load)
   min-width: 180px;
 }
 
+.acme-provider-block {
+  padding: var(--fonu-space-4);
+  border: 1px solid var(--fonu-border);
+  border-radius: var(--fonu-radius);
+  background: var(--fonu-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.acme-provider-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.acme-provider-block__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
 .notify-form {
   gap: 16px;
 }
@@ -1738,10 +1818,6 @@ onMounted(load)
   gap: 12px;
   margin: -4px 0 8px;
   padding: 0 14px;
-}
-
-.zerossl-key-hint {
-  margin-top: -8px;
 }
 
 .notify-test-row {

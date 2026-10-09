@@ -130,6 +130,19 @@ func (h *DNSHEHandler) PushToDDNS(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := r.PathValue("id")
 
+	accounts, err := h.svc.ListAccounts(ctx)
+	if err != nil {
+		writeError(r, w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var accountName string
+	for _, a := range accounts {
+		if a.ID == accountID {
+			accountName = strings.TrimSpace(a.Name)
+			break
+		}
+	}
+
 	cred, err := h.svc.RevealCredentials(ctx, accountID)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -198,6 +211,7 @@ func (h *DNSHEHandler) PushToDDNS(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err := h.ddnsSvc.Create(ctx, ddns.SaveInput{
 			Provider:    "dnshe",
+			Remark:      accountName,
 			RootDomain:  root,
 			RecordNames: grouped[root],
 			IPv4Enabled: true,

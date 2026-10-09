@@ -5,8 +5,12 @@
     </div>
 
     <div class="provider-form__field">
-      <label class="provider-form__label">备注</label>
-      <n-input v-model:value="form.remark" placeholder="选填，用于区分不同任务" size="small" />
+      <label class="provider-form__label">{{ form.provider === 'dnshe' ? '账户名称' : '名称' }}</label>
+      <n-input
+        v-model:value="form.remark"
+        :placeholder="form.provider === 'dnshe' ? '例如：主账户' : '选填，便于区分多个任务'"
+        size="small"
+      />
     </div>
 
     <div class="provider-form__field">
@@ -65,7 +69,13 @@
       />
     </div>
 
-    <div class="provider-form__switches">
+    <div v-if="form.provider === 'dnshe'" class="provider-form__switches">
+      <div class="settings-switch">
+        <span>账户自动续期</span>
+        <n-switch v-model:value="form.auto_renew" size="small" />
+      </div>
+    </div>
+    <div v-else class="provider-form__switches">
       <div class="settings-switch">
         <span>IPv4</span>
         <n-switch v-model:value="form.ipv4_enabled" size="small" />
@@ -82,7 +92,7 @@
 
     <div class="provider-form__actions">
       <n-button size="small" quaternary @click="emit('cancel')">取消</n-button>
-      <n-button size="small" :loading="testing" @click="emit('test')">测试连接</n-button>
+      <n-button v-if="form.provider !== 'dnshe'" size="small" :loading="testing" @click="emit('test')">测试连接</n-button>
       <n-button size="small" type="primary" :loading="saving" @click="emit('save')">保存</n-button>
     </div>
   </div>
@@ -109,6 +119,7 @@ export type ProviderForm = {
   ipv6_enabled: boolean
   enabled: boolean
   remark: string
+  auto_renew: boolean
 }
 
 const props = defineProps<{

@@ -114,7 +114,6 @@ import {
   DocumentTextOutline,
   Ellipse,
   GitNetworkOutline,
-  GlobeOutline,
   GridOutline,
   LockClosedOutline,
   LogoGithub,
@@ -169,7 +168,6 @@ async function loadVersion() {
 const menuDefs = [
   { label: '仪表盘', key: 'dashboard', icon: GridOutline },
   { label: 'DDNS', key: 'ddns', icon: CloudOutline },
-  { label: 'DNSHE 域名', key: 'dnshe-domains', icon: GlobeOutline },
   { label: '证书管理', key: 'certificates', icon: LockClosedOutline },
   { label: '反向代理', key: 'proxies', icon: SwapHorizontalOutline },
   { label: '内网穿透', key: 'frp', icon: GitNetworkOutline },

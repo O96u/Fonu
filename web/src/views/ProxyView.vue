@@ -562,12 +562,12 @@
 
         <div class="proxy-modal__scroll">
           <n-form v-show="formTab === 'basic'" label-placement="top" class="proxy-modal__pane">
-              <n-form-item :label="formMode === 'entry' ? '名称（入口）' : '名称'">
+              <n-form-item :label="isEntryBatchEdit ? '名称（入口）' : '名称'">
                 <n-input
                   v-model:value="form.name"
                   maxlength="100"
                   show-count
-                  :placeholder="formMode === 'entry' ? '选填；留空时标题自动显示为「端口 · HTTPS · IPv4」' : '选填，用于在列表中识别该规则'"
+                  :placeholder="isEntryBatchEdit ? '选填；留空时标题自动显示为「端口 · HTTPS · IPv4」' : '选填，用于在列表中识别该规则'"
                 />
               </n-form-item>
 
@@ -584,20 +584,29 @@
                   </span>
                 </template>
                 <div class="field-stack">
-                  <n-input
-                    v-model:value="form.hostsText"
-                    type="textarea"
-                    :rows="3"
-                    placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
+                  <n-select
+                    v-model:value="form.hostsSelected"
+                    multiple
+                    filterable
+                    :loading="ddnsHostsLoading"
+                    :options="hostSelectOptions"
+                    :filter="filterDdnsHostOption"
+                    placeholder="从 DDNS 中选择域名（可多选）"
+                    class="hosts-select"
+                    @focus="loadDdnsHostOptions"
                   />
-                  <p class="field-hint">
-                    <template v-if="formMode === 'entry'">批量新建规则时，每行前缀会加到这些域名前；内容随入口保存在系统中，下次打开自动恢复</template>
-                    <template v-else>多个域名指向<strong>同一</strong>内网服务时，在此每行填一个域名即可，无需新建多条规则</template>
+                  <p v-if="ddnsHostOptionsEmpty && !ddnsHostsLoading" class="field-hint">
+                    暂无 DDNS 域名，
+                    <router-link class="field-hint__link" :to="{ name: 'ddns' }">前往 DDNS 添加</router-link>
+                  </p>
+                  <p v-else class="field-hint">
+                    <template v-if="isEntryBatchEdit">多选为各规则共用的基础域名；目标地址每行的前缀会加在域名前。</template>
+                    <template v-else>多个域名指向<strong>同一</strong>内网服务时，在此多选即可。</template>
                   </p>
                 </div>
               </n-form-item>
 
-              <div v-if="formMode === 'entry' || !bindEntryListen" class="listen-row">
+              <div v-if="isEntryBatchEdit || !bindEntryListen" class="listen-row">
                 <div class="listen-col listen-col--port">
                   <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
                   <div class="listen-col__control">
@@ -625,32 +634,28 @@
                 </div>
               </div>
 
-              <n-form-item label="目标地址" :required="formMode !== 'entry'">
+              <n-form-item label="目标地址" required>
                 <div class="field-stack">
                   <n-input
-                    v-if="formMode === 'rule' && editing"
+                    v-if="isEntryBatchEdit"
                     v-model:value="form.upstream"
-                    placeholder="例如：http://192.168.1.100:5173"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="每行：名称,前缀,目标地址&#10;飞牛,nas,http://192.168.1.100:5173"
                   />
                   <n-input
                     v-else
                     v-model:value="form.upstream"
-                    type="textarea"
-                    :rows="4"
-                    :placeholder="formMode === 'entry' ? '留空则不添加。每行一条，格式 名称,前缀,目标地址\n例如：飞牛,nas,http://192.168.110.184:5777' : '单个：http://192.168.1.100:5173\n批量：每行一条，格式 名称,前缀,目标地址\n例如：飞牛,nas,http://192.168.110.184:5777'"
+                    placeholder="例如：http://192.168.1.100:5173"
                   />
-                  <p class="field-hint">支持 http://、https://，也可以是 IP 地址或内网域名</p>
-                  <p v-if="formMode === 'entry'" class="field-hint">
-                    每行一条「名称,前缀,目标地址」（支持中文逗号），内容随入口保存在系统中，打开即恢复。保存规则：域名没变→更新；删改了域名→按名称匹配原规则后按新内容重建；与其他规则重复的域名自动跳过（结果中提示）。删除整行文本不会删除已有规则，需在列表单独删除
+                  <p v-if="isEntryBatchEdit" class="field-hint">
+                    每行一条规则（http/https，IP 须带端口）。删文本框里的行不会删列表中的规则。
                   </p>
-                  <p v-else-if="!editing" class="field-hint">
-                    批量创建：每行一条，格式「名称,前缀,目标地址」（支持中文逗号），如
-                    飞牛,nas,http://192.168.110.184:5777 —— 前缀会自动加到每个前端域名前（nas.yyl.l.cd），规则名为行内名称
-                  </p>
+                  <p v-else class="field-hint">仅支持 http:// 或 https:// 开头的内网地址。</p>
                 </div>
               </n-form-item>
 
-              <div v-if="formMode === 'entry' || !bindEntryListen" class="form-switch-list form-switch-list--compact">
+              <div v-if="isEntryBatchEdit || !bindEntryListen" class="form-switch-list form-switch-list--compact">
                 <div class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用 HTTPS</div>
@@ -665,7 +670,7 @@
                   </div>
                   <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
                 </div>
-                <div v-if="formMode !== 'entry'" class="form-switch-row">
+                <div v-if="!isEntryBatchEdit" class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用规则</div>
                     <div class="form-switch-row__hint">保存后立即开始转发请求</div>
@@ -875,9 +880,9 @@
           </div>
 
           <div v-show="formTab === 'nginx'" class="proxy-modal__pane proxy-modal__pane--nginx">
-            <template v-if="formMode === 'entry'">
+            <template v-if="isEntryBatchEdit">
               <n-alert type="info" :bordered="false" class="nginx-pane-alert">
-                Nginx 按规则单独生成与配置；如需手动调整，请打开该入口下具体规则的「编辑 → Nginx」。安全设置的改动会随保存应用到入口下所有规则。
+                Nginx 按单条规则配置；请在该入口下具体规则的「编辑 → Nginx」中调整。
               </n-alert>
             </template>
             <template v-else-if="!editing">
@@ -958,7 +963,7 @@
         <div class="modal-footer">
           <n-button @click="closeModal">取消</n-button>
           <n-button v-if="formTab !== 'nginx'" type="primary" :loading="saving" @click="save">
-            {{ formMode === 'entry' ? (editingEntryId ? '保存' : '创建') : (editing ? '保存' : '创建') }}
+            {{ isEntryBatchEdit || editing ? '保存' : '创建' }}
           </n-button>
         </div>
       </div>
@@ -966,24 +971,19 @@
       <div class="proxy-modal__help">
         <template v-if="formTab === 'basic'">
           <h4>配置说明</h4>
-          <ol>
-            <li>
-              <strong>入口分组</strong>：同一端口、不同内网服务应放在同一入口下分别建规则；同一服务多域名写在一条规则里。
-            </li>
-            <li>
-              <strong>前端域名</strong>：支持多个域名，每行一个；单独端口可写
-              <code>example.com:6893</code>。
-            </li>
-            <li>
-              <strong>目标地址</strong>：内网服务地址，支持 <code>http://</code>、<code>https://</code> 或 IP。
-            </li>
-            <li>
-              <strong>HTTPS</strong>：需在「证书」页为域名申请或上传证书。
-            </li>
+          <ol v-if="isEntryBatchEdit" class="proxy-modal__help-ol proxy-modal__help-ol--compact">
+            <li>同端口多服务 → 同一入口多条规则；一服务多域名 → 在「前端域名」多选。</li>
+            <li>目标地址每行 <code>名称,前缀,内网 URL</code>，保存后同步到下方规则列表。</li>
+            <li>HTTPS 需在「证书」页配置；安全设置在「安全」页，保存后作用于本入口全部规则。</li>
+          </ol>
+          <ol v-else class="proxy-modal__help-ol proxy-modal__help-ol--compact">
+            <li>多域名同一上游 → 「前端域名」多选，目标地址填一行。</li>
+            <li>域名来自 DDNS 任务；监听端口由入口或上方端口决定。</li>
+            <li>HTTPS 需在「证书」页配置证书。</li>
           </ol>
           <div class="proxy-modal__tip">
             <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-            <span>请确保域名已解析到本机，且内网服务可访问。</span>
+            <span>域名需解析到本机，内网服务需可达。</span>
           </div>
         </template>
         <template v-else-if="formTab === 'nginx'">
@@ -1071,7 +1071,7 @@
           保存后将新建监听入口，并把原入口下的 {{ cloneRuleCount }} 条规则（前端域名、上游地址与安全设置）一并复制到新端口；复制后两份规则相互独立。
         </p>
         <p v-else class="field-hint">
-          {{ editingEntryId ? '修改后将同步应用到该入口下的全部规则。' : '每个入口需使用未被占用的监听端口。' }}
+          先创建空入口，再在下方列表添加规则；批量改域名、目标或安全策略时请点「编辑入口」。
         </p>
       </n-form>
       <div class="modal-footer">
@@ -1209,6 +1209,7 @@ import {
   useDialog,
   useMessage,
   type DataTableColumns,
+  type SelectGroupOption,
 } from 'naive-ui'
 import {
   AddOutline,
@@ -1254,7 +1255,19 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
+import {
+  collectDdnsHostOptions,
+  flattenDdnsOptionValues,
+  validateUpstreamInput,
+  type DdnsHostSelectOption,
+} from '../utils/ddnsHosts'
 import { formatBytes, formatRate, formatRateIdle, formatRelativeTime } from '../utils/format'
+import {
+  formHostsList,
+  formHostsToText,
+  mergeHostSelectOptions,
+  setFormHostsFromText,
+} from '../utils/proxyFormHosts'
 import { renderTableRowActions } from '../utils/tableActions'
 
 const message = useMessage()
@@ -1275,6 +1288,37 @@ interface DiscoveryRow {
 }
 
 const discoveryRows = ref<DiscoveryRow[]>([])
+
+const ddnsHostOptionGroups = ref<SelectGroupOption[]>([])
+const ddnsHostsLoading = ref(false)
+
+const hostSelectOptions = computed(() =>
+  mergeHostSelectOptions(ddnsHostOptionGroups.value, form.hostsSelected),
+)
+
+const ddnsHostOptionsEmpty = computed(() => flattenDdnsOptionValues(ddnsHostOptionGroups.value).size === 0)
+
+async function loadDdnsHostOptions() {
+  if (ddnsHostsLoading.value) return
+  ddnsHostsLoading.value = true
+  try {
+    const configs = asList(await api.listDDNSLite())
+    ddnsHostOptionGroups.value = collectDdnsHostOptions(configs)
+  } catch {
+    ddnsHostOptionGroups.value = []
+  } finally {
+    ddnsHostsLoading.value = false
+  }
+}
+
+function filterDdnsHostOption(pattern: string, option: DdnsHostSelectOption): boolean {
+  const p = pattern.trim().toLowerCase()
+  if (!p) return true
+  const domain = String(option.value ?? option.label ?? '').toLowerCase()
+  const provider = (option.providerLabel ?? '').toLowerCase()
+  const task = (option.taskLabel ?? '').toLowerCase()
+  return domain.includes(p) || provider.includes(p) || task.includes(p)
+}
 
 const discoverySummary = computed(() => {
   if (discoveryLoading.value || discoveryRows.value.length === 0) return ''
@@ -1304,8 +1348,10 @@ const entryModalTitle = computed(() => {
   return '新建入口'
 })
 const formMode = ref<'rule' | 'entry'>('rule')
+/** 编辑已有入口：批量域名/目标/安全；新建入口走简易 showEntryModal */
+const isEntryBatchEdit = computed(() => formMode.value === 'entry' && editingEntryId.value != null)
 const modalTitle = computed(() => {
-  if (formMode.value === 'entry') return editingEntryId.value ? '编辑入口' : '新建入口'
+  if (isEntryBatchEdit.value) return '编辑入口'
   return editing.value ? '编辑规则' : '新增规则'
 })
 const rules = ref<ProxyRule[]>([])
@@ -1389,7 +1435,7 @@ const form = reactive({
   listen_port: 80,
   listen_ipv4: true,
   listen_ipv6: false,
-  hostsText: '',
+  hostsSelected: [] as string[],
   upstream: '',
   https_enabled: true,
   http_redirect: true,
@@ -1586,6 +1632,7 @@ function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
   applyEntryListen(form, listen)
   formEntryId.value = entryId ?? null
   securityExpanded.value = ['ip']
+  void loadDdnsHostOptions()
   showModal.value = true
 }
 
@@ -1672,7 +1719,7 @@ async function loadEntryBatchDraftIntoForm(group: ProxyEntryGroup) {
     draft = made
     synthesized = !!(made.hosts.trim() || made.upstream.trim())
   }
-  form.hostsText = draft.hosts ?? ''
+  setFormHostsFromText(form.hostsSelected, draft.hosts ?? '')
   form.upstream = draft.upstream ?? ''
   if (synthesized && group.entryId) {
     void persistEntryBatchDraft(group.entryId)
@@ -1683,7 +1730,7 @@ async function persistEntryBatchDraft(entryId: number) {
   try {
     const settings = await api.getSettings()
     const drafts = parseEntryBatchDrafts(settings[ENTRY_BATCH_SETTINGS_KEY])
-    drafts[String(entryId)] = { hosts: form.hostsText, upstream: form.upstream }
+    drafts[String(entryId)] = { hosts: formHostsToText(form.hostsSelected), upstream: form.upstream }
     // 顺带清理已删除入口的旧草稿
     const validIds = new Set(entries.value.map((entry) => String(entry.id)))
     for (const key of Object.keys(drafts)) {
@@ -1697,15 +1744,18 @@ async function persistEntryBatchDraft(entryId: number) {
 }
 
 function openEntryCreate() {
-  formMode.value = 'entry'
   editing.value = null
   editingEntryId.value = null
-  formEntryId.value = null
   cloningSourceId.value = null
-  formTab.value = 'basic'
-  resetForm()
-  securityExpanded.value = ['ip']
-  showModal.value = true
+  Object.assign(entryForm, {
+    name: '',
+    listen_port: 443,
+    listen_ipv4: true,
+    listen_ipv6: false,
+    https_enabled: true,
+    http_redirect: true,
+  })
+  showEntryModal.value = true
 }
 
 async function openEntryEdit(group: ProxyEntryGroup) {
@@ -1799,6 +1849,20 @@ async function saveEntry() {
 }
 
 async function saveEntryFull() {
+  if (formHostsList(form.hostsSelected).length === 0) {
+    message.error('请选择至少一个前端域名')
+    return
+  }
+  if (!form.upstream.trim()) {
+    message.error('请填写目标地址')
+    return
+  }
+  try {
+    parseBatchLines(form.upstream)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '目标地址格式不正确')
+    return
+  }
   saving.value = true
   try {
     if (!form.listen_ipv4 && !form.listen_ipv6) {
@@ -1857,7 +1921,7 @@ async function saveEntryFull() {
     }
     // 入口一确定就先持久化填写内容，保证后续规则同步失败也不丢失用户输入
     await persistEntryBatchDraft(entryId)
-    const syncMsg = await syncEntryRules(entryId, form.hostsText, form.upstream)
+    const syncMsg = await syncEntryRules(entryId, formHostsToText(form.hostsSelected), form.upstream)
     const parts = [isEdit ? '入口已保存' : '入口已创建']
     if (appliedMsg) parts.push(appliedMsg)
     if (syncMsg) parts.push(syncMsg)
@@ -1895,7 +1959,9 @@ async function syncEntryRules(entryId: number, hostsText: string, upstreamText: 
   }
   const firstLine = text.split('\n').map((line) => line.trim()).find(Boolean) ?? ''
   const lines: BatchLine[] =
-    parsed.mode === 'batch' ? parsed.lines : [{ name: form.name.trim(), prefix: '', upstream: firstLine }]
+    parsed.mode === 'batch'
+      ? parsed.lines
+      : [{ name: form.name.trim(), prefix: '', upstream: validateUpstreamInput(firstLine) }]
   const baseHosts = parseHostsText(hostsText)
   if (baseHosts.length === 0) {
     throw new Error(`${failPrefix}至少需要一个前端域名`)
@@ -2663,7 +2729,15 @@ function parseBatchLines(text: string): { mode: 'single' } | { mode: 'batch'; li
     .map((line) => line.trim())
     .filter(Boolean)
   const hasComma = lines.some((line) => /[,，]/.test(line))
-  if (!hasComma) return { mode: 'single' }
+  if (!hasComma) {
+    if (lines.length > 1) {
+      throw new Error('多行目标地址请使用「名称,前缀,目标地址」格式，或仅保留一行 URL')
+    }
+    if (lines.length === 1) {
+      validateUpstreamInput(lines[0])
+    }
+    return { mode: 'single' }
+  }
 
   const prefixPattern = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/
   const parsed: BatchLine[] = lines.map((line, idx) => {
@@ -2672,11 +2746,8 @@ function parseBatchLines(text: string): { mode: 'single' } | { mode: 'batch'; li
       throw new Error(`第 ${idx + 1} 行格式不正确，应为「名称,前缀,目标地址」`)
     }
     const prefix = m[2].trim().toLowerCase()
-    const upstream = m[3].trim()
+    const upstream = validateUpstreamInput(m[3].trim())
     const name = m[1].trim() || form.name.trim() || prefix
-    if (!upstream) {
-      throw new Error(`第 ${idx + 1} 行目标地址不能为空`)
-    }
     if (prefix && !prefixPattern.test(prefix)) {
       throw new Error(`第 ${idx + 1} 行前缀「${prefix}」格式不正确，仅支持小写字母、数字、点和短横线`)
     }
@@ -2694,61 +2765,6 @@ function addPrefixToHost(host: string, prefix: string): string {
   const hasPort = raw.includes(':') && !raw.includes(']') && raw.split(':').length === 2
   const portSuffix = hasPort ? `:${raw.split(':')[1]}` : ''
   return `${prefix}.${parseHostname(raw)}${portSuffix}`
-}
-
-async function saveBatch(lines: BatchLine[]) {
-  saving.value = true
-  try {
-    const baseHosts = parseHostsText(form.hostsText)
-    if (baseHosts.length === 0) {
-      throw new Error('至少需要一个前端域名')
-    }
-    if (!form.listen_ipv4 && !form.listen_ipv6) {
-      throw new Error('至少需要启用 IPv4 或 IPv6 监听')
-    }
-    const listenPort = form.listen_port
-    const seen = new Set<string>()
-    const payloads = lines.map((line, idx) => {
-      const hosts = baseHosts.map((h) => addPrefixToHost(h, line.prefix))
-      const conflict = findHostConflict(hosts, listenPort, undefined)
-      if (conflict) {
-        const owner = primaryHost(conflict.rule)
-        throw new Error(
-          `第 ${idx + 1} 行「${line.name}」域名 ${conflict.host}:${conflict.port} 已被规则「${owner}」使用`,
-        )
-      }
-      for (const h of hosts) {
-        const key = hostBindingKey(parseHostname(h), effectiveListenPort(h, listenPort))
-        if (seen.has(key)) {
-          throw new Error(`第 ${idx + 1} 行「${line.name}」域名 ${key} 与前面的行重复`)
-        }
-        seen.add(key)
-      }
-      const base = buildPayload()
-      return { ...base, name: line.name, hosts, upstream: line.upstream }
-    })
-
-    let created = 0
-    for (let i = 0; i < payloads.length; i++) {
-      try {
-        await api.createProxy(payloads[i])
-        created++
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : '创建失败'
-        message.error(`第 ${i + 1} 行「${lines[i].name}」创建失败：${msg}（已创建 ${created} 条）`)
-        break
-      }
-    }
-    if (created === payloads.length) {
-      message.success(`已创建 ${created} 条规则`)
-    }
-    showModal.value = false
-    await load()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存失败')
-  } finally {
-    saving.value = false
-  }
 }
 
 function renderProtocol(row: ProxyRule): VNode {
@@ -3134,7 +3150,7 @@ function resetForm() {
   form.listen_port = defaultListenPort(form.https_enabled)
   form.listen_ipv4 = true
   form.listen_ipv6 = false
-  form.hostsText = ''
+  form.hostsSelected = []
   form.upstream = ''
   form.https_enabled = true
   form.http_redirect = true
@@ -3214,15 +3230,16 @@ function securityTags(rule: ProxyRule): string[] {
 }
 
 function buildPayload(): ProxySavePayload {
-  const hosts = parseHostsText(form.hostsText)
+  const hosts = formHostsList(form.hostsSelected)
   if (hosts.length === 0) {
     throw new Error('至少需要一个前端域名')
   }
   if (!form.listen_ipv4 && !form.listen_ipv6) {
     throw new Error('至少需要启用 IPv4 或 IPv6 监听')
   }
+  const upstream = validateUpstreamInput(form.upstream)
   return {
-    upstream: form.upstream,
+    upstream,
     ...(formEntryId.value
       ? { entry_id: formEntryId.value }
       : {
@@ -3282,8 +3299,8 @@ function openDuplicate(rule: ProxyRule) {
     form.http_redirect = rule.http_redirect
   }
 
+  setFormHostsFromText(form.hostsSelected, hostsToText(rule))
   Object.assign(form, {
-    hostsText: hostsToText(rule),
     upstream: rule.upstream,
     enabled: rule.enabled,
     name: rule.name ?? '',
@@ -3291,6 +3308,7 @@ function openDuplicate(rule: ProxyRule) {
   loadSecurityToForm(rule)
   syncSecurityExpanded()
   formTab.value = 'basic'
+  void loadDdnsHostOptions()
   showModal.value = true
   message.info('已填入复制内容，确认后保存为新规则')
 }
@@ -3314,8 +3332,8 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
     form.http_redirect = rule.http_redirect
   }
 
+  setFormHostsFromText(form.hostsSelected, hostsToText(rule))
   Object.assign(form, {
-    hostsText: hostsToText(rule),
     upstream: rule.upstream,
     enabled: rule.enabled,
     name: rule.name ?? '',
@@ -3329,6 +3347,7 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
   } else {
     formTab.value = 'basic'
   }
+  void loadDdnsHostOptions()
   showModal.value = true
   if (tab === 'nginx') {
     nginxDirty.value = false
@@ -3486,7 +3505,9 @@ watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, ()
 })
 
 watch(showModal, (open) => {
-  if (!open) {
+  if (open) {
+    void loadDdnsHostOptions()
+  } else {
     editing.value = null
     formEntryId.value = null
     editingEntryId.value = null
@@ -3495,22 +3516,9 @@ watch(showModal, (open) => {
 })
 
 async function save() {
-  if (formMode.value === 'entry') {
+  if (isEntryBatchEdit.value) {
     await saveEntryFull()
     return
-  }
-  if (!editing.value) {
-    let parsed: ReturnType<typeof parseBatchLines>
-    try {
-      parsed = parseBatchLines(form.upstream)
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '目标地址格式不正确')
-      return
-    }
-    if (parsed.mode === 'batch') {
-      await saveBatch(parsed.lines)
-      return
-    }
   }
   saving.value = true
   try {
@@ -5087,6 +5095,16 @@ onUnmounted(() => {
   margin-top: 10px;
 }
 
+.proxy-modal__help-ol--compact {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fonu-text-secondary);
+}
+
+.proxy-modal__help-ol--compact li + li {
+  margin-top: 6px;
+}
+
 .proxy-modal__help code {
   font-size: 12px;
   background: var(--fonu-surface);
@@ -5148,6 +5166,42 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.5;
+}
+
+.field-hint__link {
+  color: var(--fonu-primary);
+  text-decoration: none;
+}
+
+.field-hint__link:hover {
+  text-decoration: underline;
+}
+
+.hosts-select {
+  width: 100%;
+}
+
+.hosts-select :deep(.n-base-select-group-header) {
+  padding-top: 10px;
+  padding-bottom: 4px;
+}
+
+.hosts-select :deep(.ddns-host-group-label__task) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.hosts-select :deep(.ddns-host-group-label__dash) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.hosts-select :deep(.ddns-host-group-label__provider) {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fonu-text-muted);
 }
 
 .proxy-modal__pane :deep(.n-form-item .n-form-item-blank) {

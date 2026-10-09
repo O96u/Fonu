@@ -5,7 +5,6 @@ import LoginView from '../views/LoginView.vue'
 import ProxyView from '../views/ProxyView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DdnsView from '../views/DdnsView.vue'
-import DnsheDomainsView from '../views/DnsheDomainsView.vue'
 import CertificatesView from '../views/CertificatesView.vue'
 import LogsView from '../views/LogsView.vue'
 import SettingsView from '../views/SettingsView.vue'
@@ -34,12 +33,7 @@ const router = createRouter({
           component: DdnsView,
           meta: { title: 'DDNS', description: '自动同步公网 IP 到 DNS 解析' },
         },
-        {
-          path: 'dnshe-domains',
-          name: 'dnshe-domains',
-          component: DnsheDomainsView,
-          meta: { title: 'DNSHE 域名', description: '管理 DNSHE 免费二级域名与自动续期' },
-        },
+        { path: 'dnshe-domains', redirect: { name: 'ddns' } },
         {
           path: 'certificates',
           name: 'certificates',

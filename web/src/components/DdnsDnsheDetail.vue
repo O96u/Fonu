@@ -1,135 +1,134 @@
 <template>
-  <PageHeader title="DNSHE 域名" description="管理多个 DNSHE 账户的免费域名，支持续期、删除、转赠与接收">
-    <template #actions>
-      <n-button type="primary" @click="openAddAccount">
-        <template #icon><n-icon :component="AddOutline" /></template>
-        添加账户
-      </n-button>
-    </template>
-  </PageHeader>
+  <div class="dnshe-detail">
+    <FonuCard flush class="detail-section">
+      <div class="records-head">
+        <h4 class="detail-section__title">免费域名（{{ domains.length }}）</h4>
+        <n-space :size="8" class="records-head__actions">
+          <n-button size="small" quaternary :loading="loadingDetail" @click="loadDetail">
+            <template #icon><n-icon :component="RefreshOutline" /></template>
+            刷新
+          </n-button>
+          <n-button size="small" @click="openAccept">
+            <template #icon><n-icon :component="DownloadOutline" /></template>
+            接收域名
+          </n-button>
+          <n-button size="small" type="primary" @click="openRegister">
+            <template #icon><n-icon :component="AddOutline" /></template>
+            注册域名
+          </n-button>
+        </n-space>
+      </div>
 
-  <LoadError v-if="loadError" :message="loadError" @retry="init" />
+      <div v-if="loadingDetail" class="loading-wrap"><n-spin size="medium" /></div>
+      <div v-else-if="domains.length === 0" class="detail-empty-wrap">
+        <EmptyState title="暂无域名" description="可注册新域名，或通过转赠码接收。" />
+      </div>
+      <div v-else class="record-table-wrap">
+        <table class="record-table">
+          <thead>
+            <tr>
+              <th class="record-table__col-grip" aria-label="排序" />
+              <th>域名</th>
+              <th>状态</th>
+              <th>注册时间</th>
+              <th>到期时间</th>
+              <th>剩余天数</th>
+              <th>自动续期</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in domains"
+              :key="row.id"
+              :class="{
+                'domain-row--dragging': row.id === dragDomainId,
+                'domain-row--over': row.id === overDomainId && row.id !== dragDomainId,
+              }"
+              draggable="true"
+              @dragstart="onDomainDragStart($event, row)"
+              @dragover="onDomainDragOver($event, row)"
+              @dragleave="onDomainDragLeave(row)"
+              @drop="onDomainDrop($event, row.id)"
+              @dragend="onDomainDragEnd"
+            >
+              <td class="record-table__col-grip">
+                <n-icon :component="ReorderThreeOutline" class="domain-grip" :size="15" />
+              </td>
+              <td class="record-table__mono">{{ row.full_domain }}</td>
+              <td>
+                <StatusBadge :kind="domainStatusKind(row.status)" :text="domainStatusLabel(row.status)" />
+              </td>
+              <td>{{ row.created_at || '-' }}</td>
+              <td>{{ row.never_expires ? '永不过期' : row.expires_at || '-' }}</td>
+              <td>
+                <span v-if="row.never_expires" class="record-table__muted">永不过期</span>
+                <span v-else-if="row.days_left === null || row.days_left === undefined" class="record-table__muted">-</span>
+                <span v-else :class="daysLeftClass(row)">{{ row.days_left }} 天</span>
+              </td>
+              <td>
+                <n-switch
+                  size="small"
+                  :value="row.auto_renew"
+                  :disabled="!row.renewable"
+                  @update:value="(v: boolean) => toggleDomainAutoRenew(row, v)"
+                />
+              </td>
+              <td>
+                <div class="row-actions">
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    type="primary"
+                    :loading="pushingDomain === row.full_domain"
+                    @click="emit('push-domain', row.full_domain)"
+                  >
+                    推送
+                  </n-button>
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    :disabled="!row.renewable"
+                    :loading="renewingId === row.id"
+                    @click="renewDomain(row)"
+                  >
+                    续期
+                  </n-button>
+                  <n-tooltip v-if="!canGift(row)" placement="top">
+                    <template #trigger>
+                      <span class="gift-trigger">
+                        <n-button size="tiny" quaternary disabled>转赠</n-button>
+                      </span>
+                    </template>
+                    域名注册满 30 天后才可转赠（当前 {{ domainAgeDays(row) ?? '?' }} 天）
+                  </n-tooltip>
+                  <n-button
+                    v-else
+                    size="tiny"
+                    quaternary
+                    :loading="giftingId === row.id"
+                    @click="giftDomain(row)"
+                  >
+                    转赠
+                  </n-button>
+                  <n-button
+                    size="tiny"
+                    quaternary
+                    type="error"
+                    :loading="deletingId === row.id"
+                    @click="confirmDeleteDomain(row)"
+                  >
+                    删除
+                  </n-button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </FonuCard>
 
-  <template v-else>
-    <n-alert class="dnshe-tip" type="info" :bordered="false" title="规则说明">
-      域名到期前 <strong>180 天</strong>起可续期，每次延长 1 年。转赠域名需注册满 <strong>30 天</strong>，
-      转赠码 <strong>3 天</strong>内有效；接收方输入码即可将域名转入自己账户。账户分类可拖动左侧手柄排序。
-    </n-alert>
-
-    <div class="dnshe-layout">
-      <!-- 账户侧栏 -->
-      <aside class="dnshe-sidebar">
-        <FonuCard title="账户列表" subtitle="拖动手柄排序">
-          <button class="add-account-btn" @click="openAddAccount">
-            <n-icon :component="AddOutline" />
-            添加账户
-          </button>
-
-          <div v-if="accounts.length === 0" class="sidebar-empty">还没有账户，点击上方按钮添加</div>
-
-          <div
-            v-for="account in accounts"
-            :key="account.id"
-            class="account-item"
-            :class="{
-              'account-item--active': account.id === selectedId,
-              'account-item--dragging': account.id === dragId,
-              'account-item--over': account.id === overId && account.id !== dragId,
-            }"
-            draggable="true"
-            @click="selectAccount(account.id)"
-            @dragstart="onDragStart($event, account.id)"
-            @dragover="onDragOver($event, account.id)"
-            @dragleave="onDragLeave(account.id)"
-            @drop="onDrop($event)"
-            @dragend="onDragEnd"
-          >
-            <n-icon class="account-item__grip" :component="ReorderThreeOutline" />
-            <div class="account-item__main">
-              <div class="account-item__name">{{ account.name }}</div>
-              <div class="account-item__meta">
-                <template v-if="account.auto_renew">自动续期已开启</template>
-                <template v-else>自动续期已关闭</template>
-                <template v-if="account.last_run_at"> · {{ account.last_run_at }}</template>
-              </div>
-            </div>
-            <div class="account-item__ops" @click.stop>
-              <n-button quaternary size="tiny" title="查看凭据" @click="openCredentials(account)">
-                <template #icon><n-icon :component="KeyOutline" /></template>
-              </n-button>
-              <n-button quaternary size="tiny" title="推送到 DDNS" @click="confirmPushToDDNS(account)">
-                <template #icon><n-icon :component="CloudUploadOutline" /></template>
-              </n-button>
-              <n-button quaternary size="tiny" @click="openEditAccount(account)">
-                <template #icon><n-icon :component="CreateOutline" /></template>
-              </n-button>
-              <n-button quaternary size="tiny" type="error" @click="confirmDeleteAccount(account)">
-                <template #icon><n-icon :component="TrashOutline" /></template>
-              </n-button>
-            </div>
-          </div>
-        </FonuCard>
-      </aside>
-
-      <!-- 域名详情 -->
-      <main class="dnshe-content">
-        <FonuCard class="dnshe-card">
-          <template #title>
-            <span class="detail-title">{{ selectedAccount ? selectedAccount.name : '域名列表' }}</span>
-          </template>
-          <template #header>
-            <n-space :size="8">
-              <n-button size="small" :loading="loadingDetail" @click="loadDetail">
-                <template #icon><n-icon :component="RefreshOutline" /></template>
-                刷新
-              </n-button>
-              <n-button size="small" :disabled="!selectedId" @click="openRegister">
-                <template #icon><n-icon :component="AddCircleOutline" /></template>
-                注册域名
-              </n-button>
-              <n-button size="small" :disabled="!selectedId" @click="openAccept">
-                <template #icon><n-icon :component="DownloadOutline" /></template>
-                接收域名
-              </n-button>
-            </n-space>
-          </template>
-
-          <div v-if="!selectedId" class="detail-empty">
-            <EmptyState title="请选择账户" description="在左侧选择一个 DNSHE 账户，或添加新账户。" />
-          </div>
-          <div v-else-if="loadingDetail" class="loading-wrap"><n-spin size="medium" /></div>
-          <EmptyState
-            v-else-if="domains.length === 0"
-            title="暂无域名"
-            description="该账户下还没有免费域名，可注册或通过转赠码接收。"
-          />
-          <n-data-table
-            v-else
-            :columns="columns"
-            :data="domains"
-            :row-key="(row: DNSHEDomain) => row.id"
-            :row-props="domainRowProps"
-            :pagination="false"
-            size="small"
-          />
-        </FonuCard>
-
-        <FonuCard v-if="selectedId" title="转赠记录" subtitle="该账户发出与接收的域名转赠" class="dnshe-card">
-          <div v-if="loadingDetail" class="loading-wrap"><n-spin size="small" /></div>
-          <EmptyState v-else-if="gifts.length === 0" title="暂无转赠记录" description="转赠或接收域名后，记录会显示在这里。" />
-          <n-data-table
-            v-else
-            :columns="giftColumns"
-            :data="gifts"
-            :row-key="(row: DNSHEGift) => row.id"
-            :pagination="false"
-            size="small"
-          />
-        </FonuCard>
-      </main>
-    </div>
-
-    <!-- 账户新增/编辑 -->
+    <!-- 账户编辑 -->
     <n-modal v-model:show="accountModal.show" preset="card" style="width: 480px" :title="accountModal.editing ? '编辑账户' : '添加账户'">
       <n-form label-placement="top">
         <n-form-item label="账户名称">
@@ -248,15 +247,13 @@
         </n-space>
       </template>
     </n-modal>
-  </template>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
-  NAlert,
   NButton,
-  NDataTable,
   NForm,
   NFormItem,
   NIcon,
@@ -269,46 +266,49 @@ import {
   NTooltip,
   useDialog,
   useMessage,
-  type DataTableColumns,
 } from 'naive-ui'
 import {
-  AddCircleOutline,
   AddOutline,
-  CloudUploadOutline,
   CopyOutline,
-  CreateOutline,
   DownloadOutline,
-  KeyOutline,
   ReorderThreeOutline,
   RefreshOutline,
-  TrashOutline,
 } from '@vicons/ionicons5'
 import { api } from '../api/client'
-import type { DNSHEAccount, DNSHEDomain, DNSHEGift } from '../api/types'
-import PageHeader from '../components/PageHeader.vue'
-import FonuCard from '../components/FonuCard.vue'
-import EmptyState from '../components/EmptyState.vue'
-import LoadError from '../components/LoadError.vue'
+import type { DNSHEAccount, DNSHEDomain } from '../api/types'
+import FonuCard from './FonuCard.vue'
+import EmptyState from './EmptyState.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import type { StatusKind } from '../utils/status'
+
+const props = defineProps<{
+  account: DNSHEAccount
+  pushingDomain?: string
+}>()
+
+const emit = defineEmits<{
+  'refresh-accounts': []
+  'domains-changed': []
+  'gifts-changed': []
+  'push-domain': [fullDomain: string]
+  deleted: []
+}>()
 
 const message = useMessage()
 const dialog = useDialog()
 
-const accounts = ref<DNSHEAccount[]>([])
-const selectedId = ref('')
+const selectedId = computed(() => props.account.id)
 const domains = ref<DNSHEDomain[]>([])
-const gifts = ref<DNSHEGift[]>([])
 
-const loadError = ref('')
 const loadingDetail = ref(false)
+
+function notifyDomainsChanged() {
+  emit('domains-changed')
+}
 
 const renewingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const giftingId = ref<number | null>(null)
-const cancellingGiftId = ref<number | null>(null)
-
-const selectedAccount = computed(() => accounts.value.find((a) => a.id === selectedId.value))
 
 // ---- 账户弹窗 ----
 const accountModal = reactive({
@@ -321,16 +321,7 @@ const accountModal = reactive({
   autoRenew: false,
 })
 
-function openAddAccount() {
-  accountModal.editing = ''
-  accountModal.name = ''
-  accountModal.apiKey = ''
-  accountModal.apiSecret = ''
-  accountModal.autoRenew = true
-  accountModal.show = true
-}
-
-function openEditAccount(account: DNSHEAccount) {
+function openEditAccount(account: DNSHEAccount = props.account) {
   accountModal.editing = account.id
   accountModal.name = account.name
   accountModal.apiKey = ''
@@ -358,18 +349,9 @@ async function saveAccount() {
         auto_renew: accountModal.autoRenew,
       })
       message.success('已保存')
-    } else {
-      const created = await api.createDNSHEAccount({
-        name: accountModal.name,
-        api_key: accountModal.apiKey,
-        api_secret: accountModal.apiSecret,
-        auto_renew: accountModal.autoRenew,
-      })
-      message.success('账户已添加')
-      selectedId.value = created.id
     }
     accountModal.show = false
-    await loadAccounts()
+    emit('refresh-accounts')
     await loadDetail()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '保存失败')
@@ -388,76 +370,13 @@ function confirmDeleteAccount(account: DNSHEAccount) {
       try {
         await api.deleteDNSHEAccount(account.id)
         message.success('账户已删除')
-        if (selectedId.value === account.id) selectedId.value = ''
-        await loadAccounts()
-        if (accounts.value.length > 0) {
-          if (!selectedId.value) selectedId.value = accounts.value[0].id
-          await loadDetail()
-        }
+        emit('deleted')
+        emit('refresh-accounts')
       } catch (e) {
         message.error(e instanceof Error ? e.message : '删除失败')
       }
     },
   })
-}
-
-// ---- 拖拽排序 ----
-const dragId = ref('')
-const overId = ref('')
-
-function onDragStart(e: DragEvent, id: string) {
-  dragId.value = id
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', id)
-  }
-}
-
-function onDragOver(e: DragEvent, id: string) {
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  if (overId.value !== id) overId.value = id
-}
-
-function onDragLeave(id: string) {
-  if (overId.value === id) overId.value = ''
-}
-
-async function onDrop(e: DragEvent) {
-  e.preventDefault()
-  const from = dragId.value
-  const to = overId.value
-  dragId.value = ''
-  overId.value = ''
-  if (!from || !to || from === to) return
-
-  const ids = accounts.value.map((a) => a.id)
-  const fromIdx = ids.indexOf(from)
-  const toIdx = ids.indexOf(to)
-  if (fromIdx < 0 || toIdx < 0) return
-
-  const snapshot = accounts.value.slice()
-  const [moved] = ids.splice(fromIdx, 1)
-  ids.splice(toIdx, 0, moved)
-  applyOrder(ids)
-
-  try {
-    await api.reorderDNSHEAccounts(ids)
-    message.success('排序已保存')
-  } catch (err) {
-    accounts.value = snapshot
-    message.error(err instanceof Error ? err.message : '排序保存失败')
-  }
-}
-
-function onDragEnd() {
-  dragId.value = ''
-  overId.value = ''
-}
-
-function applyOrder(ids: string[]) {
-  const byID = new Map(accounts.value.map((a) => [a.id, a]))
-  accounts.value = ids.map((id) => byID.get(id)!).filter(Boolean)
 }
 
 // ---- 状态映射 ----
@@ -490,24 +409,6 @@ function domainStatusLabel(status: string): string {
   return map[(status || '').toLowerCase()] ?? (status || '未知')
 }
 
-function giftStatusKind(status: string): StatusKind {
-  const s = (status || '').toLowerCase()
-  if (s === 'accepted') return 'success'
-  if (s === 'pending') return 'warning'
-  if (s === 'expired') return 'error'
-  return 'unknown'
-}
-
-function giftStatusLabel(status: string): string {
-  const map: Record<string, string> = {
-    pending: '待接收',
-    accepted: '已接收',
-    cancelled: '已取消',
-    expired: '已过期',
-  }
-  return map[(status || '').toLowerCase()] ?? (status || '未知')
-}
-
 // ---- 域名表格 ----
 
 // parseFlexibleTime 解析 DNSHE 时间字符串，兼容 "2006-01-02 15:04:05"。
@@ -530,174 +431,37 @@ function canGift(row: DNSHEDomain): boolean {
   return age !== null && age >= 30
 }
 
-function daysLeftCell(row: DNSHEDomain) {
-  if (row.never_expires) return h('span', { class: 'muted' }, '永不过期')
-  if (row.days_left === null || row.days_left === undefined) return h('span', { class: 'muted' }, '-')
-  const cls = row.days_left <= 7 ? 'days days--error' : row.days_left <= 30 ? 'days days--warning' : 'days'
-  return h('span', { class: cls }, `${row.days_left} 天`)
+function daysLeftClass(row: DNSHEDomain) {
+  if (row.days_left === null || row.days_left === undefined) return 'days'
+  if (row.days_left <= 7) return 'days days--error'
+  if (row.days_left <= 30) return 'days days--warning'
+  return 'days'
 }
-
-function actionButton(text: string, options: Record<string, unknown>, type: 'default' | 'primary' | 'error' = 'default') {
-  return h(
-    NButton,
-    { size: 'small', text: true, type, ...options },
-    { default: () => text },
-  )
-}
-
-const columns: DataTableColumns<DNSHEDomain> = [
-  {
-    key: 'drag',
-    width: 32,
-    render: () =>
-      h(
-        NIcon,
-        { class: 'domain-grip', size: 15 },
-        { default: () => h(ReorderThreeOutline) },
-      ),
-  },
-  {
-    title: '域名',
-    key: 'full_domain',
-    width: 210,
-    ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'domain-name' }, row.full_domain),
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 80,
-    render: (row) =>
-      h(StatusBadge, { kind: domainStatusKind(row.status), text: domainStatusLabel(row.status) }),
-  },
-  { title: '注册时间', key: 'created_at', width: 160, render: (row) => row.created_at || '-' },
-  {
-    title: '到期时间',
-    key: 'expires_at',
-    width: 160,
-    render: (row) => (row.never_expires ? '永不过期' : row.expires_at || '-'),
-  },
-  { title: '剩余天数', key: 'days_left', width: 90, render: daysLeftCell },
-  {
-    title: '自动续期',
-    key: 'auto_renew',
-    width: 90,
-    render: (row) =>
-      h(NSwitch, {
-        size: 'small',
-        value: row.auto_renew,
-        disabled: !row.renewable,
-        'onUpdate:value': (v: boolean) => toggleDomainAutoRenew(row, v),
-      }),
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 205,
-    render: (row) => {
-      const giftable = canGift(row)
-      const giftBtn = actionButton('转赠', {
-        disabled: !giftable,
-        loading: giftingId.value === row.id,
-        onClick: () => giftDomain(row),
-      })
-      const giftTip = h(NTooltip, { placement: 'top' }, {
-        trigger: () =>
-          // disabled 按钮不触发鼠标事件，需套一层 span 承载 tooltip
-          h('span', { class: 'gift-trigger' }, [giftBtn]),
-        default: () => {
-          const age = domainAgeDays(row)
-          return giftable
-            ? '转赠域名给其他 DNSHE 账户'
-            : `域名注册满 30 天后才可转赠（当前 ${age ?? '?'} 天）`
-        },
-      })
-      return h('div', { class: 'row-actions' }, [
-        actionButton('续期', {
-          disabled: !row.renewable,
-          loading: renewingId.value === row.id,
-          onClick: () => renewDomain(row),
-        }, 'primary'),
-        giftTip,
-        actionButton('删除', {
-          loading: deletingId.value === row.id,
-          onClick: () => confirmDeleteDomain(row),
-        }, 'error'),
-      ])
-    },
-  },
-]
-
-const giftColumns: DataTableColumns<DNSHEGift> = [
-  {
-    title: '转赠码',
-    key: 'code',
-    width: 210,
-    render: (row) =>
-      h('span', { class: 'gift-code-cell', title: '点击复制' }, [
-        h(
-          'span',
-          { class: 'domain-name', onClick: () => copyText(row.code) },
-          row.code,
-        ),
-      ]),
-  },
-  { title: '域名', key: 'full_domain', width: 200, ellipsis: { tooltip: true } },
-  {
-    title: '状态',
-    key: 'status',
-    width: 90,
-    render: (row) =>
-      h(StatusBadge, { kind: giftStatusKind(row.status), text: giftStatusLabel(row.status) }),
-  },
-  { title: '创建时间', key: 'created_at', width: 160, render: (row) => row.created_at || '-' },
-  { title: '有效期至', key: 'expires_at', width: 160, render: (row) => row.expires_at || '-' },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 90,
-    render: (row) =>
-      row.status === 'pending'
-        ? actionButton('取消', {
-            loading: cancellingGiftId.value === row.id,
-            onClick: () => cancelGift(row),
-          }, 'error')
-        : h('span', { class: 'muted' }, '-'),
-  },
-]
 
 // ---- 域名行拖拽 ----
 
 const dragDomainId = ref<number | null>(null)
 const overDomainId = ref<number | null>(null)
 
-function domainRowProps(row: DNSHEDomain) {
-  return {
-    draggable: true,
-    class: {
-      'domain-row--dragging': row.id === dragDomainId.value,
-      'domain-row--over':
-        row.id === overDomainId.value && row.id !== dragDomainId.value,
-    },
-    onDragstart: (e: DragEvent) => {
-      dragDomainId.value = row.id
-      e.dataTransfer?.setData('text/plain', String(row.id))
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
-    },
-    onDragover: (e: DragEvent) => {
-      e.preventDefault()
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-      if (overDomainId.value !== row.id) overDomainId.value = row.id
-    },
-    onDragleave: () => {
-      if (overDomainId.value === row.id) overDomainId.value = null
-    },
-    onDrop: (e: DragEvent) => onDomainDrop(e, row.id),
-    onDragend: () => {
-      dragDomainId.value = null
-      overDomainId.value = null
-    },
-  }
+function onDomainDragStart(e: DragEvent, row: DNSHEDomain) {
+  dragDomainId.value = row.id
+  e.dataTransfer?.setData('text/plain', String(row.id))
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+
+function onDomainDragOver(e: DragEvent, row: DNSHEDomain) {
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  if (overDomainId.value !== row.id) overDomainId.value = row.id
+}
+
+function onDomainDragLeave(row: DNSHEDomain) {
+  if (overDomainId.value === row.id) overDomainId.value = null
+}
+
+function onDomainDragEnd() {
+  dragDomainId.value = null
+  overDomainId.value = null
 }
 
 async function onDomainDrop(e: DragEvent, targetId: number) {
@@ -730,26 +494,12 @@ async function onDomainDrop(e: DragEvent, targetId: number) {
 
 // ---- 数据加载 ----
 
-async function loadAccounts() {
-  accounts.value = await api.listDNSHEAccounts()
-}
-
-function selectAccount(id: string) {
-  if (id === selectedId.value) return
-  selectedId.value = id
-  loadDetail()
-}
-
 async function loadDetail() {
-  if (!selectedId.value) return
+  const id = selectedId.value
+  if (!id) return
   loadingDetail.value = true
   try {
-    const [domainList, giftList] = await Promise.all([
-      api.listDNSHEDomains(selectedId.value),
-      api.listDNSHEGifts(selectedId.value),
-    ])
-    domains.value = domainList
-    gifts.value = giftList
+    domains.value = await api.listDNSHEDomains(id)
   } catch (e) {
     message.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -757,18 +507,13 @@ async function loadDetail() {
   }
 }
 
-async function init() {
-  loadError.value = ''
-  try {
-    await loadAccounts()
-    if (accounts.value.length > 0) {
-      selectedId.value = accounts.value[0].id
-      await loadDetail()
-    }
-  } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '加载失败'
-  }
-}
+watch(
+  () => props.account.id,
+  () => {
+    void loadDetail()
+  },
+  { immediate: true },
+)
 
 // ---- 域名操作 ----
 
@@ -778,6 +523,7 @@ async function renewDomain(row: DNSHEDomain) {
     const result = await api.renewDNSHEDomain(selectedId.value, row.id)
     message.success(result.new_expires_at ? `续期成功，新到期时间：${result.new_expires_at}` : '续期成功')
     await loadDetail()
+    notifyDomainsChanged()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '续期失败')
   } finally {
@@ -801,6 +547,7 @@ async function deleteDomain(row: DNSHEDomain) {
     await api.deleteDNSHEDomain(selectedId.value, row.id)
     message.success('域名已删除')
     await loadDetail()
+    notifyDomainsChanged()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '删除失败')
   } finally {
@@ -817,23 +564,11 @@ async function giftDomain(row: DNSHEDomain) {
     giftModal.expiresAt = gift.expires_at ?? ''
     giftModal.show = true
     await loadDetail()
+    emit('gifts-changed')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '生成转赠码失败')
   } finally {
     giftingId.value = null
-  }
-}
-
-async function cancelGift(row: DNSHEGift) {
-  cancellingGiftId.value = row.id
-  try {
-    await api.cancelDNSHEGift(selectedId.value, row.id)
-    message.success('转赠已取消')
-    await loadDetail()
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : '取消失败')
-  } finally {
-    cancellingGiftId.value = null
   }
 }
 
@@ -895,6 +630,7 @@ async function submitRegister() {
     message.success(`注册成功：${result.full_domain}`)
     registerModal.show = false
     await loadDetail()
+    notifyDomainsChanged()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '注册失败')
   } finally {
@@ -922,6 +658,8 @@ async function submitAccept() {
     message.success(`已接收域名：${gift.full_domain}`)
     acceptModal.show = false
     await loadDetail()
+    notifyDomainsChanged()
+    emit('gifts-changed')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '接收失败')
   } finally {
@@ -956,28 +694,6 @@ async function openCredentials(account: DNSHEAccount) {
   }
 }
 
-// ---- 推送到 DDNS ----
-function confirmPushToDDNS(account: DNSHEAccount) {
-  dialog.warning({
-    title: '推送到 DDNS',
-    content: `将使用账户「${account.name}」的凭据，按主域名为其下所有域名创建 DDNS 任务；已存在 DDNS 任务的主域名会自动跳过。`,
-    positiveText: '推送',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        const result = await api.pushDNSHEToDDNS(account.id)
-        let text = result.message
-        if (result.skipped.length > 0) {
-          text += `；已跳过：${result.skipped.join('、')}`
-        }
-        message.success(text)
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '推送失败')
-      }
-    },
-  })
-}
-
 // ---- 转赠码弹窗 ----
 const giftModal = reactive({ show: false, code: '', domain: '', expiresAt: '' })
 
@@ -1003,10 +719,134 @@ async function copyText(text: string) {
   }
 }
 
-onMounted(init)
+defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
 </script>
 
 <style scoped>
+.dnshe-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fonu-space-4);
+  min-width: 0;
+}
+
+.detail-section {
+  min-width: 0;
+}
+
+.detail-section__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.records-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  padding: var(--fonu-space-4) var(--fonu-space-5) 0;
+  flex-wrap: wrap;
+}
+
+.records-head__actions {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.record-table-wrap {
+  overflow-x: auto;
+  padding: var(--fonu-space-3) var(--fonu-space-5) var(--fonu-space-4);
+}
+
+.record-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.record-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fonu-text-secondary);
+  border-bottom: 1px solid var(--fonu-border);
+  white-space: nowrap;
+}
+
+.record-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--fonu-border);
+  vertical-align: middle;
+}
+
+.record-table__col-grip {
+  width: 28px;
+  padding-left: 8px;
+  padding-right: 0;
+}
+
+.record-table__mono {
+  font-family: var(--fonu-mono);
+  font-size: 12px;
+}
+
+.record-table__muted {
+  color: var(--fonu-text-muted);
+}
+
+.record-table__link {
+  font-family: var(--fonu-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fonu-text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.record-table__link:hover {
+  color: var(--fonu-primary);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.gift-trigger {
+  display: inline-block;
+}
+
+.domain-grip {
+  color: var(--fonu-text-muted);
+  cursor: grab;
+  vertical-align: middle;
+}
+
+.domain-row--dragging {
+  opacity: 0.4;
+}
+
+.domain-row--over td {
+  box-shadow: inset 0 2px 0 var(--fonu-primary);
+}
+
+.detail-empty-wrap {
+  padding: 0 var(--fonu-space-5) var(--fonu-space-4);
+}
+
 .dnshe-tip {
   margin-bottom: var(--fonu-space-4);
 }
@@ -1128,11 +968,6 @@ onMounted(init)
   margin-bottom: var(--fonu-space-4);
 }
 
-.domain-name {
-  font-weight: 500;
-  font-family: var(--fonu-font-mono, monospace);
-}
-
 .days {
   font-weight: 600;
 }
@@ -1185,41 +1020,8 @@ onMounted(init)
   color: var(--fonu-text-muted);
 }
 
-.gift-code-cell .domain-name:hover {
-  color: var(--fonu-primary);
-  cursor: pointer;
-}
-
 .accept-input {
   margin-top: var(--fonu-space-2);
-}
-
-:deep(.row-actions) {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-:deep(.gift-trigger) {
-  display: inline-block;
-}
-
-:deep(.domain-grip) {
-  color: var(--fonu-text-muted);
-  cursor: grab;
-  vertical-align: middle;
-}
-
-:deep(.domain-row) {
-  cursor: grab;
-}
-
-:deep(.domain-row--dragging) {
-  opacity: 0.4;
-}
-
-:deep(.domain-row--over td) {
-  box-shadow: inset 0 2px 0 var(--fonu-primary);
 }
 
 .register-preview {
