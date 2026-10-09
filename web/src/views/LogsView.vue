@@ -149,6 +149,7 @@ import {
   formatAccessFallback,
   resolveAccessServiceLabel,
 } from '../utils/accessService'
+import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatLogTime, formatMs } from '../utils/format'
 import {
   frpLevelTagType,
@@ -165,6 +166,7 @@ import {
 import { httpStatusKind } from '../utils/status'
 
 const PAGE_SIZE = 20
+const logTimeZone = useAppTimezone()
 
 const LogPagination = defineComponent({
   name: 'LogPagination',
@@ -356,7 +358,7 @@ const statusTagType = (code: number) => {
 }
 
 const logTimeCell = (time: string) =>
-  h('span', { class: 'log-time' }, formatLogTime(time))
+  h('span', { class: 'log-time' }, formatLogTime(time, { timeZone: logTimeZone.value }))
 
 function accessRowClassName(row: AccessLogEntry) {
   if (row.status >= 500) return 'log-row log-row--error'

@@ -35,6 +35,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useAppTimezone } from '../composables/useAppTimezone'
+import { formatLogTime as formatLogTimeInZone } from '../utils/format'
 
 type AccessLogEntry = {
   time: string
@@ -64,6 +66,7 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
+const logTimeZone = useAppTimezone()
 
 const accessLineReWithPort =
   /^(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+)\s+(\d+))?$/
@@ -93,7 +96,7 @@ function buildEntry(
   upstream: string,
 ): AccessLogEntry {
   return {
-    time: time.replace('T', ' ').replace(/([+-]\d{2}:\d{2}|Z)$/, ''),
+    time,
     host,
     method,
     path,
@@ -109,12 +112,7 @@ const parsedLines = computed(() =>
 )
 
 function formatLogTime(raw: string): string {
-  const normalized = raw.replace('T', ' ')
-  const space = normalized.indexOf(' ')
-  if (space >= 0 && space < normalized.length - 1) {
-    return normalized.slice(space + 1).replace(/([+-]\d{2}:\d{2}|Z)$/, '')
-  }
-  return raw
+  return formatLogTimeInZone(raw, { timeZone: logTimeZone.value })
 }
 
 function formatUpstream(upstream: string): string {

@@ -3890,11 +3890,19 @@ onUnmounted(() => {
 .discovery-modal {
   width: min(760px, 94vw);
   max-height: 82vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   padding: var(--fonu-space-4);
   background: var(--fonu-surface, #fff);
   border-radius: var(--fonu-radius-lg, 12px);
+}
+
+.discovery-modal__header,
+.discovery-modal__toolbar,
+.discovery-modal__footer {
+  flex-shrink: 0;
 }
 
 .discovery-modal__header {
@@ -3943,12 +3951,16 @@ onUnmounted(() => {
 .discovery-modal__content {
   position: relative;
   flex: 1;
-  min-height: 180px;
+  min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .discovery-modal__loading {
   display: flex;
+  flex: 1;
+  min-height: 120px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -3960,7 +3972,11 @@ onUnmounted(() => {
 
 .discovery-modal__list-wrap {
   position: relative;
-  min-height: 120px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .discovery-modal__scan-overlay {
@@ -3981,7 +3997,9 @@ onUnmounted(() => {
 .discovery-modal__list {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--fonu-border);
   border-radius: var(--fonu-radius-md, 8px);
 }

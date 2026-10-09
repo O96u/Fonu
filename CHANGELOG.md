@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.2] - 2026-10-09
+
+### 修复
+
+- 日志中心 / 仪表盘：按系统设置时区展示访问、Nginx、FRP 与系统日志时间（修正 UTC 与界面本地时间相差 8 小时等问题）
+- 反代：「发现内网服务」弹窗列表过长时无法滚动的问题
+
 ## [v1.1.1] - 2026-10-09
 
 ### 修复

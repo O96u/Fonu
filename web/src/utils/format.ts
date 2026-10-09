@@ -60,45 +60,93 @@ export function formatDate(iso?: string): string {
   })
 }
 
-/** Normalize log timestamps to YYYY-MM-DD HH:mm:ss */
-export function formatLogTime(value?: string): string {
-  if (!value) return '-'
+export type FormatLogTimeOptions = {
+  /** IANA 时区，默认 Asia/Shanghai（与 Fonu 设置默认一致） */
+  timeZone?: string
+}
 
+const DEFAULT_LOG_TIMEZONE = 'Asia/Shanghai'
+
+const ISO_WITH_OFFSET =
+  /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:?\d{2})$/
+
+const NAIVE_DATETIME =
+  /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/
+
+function formatInTimeZone(date: Date, timeZone: string): string {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const parts = fmt.formatToParts(date)
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00'
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
+}
+
+/** Parse log timestamps; naive strings (nginx error / frpc) are treated as UTC. */
+export function parseLogTimestamp(value: string): Date | null {
   const trimmed = value.trim()
+  if (!trimmed) return null
 
-  const standard = trimmed.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/)
-  if (standard) return standard[1]
-
-  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/)
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]} ${iso[4]}:${iso[5]}:${iso[6]}`
-
-  const nginx = trimmed.match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
-  if (nginx) return `${nginx[1]}-${nginx[2]}-${nginx[3]} ${nginx[4]}:${nginx[5]}:${nginx[6]}`
-
-  const date = new Date(trimmed)
-  if (!Number.isNaN(date.getTime())) {
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  const isoTz = trimmed.match(ISO_WITH_OFFSET)
+  if (isoTz) {
+    const normalized = `${isoTz[1]}T${isoTz[2]}${isoTz[3].replace(/([+-]\d{2})(\d{2})$/, '$1:$2')}`
+    const ms = Date.parse(normalized)
+    if (!Number.isNaN(ms)) return new Date(ms)
   }
 
-  return trimmed
+  const naive = trimmed.match(NAIVE_DATETIME)
+  if (naive) {
+    const y = Number(naive[1])
+    const mo = Number(naive[2]) - 1
+    const d = Number(naive[3])
+    const h = Number(naive[4])
+    const mi = Number(naive[5])
+    const s = Number(naive[6])
+    return new Date(Date.UTC(y, mo, d, h, mi, s))
+  }
+
+  if (/[Z+-]/.test(trimmed)) {
+    const ms = Date.parse(trimmed)
+    if (!Number.isNaN(ms)) return new Date(ms)
+  }
+
+  return null
+}
+
+/** Normalize log timestamps to YYYY-MM-DD HH:mm:ss in the configured timezone. */
+export function formatLogTime(value?: string, options?: FormatLogTimeOptions): string {
+  if (!value) return '-'
+
+  const timeZone = options?.timeZone ?? DEFAULT_LOG_TIMEZONE
+  const parsed = parseLogTimestamp(value.trim())
+  if (parsed) return formatInTimeZone(parsed, timeZone)
+
+  return value.trim()
 }
 
 /** Normalize leading timestamp in a raw log line */
-export function formatLogLine(line: string): string {
+export function formatLogLine(line: string, options?: FormatLogTimeOptions): string {
   const trimmed = line.trim()
   if (!trimmed) return line
 
   const nginx = trimmed.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})(.*)$/)
-  if (nginx) return formatLogTime(nginx[1]) + nginx[2]
+  if (nginx) return formatLogTime(nginx[1], options) + nginx[2]
 
   const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2}|Z)?)(.*)$/)
-  if (iso) return formatLogTime(iso[1]) + iso[2]
+  if (iso) return formatLogTime(iso[1], options) + iso[2]
 
   if (trimmed.startsWith('{')) {
     try {
       const raw = JSON.parse(trimmed) as { time?: string }
-      if (raw.time) return trimmed.replace(raw.time, formatLogTime(raw.time))
+      if (raw.time) return trimmed.replace(raw.time, formatLogTime(raw.time, options))
     } catch {
       // not JSON
     }

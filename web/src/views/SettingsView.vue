@@ -703,6 +703,7 @@ import {
   NOTIFY_TYPE_OPTIONS,
   WEBHOOK_PROVIDER_OPTIONS,
 } from '../constants/notifyProviders'
+import { invalidateAppTimezoneCache } from '../composables/useAppTimezone'
 import { useTheme } from '../composables/useTheme'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import type { StatusKind } from '../utils/status'
@@ -1390,6 +1391,7 @@ async function save() {
     const saved = await api.saveSettings(buildSavePayload())
     applySettingsToForm(saved)
     setThemeMode(saved.theme ?? form.theme)
+    invalidateAppTimezoneCache()
     message.success('设置已保存')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '保存失败')

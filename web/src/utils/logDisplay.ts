@@ -1,5 +1,4 @@
 import type { SystemLogEntry } from '../api/types'
-import { formatLogTime } from './format'
 
 export type LogTagType = 'success' | 'info' | 'warning' | 'error' | 'default'
 
@@ -76,7 +75,7 @@ export function parseNginxErrorLine(line: string): ParsedNginxError {
     return { time: '', level: 'unknown', message: raw, raw }
   }
   return {
-    time: formatLogTime(match[1]),
+    time: match[1],
     level: match[2].toLowerCase(),
     message: match[3],
     raw,
@@ -139,7 +138,7 @@ export function parseFrpLogLine(line: string): ParsedFrpLog {
   }
 
   return {
-    time: formatLogTime(match[1]),
+    time: match[1],
     level: frpLevelLabel(match[2]),
     source,
     message: rest,

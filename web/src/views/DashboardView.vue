@@ -240,11 +240,13 @@ import {
   buildProxyBindingIndex,
   resolveAccessServiceLabel,
 } from '../utils/accessService'
+import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatDate, formatLogTime, formatRate, formatRelativeTime, formatUptime } from '../utils/format'
 import { displaySystemLog } from '../utils/logDisplay'
 import { httpStatusKind } from '../utils/status'
 
 const message = useMessage()
+const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
@@ -429,7 +431,7 @@ const healthItems = computed(() => [
 ])
 
 const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
-  { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
+  { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time, { timeZone: logTimeZone.value }) },
   {
     title: '服务',
     key: 'service',
@@ -472,8 +474,8 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
   },
 ])
 
-const systemColumns: DataTableColumns<SystemLogEntry> = [
-  { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time) },
+const systemColumns = computed<DataTableColumns<SystemLogEntry>>(() => [
+  { title: '时间', key: 'time', width: 168, render: (r) => formatLogTime(r.time, { timeZone: logTimeZone.value }) },
   {
     title: '级别',
     key: 'level',
@@ -499,7 +501,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
     ellipsis: { tooltip: true },
     render: (r) => displaySystemLog(r).message,
   },
-]
+])
 
 function levelTag(level: string) {
   if (level === '错误' || level === 'ERROR') return 'error'
