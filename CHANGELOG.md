@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-10-09
+
+本版本合并了社区贡献（[#16](https://github.com/O96u/Fonu/pull/16)、[#17](https://github.com/O96u/Fonu/pull/17)、[#18](https://github.com/O96u/Fonu/pull/18)–[#22](https://github.com/O96u/Fonu/pull/22)，经 [#23](https://github.com/O96u/Fonu/pull/23) 集成），并在合并后统一了 DNSHE/DDNS、反代与证书相关界面。
+
+### 新增
+
+- DDNS：任务支持**备注**，便于区分多个相同服务商的任务
+- DNSHE：多账户免费域名管理（注册、续期、转赠、智能续期调度）；域名与解析记录并入 **DDNS 任务详情**（不再单独「DNSHE 域名」菜单）；域名变更后自动同步到 DDNS
+- 反代：**入口模型**重构——完整入口表单、规则批量创建与智能规则同步；入口一键复制（含规则与安全设置）；创建/编辑时可从 **DDNS 任务**多选域名并分组展示
+- 证书：自定义名称持久化，列表展示并支持编辑
+- ACME：内置 CA 扩展至 9 个，并支持自定义 ACME 服务器；设置中新增 **「ACME 证书」** 独立 Tab，各 CA 提供官方申请外链；证书页引导至对应设置
+
+### 变更
+
+- DNSHE 账户在 DDNS 侧栏与其他任务一致，凭据在侧栏内联编辑；推送到 DDNS 时备注与账户名对齐
+
 ## [v1.0.9] - 2026-09-29
 
 ### 新增
