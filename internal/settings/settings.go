@@ -16,9 +16,21 @@ const (
 	KeyRootDomain            = "root_domain"
 	KeyACMEEmail             = "acme_email"
 	KeyACMECA                = "acme_ca"
-	KeyZeroSSLAPIKey         = "zerossl_api_key"
+	KeyZeroSSLAPIKey         = "zerossl_api_key" // deprecated, EAB below
 	KeyZeroSSLEABKid         = "zerossl_eab_kid"
 	KeyZeroSSLEABHmac        = "zerossl_eab_hmac_key"
+	KeyGoogleEABKid          = "google_eab_kid"
+	KeyGoogleEABHmac         = "google_eab_hmac"
+	KeySSLcomEABKid          = "sslcom_eab_kid"
+	KeySSLcomEABHmac         = "sslcom_eab_hmac"
+	KeyFreeSSLEABKid         = "freessl_eab_kid"
+	KeyFreeSSLEABHmac        = "freessl_eab_hmac"
+	KeyFreeSSLDirectoryURL   = "freessl_directory_url"
+	KeyActalisEABKid         = "actalis_eab_kid"
+	KeyActalisEABHmac        = "actalis_eab_hmac"
+	KeyCustomACMEDirectoryURL = "custom_acme_directory_url"
+	KeyCustomACMEEABKid      = "custom_acme_eab_kid"
+	KeyCustomACMEEABHmac     = "custom_acme_eab_hmac"
 	KeyNotifyWebhookURL      = "notify_webhook_url"
 	KeyNotifyType            = "notify_type"
 	KeyNotifyEmailJSON       = "notify_email_json"
@@ -62,6 +74,15 @@ const (
 	KeyFRPLastError          = "frp_last_error"
 	KeyFRPStartedAt          = "frp_started_at"
 	KeyNginxGlobalMode       = "nginx_global_mode"
+	KeyDNSHEAPIKey           = "dnshe_api_key"
+	KeyDNSHEAPISecret        = "dnshe_api_secret"
+	KeyDNSHEAutoRenew        = "dnshe_auto_renew_enabled"
+	KeyDNSHERenewLastRunAt   = "dnshe_renew_last_run_at"
+	KeyDNSHERenewLastInfo    = "dnshe_renew_last_info"
+	KeyDNSHERenewNextCheckAt = "dnshe_renew_next_check_at"
+	KeyDNSHEDomainAutoRenew  = "dnshe_domain_auto_renew" // JSON: {full_domain: bool}，缺省为开启
+	KeyDNSHEAccounts         = "dnshe_accounts"          // JSON: 多账户（凭据加密内嵌）
+	KeyDNSHEDomainOrder      = "dnshe_domain_order"      // JSON: {account_id: [subdomain_id...]}
 )
 
 var Defaults = map[string]string{

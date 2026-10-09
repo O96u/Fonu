@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" role="img" aria-label="SSL.com">
+  <rect x="8" y="8" width="24" height="24" rx="4" fill="#c41e3a"/>
+  <path d="M14 24v-8h4.2c2.2 0 3.6 1.1 3.6 2.9 0 1.2-.6 2.1-1.6 2.6l2.2 2.5h-2.4l-1.9-2.2h-1.5v2.2H14zm2.2-4.6h1.9c1 0 1.5-.4 1.5-1.1s-.5-1.1-1.5-1.1h-1.9v2.2z" fill="#fff"/>
+  <text x="72" y="26" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="#c41e3a">SSL.com</text>
+</svg>

@@ -1,0 +1,54 @@
+<template>
+  <svg
+    class="custom-acme-ca-icon"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 120 48"
+    role="img"
+    aria-label="Custom ACME"
+  >
+    <rect x="8" y="8" width="36" height="32" rx="8" fill="#475569" />
+    <rect x="14" y="16" width="24" height="4" rx="1" fill="#f8fafc" />
+    <rect x="14" y="23" width="16" height="3" rx="1" fill="#cbd5e1" />
+    <rect x="14" y="29" width="20" height="3" rx="1" fill="#cbd5e1" />
+    <circle cx="38" cy="12" r="4.5" fill="#10b981" />
+    <path
+      d="M36.2 12l1.3 1.3 2.5-2.6"
+      fill="none"
+      stroke="#fff"
+      stroke-width="1.3"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <text
+      x="78"
+      y="22"
+      text-anchor="middle"
+      font-family="system-ui, -apple-system, Segoe UI, sans-serif"
+      font-size="10"
+      font-weight="700"
+      fill="#334155"
+    >
+      Custom
+    </text>
+    <text
+      x="78"
+      y="34"
+      text-anchor="middle"
+      font-family="system-ui, -apple-system, Segoe UI, sans-serif"
+      font-size="10"
+      font-weight="600"
+      fill="#64748b"
+    >
+      ACME
+    </text>
+  </svg>
+</template>
+
+<style scoped>
+.custom-acme-ca-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 40px;
+}
+</style>

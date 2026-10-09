@@ -1,5 +1,5 @@
 <template>
-  <PageHeader title="DDNS" description="通过映射公网 IP 到 DNS 解析，支持多个域名及服务商">
+  <PageHeader title="DDNS" description="通过映射公网 IP 到 DNS 解析，支持多个域名及服务商（含 DNSHE）">
     <template #actions>
       <n-button :loading="updatingAll" @click="updateAll">
         <template #icon><n-icon :component="RefreshOutline" /></template>
@@ -84,7 +84,7 @@
     </div>
 
     <EmptyState
-      v-else-if="configs.length === 0 && !providerDraft && taskEditMode !== 'create'"
+      v-else-if="configs.length === 0 && dnsheAccounts.length === 0 && !providerDraft && taskEditMode !== 'create'"
       title="还没有 DDNS 配置"
       description="添加 DNS 服务商后，在右侧表格中管理解析记录。"
     >
@@ -105,8 +105,8 @@
           </div>
         </div>
 
-        <div class="task-sidebar__list">
-          <div v-if="taskEditMode === 'create'" class="task-item task-item--editing">
+        <div v-if="taskEditMode === 'create'" ref="createTaskPanelRef" class="task-sidebar__create">
+          <div class="task-item task-item--editing task-item--editing-create">
             <TaskProviderForm
               :form="taskForm"
               :editing="null"
@@ -117,7 +117,9 @@
               @cancel="cancelTaskEdit"
             />
           </div>
+        </div>
 
+        <div class="task-sidebar__list" :class="{ 'task-sidebar__list--with-create': taskEditMode === 'create' }">
           <button
             v-if="providerDraft && showDraftInList"
             type="button"
@@ -141,7 +143,7 @@
             </div>
           </button>
 
-          <template v-for="cfg in configs" :key="cfg.id">
+          <template v-for="cfg in sidebarConfigs" :key="cfg.id">
             <div v-if="taskEditMode === cfg.id" class="task-item task-item--editing">
               <TaskProviderForm
                 :form="taskForm"
@@ -165,7 +167,8 @@
                   <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
                     <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
                   </span>
-                  <span class="task-item__name">{{ providerLabel(cfg.provider) }}</span>
+                  <span class="task-item__name">{{ cfg.remark || providerLabel(cfg.provider) }}</span>
+                  <span v-if="cfg.remark" class="task-item__provider">{{ providerLabel(cfg.provider) }}</span>
                 </div>
                 <StatusBadge :value="taskStatusKind(cfg)" :text="taskStatusText(cfg)" />
               </div>
@@ -196,30 +199,144 @@
               </div>
             </button>
           </template>
+
+          <template v-for="acc in dnsheAccounts" :key="'dnshe-' + acc.id">
+            <div v-if="taskEditMode === dnsheAccountKey(acc.id)" class="task-item task-item--editing">
+              <TaskProviderForm
+                :form="taskForm"
+                :editing="dnsheAccountEditingStub(acc)"
+                :saving="savingTask"
+                :testing="testing"
+                @save="saveTask"
+                @test="testTask"
+                @cancel="cancelTaskEdit"
+              />
+            </div>
+            <button
+              v-else
+              type="button"
+              class="task-item"
+              :class="{ 'task-item--active': selectedKey === dnsheAccountKey(acc.id) }"
+              @click="selectDnsheAccount(acc.id)"
+            >
+              <div class="task-item__top">
+                <div class="task-item__brand">
+                  <span class="provider-logo provider-logo--dnshe">
+                    <img :src="providerIcon('dnshe')" :alt="providerLabel('dnshe')" />
+                  </span>
+                  <span class="task-item__name">{{ acc.name }}</span>
+                  <span class="task-item__provider">{{ providerLabel('dnshe') }}</span>
+                </div>
+                <StatusBadge :value="dnsheAccountStatusKind(acc)" :text="dnsheAccountStatusText(acc)" />
+              </div>
+              <div class="task-item__row">
+                <span class="task-item__muted">上次同步</span>
+                <span>{{ formatRelativeTime(dnsheAccountLastSync(acc)) || '从未' }}</span>
+              </div>
+              <div class="task-item__row">
+                <span class="task-item__muted">（共 {{ dnsheAccountRecordCount(acc) }} 条记录）</span>
+              </div>
+              <div class="task-item__foot">
+                <div class="task-item__tags">
+                  <span v-if="dnsheAccountIpSummary(acc).ipv4" class="ip-tag">
+                    IPv4 {{ dnsheAccountIpSummary(acc).ipv4 }}
+                  </span>
+                  <span v-if="dnsheAccountIpSummary(acc).ipv6" class="ip-tag">
+                    IPv6 {{ shortIPv6(dnsheAccountIpSummary(acc).ipv6!) }}
+                  </span>
+                </div>
+                <div class="task-item__foot-actions">
+                  <n-button size="tiny" quaternary title="编辑服务商" @click.stop="startEditDnsheAccount(acc)">
+                    <template #icon><n-icon :component="CreateOutline" /></template>
+                  </n-button>
+                  <n-switch
+                    :value="dnsheAccountEnabled(acc)"
+                    size="small"
+                    :loading="togglingDnsheId === acc.id"
+                    @update:value="(v: boolean) => toggleDnsheAccountEnabled(acc, v)"
+                    @click.stop
+                  />
+                </div>
+              </div>
+            </button>
+          </template>
         </div>
       </aside>
 
-      <section v-if="selectedTask" class="task-detail">
-        <div class="task-detail__head">
+      <section v-if="detailVisible" class="task-detail">
+        <div v-if="isDnsheAccountSelected && selectedDnsheAccount" class="task-detail__head">
+          <div class="task-detail__head-top">
+            <div class="task-detail__title-wrap">
+              <span class="provider-logo provider-logo--lg provider-logo--dnshe">
+                <img :src="providerIcon('dnshe')" :alt="providerLabel('dnshe')" />
+              </span>
+              <div>
+                <h3 class="task-detail__title">{{ selectedDnsheAccount.name }}</h3>
+                <div class="task-detail__meta">
+                  <span>{{ providerLabel('dnshe') }}</span>
+                  <span>账户自动续期 {{ selectedDnsheAccount.auto_renew ? '开' : '关' }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="task-detail__actions">
+              <n-button size="small" quaternary type="error" @click="dnsheDetailRef?.confirmDeleteAccount(selectedDnsheAccount)">
+                删除
+              </n-button>
+            </div>
+          </div>
+          <div class="task-detail__toolbar">
+            <div class="settings-switches">
+              <div class="settings-switch">
+                <span>IPv4</span>
+                <n-switch
+                  :value="panelTask?.ipv4_enabled ?? true"
+                  size="small"
+                  :loading="headIpToggleLoading"
+                  :disabled="!headIpTogglesEnabled"
+                  @update:value="(v: boolean) => headIpTogglesEnabled && patchPanelTaskFlags({ ipv4_enabled: v })"
+                />
+              </div>
+              <div class="settings-switch">
+                <span>IPv6</span>
+                <n-switch
+                  :value="panelTask?.ipv6_enabled ?? false"
+                  size="small"
+                  :loading="headIpToggleLoading"
+                  :disabled="!headIpTogglesEnabled"
+                  @update:value="(v: boolean) => headIpTogglesEnabled && patchPanelTaskFlags({ ipv6_enabled: v })"
+                />
+              </div>
+            </div>
+            <div class="settings-interval">
+              <span class="settings-interval__label">同步周期</span>
+              <n-input-number v-model:value="updateInterval" :min="1" :max="1440" size="small" class="settings-interval__input" />
+              <span class="interval-unit">分钟</span>
+              <n-button size="small" :loading="savingInterval" @click="saveInterval">保存</n-button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!isDnsheAccountSelected && panelTask" class="task-detail__head">
+          <div class="task-detail__head-top">
           <div class="task-detail__title-wrap">
             <span
               class="provider-logo provider-logo--lg"
-              :class="{ 'provider-logo--dnshe': selectedTask.provider === 'dnshe' }"
+              :class="{ 'provider-logo--dnshe': panelTask.provider === 'dnshe' }"
             >
-              <img :src="providerIcon(selectedTask.provider)" :alt="providerLabel(selectedTask.provider)" />
+              <img :src="providerIcon(panelTask.provider)" :alt="providerLabel(panelTask.provider)" />
             </span>
             <div>
-              <h3 class="task-detail__title">{{ providerLabel(selectedTask.provider) }}</h3>
+              <h3 class="task-detail__title">{{ panelTask.remark || providerLabel(panelTask.provider) }}</h3>
               <div class="task-detail__meta">
                 <StatusBadge
                   v-if="!isDraftSelected"
-                  :value="taskStatusKind(selectedTask)"
-                  :text="taskStatusText(selectedTask)"
+                  :value="taskStatusKind(panelTask!)"
+                  :text="taskStatusText(panelTask!)"
                 />
                 <span v-if="isDraftSelected">待添加解析记录</span>
                 <template v-else>
-                  <span>上次同步 {{ formatRelativeTime(selectedTask.last_updated_at) || '从未' }}</span>
-                  <span>（共 {{ domainRecordsOf(selectedTask).length }} 条记录）</span>
+                  <span>上次同步 {{ formatRelativeTime(panelTask!.last_updated_at) || '从未' }}</span>
+                  <span>（共 {{ domainRecordsOf(panelTask!).length }} 条记录）</span>
                 </template>
               </div>
             </div>
@@ -229,74 +346,89 @@
               size="small"
               type="primary"
               ghost
-              :loading="updatingId === selectedTask.id"
-              @click="updateOne(selectedTask)"
+              :loading="updatingId === panelTask!.id"
+              @click="updateOne(panelTask!)"
             >
               <template #icon><n-icon :component="RefreshOutline" /></template>
               立即同步
             </n-button>
-            <n-button size="small" quaternary type="error" @click="confirmDelete(selectedTask)">删除</n-button>
+            <n-button size="small" quaternary type="error" @click="confirmDelete(panelTask!)">删除</n-button>
+          </div>
+          </div>
+          <div class="task-detail__toolbar">
+            <div class="settings-switches">
+              <div class="settings-switch">
+                <span>IPv4</span>
+                <n-switch
+                  :value="panelTask.ipv4_enabled"
+                  size="small"
+                  :loading="headIpToggleLoading"
+                  :disabled="!headIpTogglesEnabled"
+                  @update:value="(v: boolean) => headIpTogglesEnabled && patchPanelTaskFlags({ ipv4_enabled: v })"
+                />
+              </div>
+              <div class="settings-switch">
+                <span>IPv6</span>
+                <n-switch
+                  :value="panelTask.ipv6_enabled"
+                  size="small"
+                  :loading="headIpToggleLoading"
+                  :disabled="!headIpTogglesEnabled"
+                  @update:value="(v: boolean) => headIpTogglesEnabled && patchPanelTaskFlags({ ipv6_enabled: v })"
+                />
+              </div>
+            </div>
+            <div class="settings-interval">
+              <span class="settings-interval__label">同步周期</span>
+              <n-input-number v-model:value="updateInterval" :min="1" :max="1440" size="small" class="settings-interval__input" />
+              <span class="interval-unit">分钟</span>
+              <n-button size="small" :loading="savingInterval" @click="saveInterval">保存</n-button>
+            </div>
           </div>
         </div>
 
-        <FonuCard class="detail-section">
-          <h4 class="detail-section__title">基本设置</h4>
-          <div class="settings-grid">
-            <div class="settings-field">
-              <label class="settings-field__label">DNS 服务商</label>
-              <n-select :value="selectedTask.provider" :options="providerOptions" disabled />
-            </div>
-            <div class="settings-field">
-              <label class="settings-field__label">API Token</label>
-              <n-input value="••••••••••••" type="password" disabled>
-                <template #suffix><n-icon :component="EyeOutline" /></template>
-              </n-input>
-            </div>
-            <div class="settings-row">
-              <div class="settings-switches">
-                <div class="settings-switch">
-                  <span>IPv4</span>
-                  <n-switch
-                    :value="selectedTask.ipv4_enabled"
-                    size="small"
-                    :loading="togglingId === selectedTask.id"
-                    :disabled="isDraftSelected"
-                    @update:value="(v: boolean) => !isDraftSelected && patchTaskFlags(selectedTask!, { ipv4_enabled: v })"
-                  />
-                </div>
-                <div class="settings-switch">
-                  <span>IPv6</span>
-                  <n-switch
-                    :value="selectedTask.ipv6_enabled"
-                    size="small"
-                    :loading="togglingId === selectedTask.id"
-                    :disabled="isDraftSelected"
-                    @update:value="(v: boolean) => !isDraftSelected && patchTaskFlags(selectedTask!, { ipv6_enabled: v })"
-                  />
-                </div>
-              </div>
-              <div class="settings-interval">
-                <span class="settings-interval__label">同步周期</span>
-                <n-input-number v-model:value="updateInterval" :min="1" :max="1440" size="small" class="settings-interval__input" />
-                <span class="interval-unit">分钟</span>
-                <n-button size="small" :loading="savingInterval" @click="saveInterval">保存</n-button>
-              </div>
-            </div>
-          </div>
-        </FonuCard>
+        <DdnsDnsheDetail
+          v-if="isDnsheAccountSelected && selectedDnsheAccount"
+          ref="dnsheDetailRef"
+          :account="selectedDnsheAccount"
+          :pushing-domain="pushingDnsheDomain"
+          @refresh-accounts="loadDnsheAccounts"
+          @domains-changed="syncDnsheDdnsFromAccount"
+          @gifts-changed="dnsheGiftsRef?.reload()"
+          @push-domain="pushDnsheDomainToRecords"
+          @deleted="onDnsheAccountDeleted"
+        />
 
-        <FonuCard flush class="detail-section">
+        <FonuCard
+          v-if="panelTask || isDnsheAccountSelected"
+          ref="dnsheRecordsRef"
+          flush
+          class="detail-section"
+        >
           <div class="records-head">
-            <h4 class="detail-section__title">解析记录（{{ displayRecords.length }}）</h4>
-            <n-button
-              size="small"
-              type="primary"
-              :disabled="recordEditing !== null"
-              @click="startAddRecord"
-            >
-              <template #icon><n-icon :component="AddOutline" /></template>
-              添加记录
-            </n-button>
+            <h4 class="detail-section__title">解析记录（{{ mergedDisplayRecords.length }}）</h4>
+            <n-space :size="8">
+              <n-button
+                v-if="isDnsheAccountSelected && linkedDnsheConfigs.length"
+                size="small"
+                ghost
+                type="primary"
+                :loading="updatingDnsheLinked"
+                @click="updateDnsheLinked"
+              >
+                <template #icon><n-icon :component="RefreshOutline" /></template>
+                立即同步
+              </n-button>
+              <n-button
+                size="small"
+                type="primary"
+                :disabled="recordEditing !== null"
+                @click="startAddRecord"
+              >
+                <template #icon><n-icon :component="AddOutline" /></template>
+                添加记录
+              </n-button>
+            </n-space>
           </div>
 
           <div class="record-table-wrap">
@@ -324,8 +456,8 @@
                   </td>
                   <td>
                     <div class="type-tags">
-                      <n-tag v-if="selectedTask.ipv4_enabled" size="tiny" :bordered="false">A</n-tag>
-                      <n-tag v-if="selectedTask.ipv6_enabled" size="tiny" :bordered="false" type="info">AAAA</n-tag>
+                      <n-tag v-if="recordTypeFlags.ipv4" size="tiny" :bordered="false">A</n-tag>
+                      <n-tag v-if="recordTypeFlags.ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                     </div>
                   </td>
                   <td class="record-table__muted">-</td>
@@ -341,7 +473,7 @@
                 </tr>
 
                 <tr
-                  v-for="record in displayRecords"
+                  v-for="record in mergedDisplayRecords"
                   :key="record.domain"
                   :class="{ 'record-row--editing': recordEditing === record.domain }"
                 >
@@ -356,8 +488,8 @@
                     </td>
                     <td>
                       <div class="type-tags">
-                        <n-tag v-if="selectedTask.ipv4_enabled" size="tiny" :bordered="false">A</n-tag>
-                        <n-tag v-if="selectedTask.ipv6_enabled" size="tiny" :bordered="false" type="info">AAAA</n-tag>
+                        <n-tag v-if="recordTypeFlags.ipv4" size="tiny" :bordered="false">A</n-tag>
+                        <n-tag v-if="recordTypeFlags.ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                       </div>
                     </td>
                     <td class="record-table__muted">-</td>
@@ -375,8 +507,8 @@
                     <td class="record-table__mono">{{ record.domain }}</td>
                     <td>
                       <div class="type-tags">
-                        <n-tag v-if="selectedTask.ipv4_enabled" size="tiny" :bordered="false">A</n-tag>
-                        <n-tag v-if="selectedTask.ipv6_enabled" size="tiny" :bordered="false" type="info">AAAA</n-tag>
+                        <n-tag v-if="recordTypeFlagsFor(record).ipv4" size="tiny" :bordered="false">A</n-tag>
+                        <n-tag v-if="recordTypeFlagsFor(record).ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                       </div>
                     </td>
                     <td>
@@ -384,7 +516,7 @@
                       <span v-else class="record-table__muted">-</span>
                     </td>
                     <td class="record-table__result">{{ record.message || recordResultLabel(record.status) }}</td>
-                    <td>{{ formatRelativeTime(selectedTask.last_updated_at) || '-' }}</td>
+                    <td>{{ formatRelativeTime(recordTaskOf(record)?.last_updated_at) || '-' }}</td>
                     <td>
                       <n-tag size="small" round :bordered="false" :type="recordTagType(record.status)">
                         {{ recordStatusLabel(record.status) }}
@@ -407,7 +539,7 @@
                           type="error"
                           title="删除"
                           :disabled="recordEditing !== null"
-                          @click="confirmDeleteRecord(selectedTask, record)"
+                          @click="confirmDeleteRecordFor(record)"
                         >
                           <template #icon><n-icon :component="TrashOutline" /></template>
                         </n-button>
@@ -416,7 +548,7 @@
                   </template>
                 </tr>
 
-                <tr v-if="displayRecords.length === 0 && recordEditing !== '__new__'">
+                <tr v-if="mergedDisplayRecords.length === 0 && recordEditing !== '__new__'">
                   <td colspan="7" class="record-table__empty">暂无解析记录，点击「添加记录」创建</td>
                 </tr>
               </tbody>
@@ -442,22 +574,28 @@
             </div>
           </div>
         </div>
+
+        <DdnsDnsheGifts
+          v-if="isDnsheAccountSelected && selectedDnsheAccount"
+          ref="dnsheGiftsRef"
+          :account="selectedDnsheAccount"
+        />
       </section>
     </div>
   </template>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
   NIcon,
   NInput,
   NInputNumber,
-  NSelect,
   NSpin,
   NSwitch,
+  NSpace,
   NTag,
   useDialog,
   useMessage,
@@ -468,7 +606,6 @@ import {
   CheckmarkCircleOutline,
   CopyOutline,
   CreateOutline,
-  EyeOutline,
   GlobeOutline,
   InformationCircleOutline,
   ListOutline,
@@ -483,7 +620,9 @@ import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import { api, asList } from '../api/client'
-import type { DDNSConfig, DDNSDomainRecord } from '../api/types'
+import type { DDNSConfig, DDNSDomainRecord, DNSHEAccount } from '../api/types'
+import DdnsDnsheDetail from '../components/DdnsDnsheDetail.vue'
+import DdnsDnsheGifts from '../components/DdnsDnsheGifts.vue'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
@@ -495,6 +634,7 @@ import { formatDate, formatRelativeTime } from '../utils/format'
 import { statusLabel } from '../utils/status'
 
 const DRAFT_KEY = '__draft__'
+const DNSHE_KEY_PREFIX = 'dnshe:'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -510,7 +650,8 @@ const updatingAll = ref(false)
 const updatingId = ref<number | null>(null)
 const savingInterval = ref(false)
 const togglingId = ref<number | null>(null)
-const taskEditMode = ref<'create' | number | null>(null)
+const togglingDnsheId = ref<string | null>(null)
+const taskEditMode = ref<'create' | number | string | null>(null)
 const providerDraft = ref<ProviderForm | null>(null)
 const updateInterval = ref(5)
 const selectedKey = ref<string | null>(null)
@@ -519,15 +660,12 @@ const publicIPv6 = ref('')
 const ipCheckedAt = ref('')
 const recordEditing = ref<string | null>(null)
 const recordDraft = reactive({ domain: '', originalDomain: '' })
-
-const providerOptions = [
-  { label: 'Cloudflare', value: 'cloudflare' },
-  { label: 'DNSPod', value: 'dnspod' },
-  { label: '阿里云 DNS', value: 'alidns' },
-  { label: '腾讯云 DNS', value: 'tencentcloud' },
-  { label: '火山引擎 DNS', value: 'volcengine' },
-  { label: 'DNSHE', value: 'dnshe' },
-]
+const dnsheAccounts = ref<DNSHEAccount[]>([])
+const dnsheDetailRef = ref<InstanceType<typeof DdnsDnsheDetail> | null>(null)
+const dnsheGiftsRef = ref<InstanceType<typeof DdnsDnsheGifts> | null>(null)
+const dnsheRecordsRef = ref<InstanceType<typeof FonuCard> | null>(null)
+const updatingDnsheLinked = ref(false)
+const pushingDnsheDomain = ref('')
 
 const providerMap: Record<string, { label: string; icon: string }> = {
   cloudflare: { label: 'Cloudflare', icon: cloudflareIcon },
@@ -546,9 +684,45 @@ const taskForm = reactive<ProviderForm>({
   ipv4_enabled: true,
   ipv6_enabled: false,
   enabled: true,
+  remark: '',
+  auto_renew: false,
 })
 
 const isDraftSelected = computed(() => selectedKey.value === DRAFT_KEY)
+
+const isDnsheAccountSelected = computed(() => selectedKey.value?.startsWith(DNSHE_KEY_PREFIX) ?? false)
+
+function dnsheAccountKey(id: string) {
+  return `${DNSHE_KEY_PREFIX}${id}`
+}
+
+const selectedDnsheAccount = computed(() => {
+  if (!isDnsheAccountSelected.value || !selectedKey.value) return null
+  const id = selectedKey.value.slice(DNSHE_KEY_PREFIX.length)
+  return dnsheAccounts.value.find((a) => a.id === id) ?? null
+})
+
+function dnsheLinkedConfigs(acc: DNSHEAccount): DDNSConfig[] {
+  const name = acc.name.trim()
+  return configs.value.filter((c) => c.provider === 'dnshe' && (c.remark?.trim() ?? '') === name)
+}
+
+const linkedDnsheConfigs = computed(() => {
+  const acc = selectedDnsheAccount.value
+  return acc ? dnsheLinkedConfigs(acc) : []
+})
+
+const sidebarConfigs = computed(() => {
+  const accountNames = new Set(dnsheAccounts.value.map((a) => a.name.trim()))
+  return configs.value.filter((c) => {
+    if (c.provider !== 'dnshe') return true
+    return !accountNames.has(c.remark?.trim() ?? '')
+  })
+})
+
+const detailVisible = computed(
+  () => (isDnsheAccountSelected.value && !!selectedDnsheAccount.value) || !!selectedTask.value,
+)
 
 const draftAsConfig = computed((): DDNSConfig | null => {
   if (!providerDraft.value) return null
@@ -565,15 +739,35 @@ const draftAsConfig = computed((): DDNSConfig | null => {
 })
 
 const selectedTask = computed(() => {
+  if (isDnsheAccountSelected.value) return null
   if (isDraftSelected.value) return draftAsConfig.value
   const id = Number(selectedKey.value)
   if (!id) return null
   return configs.value.find((c) => c.id === id) ?? null
 })
 
+const panelTask = computed(() => {
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) {
+    const linked = dnsheLinkedConfigs(selectedDnsheAccount.value)
+    return linked[0] ?? null
+  }
+  return selectedTask.value
+})
+
+const headIpTogglesEnabled = computed(() => !!panelTask.value && !isDraftSelected.value)
+
+const headIpToggleLoading = computed(() => {
+  const task = panelTask.value
+  if (!task || isDraftSelected.value) return false
+  if (isDnsheAccountSelected.value && togglingDnsheId.value) return true
+  return togglingId.value === task.id
+})
+
 const showDraftInList = computed(() => taskEditMode.value !== 'create')
 
-const taskCount = computed(() => configs.value.length + (providerDraft.value ? 1 : 0))
+const taskCount = computed(
+  () => sidebarConfigs.value.length + dnsheAccounts.value.length + (providerDraft.value ? 1 : 0),
+)
 
 const normalTaskCount = computed(() => configs.value.filter((c) => c.enabled && isTaskHealthy(c)).length)
 const abnormalTaskCount = computed(() => configs.value.filter((c) => c.enabled && !isTaskHealthy(c)).length)
@@ -589,23 +783,69 @@ const lastSyncAbsolute = computed(() => (lastSyncIso.value ? formatDate(lastSync
 const ipCheckedLabel = computed(() => formatRelativeTime(ipCheckedAt.value) || '刚刚')
 
 const displayRecords = computed(() => {
-  const task = selectedTask.value
+  const task = panelTask.value
   if (!task || isDraftSelected.value) return []
   return domainRecordsOf(task)
 })
 
-const detailError = computed(() => {
-  const cfg = selectedTask.value
-  if (!cfg || isDraftSelected.value) return null
-  const failed = domainRecordsOf(cfg).find((r) => r.status === 'error')
-  if (failed) {
-    return {
-      title: `${failed.domain} 解析失败`,
-      text: failed.message || cfg.last_error || 'DNS 解析更新失败，请检查凭证与域名配置。',
+const mergedDisplayRecords = computed(() => {
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) {
+    const rows: DDNSDomainRecord[] = []
+    const seen = new Set<string>()
+    for (const cfg of dnsheLinkedConfigs(selectedDnsheAccount.value)) {
+      for (const r of domainRecordsOf(cfg)) {
+        const key = r.domain.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        rows.push(r)
+      }
     }
+    return rows
   }
-  if (cfg.enabled && cfg.last_status === 'error' && cfg.last_error) {
-    return { title: `${providerLabel(cfg.provider)} 同步失败`, text: cfg.last_error }
+  return displayRecords.value
+})
+
+const recordTypeFlags = computed(() => {
+  const task = panelTask.value
+  return { ipv4: task?.ipv4_enabled ?? true, ipv6: task?.ipv6_enabled ?? false }
+})
+
+function recordTypeFlagsFor(record: DDNSDomainRecord) {
+  const task = recordTaskOf(record)
+  return { ipv4: task?.ipv4_enabled ?? true, ipv6: task?.ipv6_enabled ?? false }
+}
+
+function recordTaskOf(record: DDNSDomainRecord): DDNSConfig | null {
+  const domain = record.domain.toLowerCase()
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) {
+    for (const cfg of dnsheLinkedConfigs(selectedDnsheAccount.value)) {
+      if (domainsOf(cfg).some((d) => d.toLowerCase() === domain)) return cfg
+    }
+    return panelTask.value
+  }
+  const task = selectedTask.value
+  if (task && domainsOf(task).some((d) => d.toLowerCase() === domain)) return task
+  return panelTask.value
+}
+
+const detailError = computed(() => {
+  const tasks: DDNSConfig[] = []
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) {
+    tasks.push(...dnsheLinkedConfigs(selectedDnsheAccount.value))
+  } else if (selectedTask.value && !isDraftSelected.value) {
+    tasks.push(selectedTask.value)
+  }
+  for (const cfg of tasks) {
+    const failed = domainRecordsOf(cfg).find((r) => r.status === 'error')
+    if (failed) {
+      return {
+        title: `${failed.domain} 解析失败`,
+        text: failed.message || cfg.last_error || 'DNS 解析更新失败，请检查凭证与域名配置。',
+      }
+    }
+    if (cfg.enabled && cfg.last_status === 'error' && cfg.last_error) {
+      return { title: `${providerLabel(cfg.provider)} 同步失败`, text: cfg.last_error }
+    }
   }
   return null
 })
@@ -640,6 +880,59 @@ function taskStatusKind(cfg: DDNSConfig) {
 function taskStatusText(cfg: DDNSConfig) {
   if (!cfg.enabled) return '暂停'
   if (cfg.last_status === 'error' || cfg.last_status === 'warning') return '异常'
+  return '正常'
+}
+
+function dnsheAccountLastSync(acc: DNSHEAccount): string {
+  const times = dnsheLinkedConfigs(acc).map((c) => c.last_updated_at).filter(Boolean) as string[]
+  if (times.length === 0) return ''
+  return times.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
+}
+
+function dnsheAccountRecordCount(acc: DNSHEAccount): number {
+  const seen = new Set<string>()
+  let count = 0
+  for (const cfg of dnsheLinkedConfigs(acc)) {
+    for (const r of domainRecordsOf(cfg)) {
+      const key = r.domain.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      count++
+    }
+  }
+  return count
+}
+
+function dnsheAccountIpSummary(acc: DNSHEAccount): { ipv4?: string; ipv6?: string } {
+  for (const cfg of dnsheLinkedConfigs(acc)) {
+    const ipv4 = cfg.ipv4_enabled && cfg.last_ipv4 ? cfg.last_ipv4 : undefined
+    const ipv6 = cfg.ipv6_enabled && cfg.last_ipv6 ? cfg.last_ipv6 : undefined
+    if (ipv4 || ipv6) return { ipv4, ipv6 }
+  }
+  return {}
+}
+
+function dnsheAccountEnabled(acc: DNSHEAccount): boolean {
+  const linked = dnsheLinkedConfigs(acc)
+  return linked.length > 0 && linked.some((c) => c.enabled)
+}
+
+function dnsheAccountStatusKind(acc: DNSHEAccount) {
+  const linked = dnsheLinkedConfigs(acc)
+  if (linked.length === 0) return 'unknown'
+  if (!linked.some((c) => c.enabled)) return 'disabled'
+  if (linked.some((c) => c.enabled && (c.last_status === 'error' || c.last_status === 'warning'))) {
+    return linked.some((c) => c.enabled && c.last_status === 'error') ? 'error' : 'warning'
+  }
+  if (linked.some((c) => c.enabled && isTaskHealthy(c))) return 'ok'
+  return 'ok'
+}
+
+function dnsheAccountStatusText(acc: DNSHEAccount) {
+  const linked = dnsheLinkedConfigs(acc)
+  if (linked.length === 0) return '待配置'
+  if (!linked.some((c) => c.enabled)) return '暂停'
+  if (linked.some((c) => c.enabled && (c.last_status === 'error' || c.last_status === 'warning'))) return '异常'
   return '正常'
 }
 
@@ -705,7 +998,7 @@ function recordTagType(status: string): 'success' | 'warning' | 'error' | 'defau
 }
 
 function recordValue(record: DDNSDomainRecord) {
-  const task = selectedTask.value
+  const task = recordTaskOf(record)
   if (!task) return ''
   const lines: string[] = []
   if (task.ipv4_enabled && record.ipv4) lines.push(record.ipv4)
@@ -732,20 +1025,27 @@ function resetTaskForm() {
     ipv4_enabled: true,
     ipv6_enabled: false,
     enabled: true,
+    remark: '',
+    auto_renew: false,
   })
 }
 
 function ensureSelection() {
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) return
   if (providerDraft.value) {
     if (!selectedKey.value) selectedKey.value = DRAFT_KEY
     return
   }
-  if (configs.value.length === 0) {
+  if (configs.value.length === 0 && dnsheAccounts.value.length === 0) {
     selectedKey.value = null
     return
   }
-  if (!configs.value.some((c) => String(c.id) === selectedKey.value)) {
+  if (configs.value.some((c) => String(c.id) === selectedKey.value)) return
+  if (isDnsheAccountSelected.value && selectedDnsheAccount.value) return
+  if (configs.value.length > 0) {
     selectedKey.value = String(configs.value[0].id)
+  } else if (dnsheAccounts.value[0]) {
+    selectedKey.value = dnsheAccountKey(dnsheAccounts.value[0].id)
   }
 }
 
@@ -756,15 +1056,73 @@ function selectTask(id: number) {
   cancelRecordEdit()
 }
 
+function selectDnsheAccount(id: string) {
+  selectedKey.value = dnsheAccountKey(id)
+  cancelRecordEdit()
+}
+
+function dnsheAccountEditingStub(acc: DNSHEAccount): DDNSConfig {
+  return {
+    id: -1,
+    provider: 'dnshe',
+    root_domain: '',
+    record_name: '@',
+    ipv4_enabled: true,
+    ipv6_enabled: false,
+    enabled: true,
+    has_token: true,
+    remark: acc.name,
+  }
+}
+
+function startEditDnsheAccount(acc: DNSHEAccount) {
+  selectedKey.value = dnsheAccountKey(acc.id)
+  cancelRecordEdit()
+  Object.assign(taskForm, {
+    provider: 'dnshe',
+    api_token: '',
+    api_token_id: '',
+    api_secret: '',
+    ipv4_enabled: true,
+    ipv6_enabled: false,
+    enabled: true,
+    remark: acc.name,
+    auto_renew: acc.auto_renew,
+  })
+  taskEditMode.value = dnsheAccountKey(acc.id)
+}
+
+async function toggleDnsheAccountEnabled(acc: DNSHEAccount, enabled: boolean) {
+  const linked = dnsheLinkedConfigs(acc)
+  if (linked.length === 0) {
+    message.warning('暂无关联的解析任务，请先注册域名或添加解析记录')
+    return
+  }
+  togglingDnsheId.value = acc.id
+  try {
+    for (const cfg of linked) {
+      if (cfg.enabled === enabled) continue
+      await patchTaskFlags(cfg, { enabled })
+    }
+  } finally {
+    togglingDnsheId.value = null
+  }
+}
+
 function selectDraft() {
   selectedKey.value = DRAFT_KEY
   cancelRecordEdit()
 }
 
+const createTaskPanelRef = ref<HTMLElement | null>(null)
+
 function startCreateTask() {
   resetTaskForm()
   taskEditMode.value = 'create'
   cancelRecordEdit()
+  nextTick(() => {
+    createTaskPanelRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
 }
 
 function startEditTask(cfg: DDNSConfig) {
@@ -777,6 +1135,7 @@ function startEditTask(cfg: DDNSConfig) {
     ipv4_enabled: cfg.ipv4_enabled,
     ipv6_enabled: cfg.ipv6_enabled,
     enabled: cfg.enabled,
+    remark: cfg.remark ?? '',
   })
   taskEditMode.value = cfg.id
 }
@@ -840,6 +1199,112 @@ async function refreshLiveDNS() {
   }
 }
 
+async function loadDnsheAccounts() {
+  try {
+    dnsheAccounts.value = await api.listDNSHEAccounts()
+    ensureSelection()
+  } catch {
+    dnsheAccounts.value = []
+  }
+}
+
+async function syncDnsheDdnsFromAccount() {
+  const acc = selectedDnsheAccount.value
+  if (!acc) return
+  try {
+    await api.pushDNSHEToDDNS(acc.id)
+  } catch {
+    // 无域名或已全部同步时忽略
+  }
+  await refreshLiveDNS()
+}
+
+function isDnsheDomainInRecords(fullDomain: string): boolean {
+  const domain = fullDomain.trim().toLowerCase()
+  const acc = selectedDnsheAccount.value
+  if (!acc) return false
+  return dnsheLinkedConfigs(acc).some((cfg) => domainsOf(cfg).some((d) => d.toLowerCase() === domain))
+}
+
+function scrollToDnsheRecords() {
+  nextTick(() => {
+    const el = dnsheRecordsRef.value?.$el as HTMLElement | undefined
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+async function pushDnsheDomainToRecords(fullDomain: string) {
+  if (!selectedDnsheAccount.value) return
+  const domain = fullDomain.trim().toLowerCase()
+  if (isDnsheDomainInRecords(domain)) {
+    scrollToDnsheRecords()
+    message.info('该域名已在解析记录中')
+    return
+  }
+  pushingDnsheDomain.value = fullDomain
+  try {
+    let task = await ensureDnsheTaskForDomain(domain)
+    const merged = [...new Set([...domainsOf(task), domain])]
+    if (merged.length !== domainsOf(task).length) {
+      const updated = await api.updateDDNS(task.id, {
+        provider: task.provider,
+        domains: merged,
+        enabled: task.enabled,
+        ipv4_enabled: task.ipv4_enabled,
+        ipv6_enabled: task.ipv6_enabled,
+      })
+      configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
+      task = updated
+    }
+    await refreshLiveDNS()
+    message.success('已推送到解析记录')
+    scrollToDnsheRecords()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '推送失败')
+  } finally {
+    pushingDnsheDomain.value = ''
+  }
+}
+
+function onDnsheAccountDeleted() {
+  void loadDnsheAccounts().then(() => {
+    if (dnsheAccounts.value[0]) {
+      selectedKey.value = dnsheAccountKey(dnsheAccounts.value[0].id)
+    } else if (configs.value[0]) {
+      selectedKey.value = String(configs.value[0].id)
+    } else {
+      selectedKey.value = null
+    }
+  })
+}
+
+function rootDomainOfFull(domain: string): string {
+  const parts = domain.toLowerCase().split('.').filter(Boolean)
+  if (parts.length < 2) return domain.toLowerCase()
+  return parts.slice(-2).join('.')
+}
+
+async function ensureDnsheTaskForDomain(domain: string): Promise<DDNSConfig> {
+  const acc = selectedDnsheAccount.value
+  if (!acc) throw new Error('未选择 DNSHE 账户')
+  const root = rootDomainOfFull(domain)
+  const existing = dnsheLinkedConfigs(acc).find((c) => c.root_domain.toLowerCase() === root)
+  if (existing) return existing
+  const creds = await api.revealDNSHECredentials(acc.id)
+  const created = await api.createDDNS({
+    provider: 'dnshe',
+    api_token: creds.api_key,
+    api_secret: creds.api_secret,
+    remark: acc.name,
+    domains: [domain],
+    ipv4_enabled: true,
+    ipv6_enabled: false,
+    enabled: true,
+  })
+  configs.value = [...configs.value, created]
+  return created
+}
+
 async function init() {
   loading.value = true
   loadError.value = ''
@@ -852,6 +1317,7 @@ async function init() {
   }
   refreshPublicIP()
   refreshLiveDNS()
+  void loadDnsheAccounts()
   try {
     const frp = await api.getFRP()
     frpEnabled.value = frp.enabled
@@ -861,6 +1327,38 @@ async function init() {
 }
 
 async function saveTask() {
+  const dnsheEditingKey =
+    typeof taskEditMode.value === 'string' &&
+    taskEditMode.value.startsWith(DNSHE_KEY_PREFIX) &&
+    taskEditMode.value !== DRAFT_KEY
+      ? taskEditMode.value
+      : null
+
+  if (dnsheEditingKey) {
+    const accountId = dnsheEditingKey.slice(DNSHE_KEY_PREFIX.length)
+    if (!taskForm.remark.trim()) {
+      message.error('请填写账户名称')
+      return
+    }
+    savingTask.value = true
+    try {
+      await api.updateDNSHEAccount(accountId, {
+        name: taskForm.remark.trim(),
+        api_key: taskForm.api_token || undefined,
+        api_secret: taskForm.api_secret || undefined,
+        auto_renew: taskForm.auto_renew,
+      })
+      await loadDnsheAccounts()
+      message.success('账户已更新')
+      taskEditMode.value = null
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      savingTask.value = false
+    }
+    return
+  }
+
   const editingId = typeof taskEditMode.value === 'number' ? taskEditMode.value : null
 
   if (editingId) {
@@ -877,10 +1375,42 @@ async function saveTask() {
         api_token: taskForm.api_token,
         api_token_id: taskForm.api_token_id,
         api_secret: taskForm.api_secret,
+        remark: taskForm.remark,
       })
       configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
       message.success('服务商已更新')
       taskEditMode.value = null
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      savingTask.value = false
+    }
+    return
+  }
+
+  if (taskForm.provider === 'dnshe') {
+    if (!taskForm.remark.trim()) {
+      message.error('请填写账户名称')
+      return
+    }
+    if (!hasCredentialInput(taskForm)) {
+      message.error('请填写 DNSHE API 凭证')
+      return
+    }
+    savingTask.value = true
+    try {
+      const created = await api.createDNSHEAccount({
+        name: taskForm.remark.trim(),
+        api_key: taskForm.api_token,
+        api_secret: taskForm.api_secret,
+        auto_renew: taskForm.auto_renew,
+      })
+      await loadDnsheAccounts()
+      selectedKey.value = dnsheAccountKey(created.id)
+      taskEditMode.value = null
+      resetTaskForm()
+      message.success('DNSHE 账户已添加')
+      await syncDnsheDdnsFromAccount()
     } catch (error) {
       message.error(error instanceof Error ? error.message : '保存失败')
     } finally {
@@ -920,7 +1450,7 @@ async function testTask() {
 }
 
 function startAddRecord() {
-  if (!selectedTask.value) return
+  if (!panelTask.value && !isDnsheAccountSelected.value) return
   recordEditing.value = '__new__'
   recordDraft.domain = ''
   recordDraft.originalDomain = ''
@@ -939,7 +1469,36 @@ function cancelRecordEdit() {
 }
 
 async function saveRecord() {
-  const task = selectedTask.value
+  let task = panelTask.value
+  if (!task && isDnsheAccountSelected.value) {
+    const domainOnly = normalizeRecordDomain(recordDraft.domain)
+    const formatEarly = validateDomainFormat(domainOnly)
+    if (formatEarly) {
+      message.error(formatEarly)
+      return
+    }
+    savingRecord.value = true
+    try {
+      task = await ensureDnsheTaskForDomain(domainOnly)
+      const domains = [...new Set([...domainsOf(task), domainOnly])]
+      const updated = await api.updateDDNS(task.id, {
+        provider: task.provider,
+        domains,
+        enabled: task.enabled,
+        ipv4_enabled: task.ipv4_enabled,
+        ipv6_enabled: task.ipv6_enabled,
+      })
+      configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
+      message.success('记录已添加')
+      cancelRecordEdit()
+      refreshLiveDNS()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      savingRecord.value = false
+    }
+    return
+  }
   if (!task) return
 
   const domain = normalizeRecordDomain(recordDraft.domain, task.root_domain || undefined)
@@ -961,6 +1520,9 @@ async function saveRecord() {
       selectedKey.value = String(created.id)
       message.success('任务已创建')
     } else if (recordEditing.value === '__new__') {
+      if (isDnsheAccountSelected.value) {
+        task = await ensureDnsheTaskForDomain(domain)
+      }
       const domains = [...new Set([...domainsOf(task), domain])]
       const updated = await api.updateDDNS(task.id, {
         provider: task.provider,
@@ -991,6 +1553,20 @@ async function saveRecord() {
     message.error(error instanceof Error ? error.message : '保存失败')
   } finally {
     savingRecord.value = false
+  }
+}
+
+async function patchPanelTaskFlags(
+  flags: Partial<Pick<DDNSConfig, 'ipv4_enabled' | 'ipv6_enabled' | 'enabled'>>,
+) {
+  const rows =
+    isDnsheAccountSelected.value && selectedDnsheAccount.value
+      ? dnsheLinkedConfigs(selectedDnsheAccount.value)
+      : panelTask.value
+        ? [panelTask.value]
+        : []
+  for (const row of rows) {
+    await patchTaskFlags(row, flags)
   }
 }
 
@@ -1036,6 +1612,24 @@ function syncFeedbackMessage(cfg: DDNSConfig): { type: 'success' | 'warning' | '
   if (updated > 0) return { type: 'success', text: `已更新 ${updated} 条，${unchanged} 条未变化` }
   if (unchanged > 0) return { type: 'success', text: `同步完成，${unchanged} 条记录未变化` }
   return { type: 'success', text: '同步完成' }
+}
+
+async function updateDnsheLinked() {
+  const rows = linkedDnsheConfigs.value
+  if (rows.length === 0) return
+  updatingDnsheLinked.value = true
+  try {
+    for (const row of rows) {
+      const updated = await api.updateDDNSOne(row.id)
+      configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
+    }
+    message.success('DNSHE 解析已同步')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '更新失败')
+    await refreshLiveDNS()
+  } finally {
+    updatingDnsheLinked.value = false
+  }
 }
 
 async function updateOne(row: DDNSConfig) {
@@ -1100,6 +1694,15 @@ function confirmDelete(row: DDNSConfig) {
       message.success('已删除')
     },
   })
+}
+
+function confirmDeleteRecordFor(record: DDNSDomainRecord) {
+  const row = recordTaskOf(record)
+  if (!row) {
+    message.error('找不到对应任务')
+    return
+  }
+  confirmDeleteRecord(row, record)
 }
 
 function confirmDeleteRecord(row: DDNSConfig, record: DDNSDomainRecord) {
@@ -1274,6 +1877,17 @@ onMounted(init)
   flex-shrink: 0;
 }
 
+.task-sidebar__create {
+  padding: var(--fonu-space-3);
+  border-bottom: 1px solid var(--fonu-border);
+  max-height: min(72vh, 680px);
+  overflow-y: auto;
+}
+
+.task-sidebar__create .task-item--editing-create {
+  margin: 0;
+}
+
 .task-sidebar__list {
   display: flex;
   flex-direction: column;
@@ -1281,6 +1895,10 @@ onMounted(init)
   padding: var(--fonu-space-3);
   max-height: 720px;
   overflow: auto;
+}
+
+.task-sidebar__list--with-create {
+  max-height: min(48vh, 420px);
 }
 
 .task-item {
@@ -1313,7 +1931,7 @@ onMounted(init)
 .task-item--editing {
   border-color: var(--fonu-brand);
   padding: 12px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .task-item__top {
@@ -1360,6 +1978,12 @@ onMounted(init)
   font-size: 14px;
   font-weight: 600;
   color: var(--fonu-text);
+}
+
+.task-item__provider {
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  margin-left: 6px;
 }
 
 .task-item__row {
@@ -1424,10 +2048,9 @@ onMounted(init)
 
 .task-detail__head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-4);
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   background: var(--fonu-surface);
   border: 1px solid var(--fonu-border);
   border-radius: var(--fonu-radius);
@@ -1435,10 +2058,31 @@ onMounted(init)
   padding: var(--fonu-space-4) var(--fonu-space-5);
 }
 
+.task-detail__head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fonu-space-4);
+  flex-wrap: wrap;
+}
+
+.task-detail__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-4);
+  margin-top: var(--fonu-space-4);
+  padding-top: var(--fonu-space-4);
+  border-top: 1px solid var(--fonu-border);
+}
+
 .task-detail__title-wrap {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-detail__title {
@@ -1460,8 +2104,11 @@ onMounted(init)
 
 .task-detail__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .detail-section { min-width: 0; }

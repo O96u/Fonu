@@ -18,6 +18,7 @@ func NewDDNSHandler(svc *ddns.Service) *DDNSHandler {
 
 type ddnsRequest struct {
 	Provider    string   `json:"provider"`
+	Remark      string   `json:"remark"`
 	RootDomain  string   `json:"root_domain"`
 	RecordName  string   `json:"record_name"`
 	RecordNames []string `json:"record_names"`
@@ -33,6 +34,7 @@ type ddnsRequest struct {
 func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
 	return ddns.SaveInput{
 		Provider:    req.Provider,
+		Remark:      req.Remark,
 		RootDomain:  req.RootDomain,
 		RecordName:  req.RecordName,
 		RecordNames: req.RecordNames,

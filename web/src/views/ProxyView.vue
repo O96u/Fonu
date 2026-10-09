@@ -4,9 +4,9 @@
     description="通过 Nginx 反向代理，让内网服务可以通过域名安全访问"
   >
     <template #actions>
-      <n-button type="primary" @click="openCreate">
+      <n-button type="primary" @click="openEntryCreate">
         <template #icon><n-icon :component="AddOutline" /></template>
-        新建规则
+        新建入口
       </n-button>
     </template>
   </PageHeader>
@@ -101,6 +101,7 @@
               v-for="group in entryGroups"
               :key="group.key"
               class="proxy-entry-card"
+              :data-entry-id="group.entryId"
               :class="{ 'proxy-entry-card--collapsed': isEntryCollapsed(group.key) }"
             >
               <header class="proxy-entry-card__head">
@@ -282,7 +283,7 @@
           description="同一内网服务多个域名：一条规则多行域名即可。同一端口多个不同服务：先建入口，再在同一入口下新增规则。"
         >
           <template #action>
-            <n-button type="primary" @click="openCreate">新建规则</n-button>
+            <n-button type="primary" @click="openEntryCreate">新建入口</n-button>
           </template>
         </EmptyState>
 
@@ -521,7 +522,7 @@
     <div class="proxy-modal">
       <div class="proxy-modal__form">
         <div class="proxy-modal__header">
-          <h3 class="modal-title">{{ editing ? '编辑规则' : '新增规则' }}</h3>
+          <h3 class="modal-title">{{ modalTitle }}</h3>
           <n-button size="small" quaternary @click="closeModal">
             <template #icon><n-icon :component="CloseOutline" /></template>
           </n-button>
@@ -561,12 +562,12 @@
 
         <div class="proxy-modal__scroll">
           <n-form v-show="formTab === 'basic'" label-placement="top" class="proxy-modal__pane">
-              <n-form-item label="名称">
+              <n-form-item :label="isEntryBatchEdit ? '名称（入口）' : '名称'">
                 <n-input
                   v-model:value="form.name"
                   maxlength="100"
                   show-count
-                  placeholder="选填，用于在列表中识别该规则"
+                  :placeholder="isEntryBatchEdit ? '选填；留空时标题自动显示为「端口 · HTTPS · IPv4」' : '选填，用于在列表中识别该规则'"
                 />
               </n-form-item>
 
@@ -583,19 +584,29 @@
                   </span>
                 </template>
                 <div class="field-stack">
-                  <n-input
-                    v-model:value="form.hostsText"
-                    type="textarea"
-                    :rows="3"
-                    placeholder="s.example.com&#10;api.example.com&#10;example.com:6893"
+                  <n-select
+                    v-model:value="form.hostsSelected"
+                    multiple
+                    filterable
+                    :loading="ddnsHostsLoading"
+                    :options="hostSelectOptions"
+                    :filter="filterDdnsHostOption"
+                    placeholder="从 DDNS 中选择域名（可多选）"
+                    class="hosts-select"
+                    @focus="loadDdnsHostOptions"
                   />
-                  <p class="field-hint">
-                    多个域名指向<strong>同一</strong>内网服务时，在此每行填一个域名即可，无需新建多条规则
+                  <p v-if="ddnsHostOptionsEmpty && !ddnsHostsLoading" class="field-hint">
+                    暂无 DDNS 域名，
+                    <router-link class="field-hint__link" :to="{ name: 'ddns' }">前往 DDNS 添加</router-link>
+                  </p>
+                  <p v-else class="field-hint">
+                    <template v-if="isEntryBatchEdit">多选为各规则共用的基础域名；目标地址每行的前缀会加在域名前。</template>
+                    <template v-else>多个域名指向<strong>同一</strong>内网服务时，在此多选即可。</template>
                   </p>
                 </div>
               </n-form-item>
 
-              <div v-if="!bindEntryListen" class="listen-row">
+              <div v-if="isEntryBatchEdit || !bindEntryListen" class="listen-row">
                 <div class="listen-col listen-col--port">
                   <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
                   <div class="listen-col__control">
@@ -625,12 +636,26 @@
 
               <n-form-item label="目标地址" required>
                 <div class="field-stack">
-                  <n-input v-model:value="form.upstream" placeholder="例如：http://192.168.1.100:5173" />
-                  <p class="field-hint">支持 http://、https://，也可以是 IP 地址或内网域名</p>
+                  <n-input
+                    v-if="isEntryBatchEdit"
+                    v-model:value="form.upstream"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="每行：名称,前缀,目标地址&#10;飞牛,nas,http://192.168.1.100:5173"
+                  />
+                  <n-input
+                    v-else
+                    v-model:value="form.upstream"
+                    placeholder="例如：http://192.168.1.100:5173"
+                  />
+                  <p v-if="isEntryBatchEdit" class="field-hint">
+                    每行一条规则（http/https，IP 须带端口）。删文本框里的行不会删列表中的规则。
+                  </p>
+                  <p v-else class="field-hint">仅支持 http:// 或 https:// 开头的内网地址。</p>
                 </div>
               </n-form-item>
 
-              <div v-if="!bindEntryListen" class="form-switch-list form-switch-list--compact">
+              <div v-if="isEntryBatchEdit || !bindEntryListen" class="form-switch-list form-switch-list--compact">
                 <div class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用 HTTPS</div>
@@ -645,7 +670,7 @@
                   </div>
                   <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
                 </div>
-                <div class="form-switch-row">
+                <div v-if="!isEntryBatchEdit" class="form-switch-row">
                   <div class="form-switch-row__text">
                     <div class="form-switch-row__label">启用规则</div>
                     <div class="form-switch-row__hint">保存后立即开始转发请求</div>
@@ -855,7 +880,12 @@
           </div>
 
           <div v-show="formTab === 'nginx'" class="proxy-modal__pane proxy-modal__pane--nginx">
-            <template v-if="!editing">
+            <template v-if="isEntryBatchEdit">
+              <n-alert type="info" :bordered="false" class="nginx-pane-alert">
+                Nginx 按单条规则配置；请在该入口下具体规则的「编辑 → Nginx」中调整。
+              </n-alert>
+            </template>
+            <template v-else-if="!editing">
               <n-empty description="请先保存规则后再配置 Nginx">
                 <template #extra>
                   <n-button type="primary" @click="switchFormTab('basic')">去填写基础配置</n-button>
@@ -933,7 +963,7 @@
         <div class="modal-footer">
           <n-button @click="closeModal">取消</n-button>
           <n-button v-if="formTab !== 'nginx'" type="primary" :loading="saving" @click="save">
-            {{ editing ? '保存' : '创建' }}
+            {{ isEntryBatchEdit || editing ? '保存' : '创建' }}
           </n-button>
         </div>
       </div>
@@ -941,24 +971,19 @@
       <div class="proxy-modal__help">
         <template v-if="formTab === 'basic'">
           <h4>配置说明</h4>
-          <ol>
-            <li>
-              <strong>入口分组</strong>：同一端口、不同内网服务应放在同一入口下分别建规则；同一服务多域名写在一条规则里。
-            </li>
-            <li>
-              <strong>前端域名</strong>：支持多个域名，每行一个；单独端口可写
-              <code>example.com:6893</code>。
-            </li>
-            <li>
-              <strong>目标地址</strong>：内网服务地址，支持 <code>http://</code>、<code>https://</code> 或 IP。
-            </li>
-            <li>
-              <strong>HTTPS</strong>：需在「证书」页为域名申请或上传证书。
-            </li>
+          <ol v-if="isEntryBatchEdit" class="proxy-modal__help-ol proxy-modal__help-ol--compact">
+            <li>同端口多服务 → 同一入口多条规则；一服务多域名 → 在「前端域名」多选。</li>
+            <li>目标地址每行 <code>名称,前缀,内网 URL</code>，保存后同步到下方规则列表。</li>
+            <li>HTTPS 需在「证书」页配置；安全设置在「安全」页，保存后作用于本入口全部规则。</li>
+          </ol>
+          <ol v-else class="proxy-modal__help-ol proxy-modal__help-ol--compact">
+            <li>多域名同一上游 → 「前端域名」多选，目标地址填一行。</li>
+            <li>域名来自 DDNS 任务；监听端口由入口或上方端口决定。</li>
+            <li>HTTPS 需在「证书」页配置证书。</li>
           </ol>
           <div class="proxy-modal__tip">
             <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-            <span>请确保域名已解析到本机，且内网服务可访问。</span>
+            <span>域名需解析到本机，内网服务需可达。</span>
           </div>
         </template>
         <template v-else-if="formTab === 'nginx'">
@@ -1002,14 +1027,14 @@
   <n-modal v-model:show="showEntryModal" :mask-closable="false" transform-origin="center">
     <div class="proxy-entry-edit-modal">
       <div class="proxy-entry-edit-modal__header">
-        <h3 class="modal-title">{{ editingEntryId ? '编辑入口' : '新建入口' }}</h3>
+        <h3 class="modal-title">{{ entryModalTitle }}</h3>
         <n-button size="small" quaternary @click="showEntryModal = false">
           <template #icon><n-icon :component="CloseOutline" /></template>
         </n-button>
       </div>
       <n-form label-placement="top" class="proxy-entry-edit-modal__body">
         <n-form-item label="名称">
-          <n-input v-model:value="entryForm.name" maxlength="100" show-count placeholder="选填，便于识别该入口" />
+          <n-input v-model:value="entryForm.name" maxlength="100" show-count placeholder="选填；留空时标题自动显示为「端口 · HTTPS · IPv4」" />
         </n-form-item>
         <div class="listen-row">
           <div class="listen-col listen-col--port">
@@ -1042,8 +1067,11 @@
             <n-switch v-model:value="entryForm.http_redirect" :disabled="!entryForm.https_enabled" />
           </div>
         </div>
-        <p class="field-hint">
-          {{ editingEntryId ? '修改后将同步应用到该入口下的全部规则。' : '每个入口需使用未被占用的监听端口。' }}
+        <p v-if="cloningSourceId" class="field-hint">
+          保存后将新建监听入口，并把原入口下的 {{ cloneRuleCount }} 条规则（前端域名、上游地址与安全设置）一并复制到新端口；复制后两份规则相互独立。
+        </p>
+        <p v-else class="field-hint">
+          先创建空入口，再在下方列表添加规则；批量改域名、目标或安全策略时请点「编辑入口」。
         </p>
       </n-form>
       <div class="modal-footer">
@@ -1181,6 +1209,7 @@ import {
   useDialog,
   useMessage,
   type DataTableColumns,
+  type SelectGroupOption,
 } from 'naive-ui'
 import {
   AddOutline,
@@ -1226,7 +1255,19 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
+import {
+  collectDdnsHostOptions,
+  flattenDdnsOptionValues,
+  validateUpstreamInput,
+  type DdnsHostSelectOption,
+} from '../utils/ddnsHosts'
 import { formatBytes, formatRate, formatRateIdle, formatRelativeTime } from '../utils/format'
+import {
+  formHostsList,
+  formHostsToText,
+  mergeHostSelectOptions,
+  setFormHostsFromText,
+} from '../utils/proxyFormHosts'
 import { renderTableRowActions } from '../utils/tableActions'
 
 const message = useMessage()
@@ -1248,6 +1289,37 @@ interface DiscoveryRow {
 
 const discoveryRows = ref<DiscoveryRow[]>([])
 
+const ddnsHostOptionGroups = ref<SelectGroupOption[]>([])
+const ddnsHostsLoading = ref(false)
+
+const hostSelectOptions = computed(() =>
+  mergeHostSelectOptions(ddnsHostOptionGroups.value, form.hostsSelected),
+)
+
+const ddnsHostOptionsEmpty = computed(() => flattenDdnsOptionValues(ddnsHostOptionGroups.value).size === 0)
+
+async function loadDdnsHostOptions() {
+  if (ddnsHostsLoading.value) return
+  ddnsHostsLoading.value = true
+  try {
+    const configs = asList(await api.listDDNSLite())
+    ddnsHostOptionGroups.value = collectDdnsHostOptions(configs)
+  } catch {
+    ddnsHostOptionGroups.value = []
+  } finally {
+    ddnsHostsLoading.value = false
+  }
+}
+
+function filterDdnsHostOption(pattern: string, option: DdnsHostSelectOption): boolean {
+  const p = pattern.trim().toLowerCase()
+  if (!p) return true
+  const domain = String(option.value ?? option.label ?? '').toLowerCase()
+  const provider = (option.providerLabel ?? '').toLowerCase()
+  const task = (option.taskLabel ?? '').toLowerCase()
+  return domain.includes(p) || provider.includes(p) || task.includes(p)
+}
+
 const discoverySummary = computed(() => {
   if (discoveryLoading.value || discoveryRows.value.length === 0) return ''
   return `扫描完成，发现 ${discoveryRows.value.length} 个 HTTP 服务`
@@ -1260,6 +1332,8 @@ const hasSelectedDiscoveryRows = computed(() =>
 const showEntryModal = ref(false)
 const savingEntry = ref(false)
 const editingEntryId = ref<number | null>(null)
+const cloningSourceId = ref<number | null>(null)
+const cloneRuleCount = ref(0)
 const entryForm = reactive({
   name: '',
   listen_port: 443,
@@ -1267,6 +1341,18 @@ const entryForm = reactive({
   listen_ipv6: false,
   https_enabled: true,
   http_redirect: true,
+})
+const entryModalTitle = computed(() => {
+  if (cloningSourceId.value) return '复制入口'
+  if (editingEntryId.value) return '编辑入口'
+  return '新建入口'
+})
+const formMode = ref<'rule' | 'entry'>('rule')
+/** 编辑已有入口：批量域名/目标/安全；新建入口走简易 showEntryModal */
+const isEntryBatchEdit = computed(() => formMode.value === 'entry' && editingEntryId.value != null)
+const modalTitle = computed(() => {
+  if (isEntryBatchEdit.value) return '编辑入口'
+  return editing.value ? '编辑规则' : '新增规则'
 })
 const rules = ref<ProxyRule[]>([])
 const entries = ref<ProxyEntry[]>([])
@@ -1349,7 +1435,7 @@ const form = reactive({
   listen_port: 80,
   listen_ipv4: true,
   listen_ipv6: false,
-  hostsText: '',
+  hostsSelected: [] as string[],
   upstream: '',
   https_enabled: true,
   http_redirect: true,
@@ -1538,28 +1624,169 @@ const trafficChart = computed(() => {
 })
 
 function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
+  formMode.value = 'rule'
+  editingEntryId.value = null
   editing.value = null
   formTab.value = 'basic'
   resetForm()
   applyEntryListen(form, listen)
   formEntryId.value = entryId ?? null
   securityExpanded.value = ['ip']
+  void loadDdnsHostOptions()
   showModal.value = true
 }
 
 
-function openEntryEdit(group: ProxyEntryGroup) {
-  if (!group.entryId) return
-  editingEntryId.value = group.entryId
+const ENTRY_BATCH_SETTINGS_KEY = 'proxy_entry_batch'
+
+type EntryBatchDraftMap = Record<string, { hosts?: string; upstream?: string }>
+
+function parseEntryBatchDrafts(raw: string | undefined): EntryBatchDraftMap {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? (parsed as EntryBatchDraftMap) : {}
+  } catch {
+    return {}
+  }
+}
+
+function ruleBindingSet(rule: ProxyRule, listenPort: number): Set<string> {
+  return new Set(
+    parseHostsText(hostsToText(rule))
+      .map((h) => hostBindingKey(parseHostname(h), effectiveListenPort(h, listenPort)))
+      .filter((k) => !k.startsWith(':')),
+  )
+}
+
+// 无草稿但入口下已有规则时，从规则反推出创建参数（仅当域名都能用统一前缀解释时）
+function synthesizeDraftFromRules(group: ProxyEntryGroup): { hosts: string; upstream: string } {
+  const list = group.rules
+  if (list.length === 0) return { hosts: '', upstream: '' }
+  const listenPort = group.listen.listen_port
+  const sameSet = (a: Set<string>, b: Set<string>): boolean => {
+    if (a.size !== b.size) return false
+    for (const k of a) if (!b.has(k)) return false
+    return true
+  }
+  for (const baseCandidate of list) {
+    const baseHosts = parseHostsText(hostsToText(baseCandidate))
+    if (baseHosts.length === 0) continue
+    const derived: { name: string; prefix: string; upstream: string }[] = []
+    let ok = true
+    for (const rule of list) {
+      const actual = ruleBindingSet(rule, listenPort)
+      let found: { prefix: string } | null = null
+      for (const prefix of ['', ...Array.from(actual).map((k) => k.split(':')[0].split('.').slice(0, -baseHosts[0].split('.').length).join('.'))]) {
+        const trial = new Set(
+          baseHosts.map((h) => {
+            const withPrefix = addPrefixToHost(h, prefix)
+            return hostBindingKey(parseHostname(withPrefix), effectiveListenPort(withPrefix, listenPort))
+          }),
+        )
+        if (sameSet(trial, actual)) {
+          found = { prefix }
+          break
+        }
+      }
+      if (!found) {
+        ok = false
+        break
+      }
+      derived.push({ name: rule.name ?? '', prefix: found.prefix, upstream: rule.upstream })
+    }
+    if (ok) {
+      return {
+        hosts: baseHosts.join('\n'),
+        upstream: derived.map((d) => `${d.name}，${d.prefix}，${d.upstream}`).join('\n'),
+      }
+    }
+  }
+  return { hosts: '', upstream: '' }
+}
+
+async function loadEntryBatchDraftIntoForm(group: ProxyEntryGroup) {
+  let draft: { hosts?: string; upstream?: string } | undefined
+  try {
+    const settings = await api.getSettings()
+    draft = parseEntryBatchDrafts(settings[ENTRY_BATCH_SETTINGS_KEY])[String(group.entryId)]
+  } catch {
+    draft = undefined
+  }
+  let synthesized = false
+  if (!draft) {
+    const made = synthesizeDraftFromRules(group)
+    draft = made
+    synthesized = !!(made.hosts.trim() || made.upstream.trim())
+  }
+  setFormHostsFromText(form.hostsSelected, draft.hosts ?? '')
+  form.upstream = draft.upstream ?? ''
+  if (synthesized && group.entryId) {
+    void persistEntryBatchDraft(group.entryId)
+  }
+}
+
+async function persistEntryBatchDraft(entryId: number) {
+  try {
+    const settings = await api.getSettings()
+    const drafts = parseEntryBatchDrafts(settings[ENTRY_BATCH_SETTINGS_KEY])
+    drafts[String(entryId)] = { hosts: formHostsToText(form.hostsSelected), upstream: form.upstream }
+    // 顺带清理已删除入口的旧草稿
+    const validIds = new Set(entries.value.map((entry) => String(entry.id)))
+    for (const key of Object.keys(drafts)) {
+      if (key !== String(entryId) && !validIds.has(key)) delete drafts[key]
+    }
+    // 只提交该键：后端按 upsert 更新，避免全量写回 GET 返回的敏感字段掩码值
+    await api.saveSettings({ [ENTRY_BATCH_SETTINGS_KEY]: JSON.stringify(drafts) })
+  } catch (error) {
+    console.warn('入口批量草稿保存失败', error)
+  }
+}
+
+function openEntryCreate() {
+  editing.value = null
+  editingEntryId.value = null
+  cloningSourceId.value = null
   Object.assign(entryForm, {
-    name: group.name,
-    listen_port: group.listen.listen_port,
-    listen_ipv4: group.listen.listen_ipv4,
-    listen_ipv6: group.listen.listen_ipv6,
-    https_enabled: group.listen.https_enabled,
-    http_redirect: group.listen.http_redirect,
+    name: '',
+    listen_port: 443,
+    listen_ipv4: true,
+    listen_ipv6: false,
+    https_enabled: true,
+    http_redirect: true,
   })
   showEntryModal.value = true
+}
+
+async function openEntryEdit(group: ProxyEntryGroup) {
+  if (!group.entryId) return
+  formMode.value = 'entry'
+  editing.value = null
+  editingEntryId.value = group.entryId
+  formEntryId.value = null
+  cloningSourceId.value = null
+  formTab.value = 'basic'
+  resetForm()
+  // 名称框显示真实保存的名称（空就是空），自动展示名只用于分组标题
+  form.name = entries.value.find((entry) => entry.id === group.entryId)?.name?.trim() ?? ''
+  form.listen_port = group.listen.listen_port
+  form.listen_ipv4 = group.listen.listen_ipv4
+  form.listen_ipv6 = group.listen.listen_ipv6
+  form.https_enabled = group.listen.https_enabled
+  form.http_redirect = group.listen.http_redirect
+  loadSecurityToForm(group.rules[0])
+  syncSecurityExpanded()
+  await loadEntryBatchDraftIntoForm(group)
+  showModal.value = true
+}
+
+function suggestClonePort(start: number): number {
+  const used = new Set(entries.value.map((entry) => entry.listen_port))
+  let port = start + 1
+  while (port <= 65535 && used.has(port)) {
+    port++
+  }
+  return port > 65535 ? start : port
 }
 
 function entryPortConflict(port: number, excludeId?: number | null): string | null {
@@ -1596,9 +1823,10 @@ async function saveEntry() {
       https_enabled: entryForm.https_enabled,
       http_redirect: entryForm.http_redirect,
     }
-    if (editingEntryId.value) {
-      await api.updateProxyEntry(editingEntryId.value, payload)
-      message.success('入口已保存')
+    if (cloningSourceId.value) {
+      const cloned = await api.cloneProxyEntry(cloningSourceId.value, payload)
+      const count = cloned.rule_count ?? cloneRuleCount.value
+      message.success(`入口已复制，${count} 条规则已同步创建`)
     } else {
       await api.createProxyEntry(payload)
       message.success('入口已创建')
@@ -1607,7 +1835,8 @@ async function saveEntry() {
     await load()
   } catch (error) {
     const msg = error instanceof Error ? error.message : '保存失败'
-    if (msg.startsWith('入口已保存')) {
+    const partialPrefixes = ['入口已保存', '入口已创建', '入口已删除', '入口已复制']
+    if (partialPrefixes.some((prefix) => msg.startsWith(prefix))) {
       message.warning(msg)
       showEntryModal.value = false
       await load()
@@ -1619,19 +1848,254 @@ async function saveEntry() {
   }
 }
 
+async function saveEntryFull() {
+  if (formHostsList(form.hostsSelected).length === 0) {
+    message.error('请选择至少一个前端域名')
+    return
+  }
+  if (!form.upstream.trim()) {
+    message.error('请填写目标地址')
+    return
+  }
+  try {
+    parseBatchLines(form.upstream)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '目标地址格式不正确')
+    return
+  }
+  saving.value = true
+  try {
+    if (!form.listen_ipv4 && !form.listen_ipv6) {
+      throw new Error('至少需要启用 IPv4 或 IPv6 监听')
+    }
+    const port = form.listen_port
+    if (!port || port < 1 || port > 65535) {
+      throw new Error('监听端口无效')
+    }
+    const portErr = entryPortConflict(port, editingEntryId.value)
+    if (portErr) {
+      message.warning(portErr)
+      return
+    }
+    const entryPayload = {
+      name: form.name.trim(),
+      listen_port: port,
+      listen_ipv4: form.listen_ipv4,
+      listen_ipv6: form.listen_ipv6,
+      https_enabled: form.https_enabled,
+      http_redirect: form.http_redirect,
+    }
+    const isEdit = editingEntryId.value != null
+    let entryId = editingEntryId.value
+    let appliedMsg = ''
+    if (entryId) {
+      await api.updateProxyEntry(entryId, entryPayload)
+      // 安全设置应用到入口下所有规则，各规则自身的名称/域名/目标地址保持不变
+      const targets = entryGroups.value.find((g) => g.entryId === entryId)?.rules ?? []
+      if (targets.length > 0) {
+        const security = buildSecurityPayload()
+        let applied = 0
+        const failed: string[] = []
+        for (const rule of targets) {
+          try {
+            await api.updateProxy(rule.id, {
+              entry_id: entryId,
+              name: rule.name ?? '',
+              upstream: rule.upstream,
+              hosts: parseHostsText(hostsToText(rule)),
+              enabled: rule.enabled,
+              security,
+            })
+            applied++
+          } catch {
+            failed.push(rule.name?.trim() || `#${rule.id}`)
+          }
+        }
+        appliedMsg = failed.length
+          ? `安全配置已应用到 ${applied} 条规则（${failed.join('、')} 失败）`
+          : `安全配置已应用到 ${applied} 条规则`
+      }
+    } else {
+      const created = await api.createProxyEntry(entryPayload)
+      entryId = created.id
+    }
+    // 入口一确定就先持久化填写内容，保证后续规则同步失败也不丢失用户输入
+    await persistEntryBatchDraft(entryId)
+    const syncMsg = await syncEntryRules(entryId, formHostsToText(form.hostsSelected), form.upstream)
+    const parts = [isEdit ? '入口已保存' : '入口已创建']
+    if (appliedMsg) parts.push(appliedMsg)
+    if (syncMsg) parts.push(syncMsg)
+    message.success(parts.join('，'))
+    showModal.value = false
+    await load()
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '保存失败'
+    const partialPrefixes = ['入口已保存', '入口已创建']
+    if (partialPrefixes.some((prefix) => msg.startsWith(prefix))) {
+      message.warning(msg)
+      showModal.value = false
+      await load()
+    } else {
+      message.error(msg)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+type EntryRulePlan =
+  | { kind: 'update'; ruleId: number; lineName: string; upstream: string; hosts: string[] }
+  | { kind: 'create'; lineName: string; upstream: string; hosts: string[] }
+
+async function syncEntryRules(entryId: number, hostsText: string, upstreamText: string): Promise<string | null> {
+  const text = upstreamText.trim()
+  if (!text) return null
+  const failPrefix = '入口已保存，但规则同步失败：'
+  let parsed: ReturnType<typeof parseBatchLines>
+  try {
+    parsed = parseBatchLines(text)
+  } catch (error) {
+    throw new Error(`${failPrefix}${error instanceof Error ? error.message : '目标地址格式不正确'}`)
+  }
+  const firstLine = text.split('\n').map((line) => line.trim()).find(Boolean) ?? ''
+  const lines: BatchLine[] =
+    parsed.mode === 'batch'
+      ? parsed.lines
+      : [{ name: form.name.trim(), prefix: '', upstream: validateUpstreamInput(firstLine) }]
+  const baseHosts = parseHostsText(hostsText)
+  if (baseHosts.length === 0) {
+    throw new Error(`${failPrefix}至少需要一个前端域名`)
+  }
+  const listenPort = form.listen_port
+  const security = buildSecurityPayload()
+  const existing = entryGroups.value.find((g) => g.entryId === entryId)?.rules ?? []
+
+  const bindingSet = (items: string[]): Set<string> =>
+    new Set(
+      items
+        .map((h) => hostBindingKey(parseHostname(h), effectiveListenPort(h, listenPort)))
+        .filter((k) => !k.startsWith(':')),
+    )
+  const setsEqual = (a: Set<string>, b: Set<string>): boolean => {
+    if (a.size !== b.size) return false
+    for (const k of a) {
+      if (!b.has(k)) return false
+    }
+    return true
+  }
+
+  // 每行展开后的域名（可能已被用户删改）
+  const wantedPerLine = lines.map((line) => {
+    const hosts = baseHosts.map((h) => addPrefixToHost(h, line.prefix))
+    return { line, hosts, keys: bindingSet(hosts) }
+  })
+
+  const claimed = new Set<number>()
+  const plan: EntryRulePlan[] = []
+  const pending: typeof wantedPerLine = []
+
+  // 第一轮：域名组合完全相同 → 更新原规则
+  for (const item of wantedPerLine) {
+    const match = existing.find((rule) => !claimed.has(rule.id) && setsEqual(ruleBindingSet(rule, listenPort), item.keys))
+    if (match) {
+      claimed.add(match.id)
+      plan.push({ kind: 'update', ruleId: match.id, lineName: item.line.name, upstream: item.line.upstream, hosts: item.hosts })
+    } else {
+      pending.push(item)
+    }
+  }
+  // 第二轮：域名被改但规则名称相同 → 同一条规则，按新域名重建（旧域名自动移除）
+  for (const item of pending.splice(0)) {
+    const match = existing.find((rule) => !claimed.has(rule.id) && (rule.name ?? '') === item.line.name)
+    if (match) {
+      claimed.add(match.id)
+      plan.push({ kind: 'update', ruleId: match.id, lineName: item.line.name, upstream: item.line.upstream, hosts: item.hosts })
+    } else {
+      pending.push(item)
+    }
+  }
+  // 第三轮：匹配不到 → 新规则
+  for (const item of pending) {
+    plan.push({ kind: 'create', lineName: item.line.name, upstream: item.line.upstream, hosts: item.hosts })
+  }
+
+  // 执行：重复域名（其他规则占用 / 前面行已用）跳过，不阻断整次保存
+  const seenBindings = new Set<string>()
+  let created = 0
+  let updated = 0
+  const skipped: { name: string; domains: string[] }[] = []
+
+  for (const step of plan) {
+    const dropped: string[] = []
+    const usable: string[] = []
+    for (const h of step.hosts) {
+      const key = hostBindingKey(parseHostname(h), effectiveListenPort(h, listenPort))
+      if (seenBindings.has(key)) {
+        dropped.push(key)
+        continue
+      }
+      const conflict = findHostConflict([h], listenPort, step.kind === 'update' ? step.ruleId : undefined)
+      if (conflict) {
+        dropped.push(key)
+        continue
+      }
+      usable.push(h)
+      seenBindings.add(key)
+    }
+    if (usable.length === 0) {
+      skipped.push({ name: step.lineName || '未命名', domains: dropped })
+      continue
+    }
+    if (step.kind === 'update') {
+      const rule = rules.value.find((item) => item.id === step.ruleId)
+      await api.updateProxy(step.ruleId, {
+        entry_id: entryId,
+        name: step.lineName,
+        upstream: step.upstream,
+        hosts: usable,
+        enabled: rule?.enabled ?? true,
+        security,
+      })
+      updated++
+    } else {
+      await api.createProxy({
+        entry_id: entryId,
+        upstream: step.upstream,
+        hosts: usable,
+        enabled: true,
+        name: step.lineName,
+        security,
+      })
+      created++
+    }
+  }
+
+  const parts: string[] = []
+  if (updated) parts.push(`更新 ${updated} 条`)
+  if (created) parts.push(`新建 ${created} 条`)
+  let summary = parts.length ? `规则已同步：${parts.join('、')}` : ''
+  if (skipped.length) {
+    const detail = skipped.map((item) => `${item.name}（${item.domains.join('、')} 重复）`).join('；')
+    summary += (summary ? '；' : '') + `跳过 ${skipped.length} 条：${detail}`
+  }
+  return summary || null
+}
+
 function duplicateEntry(group: ProxyEntryGroup) {
   if (!group.entryId) return
   editingEntryId.value = null
+  cloningSourceId.value = group.entryId
+  cloneRuleCount.value = group.rules.length
   Object.assign(entryForm, {
-    name: group.name,
-    listen_port: group.listen.listen_port,
+    name: group.name ? `${group.name} 副本` : '',
+    listen_port: suggestClonePort(group.listen.listen_port),
     listen_ipv4: group.listen.listen_ipv4,
     listen_ipv6: group.listen.listen_ipv6,
     https_enabled: group.listen.https_enabled,
     http_redirect: group.listen.http_redirect,
   })
   showEntryModal.value = true
-  message.info('已填入复制内容，请修改监听端口等信息后保存')
+  message.info('将连同该入口下的全部规则一起复制，请确认监听端口')
 }
 
 function confirmDeleteEntry(group: ProxyEntryGroup) {
@@ -2256,6 +2720,53 @@ function findHostConflict(
   return null
 }
 
+// ---- 批量创建 ----
+type BatchLine = { name: string; prefix: string; upstream: string }
+
+function parseBatchLines(text: string): { mode: 'single' } | { mode: 'batch'; lines: BatchLine[] } {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const hasComma = lines.some((line) => /[,，]/.test(line))
+  if (!hasComma) {
+    if (lines.length > 1) {
+      throw new Error('多行目标地址请使用「名称,前缀,目标地址」格式，或仅保留一行 URL')
+    }
+    if (lines.length === 1) {
+      validateUpstreamInput(lines[0])
+    }
+    return { mode: 'single' }
+  }
+
+  const prefixPattern = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/
+  const parsed: BatchLine[] = lines.map((line, idx) => {
+    const m = line.match(/^([^,，]*)[,，]([^,，]*)[,，](.*)$/)
+    if (!m) {
+      throw new Error(`第 ${idx + 1} 行格式不正确，应为「名称,前缀,目标地址」`)
+    }
+    const prefix = m[2].trim().toLowerCase()
+    const upstream = validateUpstreamInput(m[3].trim())
+    const name = m[1].trim() || form.name.trim() || prefix
+    if (prefix && !prefixPattern.test(prefix)) {
+      throw new Error(`第 ${idx + 1} 行前缀「${prefix}」格式不正确，仅支持小写字母、数字、点和短横线`)
+    }
+    if (!name) {
+      throw new Error(`第 ${idx + 1} 行缺少名称，请在行内或上方「名称」中填写`)
+    }
+    return { name, prefix, upstream }
+  })
+  return { mode: 'batch', lines: parsed }
+}
+
+function addPrefixToHost(host: string, prefix: string): string {
+  const raw = host.trim()
+  if (!prefix) return raw
+  const hasPort = raw.includes(':') && !raw.includes(']') && raw.split(':').length === 2
+  const portSuffix = hasPort ? `:${raw.split(':')[1]}` : ''
+  return `${prefix}.${parseHostname(raw)}${portSuffix}`
+}
+
 function renderProtocol(row: ProxyRule): VNode {
   const tags: VNode[] = []
   if (row.https_enabled) {
@@ -2276,6 +2787,7 @@ function rowProps(row: ProxyRule) {
   }
   return {
     class: classes.join(' '),
+    'data-rule-id': String(row.id),
   }
 }
 
@@ -2638,7 +3150,7 @@ function resetForm() {
   form.listen_port = defaultListenPort(form.https_enabled)
   form.listen_ipv4 = true
   form.listen_ipv6 = false
-  form.hostsText = ''
+  form.hostsSelected = []
   form.upstream = ''
   form.https_enabled = true
   form.http_redirect = true
@@ -2718,15 +3230,16 @@ function securityTags(rule: ProxyRule): string[] {
 }
 
 function buildPayload(): ProxySavePayload {
-  const hosts = parseHostsText(form.hostsText)
+  const hosts = formHostsList(form.hostsSelected)
   if (hosts.length === 0) {
     throw new Error('至少需要一个前端域名')
   }
   if (!form.listen_ipv4 && !form.listen_ipv6) {
     throw new Error('至少需要启用 IPv4 或 IPv6 监听')
   }
+  const upstream = validateUpstreamInput(form.upstream)
   return {
-    upstream: form.upstream,
+    upstream,
     ...(formEntryId.value
       ? { entry_id: formEntryId.value }
       : {
@@ -2741,15 +3254,6 @@ function buildPayload(): ProxySavePayload {
     name: form.name.trim(),
     security: buildSecurityPayload(),
   }
-}
-
-function openCreate() {
-  editing.value = null
-  formTab.value = 'basic'
-  resetForm()
-  formEntryId.value = null
-  securityExpanded.value = ['ip']
-  showModal.value = true
 }
 
 async function toggleRuleEnabled(row: ProxyRule, enabled: boolean) {
@@ -2795,8 +3299,8 @@ function openDuplicate(rule: ProxyRule) {
     form.http_redirect = rule.http_redirect
   }
 
+  setFormHostsFromText(form.hostsSelected, hostsToText(rule))
   Object.assign(form, {
-    hostsText: hostsToText(rule),
     upstream: rule.upstream,
     enabled: rule.enabled,
     name: rule.name ?? '',
@@ -2804,12 +3308,15 @@ function openDuplicate(rule: ProxyRule) {
   loadSecurityToForm(rule)
   syncSecurityExpanded()
   formTab.value = 'basic'
+  void loadDdnsHostOptions()
   showModal.value = true
   message.info('已填入复制内容，确认后保存为新规则')
 }
 
 function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
   closeDetail()
+  formMode.value = 'rule'
+  editingEntryId.value = null
   editing.value = rule
   selectedRuleId.value = rule.id
   const parentGroup = findEntryGroupForRule(rule)
@@ -2825,8 +3332,8 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
     form.http_redirect = rule.http_redirect
   }
 
+  setFormHostsFromText(form.hostsSelected, hostsToText(rule))
   Object.assign(form, {
-    hostsText: hostsToText(rule),
     upstream: rule.upstream,
     enabled: rule.enabled,
     name: rule.name ?? '',
@@ -2840,6 +3347,7 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
   } else {
     formTab.value = 'basic'
   }
+  void loadDdnsHostOptions()
   showModal.value = true
   if (tab === 'nginx') {
     nginxDirty.value = false
@@ -2861,6 +3369,8 @@ async function persistRuleOrder(next: ProxyRule[]) {
   try {
     await api.reorderProxies(next.map((rule) => rule.id))
     message.success('排序已保存')
+    // 与服务器再同步一次，确保展示顺序与持久化结果一致
+    await load()
   } catch (error) {
     message.error(error instanceof Error ? error.message : '排序保存失败')
     await load()
@@ -2878,7 +3388,7 @@ function mergeGroupOrder(groupKey: string, groupRules: ProxyRule[]): ProxyRule[]
   return next
 }
 
-function attachSortable(tbody: HTMLElement, onEnd: (oldIndex: number, newIndex: number) => void) {
+function attachSortable(tbody: HTMLElement, onEnd: (orderedIds: number[]) => void) {
   rowSortables.push(
     Sortable.create(tbody, {
       handle: '.proxy-drag-handle',
@@ -2888,7 +3398,11 @@ function attachSortable(tbody: HTMLElement, onEnd: (oldIndex: number, newIndex: 
         if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex || reordering.value) {
           return
         }
-        onEnd(evt.oldIndex, evt.newIndex)
+        // 以 DOM 实际行顺序为准：traffic 轮询重渲染时 evt.oldIndex/newIndex 可能与数据索引错位
+        const orderedIds = Array.from(evt.from.querySelectorAll<HTMLElement>('tr[data-rule-id]'))
+          .map((el) => Number(el.dataset.ruleId))
+          .filter((id) => Number.isFinite(id))
+        onEnd(orderedIds)
       },
     }),
   )
@@ -2909,6 +3423,7 @@ async function persistEntryOrder(reorderedGroups: ProxyEntryGroup[]) {
   try {
     await api.reorderProxyEntries(ids)
     message.success('入口排序已保存')
+    await load()
   } catch (error) {
     message.error(error instanceof Error ? error.message : '入口排序保存失败')
     await load()
@@ -2932,9 +3447,13 @@ async function setupEntryStackSortable() {
       if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex || reordering.value) {
         return
       }
-      const groups = [...entryGroups.value]
-      const [moved] = groups.splice(evt.oldIndex, 1)
-      groups.splice(evt.newIndex, 0, moved)
+      // 以 DOM 实际卡片顺序为准
+      const orderedIds = Array.from(stack.querySelectorAll<HTMLElement>('.proxy-entry-card[data-entry-id]'))
+        .map((el) => Number(el.dataset.entryId))
+        .filter((id) => Number.isFinite(id))
+      const byId = new Map(entryGroups.value.map((group) => [group.entryId, group]))
+      const groups = orderedIds.map((id) => byId.get(id)).filter((group): group is ProxyEntryGroup => group != null)
+      if (groups.length !== entryGroups.value.length) return
       void persistEntryOrder(groups)
     },
   })
@@ -2949,10 +3468,11 @@ async function setupRowSortable() {
   if (canReorderGlobally.value) {
     const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
     if (!tbody) return
-    attachSortable(tbody, (oldIndex, newIndex) => {
-      const next = [...rules.value]
-      const [moved] = next.splice(oldIndex, 1)
-      next.splice(newIndex, 0, moved)
+    attachSortable(tbody, (orderedIds) => {
+      if (orderedIds.length !== rules.value.length) return
+      const byId = new Map(rules.value.map((rule) => [rule.id, rule]))
+      const next = orderedIds.map((id) => byId.get(id)).filter((rule): rule is ProxyRule => rule != null)
+      if (next.length !== rules.value.length) return
       void persistRuleOrder(next)
     })
     return
@@ -2967,10 +3487,12 @@ async function setupRowSortable() {
     ) as HTMLElement | null
     if (!body) continue
     const groupKey = group.key
-    attachSortable(body, (oldIndex, newIndex) => {
-      const nextGroupRules = [...(entryGroups.value.find((item) => item.key === groupKey)?.rules ?? [])]
-      const [moved] = nextGroupRules.splice(oldIndex, 1)
-      nextGroupRules.splice(newIndex, 0, moved)
+    attachSortable(body, (orderedIds) => {
+      const groupRules = entryGroups.value.find((item) => item.key === groupKey)?.rules ?? []
+      if (orderedIds.length !== groupRules.length) return
+      const byId = new Map(groupRules.map((rule) => [rule.id, rule]))
+      const nextGroupRules = orderedIds.map((id) => byId.get(id)).filter((rule): rule is ProxyRule => rule != null)
+      if (nextGroupRules.length !== groupRules.length) return
       void persistRuleOrder(mergeGroupOrder(groupKey, nextGroupRules))
     })
   }
@@ -2983,13 +3505,21 @@ watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, ()
 })
 
 watch(showModal, (open) => {
-  if (!open) {
+  if (open) {
+    void loadDdnsHostOptions()
+  } else {
     editing.value = null
     formEntryId.value = null
+    editingEntryId.value = null
+    formMode.value = 'rule'
   }
 })
 
 async function save() {
+  if (isEntryBatchEdit.value) {
+    await saveEntryFull()
+    return
+  }
   saving.value = true
   try {
     const payload = buildPayload()
@@ -3512,6 +4042,19 @@ onUnmounted(() => {
   padding: var(--fonu-space-4);
   background: var(--fonu-surface, #fff);
   border-radius: var(--fonu-radius-lg, 12px);
+}
+
+.entry-batch {
+  margin-top: var(--fonu-space-3, 12px);
+  padding-top: var(--fonu-space-3, 12px);
+  border-top: 1px dashed var(--fonu-border, rgba(128, 128, 128, 0.35));
+}
+
+.entry-batch__title {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+  margin-bottom: var(--fonu-space-2, 8px);
 }
 
 .proxy-entry-edit-modal__header {
@@ -4552,6 +5095,16 @@ onUnmounted(() => {
   margin-top: 10px;
 }
 
+.proxy-modal__help-ol--compact {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fonu-text-secondary);
+}
+
+.proxy-modal__help-ol--compact li + li {
+  margin-top: 6px;
+}
+
 .proxy-modal__help code {
   font-size: 12px;
   background: var(--fonu-surface);
@@ -4613,6 +5166,42 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.5;
+}
+
+.field-hint__link {
+  color: var(--fonu-primary);
+  text-decoration: none;
+}
+
+.field-hint__link:hover {
+  text-decoration: underline;
+}
+
+.hosts-select {
+  width: 100%;
+}
+
+.hosts-select :deep(.n-base-select-group-header) {
+  padding-top: 10px;
+  padding-bottom: 4px;
+}
+
+.hosts-select :deep(.ddns-host-group-label__task) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.hosts-select :deep(.ddns-host-group-label__dash) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.hosts-select :deep(.ddns-host-group-label__provider) {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fonu-text-muted);
 }
 
 .proxy-modal__pane :deep(.n-form-item .n-form-item-blank) {

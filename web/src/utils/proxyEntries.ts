@@ -99,13 +99,9 @@ export function ruleDisplayLabel(rule: ProxyRule): string {
   return rule.domain?.trim() ?? ''
 }
 
-function deriveGroupName(name: string, rules: ProxyRule[]): string {
-  const trimmed = name.trim()
-  if (trimmed) return trimmed
-  if (rules.length === 1) {
-    return ruleDisplayLabel(rules[0])
-  }
-  return ''
+function deriveGroupName(name: string, _rules: ProxyRule[]): string {
+  // 入口名称为空时不再借用规则名/域名，统一交给 entryGroupDisplayName 生成「端口 · 协议 · 协议栈」自动名
+  return name.trim()
 }
 
 function sortRulesByOrder(rules: ProxyRule[]): ProxyRule[] {

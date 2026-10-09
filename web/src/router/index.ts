@@ -33,6 +33,7 @@ const router = createRouter({
           component: DdnsView,
           meta: { title: 'DDNS', description: '自动同步公网 IP 到 DNS 解析' },
         },
+        { path: 'dnshe-domains', redirect: { name: 'ddns' } },
         {
           path: 'certificates',
           name: 'certificates',

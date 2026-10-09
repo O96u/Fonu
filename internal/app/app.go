@@ -21,6 +21,7 @@ import (
 	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/dnsherenew"
 	"github.com/fonu/fonu/internal/frp"
 	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/notify"
@@ -90,6 +91,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	notifySvc := notify.New(settingsStore, secretBox, logger)
 	proxySvc.SetNotify(notifySvc)
 	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)
+	dnsheRenewSvc := dnsherenew.NewService(settingsStore, secretBox, logger)
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, logger, notifySvc)
 	backupSvc := backup.New(cfg.DataDir)
 	discoverySvc := discovery.New()
@@ -114,6 +116,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		ChinaCIDR:  chinaCIDRSvc,
 		Backup:     backupSvc,
 		Discovery:  discoverySvc,
+		DNSHERenew: dnsheRenewSvc,
 		FRP:        frpMgr,
 		Traffic:    trafficCollector,
 		StaticFS:   staticFS,
@@ -163,6 +166,11 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 				return time.Duration(h) * time.Hour
 			},
 			Run: chinaCIDRSvc.Tick,
+		},
+		scheduler.Job{
+			Name:     "dnshe_renew",
+			Interval: 24 * time.Hour,
+			Run:      dnsheRenewSvc.Tick,
 		},
 	)
 	sched.Start(ctx)

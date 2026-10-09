@@ -6,7 +6,7 @@
     <template #actions>
       <n-button @click="openImport">导入证书</n-button>
       <n-button type="primary" @click="openApply">
-        <template #icon><n-icon :component="AddOutline" /></template>
+        <template #icon><n-icon :size="18"><CertApplyIcon /></n-icon></template>
         申请证书
       </n-button>
     </template>
@@ -105,7 +105,7 @@
           <div class="cert-empty-actions">
             <n-button @click="openImport">导入证书</n-button>
             <n-button type="primary" @click="openApply">
-              <template #icon><n-icon :component="AddOutline" /></template>
+              <template #icon><n-icon :size="18"><CertApplyIcon /></n-icon></template>
               申请证书
             </n-button>
           </div>
@@ -132,20 +132,27 @@
   <n-modal
     v-model:show="showApply"
     preset="card"
+    class="apply-cert-modal"
     :mask-closable="applyStep === 3 && applyFinished"
     :close-on-esc="applyStep !== 3 || applyFinished"
-    :style="{ width: applyStep === 3 ? 'min(720px, 96vw)' : 'min(640px, 92vw)' }"
+    :style="{ width: applyModalWidth }"
     :segmented="{ content: true, footer: 'soft' }"
-    :content-style="{ paddingTop: '8px' }"
+    :content-style="applyModalContentStyle"
     @after-leave="resetApplyWizard"
   >
     <template #header>
-      <div class="modal-header">
-        <div class="modal-header__title">申请证书</div>
-        <div class="modal-header__desc">通过 DNS-01 验证自动申请证书，证书归属于域名而非 DNS 服务商</div>
+      <div class="modal-header modal-header--with-icon">
+        <span class="modal-header__icon" aria-hidden="true">
+          <CertApplyIcon />
+        </span>
+        <div class="modal-header__text">
+          <div class="modal-header__title">申请证书</div>
+          <div class="modal-header__desc">通过 DNS-01 验证自动申请证书，证书归属于域名而非 DNS 服务商</div>
+        </div>
       </div>
     </template>
 
+    <div class="apply-modal-scroll">
     <div class="apply-steps">
       <div class="apply-step" :class="{ 'apply-step--active': applyStep === 1, 'apply-step--done': applyStep > 1 }">
         <span class="apply-step__dot">1</span>
@@ -188,7 +195,7 @@
           v-model:value="applyDomainsText"
           class="domains-input"
           type="textarea"
-          :rows="5"
+          :rows="3"
           placeholder="example.com&#10;*.example.com&#10;api.example.com"
           @update:value="syncCertNameFromDomains"
         />
@@ -207,17 +214,65 @@
             >
               <span class="ca-card__check" aria-hidden="true" />
               <div class="ca-card__logo">
-                <img v-if="caLogo(opt.value)" :src="caLogo(opt.value)" :alt="caCardTitle(opt.value)" />
+                <CustomAcmeCaIcon v-if="opt.value === 'custom'" />
+                <img
+                  v-else-if="caLogo(opt.value)"
+                  :src="caLogo(opt.value)"
+                  :alt="caCardTitle(opt.value)"
+                />
                 <span v-else class="ca-card__fallback">{{ caCardTitle(opt.value) }}</span>
               </div>
               <div class="ca-card__sub">{{ caCardSub(opt.value) }}</div>
             </button>
           </div>
-          <p v-if="applyCA === 'zerossl' && !zerosslReady" class="ca-hint ca-hint--warn">
-            使用 ZeroSSL 需在「设置」中配置 ACME EAB 凭据（或可用的 API Key）
+          <p v-if="applyCA === 'zerossl' && (!zerosslEabKid || !zerosslEabHmac)" class="ca-hint ca-hint--warn">
+            使用 ZeroSSL 需配置 EAB Kid 和 Hmac。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+            <span class="ca-hint__sep">·</span>
+            <a class="ca-hint__link" :href="ACME_APPLY_LINKS.zerossl.url" target="_blank" rel="noopener noreferrer">申请 EAB</a>
+          </p>
+          <p v-if="applyCA === 'google' && (!googleEabKid || !googleEabHmac)" class="ca-hint ca-hint--warn">
+            使用 Google Trust Services 需配置 EAB Kid 和 Hmac。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+            <span class="ca-hint__sep">·</span>
+            <a class="ca-hint__link" :href="ACME_APPLY_LINKS.google.url" target="_blank" rel="noopener noreferrer">申请说明</a>
+          </p>
+          <p v-if="applyCA === 'sslcom' && (!sslcomEabKid || !sslcomEabHmac)" class="ca-hint ca-hint--warn">
+            使用 SSL.com 需配置 EAB Kid 和 Hmac。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+            <span class="ca-hint__sep">·</span>
+            <a class="ca-hint__link" :href="ACME_APPLY_LINKS.sslcom.url" target="_blank" rel="noopener noreferrer">申请 EAB</a>
+          </p>
+          <p v-if="applyCA === 'freessl' && (!freesslEabKid || !freesslEabHmac)" class="ca-hint ca-hint--warn">
+            使用 FreeSSL 需配置 EAB Kid 和 Hmac。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+            <span class="ca-hint__sep">·</span>
+            <a class="ca-hint__link" :href="ACME_APPLY_LINKS.freessl.url" target="_blank" rel="noopener noreferrer">申请 EAB</a>
           </p>
           <p v-if="applyCA === 'buypass'" class="ca-hint">
             Buypass 不支持通配符，单张证书最多 5 个域名
+          </p>
+          <p v-if="applyCA === 'letsencrypt-staging'" class="ca-hint">
+            Let's Encrypt 测试环境（Staging），证书不受浏览器信任，仅用于联调验证流程
+          </p>
+          <p v-if="applyCA === 'buypass-test'" class="ca-hint">
+            Buypass 测试环境，证书不受浏览器信任，仅用于联调验证流程
+          </p>
+          <p v-if="applyCA === 'actalis' && (!actalisEabKid || !actalisEabHmac)" class="ca-hint ca-hint--warn">
+            使用 Actalis 需配置 EAB Kid 和 Hmac。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+            <span class="ca-hint__sep">·</span>
+            <a class="ca-hint__link" :href="ACME_APPLY_LINKS.actalis.url" target="_blank" rel="noopener noreferrer">申请 EAB</a>
+          </p>
+          <p v-if="applyCA === 'actalis'" class="ca-hint">
+            Actalis 免费套餐仅支持单域名，不支持通配符
+          </p>
+          <p v-if="applyCA === 'custom' && !customAcmeDirectoryUrl" class="ca-hint ca-hint--warn">
+            使用自定义 ACME 需填写 Directory URL。
+            <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">前往设置</router-link>
+          </p>
+          <p v-if="applyCA === 'custom'" class="ca-hint">
+            兼容任意 ACME v2 服务器；如需 EAB 账户绑定，可在「设置」中配置
           </p>
         </div>
       </n-form-item>
@@ -320,6 +375,7 @@
         :description="applyResult.error || '未知错误'"
         class="apply-result"
       />
+    </div>
     </div>
 
     <template #footer>
@@ -439,7 +495,6 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import {
-  AddOutline,
   AlertCircleOutline,
   CheckmarkCircleOutline,
   CloseCircleOutline,
@@ -455,12 +510,18 @@ import type {
   CertificateRecord,
   DDNSConfig,
 } from '../api/types'
+import CertApplyIcon from '../components/icons/CertApplyIcon.vue'
+import CustomAcmeCaIcon from '../components/icons/CustomAcmeCaIcon.vue'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
+import actalisLogo from '../assets/brand/ca/actalis.svg'
 import buypassLogo from '../assets/brand/ca/buypass.png'
+import freesslLogo from '../assets/brand/ca/freessl.svg'
+import googleLogo from '../assets/brand/ca/google.svg'
 import letsencryptLogo from '../assets/brand/ca/letsencrypt.png'
+import sslcomLogo from '../assets/brand/ca/sslcom.svg'
 import zerosslLogo from '../assets/brand/ca/zerossl.png'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
@@ -468,6 +529,7 @@ import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
+import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -484,14 +546,45 @@ const renewingDomain = ref('')
 const importing = ref(false)
 const showImport = ref(false)
 const showApply = ref(false)
+
+const applyModalWidth = computed(() => {
+  if (applyStep.value === 3) return 'min(720px, 96vw)'
+  if (applyStep.value === 1) return 'min(820px, 94vw)'
+  return 'min(640px, 92vw)'
+})
+
+const applyModalContentStyle = computed(() => ({
+  paddingTop: '4px',
+  paddingBottom: '4px',
+  maxHeight: 'min(70vh, 640px)',
+  overflowY: 'auto' as const,
+}))
 const caOptions = ref<CertificateCAOption[]>([])
 const applyCAOptions = [
   { value: 'letsencrypt', label: "Let's Encrypt" },
+  { value: 'letsencrypt-staging', label: "Let's Encrypt 测试" },
   { value: 'zerossl', label: 'ZeroSSL' },
   { value: 'buypass', label: 'Buypass' },
+  { value: 'buypass-test', label: 'Buypass 测试' },
+  { value: 'google', label: 'Google Trust Services' },
+  { value: 'sslcom', label: 'SSL.com' },
+  { value: 'freessl', label: 'FreeSSL / LiteSSL' },
+  { value: 'actalis', label: 'Actalis' },
+  { value: 'custom', label: '自定义 ACME' },
 ]
 const applyCA = ref('letsencrypt')
-const zerosslReady = ref(false)
+const zerosslApiKey = ref('')
+const zerosslEabKid = ref('')
+const zerosslEabHmac = ref('')
+const googleEabKid = ref('')
+const googleEabHmac = ref('')
+const sslcomEabKid = ref('')
+const sslcomEabHmac = ref('')
+const freesslEabKid = ref('')
+const freesslEabHmac = ref('')
+const actalisEabKid = ref('')
+const actalisEabHmac = ref('')
+const customAcmeDirectoryUrl = ref('')
 const applyEmail = ref('')
 const applyCertName = ref('')
 const applyDomainsText = ref('')
@@ -544,13 +637,24 @@ const caLogoMap: Record<string, string> = {
   'letsencrypt-staging': letsencryptLogo,
   zerossl: zerosslLogo,
   buypass: buypassLogo,
+  'buypass-test': buypassLogo,
+  google: googleLogo,
+  sslcom: sslcomLogo,
+  freessl: freesslLogo,
+  actalis: actalisLogo,
 }
 
 const caCardMeta: Record<string, { title: string; sub: string }> = {
   letsencrypt: { title: "Let's Encrypt", sub: '免费 · 自动续期' },
-  'letsencrypt-staging': { title: "Let's Encrypt 测试", sub: '仅用于验证流程' },
+  'letsencrypt-staging': { title: "Let's Encrypt 测试", sub: '测试环境 · 不进信任链' },
   zerossl: { title: 'ZeroSSL', sub: '免费 · 稳定' },
-  buypass: { title: 'Buypass', sub: '免费 · 备用' },
+  buypass: { title: 'Buypass', sub: '免费 · 不支持通配符' },
+  'buypass-test': { title: 'Buypass 测试', sub: '测试环境 · 不进信任链' },
+  google: { title: 'Google Trust', sub: '免费 · 大厂背书' },
+  sslcom: { title: 'SSL.com', sub: '免费 · 备用' },
+  freessl: { title: 'FreeSSL', sub: '免费 · 国内速度好' },
+  actalis: { title: 'Actalis', sub: '免费 · 单域名 · 90 天' },
+  custom: { title: '自定义 ACME', sub: '任意 ACME v2 服务器' },
 }
 
 function providerLabel(v: string) {
@@ -718,7 +822,12 @@ function renderIssuer(row: CertificateRecord) {
 function issuerTone(ca?: string) {
   if (ca === 'letsencrypt' || ca === 'letsencrypt-staging') return 'le'
   if (ca === 'zerossl') return 'zero'
-  if (ca === 'buypass') return 'buypass'
+  if (ca === 'buypass' || ca === 'buypass-test') return 'buypass'
+  if (ca === 'google') return 'google'
+  if (ca === 'sslcom') return 'sslcom'
+  if (ca === 'freessl') return 'freessl'
+  if (ca === 'actalis') return 'actalis'
+  if (ca === 'custom') return 'custom'
   if (ca === 'imported') return 'imported'
   return 'default'
 }
@@ -737,7 +846,7 @@ function validateApplyEmail() {
 }
 
 function validateApplyCA(domains: string[]) {
-  if (applyCA.value === 'buypass') {
+  if (applyCA.value === 'buypass' || applyCA.value === 'buypass-test') {
     if (domains.some((d) => d.startsWith('*.'))) {
       return 'Buypass 不支持通配符证书'
     }
@@ -745,8 +854,31 @@ function validateApplyCA(domains: string[]) {
       return 'Buypass 单张证书最多支持 5 个域名'
     }
   }
-  if (applyCA.value === 'zerossl' && !zerosslReady.value) {
-    return '请先在设置中配置 ZeroSSL ACME EAB 凭据'
+  if (applyCA.value === 'actalis') {
+    if (domains.some((d) => d.startsWith('*.'))) {
+      return 'Actalis 不支持通配符证书（免费套餐仅支持单域名）'
+    }
+    if (domains.length > 5) {
+      return 'Actalis 单张证书最多支持 5 个域名'
+    }
+    if (!actalisEabKid.value.trim() || !actalisEabHmac.value.trim()) {
+      return '请先在设置中配置 Actalis EAB Kid 和 Hmac（actalis.com 客户区获取）'
+    }
+  }
+  if (applyCA.value === 'custom' && !customAcmeDirectoryUrl.value.trim()) {
+    return '请先在设置中配置自定义 ACME Directory URL'
+  }
+  if (applyCA.value === 'zerossl' && (!zerosslEabKid.value.trim() || !zerosslEabHmac.value.trim())) {
+    return '请先在设置中配置 ZeroSSL EAB Kid 和 Hmac'
+  }
+  if (applyCA.value === 'google' && (!googleEabKid.value.trim() || !googleEabHmac.value.trim())) {
+    return '请先在设置中配置 Google Trust Services EAB Kid 和 Hmac'
+  }
+  if (applyCA.value === 'sslcom' && (!sslcomEabKid.value.trim() || !sslcomEabHmac.value.trim())) {
+    return '请先在设置中配置 SSL.com EAB Kid 和 Hmac'
+  }
+  if (applyCA.value === 'freessl' && (!freesslEabKid.value.trim() || !freesslEabHmac.value.trim())) {
+    return '请先在设置中配置 FreeSSL EAB Kid 和 Hmac'
   }
   return ''
 }
@@ -762,7 +894,7 @@ const columns: DataTableColumns<CertificateRecord> = [
     minWidth: 130,
     render: (row) =>
       h('div', { class: 'cert-name-cell' }, [
-        h('div', { class: 'cert-name-cell__title' }, certDisplayName(row.domain)),
+        h('div', { class: 'cert-name-cell__title' }, row.name?.trim() || certDisplayName(row.domain)),
         h('div', { class: 'cert-name-cell__sub' }, certSubtitle(row)),
       ]),
   },
@@ -824,6 +956,11 @@ const columns: DataTableColumns<CertificateRecord> = [
       const canDownload = row.status !== 'error' || !!row.expires_at
       return renderTableRowActions([
         {
+          label: '编辑',
+          show: row.acme_ca !== 'imported',
+          onClick: () => editCert(row),
+        },
+        {
           label: '续签',
           show: row.acme_ca !== 'imported',
           onClick: () => confirmRenew(row),
@@ -879,6 +1016,23 @@ function confirmRenew(row: CertificateRecord) {
       }
     },
   })
+}
+
+const editingCertDomain = ref('')
+
+function editCert(row: CertificateRecord) {
+  editingCertDomain.value = row.domain
+  applyCA.value = row.acme_ca || 'letsencrypt'
+  // 保留设置中的 ACME 邮箱，不清空
+  const domains = row.domains ?? [row.domain]
+  applyDomainsText.value = domains.join('\n')
+  applyCertName.value = row.name?.trim() || certDisplayName(row.domain)
+  applyStep.value = 1
+  applyError.value = ''
+  applyLogLines.value = []
+  applyResult.value = null
+  applyFinished.value = false
+  showApply.value = true
 }
 
 function confirmDelete(row: CertificateRecord) {
@@ -973,10 +1127,18 @@ async function loadCAOptions() {
   caOptions.value = options
   ddnsConfigs.value = ddns
   applyEmail.value = settings.acme_email ?? ''
-  zerosslReady.value = Boolean(
-    settings.zerossl_api_key?.trim()
-      || (settings.zerossl_eab_kid?.trim() && settings.zerossl_eab_hmac_key?.trim()),
-  )
+  zerosslApiKey.value = settings.zerossl_api_key ?? ''
+  zerosslEabKid.value = settings.zerossl_eab_kid ?? ''
+  zerosslEabHmac.value = settings.zerossl_eab_hmac_key ?? ''
+  googleEabKid.value = settings.google_eab_kid ?? ''
+  googleEabHmac.value = settings.google_eab_hmac ?? ''
+  sslcomEabKid.value = settings.sslcom_eab_kid ?? ''
+  sslcomEabHmac.value = settings.sslcom_eab_hmac ?? ''
+  freesslEabKid.value = settings.freessl_eab_kid ?? ''
+  freesslEabHmac.value = settings.freessl_eab_hmac ?? ''
+  actalisEabKid.value = settings.actalis_eab_kid ?? ''
+  actalisEabHmac.value = settings.actalis_eab_hmac ?? ''
+  customAcmeDirectoryUrl.value = settings.custom_acme_directory_url ?? ''
   const defaultCA = settings.acme_ca || 'letsencrypt'
   applyCA.value = applyCAOptions.some((o) => o.value === defaultCA) ? defaultCA : 'letsencrypt'
 }
@@ -1097,6 +1259,7 @@ async function submitApply() {
       domains,
       ca: applyCA.value,
       email: applyEmail.value.trim(),
+      name: applyCertName.value.trim(),
     })
     applyStep.value = 3
     resetApplyProgress()
@@ -1400,6 +1563,11 @@ html.dark .apply-log-box {
 .cert-table :deep(.issuer-badge--le) { background: rgba(16, 185, 129, 0.15); color: #059669; }
 .cert-table :deep(.issuer-badge--zero) { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
 .cert-table :deep(.issuer-badge--buypass) { background: rgba(37, 99, 235, 0.15); color: #1d4ed8; }
+.cert-table :deep(.issuer-badge--google) { background: rgba(66, 133, 244, 0.15); color: #4285f4; }
+.cert-table :deep(.issuer-badge--sslcom) { background: rgba(234, 88, 12, 0.15); color: #ea580c; }
+.cert-table :deep(.issuer-badge--freessl) { background: rgba(16, 185, 129, 0.15); color: #059669; }
+.cert-table :deep(.issuer-badge--actalis) { background: rgba(0, 90, 156, 0.15); color: #005a9c; }
+.cert-table :deep(.issuer-badge--custom) { background: rgba(107, 114, 128, 0.15); color: #4b5563; }
 .cert-table :deep(.issuer-badge--imported) { background: rgba(100, 116, 139, 0.15); color: #64748b; }
 .cert-table :deep(.issuer-badge--default) { background: var(--fonu-bg); color: var(--fonu-text-secondary); }
 
@@ -1547,11 +1715,55 @@ html.dark .apply-log-box {
   color: #d97706;
 }
 
+.ca-hint__link {
+  font-weight: 500;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ca-hint--warn .ca-hint__link {
+  color: #b45309;
+}
+
+.ca-hint__sep {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+
+.modal-header--with-icon {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.modal-header__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(145deg, #34d399, #059669);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
+  font-size: 22px;
+}
+
+.modal-header__text {
+  min-width: 0;
+}
+
+.apply-cert-modal .cert-form :deep(.n-form-item) {
+  margin-bottom: 14px;
+}
+
 .apply-steps {
   display: flex;
   align-items: center;
   gap: 0;
-  margin-bottom: var(--fonu-space-5);
+  margin-bottom: var(--fonu-space-4);
   padding: 0 4px;
 }
 
@@ -1606,8 +1818,8 @@ html.dark .apply-log-box {
 
 .ca-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
   width: 100%;
 }
 
@@ -1616,8 +1828,8 @@ html.dark .apply-log-box {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 10px 10px 12px;
+  gap: 6px;
+  padding: 8px 6px 10px;
   border: 1px solid var(--fonu-border);
   border-radius: 12px;
   background: var(--fonu-surface);
@@ -1637,10 +1849,10 @@ html.dark .apply-log-box {
 
 .ca-card__check {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
+  top: 6px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   border: 2px solid #d1d5db;
   background: #fff;
@@ -1655,10 +1867,10 @@ html.dark .apply-log-box {
 .ca-card--active .ca-card__check::after {
   content: '';
   position: absolute;
-  left: 5px;
-  top: 2px;
-  width: 5px;
-  height: 9px;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
   border: solid #fff;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
@@ -1669,10 +1881,9 @@ html.dark .apply-log-box {
   align-items: center;
   justify-content: center;
   width: 100%;
-  aspect-ratio: 1;
-  max-height: 108px;
-  padding: 8px;
-  border-radius: 10px;
+  height: 44px;
+  padding: 4px 6px;
+  border-radius: 8px;
   background-color: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   overflow: hidden;
@@ -1681,6 +1892,7 @@ html.dark .apply-log-box {
 .ca-card__logo img {
   width: 100%;
   height: 100%;
+  max-height: 40px;
   object-fit: contain;
   display: block;
 }
@@ -1693,9 +1905,13 @@ html.dark .apply-log-box {
 
 .ca-card__sub {
   width: 100%;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 10px;
+  line-height: 1.35;
   color: var(--fonu-text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .apply-auto-renew {
@@ -1703,8 +1919,8 @@ html.dark .apply-log-box {
   align-items: center;
   justify-content: space-between;
   gap: var(--fonu-space-4);
-  padding: 14px 16px;
-  margin-top: 4px;
+  padding: 10px 14px;
+  margin-top: 2px;
   border: 1px solid var(--fonu-border);
   border-radius: 12px;
   background: var(--fonu-bg);
@@ -1873,12 +2089,13 @@ html.dark .apply-log-box {
 
 @media (max-width: 1199px) {
   .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ca-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: 1fr; }
   .cert-toolbar__filter { width: 100%; }
-  .ca-cards { grid-template-columns: 1fr; }
+  .ca-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cert-table :deep(.n-data-table-base-table) {
     min-width: 900px;
   }

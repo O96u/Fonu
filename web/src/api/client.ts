@@ -26,6 +26,12 @@ import type {
   SettingsMap,
   SystemLogEntry,
   NotifyTestPayload,
+  DNSHEAccount,
+  DNSHEAccountPayload,
+  DNSHEDomain,
+  DNSHEGift,
+  DNSHERegisterResult,
+  DNSHERenewResult,
 } from './types'
 
 export function asList<T>(value: T[] | null | undefined): T[] {
@@ -112,6 +118,8 @@ export const api = {
   updateProxyEntry: (id: number, payload: Partial<ProxyEntrySavePayload>) =>
     request<ProxyEntry>(`/api/proxy-entries/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProxyEntry: (id: number) => request<void>(`/api/proxy-entries/${id}`, { method: 'DELETE' }),
+  cloneProxyEntry: (id: number, payload: ProxyEntrySavePayload) =>
+    request<ProxyEntry>(`/api/proxy-entries/${id}/clone`, { method: 'POST', body: JSON.stringify(payload) }),
   reorderProxyEntries: (ids: number[]) =>
     request<void>('/api/proxy-entries/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   createProxy: (payload: ProxySavePayload) =>
@@ -147,6 +155,82 @@ export const api = {
   updateAllDDNS: () => request<DDNSConfig[]>('/api/ddns/update', { method: 'POST' }),
   updateDDNSOne: (id: number) => request<DDNSConfig>(`/api/ddns/${id}/update`, { method: 'POST' }),
 
+  // ---- DNSHE 多账户 ----
+  revealDNSHECredentials: (accountId: string) =>
+    request<{ api_key: string; api_secret: string }>(
+      `/api/dnshe/accounts/${accountId}/credentials`,
+    ),
+  pushDNSHEToDDNS: (accountId: string) =>
+    request<{ created: string[]; skipped: string[]; message: string }>(
+      `/api/dnshe/accounts/${accountId}/push-to-ddns`,
+      { method: 'POST' },
+    ),
+  listDNSHEAccounts: () => request<DNSHEAccount[]>('/api/dnshe/accounts'),
+  createDNSHEAccount: (payload: DNSHEAccountPayload) =>
+    request<DNSHEAccount>('/api/dnshe/accounts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateDNSHEAccount: (id: string, payload: DNSHEAccountPayload) =>
+    request<DNSHEAccount>(`/api/dnshe/accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteDNSHEAccount: (id: string) =>
+    request<{ message: string }>(`/api/dnshe/accounts/${id}`, { method: 'DELETE' }),
+  reorderDNSHEAccounts: (ids: string[]) =>
+    request<{ message: string }>('/api/dnshe/accounts/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ ids }),
+    }),
+  listDNSHEDomains: (accountId: string) =>
+    request<DNSHEDomain[]>(`/api/dnshe/accounts/${accountId}/domains`),
+  renewDNSHEDomain: (accountId: string, id: number) =>
+    request<DNSHERenewResult>(
+      `/api/dnshe/accounts/${accountId}/domains/${id}/renew`,
+      { method: 'POST' },
+    ),
+  deleteDNSHEDomain: (accountId: string, id: number) =>
+    request<{ message: string }>(
+      `/api/dnshe/accounts/${accountId}/domains/${id}/delete`,
+      { method: 'POST' },
+    ),
+  reorderDNSHEDomains: (accountId: string, ids: number[]) =>
+    request<{ message: string }>(
+      `/api/dnshe/accounts/${accountId}/domains/reorder`,
+      { method: 'PUT', body: JSON.stringify({ ids }) },
+    ),
+  registerDNSHEDomain: (
+    accountId: string,
+    payload: { subdomain: string; domain: string },
+  ) =>
+    request<DNSHERegisterResult>(
+      `/api/dnshe/accounts/${accountId}/domains/register`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  setDNSHEDomainAutoRenew: (full_domain: string, enabled: boolean) =>
+    request<{ message: string }>('/api/dnshe/domains/auto-renew', {
+      method: 'PUT',
+      body: JSON.stringify({ full_domain, enabled }),
+    }),
+  listDNSHEGifts: (accountId: string) =>
+    request<DNSHEGift[]>(`/api/dnshe/accounts/${accountId}/gifts`),
+  initiateDNSHEGift: (accountId: string, subdomain_id: number) =>
+    request<DNSHEGift>(`/api/dnshe/accounts/${accountId}/gifts`, {
+      method: 'POST',
+      body: JSON.stringify({ subdomain_id }),
+    }),
+  acceptDNSHEGift: (accountId: string, code: string) =>
+    request<DNSHEGift>(`/api/dnshe/accounts/${accountId}/gifts/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  cancelDNSHEGift: (accountId: string, giftId: number) =>
+    request<{ message: string }>(
+      `/api/dnshe/accounts/${accountId}/gifts/${giftId}/cancel`,
+      { method: 'POST' },
+    ),
+
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
   applyCertificate: (payload: {
@@ -155,6 +239,7 @@ export const api = {
     domains: string[]
     ca?: string
     email?: string
+    name?: string
   }) =>
     request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
@@ -164,6 +249,7 @@ export const api = {
         domains: payload.domains,
         ca: payload.ca ?? '',
         email: payload.email ?? '',
+        name: payload.name ?? '',
       }),
     }),
   certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,

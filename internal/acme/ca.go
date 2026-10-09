@@ -12,11 +12,22 @@ const (
 	CALetsEncryptStaging = "letsencrypt-staging"
 	CAZeroSSL            = "zerossl"
 	CABuypass            = "buypass"
+	CABuypassTest        = "buypass-test"
+	CAGoogle             = "google"
+	CASSLcom             = "sslcom"
+	CAFreeSSL            = "freessl"
+	CAActalis            = "actalis"
+	CACustom             = "custom"
 )
 
 const (
-	zeroSSLDirectoryURL = "https://acme.zerossl.com/v2/DV90"
-	buypassDirectoryURL = "https://api.buypass.com/acme/directory"
+	zeroSSLDirectoryURL    = "https://acme.zerossl.com/v2/DV90"
+	buypassDirectoryURL    = "https://api.buypass.com/acme/directory"
+	buypassTestDirectoryURL = "https://api.test4.buypass.no/acme/directory"
+	googleDirectoryURL     = "https://dv.acme-v02.api.pki.goog/directory"
+	sslcomDirectoryURL     = "https://acme.ssl.com/sslcom-dv-ecc"
+	freesslDirectoryURL    = "https://acme.freessl.cn/v2/DV90/directory"
+	actalisDirectoryURL    = "https://acme-api.actalis.com/acme/directory"
 )
 
 func NormalizeCA(ca string) string {
@@ -29,6 +40,18 @@ func NormalizeCA(ca string) string {
 		return CAZeroSSL
 	case CABuypass, "buypass-go":
 		return CABuypass
+	case CABuypassTest, "buypass-test4", "buypass_test":
+		return CABuypassTest
+	case CAGoogle, "googletrust", "google-trust", "gts":
+		return CAGoogle
+	case CASSLcom, "ssl.com":
+		return CASSLcom
+	case CAFreeSSL, "litessl", "freessl.cn":
+		return CAFreeSSL
+	case CAActalis, "actalis.com":
+		return CAActalis
+	case CACustom, "custom-acme", "other":
+		return CACustom
 	default:
 		return ca
 	}
@@ -44,6 +67,19 @@ func DirectoryURL(ca string) (string, error) {
 		return zeroSSLDirectoryURL, nil
 	case CABuypass:
 		return buypassDirectoryURL, nil
+	case CABuypassTest:
+		return buypassTestDirectoryURL, nil
+	case CAGoogle:
+		return googleDirectoryURL, nil
+	case CASSLcom:
+		return sslcomDirectoryURL, nil
+	case CAFreeSSL:
+		return freesslDirectoryURL, nil
+	case CAActalis:
+		return actalisDirectoryURL, nil
+	case CACustom:
+		// 自定义 ACME 的 Directory URL 在申请时从设置读取
+		return "", nil
 	default:
 		return "", fmt.Errorf("不支持的颁发机构：%s", ca)
 	}
@@ -59,6 +95,18 @@ func CALabel(ca string) string {
 		return "ZeroSSL"
 	case CABuypass:
 		return "Buypass"
+	case CABuypassTest:
+		return "Buypass 测试"
+	case CAGoogle:
+		return "Google Trust Services"
+	case CASSLcom:
+		return "SSL.com"
+	case CAFreeSSL:
+		return "FreeSSL / LiteSSL"
+	case CAActalis:
+		return "Actalis"
+	case CACustom:
+		return "自定义 ACME"
 	default:
 		if ca == "" {
 			return "手动导入"
@@ -74,13 +122,22 @@ func ValidateCA(ca string) error {
 
 func ValidateCADomains(ca string, domains []string) error {
 	switch NormalizeCA(ca) {
-	case CABuypass:
+	case CABuypass, CABuypassTest:
 		if len(domains) > 5 {
 			return fmt.Errorf("Buypass 单张证书最多支持 5 个域名")
 		}
 		for _, domain := range domains {
 			if strings.HasPrefix(domain, "*.") {
 				return fmt.Errorf("Buypass 不支持通配符证书")
+			}
+		}
+	case CAActalis:
+		if len(domains) > 5 {
+			return fmt.Errorf("Actalis 单张证书最多支持 5 个域名")
+		}
+		for _, domain := range domains {
+			if strings.HasPrefix(domain, "*.") {
+				return fmt.Errorf("Actalis 不支持通配符证书（免费套餐仅支持单域名）")
 			}
 		}
 	}

@@ -189,6 +189,7 @@ export interface DDNSConfig {
   root_domain: string
   record_name: string
   record_names?: string[]
+  remark?: string
   ipv4_enabled: boolean
   ipv6_enabled: boolean
   enabled: boolean
@@ -226,6 +227,7 @@ export interface CertificateJobEvent {
 export interface CertificateRecord {
   id: number
   domain: string
+  name?: string
   domains?: string[]
   wildcard: boolean
   acme_ca?: string
@@ -307,6 +309,59 @@ export interface NotifyTestPayload {
 
 export type SettingsMap = Record<string, string>
 
+export interface DNSHEAccount {
+  id: string
+  name: string
+  auto_renew: boolean
+  last_run_at?: string
+  last_run_info?: string
+  next_check_at?: string
+}
+
+export interface DNSHEAccountPayload {
+  name?: string
+  api_key?: string
+  api_secret?: string
+  auto_renew: boolean
+}
+
+export interface DNSHEDomain {
+  id: number
+  full_domain: string
+  status: string
+  created_at?: string
+  expires_at?: string
+  never_expires: boolean
+  renewable: boolean
+  auto_renew: boolean
+  days_left?: number | null
+}
+
+export interface DNSHEGift {
+  id: number
+  code: string
+  full_domain: string
+  status: string // pending / accepted / cancelled / expired
+  from_userid: number
+  to_userid: number
+  expires_at?: string
+  created_at?: string
+}
+
+export interface DNSHERegisterResult {
+  subdomain_id: number
+  full_domain: string
+}
+
+export interface DNSHERenewResult {
+  full_domain: string
+  previous_expires_at?: string
+  new_expires_at?: string
+  never_expires: boolean
+  status?: string
+  remaining_days?: number
+}
+
 export interface DiscoveredService {
   name: string
   port: number
@@ -330,6 +385,7 @@ export interface DDNSSavePayload {
   api_token?: string
   api_token_id?: string
   api_secret?: string
+  remark?: string
 }
 
 export interface DDNSTestPayload {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/config"
@@ -75,6 +76,50 @@ func (s *ProxyService) DeleteEntry(ctx context.Context, id int64) error {
 		return fmt.Errorf("入口已删除，但 Nginx 重载失败：%w", err)
 	}
 	return nil
+}
+
+func (s *ProxyService) CloneEntry(ctx context.Context, sourceID int64, in proxy.EntryCloneInput) (proxy.Entry, int, error) {
+	all, err := s.store.List(ctx)
+	if err != nil {
+		return proxy.Entry{}, 0, err
+	}
+	hostnames := make([]string, 0)
+	for _, rule := range all {
+		if rule.EntryID == nil || *rule.EntryID != sourceID {
+			continue
+		}
+		for _, host := range rule.Hosts {
+			hostnames = append(hostnames, host.Hostname)
+		}
+	}
+	if in.HTTPSEnabled {
+		if err := s.validateHTTPSInput(ctx, hostnames, true); err != nil {
+			return proxy.Entry{}, 0, err
+		}
+	}
+
+	entry, idMap, err := s.store.CloneEntry(ctx, sourceID, in)
+	if err != nil {
+		return proxy.Entry{}, 0, err
+	}
+
+	for oldID, newID := range idMap {
+		content, err := nginx.ReadRuleCustom(s.cfg, oldID)
+		if err != nil {
+			return entry, len(idMap), fmt.Errorf("入口已复制，但读取自定义 Nginx 配置失败：%w", err)
+		}
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		if err := nginx.WriteRuleCustom(s.cfg, newID, content); err != nil {
+			return entry, len(idMap), fmt.Errorf("入口已复制，但写入自定义 Nginx 配置失败：%w", err)
+		}
+	}
+
+	if err := s.applyNginx(ctx); err != nil {
+		return entry, len(idMap), fmt.Errorf("入口已复制，但 Nginx 重载失败：%w", err)
+	}
+	return entry, len(idMap), nil
 }
 
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {

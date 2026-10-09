@@ -11,6 +11,7 @@ import (
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/ddns"
 	"github.com/fonu/fonu/internal/discovery"
+	"github.com/fonu/fonu/internal/dnsherenew"
 	"github.com/fonu/fonu/internal/frp"
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/service"
@@ -29,6 +30,7 @@ type Deps struct {
 	ChinaCIDR  *chinacidr.Service
 	Backup     *backup.Service
 	Discovery  *discovery.Service
+	DNSHERenew *dnsherenew.Service
 	FRP        *frp.Manager
 	Traffic    *traffic.Collector
 	Notify     *notify.Service
