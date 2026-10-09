@@ -31,6 +31,12 @@ func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 		{"value": acme.CALetsEncrypt, "label": acme.CALabel(acme.CALetsEncrypt)},
 		{"value": acme.CAZeroSSL, "label": acme.CALabel(acme.CAZeroSSL)},
 		{"value": acme.CABuypass, "label": acme.CALabel(acme.CABuypass)},
+		{"value": acme.CABuypassTest, "label": acme.CALabel(acme.CABuypassTest)},
+		{"value": acme.CAGoogle, "label": acme.CALabel(acme.CAGoogle)},
+		{"value": acme.CASSLcom, "label": acme.CALabel(acme.CASSLcom)},
+		{"value": acme.CAFreeSSL, "label": acme.CALabel(acme.CAFreeSSL)},
+		{"value": acme.CAActalis, "label": acme.CALabel(acme.CAActalis)},
+		{"value": acme.CACustom, "label": acme.CALabel(acme.CACustom)},
 		{"value": acme.CALetsEncryptStaging, "label": acme.CALabel(acme.CALetsEncryptStaging)},
 	})
 }

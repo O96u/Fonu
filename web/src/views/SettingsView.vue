@@ -73,27 +73,89 @@
           </div>
           <ConfiguredSecretField
             v-model="zerosslEabKid"
-            label="ZeroSSL EAB KID"
-            :configured="zerosslHasEabKid"
-            placeholder="ACME 外部账户绑定 KID"
+            label="ZeroSSL EAB Kid"
+            :configured="zerosslEabKidHasKey"
+            placeholder="app.zerossl.com/developer → EAB"
           />
           <ConfiguredSecretField
             v-model="zerosslEabHmac"
-            label="ZeroSSL EAB HMAC Key"
-            :configured="zerosslHasEabHmac"
-            placeholder="与 KID 成对使用"
+            label="ZeroSSL EAB Hmac"
+            :configured="zerosslEabHmacHasKey"
+            placeholder="与 Kid 配对"
           />
-          <p class="field-hint zerossl-key-hint">
-            申请 ZeroSSL 证书时必填：在
-            <a href="https://app.zerossl.com/developer" target="_blank" rel="noopener noreferrer">ZeroSSL 开发者页面</a>
-            生成 ACME EAB 凭据并填入上方两项（可长期使用）。API Key 仅用于自动拉取 EAB，部分账户可能不可用。
-          </p>
+          <p class="field-hint zerossl-key-hint">申请 ZeroSSL 证书时必填，在 ZeroSSL 控制台 Developer 页面获取 EAB 凭证</p>
           <ConfiguredSecretField
-            v-model="zerosslApiKey"
-            label="ZeroSSL API Key（可选）"
-            :configured="zerosslHasKey"
-            placeholder="未填写 EAB 时可尝试用 API Key 自动获取"
+            v-model="googleEabKid"
+            label="Google Trust Services EAB Kid"
+            :configured="googleEabKidHasKey"
+            placeholder="Google Cloud Console → Certificate Manager → EAB"
           />
+          <ConfiguredSecretField
+            v-model="googleEabHmac"
+            label="Google Trust Services EAB Hmac"
+            :configured="googleEabHmacHasKey"
+            placeholder="与 Kid 配对"
+          />
+          <ConfiguredSecretField
+            v-model="sslcomEabKid"
+            label="SSL.com EAB Kid"
+            :configured="sslcomEabKidHasKey"
+            placeholder="SSL.com 控制台 → ACME → EAB"
+          />
+          <ConfiguredSecretField
+            v-model="sslcomEabHmac"
+            label="SSL.com EAB Hmac"
+            :configured="sslcomEabHmacHasKey"
+            placeholder="与 Kid 配对"
+          />
+          <ConfiguredSecretField
+            v-model="freesslEabKid"
+            label="FreeSSL EAB Kid"
+            :configured="freesslEabKidHasKey"
+            placeholder="freessl.cn → 证书自动化 → ACME 管理"
+          />
+          <ConfiguredSecretField
+            v-model="freesslEabHmac"
+            label="FreeSSL EAB Hmac"
+            :configured="freesslEabHmacHasKey"
+            placeholder="与 Kid 配对"
+          />
+          <div class="settings-field">
+            <div class="settings-field__label">FreeSSL ACME 地址（可选）</div>
+            <n-input v-model:value="freesslDirectoryUrl" placeholder="留空使用默认 https://acme.freessl.cn/v2/DV90/directory" />
+            <p class="field-hint">如果 FreeSSL 分配了专属 ACME 地址（含路径），粘贴到此处</p>
+          </div>
+          <ConfiguredSecretField
+            v-model="actalisEabKid"
+            label="Actalis EAB Kid"
+            :configured="actalisEabKidHasKey"
+            placeholder="actalis.com 客户区 → Manage with ACME → ACME Credentials"
+          />
+          <ConfiguredSecretField
+            v-model="actalisEabHmac"
+            label="Actalis EAB Hmac"
+            :configured="actalisEabHmacHasKey"
+            placeholder="与 Kid 配对"
+          />
+          <p class="field-hint">申请 Actalis 证书时必填；Actalis 免费套餐为单域名 90 天证书，不支持通配符</p>
+          <div class="settings-field">
+            <div class="settings-field__label">自定义 ACME Directory URL</div>
+            <n-input v-model:value="customAcmeDirectoryUrl" placeholder="https://acme.example.com/directory" />
+            <p class="field-hint">任意 ACME v2 服务器（内网 step-ca、Vault、EJBCA 或其他新 CA），申请时选择「自定义 ACME」</p>
+          </div>
+          <ConfiguredSecretField
+            v-model="customAcmeEabKid"
+            label="自定义 ACME EAB Kid（可选）"
+            :configured="customAcmeEabKidHasKey"
+            placeholder="服务器要求 EAB 时填写"
+          />
+          <ConfiguredSecretField
+            v-model="customAcmeEabHmac"
+            label="自定义 ACME EAB Hmac（可选）"
+            :configured="customAcmeEabHmacHasKey"
+            placeholder="与 Kid 配对"
+          />
+          <p class="field-hint">提示：同一 Fonu 实例内多组域名证书可共用同一组 EAB 凭据；多个 Fonu 实例之间不可共用同一组 EAB 凭据</p>
         </div>
       </FonuCard>
 
@@ -667,9 +729,31 @@ const acmeEmail = ref('')
 const zerosslApiKey = ref('')
 const zerosslHasKey = ref(false)
 const zerosslEabKid = ref('')
-const zerosslHasEabKid = ref(false)
+const zerosslEabKidHasKey = ref(false)
 const zerosslEabHmac = ref('')
-const zerosslHasEabHmac = ref(false)
+const zerosslEabHmacHasKey = ref(false)
+const googleEabKid = ref('')
+const googleEabKidHasKey = ref(false)
+const googleEabHmac = ref('')
+const googleEabHmacHasKey = ref(false)
+const sslcomEabKid = ref('')
+const sslcomEabKidHasKey = ref(false)
+const sslcomEabHmac = ref('')
+const sslcomEabHmacHasKey = ref(false)
+const freesslEabKid = ref('')
+const freesslEabKidHasKey = ref(false)
+const freesslEabHmac = ref('')
+const freesslEabHmacHasKey = ref(false)
+const freesslDirectoryUrl = ref('')
+const actalisEabKid = ref('')
+const actalisEabKidHasKey = ref(false)
+const actalisEabHmac = ref('')
+const actalisEabHmacHasKey = ref(false)
+const customAcmeDirectoryUrl = ref('')
+const customAcmeEabKid = ref('')
+const customAcmeEabKidHasKey = ref(false)
+const customAcmeEabHmac = ref('')
+const customAcmeEabHmacHasKey = ref(false)
 const trustedProxyEnabled = ref(false)
 const trustedProxyPreset = ref('cloudflare')
 const trustedProxyCIDRs = ref('')
@@ -751,10 +835,32 @@ function applySettingsToForm(settings: Record<string, string>) {
   acmeEmail.value = settings.acme_email ?? ''
   zerosslHasKey.value = Boolean(settings.zerossl_api_key?.trim())
   zerosslApiKey.value = ''
-  zerosslHasEabKid.value = Boolean(settings.zerossl_eab_kid?.trim())
+  zerosslEabKidHasKey.value = Boolean(settings.zerossl_eab_kid?.trim())
   zerosslEabKid.value = ''
-  zerosslHasEabHmac.value = Boolean(settings.zerossl_eab_hmac_key?.trim())
+  zerosslEabHmacHasKey.value = Boolean(settings.zerossl_eab_hmac_key?.trim())
   zerosslEabHmac.value = ''
+  googleEabKidHasKey.value = Boolean(settings.google_eab_kid?.trim())
+  googleEabKid.value = ''
+  googleEabHmacHasKey.value = Boolean(settings.google_eab_hmac?.trim())
+  googleEabHmac.value = ''
+  sslcomEabKidHasKey.value = Boolean(settings.sslcom_eab_kid?.trim())
+  sslcomEabKid.value = ''
+  sslcomEabHmacHasKey.value = Boolean(settings.sslcom_eab_hmac?.trim())
+  sslcomEabHmac.value = ''
+  freesslEabKidHasKey.value = Boolean(settings.freessl_eab_kid?.trim())
+  freesslEabKid.value = ''
+  freesslEabHmacHasKey.value = Boolean(settings.freessl_eab_hmac?.trim())
+  freesslEabHmac.value = ''
+  freesslDirectoryUrl.value = settings.freessl_directory_url ?? ''
+  actalisEabKidHasKey.value = Boolean(settings.actalis_eab_kid?.trim())
+  actalisEabKid.value = ''
+  actalisEabHmacHasKey.value = Boolean(settings.actalis_eab_hmac?.trim())
+  actalisEabHmac.value = ''
+  customAcmeDirectoryUrl.value = settings.custom_acme_directory_url ?? ''
+  customAcmeEabKidHasKey.value = Boolean(settings.custom_acme_eab_kid?.trim())
+  customAcmeEabKid.value = ''
+  customAcmeEabHmacHasKey.value = Boolean(settings.custom_acme_eab_hmac?.trim())
+  customAcmeEabHmac.value = ''
   chinaCIDRHours.value = Number(settings.china_cidr_update_interval_hours ?? 24)
   try {
     const tp = JSON.parse(settings.trusted_proxy_json || '{}') as {
@@ -1149,17 +1255,61 @@ function buildSavePayload() {
   if (notifyType.value === 'webhook' && notifyWebhook.provider === 'custom') {
     payload.notify_webhook_url = notifyWebhook.url.trim()
   }
-  const zerosslKey = zerosslApiKey.value.trim()
-  if (zerosslKey) {
-    payload.zerossl_api_key = zerosslKey
+  const zKid = zerosslEabKid.value.trim()
+  if (zKid) {
+    payload.zerossl_eab_kid = zKid
   }
-  const eabKid = zerosslEabKid.value.trim()
-  if (eabKid) {
-    payload.zerossl_eab_kid = eabKid
+  const zHmac = zerosslEabHmac.value.trim()
+  if (zHmac) {
+    payload.zerossl_eab_hmac_key = zHmac
   }
-  const eabHmac = zerosslEabHmac.value.trim()
-  if (eabHmac) {
-    payload.zerossl_eab_hmac_key = eabHmac
+  const gKid = googleEabKid.value.trim()
+  if (gKid) {
+    payload.google_eab_kid = gKid
+  }
+  const gHmac = googleEabHmac.value.trim()
+  if (gHmac) {
+    payload.google_eab_hmac = gHmac
+  }
+  const sKid = sslcomEabKid.value.trim()
+  if (sKid) {
+    payload.sslcom_eab_kid = sKid
+  }
+  const sHmac = sslcomEabHmac.value.trim()
+  if (sHmac) {
+    payload.sslcom_eab_hmac = sHmac
+  }
+  const fKid = freesslEabKid.value.trim()
+  if (fKid) {
+    payload.freessl_eab_kid = fKid
+  }
+  const fHmac = freesslEabHmac.value.trim()
+  if (fHmac) {
+    payload.freessl_eab_hmac = fHmac
+  }
+  const fDir = freesslDirectoryUrl.value.trim().replace(/`/g, '')
+  if (fDir) {
+    payload.freessl_directory_url = fDir
+  }
+  const aKid = actalisEabKid.value.trim()
+  if (aKid) {
+    payload.actalis_eab_kid = aKid
+  }
+  const aHmac = actalisEabHmac.value.trim()
+  if (aHmac) {
+    payload.actalis_eab_hmac = aHmac
+  }
+  const cDir = customAcmeDirectoryUrl.value.trim().replace(/`/g, '')
+  if (cDir) {
+    payload.custom_acme_directory_url = cDir
+  }
+  const cKid = customAcmeEabKid.value.trim()
+  if (cKid) {
+    payload.custom_acme_eab_kid = cKid
+  }
+  const cHmac = customAcmeEabHmac.value.trim()
+  if (cHmac) {
+    payload.custom_acme_eab_hmac = cHmac
   }
   return payload
 }
