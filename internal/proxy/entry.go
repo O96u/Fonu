@@ -191,7 +191,7 @@ func (s *Store) UpdateEntry(ctx context.Context, id int64, in EntryUpdateInput) 
 		return Entry{}, err
 	}
 
-	if err := s.syncRulesFromEntry(ctx, id, listenPort, listenIPv4, listenIPv6, httpsEnabled, httpRedirect); err != nil {
+	if err := s.syncRulesFromEntry(ctx, id, current.ListenPort, listenPort, listenIPv4, listenIPv6, httpsEnabled, httpRedirect); err != nil {
 		return Entry{}, err
 	}
 	return s.GetEntry(ctx, id)
@@ -461,13 +461,42 @@ func (s *Store) findOrCreateEntryForListen(ctx context.Context, listenPort int, 
 	return &entry.ID, nil
 }
 
-func (s *Store) syncRulesFromEntry(ctx context.Context, entryID int64, listenPort int, listenIPv4, listenIPv6, httpsEnabled, httpRedirect bool) error {
+// hostFollowsEntryListenPort reports whether this host binding uses the entry/rule
+// listen port (plain hostname). Bindings like "app.example.com:6893" keep their port.
+func hostFollowsEntryListenPort(host Host) bool {
+	_, explicitPort, err := validate.FrontendAddress(strings.TrimSpace(host.Hostname))
+	return err != nil || explicitPort <= 0
+}
+
+func (s *Store) syncRulesFromEntry(ctx context.Context, entryID int64, oldListenPort, newListenPort int, listenIPv4, listenIPv6, httpsEnabled, httpRedirect bool) error {
+	if oldListenPort != newListenPort {
+		ruleIDs, err := s.RuleIDsByEntry(ctx, entryID)
+		if err != nil {
+			return err
+		}
+		for _, ruleID := range ruleIDs {
+			rule, err := s.Get(ctx, ruleID)
+			if err != nil {
+				return err
+			}
+			for _, host := range rule.Hosts {
+				if !hostFollowsEntryListenPort(host) {
+					continue
+				}
+				if _, err := s.querier().ExecContext(ctx, `
+					UPDATE proxy_hosts SET listen_port = ? WHERE id = ?
+				`, newListenPort, host.ID); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	_, err := s.querier().ExecContext(ctx, `
 		UPDATE proxy_rules
 		SET listen_port = ?, listen_ipv4 = ?, listen_ipv6 = ?,
 		    https_enabled = ?, http_redirect = ?, updated_at = datetime('now')
 		WHERE entry_id = ?
-	`, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), entryID)
+	`, newListenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), entryID)
 	return err
 }
 

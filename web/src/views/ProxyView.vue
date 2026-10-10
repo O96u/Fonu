@@ -2593,7 +2593,7 @@ function entryGroupColumnsFor(group: ProxyEntryGroup): DataTableColumns<ProxyRul
     cols.unshift(frontendCol)
   }
 
-  if (!canReorderInGroups.value) return cols
+  if (!canReorderInGroups.value || group.rules.length < 2) return cols
 
   return [
     {

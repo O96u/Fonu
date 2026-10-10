@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.8] - 2026-10-10
+
+### 修复
+
+- 反代：修改入口监听端口时，同步更新其下规则及域名绑定端口（含历史不一致数据），并重载 Nginx；域名中带独立 `:端口` 的绑定保持不变
+
+### 变更
+
+- 反代：入口内仅 1 条规则时不显示拖动排序手柄
+
 ## [v1.1.7] - 2026-10-10
 
 ### 修复
