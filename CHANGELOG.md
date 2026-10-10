@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.7] - 2026-10-10
+
+### 修复
+
+- ACME：FreeSSL / LiteSSL 默认目录改为 `https://acme.litessl.com/acme/v2/directory`（旧 `acmepro.freessl.cn` 已不可用）；设置中保存的旧地址会自动忽略并改用新默认
+
 ## [v1.1.6] - 2026-10-10
 
 ### 变更

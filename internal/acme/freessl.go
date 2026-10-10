@@ -10,9 +10,12 @@ import (
 	"time"
 )
 
+// FreeSSLDirectoryURLDefault is the current LiteSSL ACME v2 directory (FreeSSL 已迁移 off acmepro.freessl.cn).
+const FreeSSLDirectoryURLDefault = "https://acme.litessl.com/acme/v2/directory"
+
 const (
-	freesslDirectoryURLLegacy = "https://acme.freessl.cn/v2/DV90/directory"
-	freesslDirectoryURLPro    = "https://acmepro.freessl.cn/v2/DV"
+	freesslDirectoryURLObsoletePro    = "https://acmepro.freessl.cn/v2/DV"
+	freesslDirectoryURLObsoleteLegacy = "https://acme.freessl.cn/v2/DV90/directory"
 )
 
 type freeSSLEABResponse struct {
@@ -24,16 +27,23 @@ type freeSSLEABResponse struct {
 	Message    string `json:"message"`
 }
 
-func resolveFreeSSLDirectoryURL(customURL, automationToken string) string {
+func isObsoleteFreeSSLDirectoryURL(url string) bool {
+	u := strings.TrimRight(strings.Trim(strings.TrimSpace(url), "`"), "/")
+	if u == "" {
+		return false
+	}
+	if u == freesslDirectoryURLObsoletePro || u == freesslDirectoryURLObsoleteLegacy {
+		return true
+	}
+	return strings.HasPrefix(u, freesslDirectoryURLObsoleteLegacy+"/")
+}
+
+func resolveFreeSSLDirectoryURL(customURL, _ string) string {
 	customURL = strings.Trim(strings.TrimSpace(customURL), "`")
-	if customURL != "" {
+	if customURL != "" && !isObsoleteFreeSSLDirectoryURL(customURL) {
 		return customURL
 	}
-	token := strings.TrimSpace(automationToken)
-	if token != "" {
-		return freesslDirectoryURLLegacy + "/" + token
-	}
-	return freesslDirectoryURLPro
+	return FreeSSLDirectoryURLDefault
 }
 
 func resolveFreeSSLEAB(ctx context.Context, automationToken, configuredKid, configuredHmac string) (kid, hmac string, err error) {

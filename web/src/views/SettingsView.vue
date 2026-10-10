@@ -214,7 +214,7 @@
                 />
                 <div class="settings-field">
                   <div class="settings-field__label">ACME 地址（可选）</div>
-                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空默认 https://acmepro.freessl.cn/v2/DV" />
+                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空默认 https://acme.litessl.com/acme/v2/directory" />
                   <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处；填写 Automation Token 时可自动拼接旧版路径</p>
                 </div>
               </div>
