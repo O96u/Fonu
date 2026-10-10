@@ -43,24 +43,28 @@ func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 
 func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Domain       string   `json:"domain"`
-		DNSZone      string   `json:"dns_zone"`
-		DDNSConfigID int64    `json:"ddns_config_id"`
-		Domains      []string `json:"domains"`
-		CA           string   `json:"ca"`
-		Email        string   `json:"email"`
-		Name         string   `json:"name"`
+		Domain         string          `json:"domain"`
+		DNSZone        string          `json:"dns_zone"`
+		DDNSConfigID   int64           `json:"ddns_config_id"`
+		DNS            acme.InlineDNS  `json:"dns"`
+		SaveDNSProfile bool            `json:"save_dns_profile"`
+		DNSProfileName string          `json:"dns_profile_name"`
+		Domains        []string        `json:"domains"`
+		CA             string          `json:"ca"`
+		Email          string          `json:"email"`
+		Name           string          `json:"name"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	domains := req.Domains
 	if len(domains) == 0 && strings.TrimSpace(req.Domain) != "" {
 		domains = []string{req.Domain}
 	}
-	if req.DDNSConfigID <= 0 {
-		writeError(r, w, http.StatusBadRequest, "请选择 DNS 任务")
-		return
-	}
-	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, req.DDNSConfigID, req.Name)
+	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, acme.ApplyOptions{
+		DDNSConfigID:   req.DDNSConfigID,
+		InlineDNS:      req.DNS,
+		SaveDNSProfile: req.SaveDNSProfile,
+		DNSProfileName: req.DNSProfileName,
+	}, req.Name)
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return

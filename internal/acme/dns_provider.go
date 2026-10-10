@@ -3,6 +3,7 @@ package acme
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
@@ -75,6 +76,27 @@ func (p *loggingDNSProvider) Present(domain, token, keyAuth string) error {
 func (p *loggingDNSProvider) CleanUp(domain, token, keyAuth string) error {
 	p.job.Info("清理 DNS TXT 验证记录…")
 	return p.inner.CleanUp(domain, token, keyAuth)
+}
+
+type dnsProviderWithTimeout struct {
+	challenge.Provider
+	timeout  time.Duration
+	interval time.Duration
+}
+
+func wrapDNSProviderTimeout(inner challenge.Provider, timeout time.Duration) challenge.Provider {
+	if timeout <= 0 {
+		return inner
+	}
+	return &dnsProviderWithTimeout{
+		Provider: inner,
+		timeout:  timeout,
+		interval: 2 * time.Second,
+	}
+}
+
+func (p *dnsProviderWithTimeout) Timeout() (time.Duration, time.Duration) {
+	return p.timeout, p.interval
 }
 
 func validateDNSCredentials(provider string, cred ddns.Credentials) error {

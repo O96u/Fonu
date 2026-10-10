@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.5] - 2026-10-10
+
+### 新增
+
+- 证书申请：DNS-01 支持在向导中直接选择 DNS 服务商并填写 Token，无需先建 DDNS 任务；可保存为「仅证书」DNS 凭证（`acme_only`）
+- 设置：FreeSSL Automation Token（自动 EAB）、默认 ACME 目录改为 `acmepro.freessl.cn`；DNS-01 传播超时与高级传播选项
+
+### 变更
+
+- API：`POST /api/certificates/apply` 支持 `dns` 内联凭证、`save_dns_profile`；`GET /api/ddns?for_acme=1` 列出可用于证书验证的凭证
+- 证书申请：颁发机构选择改为大卡片双列布局；域名输入区加高；DNS 验证步骤支持内联 Token 与已存凭证
+
+### 修复
+
+- DDNS 编辑保存时保留「仅证书」任务类型，避免误变为普通 DDNS
+
 ## [v1.1.4] - 2026-10-10
 
 ### 变更

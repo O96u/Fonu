@@ -52,6 +52,71 @@ func (s *Service) List(ctx context.Context) ([]Config, error) {
 	return configs, nil
 }
 
+func (s *Service) ListForACME(ctx context.Context) ([]Config, error) {
+	configs, err := s.ListLite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Config, 0, len(configs))
+	for _, cfg := range configs {
+		if !cfg.HasToken {
+			continue
+		}
+		if cfg.AcmeOnly || cfg.Enabled {
+			out = append(out, cfg)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) CredentialsForCertDomains(ctx context.Context, domains []string) (Config, string, Credentials, error) {
+	configs, err := s.store.List(ctx)
+	if err != nil {
+		return Config{}, "", Credentials{}, err
+	}
+	for _, cfg := range configs {
+		if !cfg.HasToken || (!cfg.Enabled && !cfg.AcmeOnly) {
+			continue
+		}
+		if !coversAllDomains(cfg, domains) {
+			continue
+		}
+		provider, cred, err := s.credentialsForConfig(ctx, cfg)
+		if err != nil {
+			continue
+		}
+		return cfg, provider, cred, nil
+	}
+	return Config{}, "", Credentials{}, fmt.Errorf("未找到覆盖这些域名的 DNS 凭证")
+}
+
+func coversAllDomains(cfg Config, domains []string) bool {
+	for _, domain := range domains {
+		if !cfg.CoversDomain(domain) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Service) CreateACMECredential(ctx context.Context, in SaveInput) (Config, error) {
+	in.AcmeOnly = true
+	in.Enabled = false
+	in.IPv4Enabled = false
+	in.IPv6Enabled = false
+	if !in.HasCredentialUpdate() {
+		return Config{}, fmt.Errorf("请填写 DNS API 凭证")
+	}
+	if err := validateSaveInput(in); err != nil {
+		return Config{}, err
+	}
+	tokenEnc, err := s.encryptCredentials(in)
+	if err != nil {
+		return Config{}, err
+	}
+	return s.store.Create(ctx, in, tokenEnc)
+}
+
 func (s *Service) ListLite(ctx context.Context) ([]Config, error) {
 	configs, err := s.store.List(ctx)
 	if err != nil {
@@ -101,7 +166,7 @@ func (s *Service) ConfigForDNSZone(ctx context.Context, dnsZone string) (Config,
 	if err != nil {
 		return Config{}, err
 	}
-	if err := requireEnabled(cfg); err != nil {
+	if err := requireCredentialUsable(cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -114,7 +179,10 @@ func (s *Service) ConfigForAnyDomain(ctx context.Context, domain string) (Config
 		return Config{}, err
 	}
 	for _, cfg := range configs {
-		if !cfg.Enabled {
+		if !cfg.Enabled && !cfg.AcmeOnly {
+			continue
+		}
+		if !cfg.HasToken {
 			continue
 		}
 		if cfg.CoversDomain(domain) {
@@ -139,8 +207,18 @@ func requireEnabled(cfg Config) error {
 	return nil
 }
 
+func requireCredentialUsable(cfg Config) error {
+	if cfg.AcmeOnly {
+		if !cfg.HasToken {
+			return fmt.Errorf("DNS 凭证 %s 未配置 Token", cfg.RootDomain)
+		}
+		return nil
+	}
+	return requireEnabled(cfg)
+}
+
 func (s *Service) credentialsForConfig(ctx context.Context, cfg Config) (string, Credentials, error) {
-	if err := requireEnabled(cfg); err != nil {
+	if err := requireCredentialUsable(cfg); err != nil {
 		return cfg.Provider, Credentials{}, err
 	}
 	cred, err := s.loadCredentialsByID(ctx, cfg.ID)
@@ -172,6 +250,10 @@ func (s *Service) Update(ctx context.Context, id int64, in SaveInput) (Config, e
 	existing, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return Config{}, err
+	}
+	// DDNS 页面编辑时不传 acme_only，避免把「仅证书」凭证误改成普通任务
+	if existing.AcmeOnly {
+		in.AcmeOnly = true
 	}
 	tokenEnc := ""
 	updateToken := in.HasCredentialUpdate()
@@ -254,7 +336,7 @@ func (s *Service) UpdateAll(ctx context.Context) ([]Config, error) {
 	var failCount int
 	var runCount int
 	for _, cfg := range configs {
-		if !cfg.Enabled {
+		if !cfg.Enabled || cfg.AcmeOnly {
 			continue
 		}
 		runCount++
@@ -283,7 +365,7 @@ func (s *Service) Tick(ctx context.Context) {
 	var enabled int
 	var failed int
 	for _, cfg := range configs {
-		if !cfg.Enabled {
+		if !cfg.Enabled || cfg.AcmeOnly {
 			continue
 		}
 		enabled++

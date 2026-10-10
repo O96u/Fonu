@@ -193,6 +193,7 @@ export interface DDNSConfig {
   ipv4_enabled: boolean
   ipv6_enabled: boolean
   enabled: boolean
+  acme_only?: boolean
   has_token: boolean
   last_ipv4?: string
   last_ipv6?: string

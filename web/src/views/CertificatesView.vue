@@ -195,7 +195,8 @@
           v-model:value="applyDomainsText"
           class="domains-input"
           type="textarea"
-          :rows="3"
+          :rows="5"
+          :autosize="{ minRows: 5, maxRows: 12 }"
           placeholder="example.com&#10;*.example.com&#10;api.example.com"
           @update:value="syncCertNameFromDomains"
         />
@@ -214,7 +215,7 @@
             >
               <span class="ca-card__check" aria-hidden="true" />
               <div class="ca-card__logo">
-                <CustomAcmeCaIcon v-if="opt.value === 'custom'" />
+                <CustomAcmeCaIcon v-if="opt.value === 'custom'" class="ca-card__custom-icon" />
                 <img
                   v-else-if="caLogo(opt.value)"
                   :src="caLogo(opt.value)"
@@ -222,7 +223,10 @@
                 />
                 <span v-else class="ca-card__fallback">{{ caCardTitle(opt.value) }}</span>
               </div>
-              <div class="ca-card__sub">{{ caCardSub(opt.value) }}</div>
+              <div class="ca-card__text">
+                <div class="ca-card__title">{{ caCardTitle(opt.value) }}</div>
+                <div class="ca-card__sub">{{ caCardSub(opt.value) }}</div>
+              </div>
             </button>
           </div>
           <p v-if="applyCA === 'zerossl' && (!zerosslEabKid || !zerosslEabHmac)" class="ca-hint ca-hint--warn">
@@ -300,38 +304,80 @@
 
     <div v-else-if="applyStep === 2" class="verify-step">
       <p class="verify-step__intro">
-        选择用于本次 DNS-01 验证的 DNS 任务。这只是验证通道，选错会在下一步报错，不会与证书长期绑定。
+        填写 DNS 服务商 API 凭证完成 DNS-01 验证，无需先创建 DDNS 同步任务。也可选用已保存的凭证。
       </p>
 
-      <div v-if="applyDdnsConfigs.length === 0" class="verify-empty">
-        <p v-if="ddnsConfigs.length === 0">还没有 DNS 任务。</p>
-        <p v-else>没有已启用的 DNS 任务。</p>
-        <p class="verify-empty__sub">
-          {{ ddnsConfigs.length === 0
-            ? '请先在 DDNS 页面添加 DNS API 凭证，然后返回继续申请。'
-            : '请先在 DDNS 页面启用至少一个 DNS 任务，然后返回继续申请。' }}
-        </p>
+      <n-radio-group v-model:value="applyDnsMode" name="apply-dns-mode" class="verify-mode">
+        <n-radio value="inline">填写 DNS Token（推荐）</n-radio>
+        <n-radio value="saved">使用已保存的凭证</n-radio>
+      </n-radio-group>
+
+      <div v-if="applyDnsMode === 'inline'" class="verify-inline">
+        <n-form label-placement="top" class="cert-form">
+          <n-form-item label="DNS 服务商">
+            <n-select v-model:value="applyInlineProvider" :options="applyProviderOptions" />
+          </n-form-item>
+          <n-form-item v-if="applyInlineProvider === 'dnspod'" label="Token ID">
+            <n-input v-model:value="applyInlineTokenId" placeholder="DNSPod ID" />
+          </n-form-item>
+          <n-form-item :label="applyInlineCredentialLabel">
+            <n-input
+              v-model:value="applyInlineToken"
+              type="password"
+              show-password-on="click"
+              :placeholder="applyInlineCredentialPlaceholder"
+            />
+          </n-form-item>
+          <n-form-item v-if="applyInlineNeedsSecret" :label="applyInlineSecretLabel">
+            <n-input
+              v-model:value="applyInlineSecret"
+              type="password"
+              show-password-on="click"
+              :placeholder="applyInlineSecretPlaceholder"
+            />
+          </n-form-item>
+          <div class="verify-inline__save">
+            <n-checkbox v-model:checked="applySaveDnsProfile">保存为 DNS 凭证（仅用于证书验证，不参与 DDNS 同步）</n-checkbox>
+            <n-input
+              v-if="applySaveDnsProfile"
+              v-model:value="applyDnsProfileRemark"
+              placeholder="凭证备注（选填）"
+              size="small"
+            />
+          </div>
+        </n-form>
       </div>
 
-      <div v-else class="verify-options">
-        <button
-          v-for="cfg in applyDdnsConfigs"
-          :key="cfg.id"
-          type="button"
-          class="verify-option"
-          :class="{ 'verify-option--active': applyDdnsConfigId === cfg.id }"
-          @click="selectVerificationChannel(cfg)"
-        >
-          <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
-            <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
-          </span>
-          <div class="verify-option__body">
-            <div class="verify-option__title">{{ providerLabel(cfg.provider) }}</div>
-            <div class="verify-option__sub">上次同步 {{ formatRelativeTime(cfg.last_updated_at) || '从未' }}</div>
-            <div class="verify-option__zones">{{ ddnsTaskSummary(cfg) }}</div>
-          </div>
-          <span class="verify-option__check" />
-        </button>
+      <div v-else>
+        <div v-if="applyDdnsConfigs.length === 0" class="verify-empty">
+          <p>还没有可用的 DNS 凭证。</p>
+          <p class="verify-empty__sub">请使用「填写 DNS Token」，或在 DDNS 页面添加并启用任务。</p>
+        </div>
+        <div v-else class="verify-options">
+          <button
+            v-for="cfg in applyDdnsConfigs"
+            :key="cfg.id"
+            type="button"
+            class="verify-option"
+            :class="{ 'verify-option--active': applyDdnsConfigId === cfg.id }"
+            @click="selectVerificationChannel(cfg)"
+          >
+            <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
+              <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
+            </span>
+            <div class="verify-option__body">
+              <div class="verify-option__title">
+                {{ providerLabel(cfg.provider) }}
+                <n-tag v-if="cfg.acme_only" size="tiny" :bordered="false" type="info">仅证书</n-tag>
+              </div>
+              <div class="verify-option__sub">
+                {{ cfg.acme_only ? 'DNS 凭证' : `上次同步 ${formatRelativeTime(cfg.last_updated_at) || '从未'}` }}
+              </div>
+              <div class="verify-option__zones">{{ ddnsTaskSummary(cfg) }}</div>
+            </div>
+            <span class="verify-option__check" />
+          </button>
+        </div>
       </div>
 
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
@@ -385,12 +431,7 @@
       </n-space>
       <n-space v-else-if="applyStep === 2" :key="2" justify="end">
         <n-button @click="goApplyStep1">上一步</n-button>
-        <n-button
-          type="primary"
-          :loading="applying"
-          :disabled="applyDdnsConfigs.length === 0 || !applyDdnsConfigId"
-          @click="submitApply"
-        >
+        <n-button type="primary" :loading="applying" :disabled="!canSubmitApply" @click="submitApply">
           开始申请
         </n-button>
       </n-space>
@@ -549,14 +590,14 @@ const showApply = ref(false)
 
 const applyModalWidth = computed(() => {
   if (applyStep.value === 3) return 'min(720px, 96vw)'
-  if (applyStep.value === 1) return 'min(820px, 94vw)'
+  if (applyStep.value === 1) return 'min(880px, 96vw)'
   return 'min(640px, 92vw)'
 })
 
 const applyModalContentStyle = computed(() => ({
   paddingTop: '4px',
   paddingBottom: '4px',
-  maxHeight: 'min(70vh, 640px)',
+  maxHeight: applyStep.value === 1 ? 'min(78vh, 720px)' : 'min(70vh, 640px)',
   overflowY: 'auto' as const,
 }))
 const caOptions = ref<CertificateCAOption[]>([])
@@ -564,11 +605,11 @@ const applyCAOptions = [
   { value: 'letsencrypt', label: "Let's Encrypt" },
   { value: 'letsencrypt-staging', label: "Let's Encrypt 测试" },
   { value: 'zerossl', label: 'ZeroSSL' },
-  { value: 'buypass', label: 'Buypass' },
-  { value: 'buypass-test', label: 'Buypass 测试' },
   { value: 'google', label: 'Google Trust Services' },
   { value: 'sslcom', label: 'SSL.com' },
   { value: 'freessl', label: 'FreeSSL / LiteSSL' },
+  { value: 'buypass', label: 'Buypass' },
+  { value: 'buypass-test', label: 'Buypass 测试' },
   { value: 'actalis', label: 'Actalis' },
   { value: 'custom', label: '自定义 ACME' },
 ]
@@ -591,6 +632,13 @@ const applyDomainsText = ref('')
 const applyAutoRenew = ref(true)
 const applyStep = ref<1 | 2 | 3>(1)
 const applyDdnsConfigId = ref<number | null>(null)
+const applyDnsMode = ref<'inline' | 'saved'>('inline')
+const applyInlineProvider = ref('cloudflare')
+const applyInlineToken = ref('')
+const applyInlineTokenId = ref('')
+const applyInlineSecret = ref('')
+const applySaveDnsProfile = ref(false)
+const applyDnsProfileRemark = ref('')
 const applyError = ref('')
 const applyLogLines = ref<{ level: string; text: string }[]>([])
 const applyResult = ref<CertificateJobDone | null>(null)
@@ -599,7 +647,68 @@ const applyStreaming = ref(false)
 const applyLogBox = ref<HTMLElement | null>(null)
 let applyEventSource: EventSource | null = null
 const ddnsConfigs = ref<DDNSConfig[]>([])
-const applyDdnsConfigs = computed(() => ddnsConfigs.value.filter((c) => c.enabled))
+const applyDdnsConfigs = computed(() => ddnsConfigs.value)
+const applyProviderOptions = computed(() =>
+  Object.entries(providerMap).map(([value, meta]) => ({ value, label: meta.label })),
+)
+const applyInlineNeedsSecret = computed(
+  () =>
+    applyInlineProvider.value === 'alidns' ||
+    applyInlineProvider.value === 'tencentcloud' ||
+    applyInlineProvider.value === 'volcengine' ||
+    applyInlineProvider.value === 'dnshe',
+)
+const applyInlineCredentialLabel = computed(() => {
+  switch (applyInlineProvider.value) {
+    case 'dnspod':
+      return 'Token'
+    case 'alidns':
+      return 'AccessKey ID'
+    case 'tencentcloud':
+      return 'SecretId'
+    case 'volcengine':
+      return 'AccessKey ID'
+    case 'dnshe':
+      return 'API Key'
+    default:
+      return 'API Token'
+  }
+})
+const applyInlineCredentialPlaceholder = computed(() => {
+  switch (applyInlineProvider.value) {
+    case 'cloudflare':
+      return 'Cloudflare API Token（需含 Zone DNS 编辑权限）'
+    default:
+      return '请填写凭证'
+  }
+})
+const applyInlineSecretLabel = computed(() => {
+  switch (applyInlineProvider.value) {
+    case 'alidns':
+      return 'AccessKey Secret'
+    case 'tencentcloud':
+      return 'SecretKey'
+    case 'volcengine':
+      return 'Secret Access Key'
+    case 'dnshe':
+      return 'API Secret'
+    default:
+      return 'Secret'
+  }
+})
+const applyInlineSecretPlaceholder = computed(() => applyInlineSecretLabel.value)
+const canSubmitApply = computed(() => {
+  if (applyDnsMode.value === 'saved') {
+    return applyDdnsConfigs.value.length > 0 && applyDdnsConfigId.value != null
+  }
+  if (applyInlineProvider.value === 'dnspod') {
+    return applyInlineTokenId.value.trim() !== '' && applyInlineToken.value.trim() !== ''
+  }
+  if (applyInlineNeedsSecret.value && applyInlineProvider.value !== 'dnspod') {
+    return applyInlineToken.value.trim() !== '' && applyInlineSecret.value.trim() !== ''
+  }
+  return applyInlineToken.value.trim() !== ''
+})
 const certFileInput = ref<HTMLInputElement | null>(null)
 const keyFileInput = ref<HTMLInputElement | null>(null)
 const importMode = ref<ImportMode>('paste')
@@ -1068,7 +1177,6 @@ function syncCertNameFromDomains() {
 }
 
 function selectVerificationChannel(cfg: DDNSConfig) {
-  if (!cfg.enabled) return
   applyDdnsConfigId.value = cfg.id
 }
 
@@ -1077,7 +1185,15 @@ function resetApplyWizard() {
   applyCertName.value = ''
   applyDomainsText.value = ''
   applyDdnsConfigId.value = null
+  applyDnsMode.value = 'inline'
+  applyInlineProvider.value = 'cloudflare'
+  applyInlineToken.value = ''
+  applyInlineTokenId.value = ''
+  applyInlineSecret.value = ''
+  applySaveDnsProfile.value = false
+  applyDnsProfileRemark.value = ''
   applyAutoRenew.value = true
+  applyCA.value = 'letsencrypt'
   applyError.value = ''
   resetApplyProgress()
 }
@@ -1112,8 +1228,10 @@ function goApplyStep2() {
   }
   if (applyDdnsConfigs.value.length === 1) {
     applyDdnsConfigId.value = applyDdnsConfigs.value[0].id
+    applyDnsMode.value = 'saved'
   } else {
     applyDdnsConfigId.value = null
+    applyDnsMode.value = 'inline'
   }
   applyStep.value = 2
 }
@@ -1122,7 +1240,7 @@ async function loadCAOptions() {
   const [options, settings, ddns] = await Promise.all([
     api.listCertificateCAOptions(),
     api.getSettings(),
-    api.listDDNSLite(),
+    api.listDDNSForACME(),
   ])
   caOptions.value = options
   ddnsConfigs.value = ddns
@@ -1139,8 +1257,6 @@ async function loadCAOptions() {
   actalisEabKid.value = settings.actalis_eab_kid ?? ''
   actalisEabHmac.value = settings.actalis_eab_hmac ?? ''
   customAcmeDirectoryUrl.value = settings.custom_acme_directory_url ?? ''
-  const defaultCA = settings.acme_ca || 'letsencrypt'
-  applyCA.value = applyCAOptions.some((o) => o.value === defaultCA) ? defaultCA : 'letsencrypt'
 }
 
 async function load() {
@@ -1231,9 +1347,14 @@ function resetApplyProgress() {
 
 async function submitApply() {
   applyError.value = ''
-  const cfg = applyDdnsConfigs.value.find((c) => c.id === applyDdnsConfigId.value)
-  if (!cfg) {
-    applyError.value = '请选择已启用的 DNS 任务用于 DNS-01 验证'
+  if (applyDnsMode.value === 'saved') {
+    const cfg = applyDdnsConfigs.value.find((c) => c.id === applyDdnsConfigId.value)
+    if (!cfg) {
+      applyError.value = '请选择 DNS 凭证'
+      return
+    }
+  } else if (!canSubmitApply.value) {
+    applyError.value = '请完整填写 DNS API 凭证'
     return
   }
   const domains = parseDomainsInput(applyDomainsText.value)
@@ -1254,13 +1375,30 @@ async function submitApply() {
   }
   applying.value = true
   try {
-    const { job_id } = await api.applyCertificate({
-      ddns_config_id: Number(cfg.id),
-      domains,
-      ca: applyCA.value,
-      email: applyEmail.value.trim(),
-      name: applyCertName.value.trim(),
-    })
+    const payload =
+      applyDnsMode.value === 'saved'
+        ? {
+            ddns_config_id: Number(applyDdnsConfigId.value),
+            domains,
+            ca: applyCA.value,
+            email: applyEmail.value.trim(),
+            name: applyCertName.value.trim(),
+          }
+        : {
+            dns: {
+              provider: applyInlineProvider.value,
+              api_token: applyInlineToken.value.trim(),
+              api_token_id: applyInlineTokenId.value.trim(),
+              api_secret: applyInlineSecret.value.trim(),
+            },
+            save_dns_profile: applySaveDnsProfile.value,
+            dns_profile_name: applyDnsProfileRemark.value.trim(),
+            domains,
+            ca: applyCA.value,
+            email: applyEmail.value.trim(),
+            name: applyCertName.value.trim(),
+          }
+    const { job_id } = await api.applyCertificate(payload)
     applyStep.value = 3
     resetApplyProgress()
     startApplyStream(job_id)
@@ -1688,6 +1826,10 @@ html.dark .apply-log-box {
   line-height: 1.6;
 }
 
+.domains-input :deep(textarea) {
+  min-height: 128px;
+}
+
 .apply-email-alert {
   margin-bottom: 12px;
 }
@@ -1818,24 +1960,25 @@ html.dark .apply-log-box {
 
 .ca-cards {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   width: 100%;
 }
 
 .ca-card {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
-  padding: 8px 6px 10px;
+  gap: 12px;
+  padding: 12px 14px 12px 12px;
   border: 1px solid var(--fonu-border);
   border-radius: 12px;
   background: var(--fonu-surface);
   cursor: pointer;
-  text-align: center;
+  text-align: left;
   transition: border-color 0.15s, box-shadow 0.15s;
+  min-height: 72px;
 }
 
 .ca-card:hover {
@@ -1849,10 +1992,10 @@ html.dark .apply-log-box {
 
 .ca-card__check {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 16px;
-  height: 16px;
+  top: 10px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 2px solid #d1d5db;
   background: #fff;
@@ -1877,13 +2020,14 @@ html.dark .apply-log-box {
 }
 
 .ca-card__logo {
+  flex: 0 0 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 44px;
-  padding: 4px 6px;
-  border-radius: 8px;
+  width: 56px;
+  height: 56px;
+  padding: 6px;
+  border-radius: 10px;
   background-color: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   overflow: hidden;
@@ -1892,26 +2036,51 @@ html.dark .apply-log-box {
 .ca-card__logo img {
   width: 100%;
   height: 100%;
-  max-height: 40px;
+  max-height: 48px;
   object-fit: contain;
   display: block;
 }
 
-.ca-card__fallback {
-  font-size: 13px;
+.ca-card__custom-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--fonu-text-secondary);
+}
+
+.ca-card__text {
+  flex: 1;
+  min-width: 0;
+  padding-right: 22px;
+}
+
+.ca-card__title {
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--fonu-text);
 }
 
+.ca-card__fallback {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fonu-text);
+  text-align: center;
+  line-height: 1.2;
+}
+
 .ca-card__sub {
-  width: 100%;
-  font-size: 10px;
-  line-height: 1.35;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--fonu-text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.ca-card--active .ca-card__title {
+  color: #059669;
 }
 
 .apply-auto-renew {
@@ -1944,6 +2113,19 @@ html.dark .apply-log-box {
   font-size: 13px;
   line-height: 1.6;
   color: var(--fonu-text-secondary);
+}
+
+.verify-mode {
+  margin-bottom: var(--fonu-space-4);
+  display: flex;
+  gap: var(--fonu-space-4);
+}
+
+.verify-inline__save {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fonu-space-2);
+  margin-top: var(--fonu-space-2);
 }
 
 .verify-empty {
@@ -2089,13 +2271,12 @@ html.dark .apply-log-box {
 
 @media (max-width: 1199px) {
   .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ca-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: 1fr; }
   .cert-toolbar__filter { width: 100%; }
-  .ca-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ca-cards { grid-template-columns: 1fr; }
   .cert-table :deep(.n-data-table-base-table) {
     min-width: 900px;
   }

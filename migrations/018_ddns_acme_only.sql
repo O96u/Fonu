@@ -1,0 +1,1 @@
+ALTER TABLE ddns_configs ADD COLUMN acme_only INTEGER NOT NULL DEFAULT 0;

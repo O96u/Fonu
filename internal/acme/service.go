@@ -20,7 +20,6 @@ import (
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	legocert "github.com/go-acme/lego/v4/certificate"
-	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
 
@@ -64,17 +63,113 @@ func (s *Service) List(ctx context.Context) ([]certstore.Record, error) {
 	return s.store.List(ctx)
 }
 
-func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, ddnsConfigID int64, name string) (string, error) {
-	if ddnsConfigID <= 0 {
-		return "", fmt.Errorf("请选择 DNS 任务")
-	}
-	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApplyWithConfig(ctx, domains, ca, email, ddnsConfigID)
+type ApplyOptions struct {
+	DDNSConfigID   int64
+	InlineDNS      InlineDNS
+	SaveDNSProfile bool
+	DNSProfileName string
+}
+
+func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, opts ApplyOptions, name string) (string, error) {
+	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, domains, ca, email, opts)
 	if err != nil {
 		return "", err
 	}
 	job := s.jobs.Create()
 	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name)
 	return job.ID(), nil
+}
+
+func (s *Service) prepareApply(ctx context.Context, domains []string, ca, email string, opts ApplyOptions) ([]string, string, string, string, string, string, ddns.Credentials, error) {
+	normalized, normErr := NormalizeCertDomains(domains)
+	if normErr != nil && opts.DDNSConfigID <= 0 && !opts.InlineDNS.HasValues() {
+		return nil, "", "", "", "", "", ddns.Credentials{}, normErr
+	}
+	if normErr == nil {
+		domains = normalized
+	}
+	if opts.DDNSConfigID > 0 {
+		return s.prepareApplyWithConfig(ctx, domains, ca, email, opts.DDNSConfigID)
+	}
+	if opts.InlineDNS.HasValues() {
+		domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApplyWithInline(ctx, domains, ca, email, opts.InlineDNS)
+		if err != nil {
+			return nil, "", "", "", "", "", ddns.Credentials{}, err
+		}
+		if opts.SaveDNSProfile {
+			if err := s.saveACMEDNSProfile(ctx, domains, opts.InlineDNS, opts.DNSProfileName); err != nil {
+				return nil, "", "", "", "", "", ddns.Credentials{}, err
+			}
+		}
+		return domains, ca, email, primary, dnsZone, provider, cred, nil
+	}
+	if cfg, _, _, err := s.ddnsSvc.CredentialsForCertDomains(ctx, domains); err == nil {
+		return s.prepareApplyWithConfig(ctx, domains, ca, email, cfg.ID)
+	}
+	return nil, "", "", "", "", "", ddns.Credentials{}, fmt.Errorf("请选择已保存的 DNS 凭证，或填写 DNS 服务商 Token")
+}
+
+func (s *Service) saveACMEDNSProfile(ctx context.Context, domains []string, inline InlineDNS, remark string) error {
+	zones := InferDNSZonesFromDomains(domains)
+	if len(zones) == 0 {
+		return fmt.Errorf("无法从域名推断 DNS 区域")
+	}
+	domainLines := make([]string, 0, len(zones))
+	for _, zone := range zones {
+		domainLines = append(domainLines, zone)
+	}
+	_, err := s.ddnsSvc.CreateACMECredential(ctx, ddns.SaveInput{
+		Provider:   inline.Provider,
+		Remark:     strings.TrimSpace(remark),
+		Domains:    domainLines,
+		APIToken:   inline.APIToken,
+		APITokenID: inline.APITokenID,
+		APISecret:  inline.APISecret,
+	})
+	return err
+}
+
+func (s *Service) prepareApplyWithInline(ctx context.Context, domains []string, ca, email string, inline InlineDNS) ([]string, string, string, string, string, string, ddns.Credentials, error) {
+	domains, err := NormalizeCertDomains(domains)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	primary := PrimaryCertDomain(domains)
+	if primary == "" {
+		return nil, "", "", "", "", "", ddns.Credentials{}, fmt.Errorf("请填写至少一个域名")
+	}
+	email, err = s.resolveACMEEmail(ctx, email)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	ca, err = s.resolveCA(ctx, ca)
+	if err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	if err := ValidateCADomains(ca, domains); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	provider := strings.TrimSpace(inline.Provider)
+	if provider == "" {
+		provider = "cloudflare"
+	}
+	cred := inline.credentials()
+	if err := validateDNSCredentials(provider, cred); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	zones := InferDNSZonesFromDomains(domains)
+	if err := DomainsUnderZones(domains, zones); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	dnsZone := zones[0]
+	if cfg, _, _, err := s.ddnsSvc.CredentialsForCertDomains(ctx, domains); err == nil {
+		dnsZone = cfg.RootDomain
+		zones = cfg.ManagedDNSZones()
+		if len(zones) > 0 {
+			dnsZone = zones[0]
+		}
+	}
+	return domains, ca, email, primary, dnsZone, provider, cred, nil
 }
 
 func (s *Service) StreamJob(ctx context.Context, w http.ResponseWriter, jobID string, flush func() error) error {
@@ -109,8 +204,11 @@ func (s *Service) prepareApplyWithConfig(ctx context.Context, domains []string, 
 	if err := validateDNSCredentials(provider, cred); err != nil {
 		return nil, "", "", "", "", "", ddns.Credentials{}, err
 	}
-	dnsZone := cfg.RootDomain
 	zones := cfg.ManagedDNSZones()
+	if err := DomainsUnderZones(domains, zones); err != nil {
+		return nil, "", "", "", "", "", ddns.Credentials{}, err
+	}
+	dnsZone := cfg.RootDomain
 	if len(zones) > 0 {
 		dnsZone = zones[0]
 	}
@@ -450,11 +548,12 @@ func (s *Service) registerACMEAccount(ctx context.Context, client *lego.Client, 
 			HmacEncoded:          hmac,
 		})
 	case CAFreeSSL:
-		kid, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABKid)
-		hmac, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABHmac)
-		kid, hmac = strings.TrimSpace(kid), strings.TrimSpace(hmac)
-		if kid == "" || hmac == "" {
-			return nil, fmt.Errorf("请先在设置中配置 FreeSSL EAB Kid 和 Hmac（freessl.cn/automation/eab-manager 获取）")
+		kidStored, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABKid)
+		hmacStored, _ := s.settings.Get(ctx, settings.KeyFreeSSLEABHmac)
+		autoToken, _ := s.settings.Get(ctx, settings.KeyFreeSSLAutomationToken)
+		kid, hmac, eabErr := resolveFreeSSLEAB(ctx, autoToken, kidStored, hmacStored)
+		if eabErr != nil {
+			return nil, eabErr
 		}
 		return client.Registration.RegisterWithExternalAccountBinding(registration.RegisterEABOptions{
 			TermsOfServiceAgreed: true,
@@ -505,10 +604,8 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 	}
 	if NormalizeCA(ca) == CAFreeSSL {
 		customURL, _ := s.settings.Get(ctx, settings.KeyFreeSSLDirectoryURL)
-		customURL = strings.Trim(strings.TrimSpace(customURL), "`")
-		if customURL != "" {
-			caDir = customURL
-		}
+		autoToken, _ := s.settings.Get(ctx, settings.KeyFreeSSLAutomationToken)
+		caDir = resolveFreeSSLDirectoryURL(customURL, autoToken)
 	}
 	if NormalizeCA(ca) == CACustom {
 		customURL, _ := s.settings.Get(ctx, settings.KeyCustomACMEDirectoryURL)
@@ -540,16 +637,10 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 		return certstore.Record{}, fmt.Errorf("初始化 DNS Provider 失败：%w", err)
 	}
 	dnsProvider = wrapDNSProvider(dnsProvider, job)
-	// 使用公共递归 DNS 服务器做传播检查，避免部分网络无法直连权威 NS（UDP 53）导致超时
-	if err := client.Challenge.SetDNS01Provider(dnsProvider,
-		dns01.AddRecursiveNameservers([]string{
-			"223.5.5.5:53",
-			"119.29.29.29:53",
-			"114.114.114.114:53",
-			"1.1.1.1:53",
-			"8.8.8.8:53",
-		}),
-	); err != nil {
+	dnsOpts := s.loadDNS01Options(ctx)
+	dnsProvider = wrapDNSProviderTimeout(dnsProvider, dnsOpts.PropagationTimeout)
+	challengeOpts := applyDNS01Options(dnsOpts)
+	if err := client.Challenge.SetDNS01Provider(dnsProvider, challengeOpts...); err != nil {
 		return certstore.Record{}, err
 	}
 

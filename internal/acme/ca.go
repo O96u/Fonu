@@ -26,7 +26,7 @@ const (
 	buypassTestDirectoryURL = "https://api.test4.buypass.no/acme/directory"
 	googleDirectoryURL     = "https://dv.acme-v02.api.pki.goog/directory"
 	sslcomDirectoryURL     = "https://acme.ssl.com/sslcom-dv-ecc"
-	freesslDirectoryURL    = "https://acme.freessl.cn/v2/DV90/directory"
+	freesslDirectoryURL    = "https://acmepro.freessl.cn/v2/DV"
 	actalisDirectoryURL    = "https://acme-api.actalis.com/acme/directory"
 )
 

@@ -142,6 +142,7 @@ export const api = {
 
   listDDNS: () => request<DDNSConfig[]>('/api/ddns'),
   listDDNSLite: () => request<DDNSConfig[]>('/api/ddns?lite=1'),
+  listDDNSForACME: () => request<DDNSConfig[]>('/api/ddns?for_acme=1'),
   createDDNS: (payload: DDNSSavePayload) =>
     request<DDNSConfig>('/api/ddns', { method: 'POST', body: JSON.stringify(payload) }),
   updateDDNS: (id: number, payload: DDNSSavePayload) =>
@@ -236,6 +237,14 @@ export const api = {
   applyCertificate: (payload: {
     dns_zone?: string
     ddns_config_id?: number
+    dns?: {
+      provider?: string
+      api_token?: string
+      api_token_id?: string
+      api_secret?: string
+    }
+    save_dns_profile?: boolean
+    dns_profile_name?: string
     domains: string[]
     ca?: string
     email?: string
@@ -246,6 +255,9 @@ export const api = {
       body: JSON.stringify({
         dns_zone: payload.dns_zone ?? '',
         ddns_config_id: payload.ddns_config_id ?? 0,
+        dns: payload.dns ?? {},
+        save_dns_profile: payload.save_dns_profile ?? false,
+        dns_profile_name: payload.dns_profile_name ?? '',
         domains: payload.domains,
         ca: payload.ca ?? '',
         email: payload.email ?? '',

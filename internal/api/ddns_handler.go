@@ -29,6 +29,7 @@ type ddnsRequest struct {
 	APIToken    string `json:"api_token"`
 	APITokenID  string `json:"api_token_id"`
 	APISecret   string `json:"api_secret"`
+	AcmeOnly    *bool  `json:"acme_only"`
 }
 
 func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
@@ -42,6 +43,7 @@ func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
 		IPv4Enabled: boolDefault(req.IPv4Enabled, true),
 		IPv6Enabled: boolDefault(req.IPv6Enabled, false),
 		Enabled:     boolDefault(req.Enabled, true),
+		AcmeOnly:    boolDefault(req.AcmeOnly, false),
 		APIToken:    req.APIToken,
 		APITokenID:  req.APITokenID,
 		APISecret:   req.APISecret,
@@ -51,9 +53,12 @@ func (h *DDNSHandler) toInput(req ddnsRequest) ddns.SaveInput {
 func (h *DDNSHandler) List(w http.ResponseWriter, r *http.Request) {
 	var configs []ddns.Config
 	var err error
-	if r.URL.Query().Get("lite") == "1" {
+	switch {
+	case r.URL.Query().Get("for_acme") == "1":
+		configs, err = h.svc.ListForACME(r.Context())
+	case r.URL.Query().Get("lite") == "1":
 		configs, err = h.svc.ListLite(r.Context())
-	} else {
+	default:
 		configs, err = h.svc.List(r.Context())
 	}
 	if err != nil {

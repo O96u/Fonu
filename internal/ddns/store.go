@@ -19,6 +19,7 @@ type Config struct {
 	IPv4Enabled   bool       `json:"ipv4_enabled"`
 	IPv6Enabled   bool       `json:"ipv6_enabled"`
 	Enabled       bool       `json:"enabled"`
+	AcmeOnly      bool       `json:"acme_only"`
 	HasToken      bool       `json:"has_token"`
 	LastIPv4      string         `json:"last_ipv4"`
 	LastIPv6      string         `json:"last_ipv6"`
@@ -38,6 +39,7 @@ type SaveInput struct {
 	IPv4Enabled bool
 	IPv6Enabled bool
 	Enabled     bool
+	AcmeOnly    bool
 	APIToken    string
 	APITokenID  string
 	APISecret   string
@@ -60,6 +62,7 @@ func NewStore(db *sql.DB) *Store {
 func (s *Store) List(ctx context.Context) ([]Config, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, provider, root_domain, record_name, COALESCE(record_names, '[]'), ipv4_enabled, ipv6_enabled, enabled,
+		       COALESCE(acme_only, 0),
 		       CASE WHEN api_token_enc IS NOT NULL AND api_token_enc != '' THEN 1 ELSE 0 END,
 		       COALESCE(last_ipv4, ''), COALESCE(last_ipv6, ''), last_status, COALESCE(last_error, ''),
 		       COALESCE(domain_records, '[]'), last_updated_at, COALESCE(remark, '')
@@ -84,6 +87,7 @@ func (s *Store) List(ctx context.Context) ([]Config, error) {
 func (s *Store) GetByID(ctx context.Context, id int64) (Config, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, provider, root_domain, record_name, COALESCE(record_names, '[]'), ipv4_enabled, ipv6_enabled, enabled,
+		       COALESCE(acme_only, 0),
 		       CASE WHEN api_token_enc IS NOT NULL AND api_token_enc != '' THEN 1 ELSE 0 END,
 		       COALESCE(last_ipv4, ''), COALESCE(last_ipv6, ''), last_status, COALESCE(last_error, ''),
 		       COALESCE(domain_records, '[]'), last_updated_at, COALESCE(remark, '')
@@ -100,6 +104,7 @@ func (s *Store) GetByRootDomain(ctx context.Context, rootDomain string) (Config,
 	rootDomain = strings.ToLower(strings.TrimSpace(rootDomain))
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, provider, root_domain, record_name, COALESCE(record_names, '[]'), ipv4_enabled, ipv6_enabled, enabled,
+		       COALESCE(acme_only, 0),
 		       CASE WHEN api_token_enc IS NOT NULL AND api_token_enc != '' THEN 1 ELSE 0 END,
 		       COALESCE(last_ipv4, ''), COALESCE(last_ipv6, ''), last_status, COALESCE(last_error, ''),
 		       COALESCE(domain_records, '[]'), last_updated_at, COALESCE(remark, '')
@@ -130,9 +135,9 @@ func (s *Store) Create(ctx context.Context, in SaveInput, tokenEnc string) (Conf
 		return Config{}, err
 	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO ddns_configs(provider, root_domain, record_name, record_names, ipv4_enabled, ipv6_enabled, enabled, api_token_enc, remark, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), tokenEnc, strings.TrimSpace(in.Remark))
+		INSERT INTO ddns_configs(provider, root_domain, record_name, record_names, ipv4_enabled, ipv6_enabled, enabled, acme_only, api_token_enc, remark, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), boolInt(in.AcmeOnly), tokenEnc, strings.TrimSpace(in.Remark))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Config{}, fmt.Errorf("该域名与子域名组合已存在")
@@ -151,10 +156,10 @@ func (s *Store) Update(ctx context.Context, id int64, in SaveInput, tokenEnc str
 	if updateToken {
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE ddns_configs
-			SET provider = ?, root_domain = ?, record_name = ?, record_names = ?, ipv4_enabled = ?, ipv6_enabled = ?, enabled = ?,
+			SET provider = ?, root_domain = ?, record_name = ?, record_names = ?, ipv4_enabled = ?, ipv6_enabled = ?, enabled = ?, acme_only = ?,
 			    api_token_enc = ?, remark = ?, updated_at = datetime('now')
 			WHERE id = ?
-		`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), tokenEnc, strings.TrimSpace(in.Remark), id)
+		`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), boolInt(in.AcmeOnly), tokenEnc, strings.TrimSpace(in.Remark), id)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") {
 				return Config{}, fmt.Errorf("该域名与子域名组合已存在")
@@ -164,10 +169,10 @@ func (s *Store) Update(ctx context.Context, id int64, in SaveInput, tokenEnc str
 	} else {
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE ddns_configs
-			SET provider = ?, root_domain = ?, record_name = ?, record_names = ?, ipv4_enabled = ?, ipv6_enabled = ?, enabled = ?,
+			SET provider = ?, root_domain = ?, record_name = ?, record_names = ?, ipv4_enabled = ?, ipv6_enabled = ?, enabled = ?, acme_only = ?,
 			    remark = ?, updated_at = datetime('now')
 			WHERE id = ?
-		`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), strings.TrimSpace(in.Remark), id)
+		`, provider, rootDomain, recordName, recordNamesJSON, boolInt(in.IPv4Enabled), boolInt(in.IPv6Enabled), boolInt(in.Enabled), boolInt(in.AcmeOnly), strings.TrimSpace(in.Remark), id)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") {
 				return Config{}, fmt.Errorf("该域名与子域名组合已存在")
@@ -243,10 +248,10 @@ func normalizeInput(in SaveInput) (rootDomain, recordName, recordNamesJSON, prov
 
 func scanConfig(row interface{ Scan(dest ...any) error }) (Config, error) {
 	var cfg Config
-	var ipv4Enabled, ipv6Enabled, enabled, hasToken int
+	var ipv4Enabled, ipv6Enabled, enabled, acmeOnly, hasToken int
 	var recordNamesRaw, domainRecordsRaw string
 	var lastUpdated sql.NullString
-	if err := row.Scan(&cfg.ID, &cfg.Provider, &cfg.RootDomain, &cfg.RecordName, &recordNamesRaw, &ipv4Enabled, &ipv6Enabled, &enabled, &hasToken, &cfg.LastIPv4, &cfg.LastIPv6, &cfg.LastStatus, &cfg.LastError, &domainRecordsRaw, &lastUpdated, &cfg.Remark); err != nil {
+	if err := row.Scan(&cfg.ID, &cfg.Provider, &cfg.RootDomain, &cfg.RecordName, &recordNamesRaw, &ipv4Enabled, &ipv6Enabled, &enabled, &acmeOnly, &hasToken, &cfg.LastIPv4, &cfg.LastIPv6, &cfg.LastStatus, &cfg.LastError, &domainRecordsRaw, &lastUpdated, &cfg.Remark); err != nil {
 		return Config{}, err
 	}
 	cfg.RecordNames = DecodeRecordNames(recordNamesRaw, cfg.RecordName)
@@ -255,6 +260,7 @@ func scanConfig(row interface{ Scan(dest ...any) error }) (Config, error) {
 	cfg.IPv4Enabled = ipv4Enabled == 1
 	cfg.IPv6Enabled = ipv6Enabled == 1
 	cfg.Enabled = enabled == 1
+	cfg.AcmeOnly = acmeOnly == 1
 	cfg.HasToken = hasToken == 1
 	if lastUpdated.Valid {
 		t := parseTime(lastUpdated.String)

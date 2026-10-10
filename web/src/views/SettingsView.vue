@@ -101,6 +101,28 @@
             </div>
           </FonuCard>
 
+          <FonuCard title="DNS-01 验证" subtitle="传播检查与超时（高级）">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__row">
+                  <span class="settings-field__label">DNS 传播超时（秒）</span>
+                  <n-input-number v-model:value="acmeDnsPropagationTimeout" :min="30" :max="900" class="settings-field__input" />
+                </div>
+                <p class="field-hint">等待 TXT 记录在全球 DNS 生效的最长时间，默认 180</p>
+              </div>
+              <div class="settings-switches settings-switches--col">
+                <div class="settings-switch">
+                  <span>跳过权威 NS 传播检查</span>
+                  <n-switch v-model:value="acmeDnsDisableAuthNS" />
+                </div>
+                <div class="settings-switch">
+                  <span>忽略传播结果（仅等待后提交验证）</span>
+                  <n-switch v-model:value="acmeDnsIgnorePropagation" />
+                </div>
+              </div>
+            </div>
+          </FonuCard>
+
           <FonuCard title="ACME 账户" subtitle="申请与续签所需凭据">
             <div class="settings-fields">
               <div class="settings-field">
@@ -184,10 +206,16 @@
                   :configured="freesslEabHmacHasKey"
                   placeholder="与 Kid 配对"
                 />
+                <ConfiguredSecretField
+                  v-model="freesslAutomationToken"
+                  label="Automation Token"
+                  :configured="freesslAutomationTokenHasKey"
+                  placeholder="freessl.cn 自动化 Token，可自动获取 EAB"
+                />
                 <div class="settings-field">
                   <div class="settings-field__label">ACME 地址（可选）</div>
-                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空使用默认 https://acme.freessl.cn/v2/DV90/directory" />
-                  <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处</p>
+                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空默认 https://acmepro.freessl.cn/v2/DV" />
+                  <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处；填写 Automation Token 时可自动拼接旧版路径</p>
                 </div>
               </div>
 
@@ -796,6 +824,11 @@ const freesslEabKidHasKey = ref(false)
 const freesslEabHmac = ref('')
 const freesslEabHmacHasKey = ref(false)
 const freesslDirectoryUrl = ref('')
+const freesslAutomationToken = ref('')
+const freesslAutomationTokenHasKey = ref(false)
+const acmeDnsPropagationTimeout = ref(180)
+const acmeDnsDisableAuthNS = ref(false)
+const acmeDnsIgnorePropagation = ref(false)
 const actalisEabKid = ref('')
 const actalisEabKidHasKey = ref(false)
 const actalisEabHmac = ref('')
@@ -903,6 +936,11 @@ function applySettingsToForm(settings: Record<string, string>) {
   freesslEabHmacHasKey.value = Boolean(settings.freessl_eab_hmac?.trim())
   freesslEabHmac.value = ''
   freesslDirectoryUrl.value = settings.freessl_directory_url ?? ''
+  freesslAutomationTokenHasKey.value = Boolean(settings.freessl_automation_token?.trim())
+  freesslAutomationToken.value = ''
+  acmeDnsPropagationTimeout.value = Number(settings.acme_dns_propagation_timeout_sec || 180) || 180
+  acmeDnsDisableAuthNS.value = settings.acme_dns_disable_auth_ns === '1'
+  acmeDnsIgnorePropagation.value = settings.acme_dns_ignore_propagation === '1'
   actalisEabKidHasKey.value = Boolean(settings.actalis_eab_kid?.trim())
   actalisEabKid.value = ''
   actalisEabHmacHasKey.value = Boolean(settings.actalis_eab_hmac?.trim())
@@ -1342,6 +1380,13 @@ function buildSavePayload() {
   if (fDir) {
     payload.freessl_directory_url = fDir
   }
+  const fAuto = freesslAutomationToken.value.trim()
+  if (fAuto) {
+    payload.freessl_automation_token = fAuto
+  }
+  payload.acme_dns_propagation_timeout_sec = String(acmeDnsPropagationTimeout.value || 180)
+  payload.acme_dns_disable_auth_ns = acmeDnsDisableAuthNS.value ? '1' : '0'
+  payload.acme_dns_ignore_propagation = acmeDnsIgnorePropagation.value ? '1' : '0'
   const aKid = actalisEabKid.value.trim()
   if (aKid) {
     payload.actalis_eab_kid = aKid
@@ -1667,6 +1712,30 @@ onMounted(() => {
 .settings-field__input {
   width: 120px;
   flex-shrink: 0;
+}
+
+.settings-switches--col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--fonu-text);
+}
+
+.settings-switch > span {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  color: var(--fonu-text-secondary);
 }
 
 .security-form {
