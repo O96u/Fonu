@@ -24,7 +24,7 @@
 
         <n-form-item label="用户名">
 
-          <n-input v-model:value="username" size="large" />
+          <n-input v-model:value="username" size="large" placeholder="请输入用户名" autocomplete="username" />
 
         </n-form-item>
 
@@ -65,7 +65,7 @@ const router = useRouter()
 
 const message = useMessage()
 
-const username = ref('admin')
+const username = ref('')
 
 const password = ref('')
 
