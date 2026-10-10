@@ -1472,7 +1472,11 @@ const trafficTotals = computed(() => {
 })
 
 const showEntryGroups = computed(
-  () => !search.value.trim() && !statusFilter.value && !httpsFilter.value && rules.value.length > 0,
+  () =>
+    !search.value.trim() &&
+    !statusFilter.value &&
+    !httpsFilter.value &&
+    (entries.value.length > 0 || rules.value.length > 0),
 )
 
 const canReorder = computed(

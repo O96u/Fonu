@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.3] - 2026-10-10
+
+### 修复
+
+- 反代：仅创建入口、尚未添加规则时，列表不再误显示为空（端口已占用但页面看不到入口）
+
 ## [v1.1.2] - 2026-10-09
 
 ### 修复
