@@ -41,7 +41,7 @@ export function mergeHostSelectOptions(
     ...ddnsGroups,
     {
       type: 'group',
-      label: '当前规则（未在 DDNS）',
+      label: '自定义域名',
       key: EXTRA_GROUP_KEY,
       children: extras.map((h) => ({ label: h, value: h })),
     },

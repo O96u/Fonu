@@ -588,20 +588,26 @@
                     v-model:value="form.hostsSelected"
                     multiple
                     filterable
+                    tag
                     :loading="ddnsHostsLoading"
                     :options="hostSelectOptions"
                     :filter="filterDdnsHostOption"
-                    placeholder="从 DDNS 中选择域名（可多选）"
+                    placeholder="输入域名后回车，或从 DDNS 列表选择（可多选）"
                     class="hosts-select"
                     @focus="loadDdnsHostOptions"
                   />
-                  <p v-if="ddnsHostOptionsEmpty && !ddnsHostsLoading" class="field-hint">
-                    暂无 DDNS 域名，
-                    <router-link class="field-hint__link" :to="{ name: 'ddns' }">前往 DDNS 添加</router-link>
-                  </p>
-                  <p v-else class="field-hint">
-                    <template v-if="isEntryBatchEdit">多选为各规则共用的基础域名；目标地址每行的前缀会加在域名前。</template>
-                    <template v-else>多个域名指向<strong>同一</strong>内网服务时，在此多选即可。</template>
+                  <p class="field-hint">
+                    <template v-if="isEntryBatchEdit">
+                      可自定义填写域名，也可从 DDNS 任务选；多选为各规则共用的基础域名，目标地址每行的前缀会加在域名前。
+                    </template>
+                    <template v-else>
+                      可自定义填写，不必在 Fonu 配置 DDNS；多个域名指向同一内网服务时在此多选。
+                    </template>
+                    <template v-if="ddnsHostOptionsEmpty && !ddnsHostsLoading">
+                      <span class="field-hint__sep"> </span>
+                      <router-link class="field-hint__link" :to="{ name: 'ddns' }">在 Fonu 管理 DDNS</router-link>
+                      可选。
+                    </template>
                   </p>
                 </div>
               </n-form-item>
@@ -978,7 +984,7 @@
           </ol>
           <ol v-else class="proxy-modal__help-ol proxy-modal__help-ol--compact">
             <li>多域名同一上游 → 「前端域名」多选，目标地址填一行。</li>
-            <li>域名来自 DDNS 任务；监听端口由入口或上方端口决定。</li>
+            <li>前端域名可手动填写，也可从 DDNS 任务选择；监听端口由入口或上方端口决定。</li>
             <li>HTTPS 需在「证书」页配置证书。</li>
           </ol>
           <div class="proxy-modal__tip">
@@ -1258,6 +1264,7 @@ import { copyToClipboard } from '../utils/clipboard'
 import {
   collectDdnsHostOptions,
   flattenDdnsOptionValues,
+  normalizeFrontendHostValues,
   validateUpstreamInput,
   type DdnsHostSelectOption,
 } from '../utils/ddnsHosts'
@@ -1854,7 +1861,13 @@ async function saveEntry() {
 
 async function saveEntryFull() {
   if (formHostsList(form.hostsSelected).length === 0) {
-    message.error('请选择至少一个前端域名')
+    message.error('请填写至少一个前端域名')
+    return
+  }
+  try {
+    normalizeFrontendHostValues(formHostsList(form.hostsSelected))
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '前端域名格式不正确')
     return
   }
   if (!form.upstream.trim()) {
@@ -1966,7 +1979,12 @@ async function syncEntryRules(entryId: number, hostsText: string, upstreamText: 
     parsed.mode === 'batch'
       ? parsed.lines
       : [{ name: form.name.trim(), prefix: '', upstream: validateUpstreamInput(firstLine) }]
-  const baseHosts = parseHostsText(hostsText)
+  let baseHosts: string[]
+  try {
+    baseHosts = normalizeFrontendHostValues(parseHostsText(hostsText))
+  } catch (error) {
+    throw new Error(`${failPrefix}${error instanceof Error ? error.message : '前端域名格式不正确'}`)
+  }
   if (baseHosts.length === 0) {
     throw new Error(`${failPrefix}至少需要一个前端域名`)
   }
@@ -3234,7 +3252,7 @@ function securityTags(rule: ProxyRule): string[] {
 }
 
 function buildPayload(): ProxySavePayload {
-  const hosts = formHostsList(form.hostsSelected)
+  const hosts = normalizeFrontendHostValues(formHostsList(form.hostsSelected))
   if (hosts.length === 0) {
     throw new Error('至少需要一个前端域名')
   }

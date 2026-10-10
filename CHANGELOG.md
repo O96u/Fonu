@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.1.4] - 2026-10-10
+
+### 变更
+
+- 反代：前端域名支持手动输入（回车添加），不必从 DDNS 列表选取；仍可从 DDNS 任务多选，保存时仅校验域名格式与规则占用
+
 ## [v1.1.3] - 2026-10-10
 
 ### 修复

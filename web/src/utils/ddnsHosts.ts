@@ -97,6 +97,56 @@ export function valuesToHostsText(values: string[]): string {
 }
 
 /** 与 internal/validate/validate.go Upstream 保持一致 */
+/** 与 internal/validate/validate.go FrontendAddress 保持一致 */
+const frontendDomainRe =
+  /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/i
+
+export function validateFrontendAddress(raw: string): string {
+  const text = raw.trim()
+  if (!text) {
+    throw new Error('前端地址不能为空')
+  }
+  let host = text
+  let portSuffix = ''
+  if (text.split(':').length === 2 && !text.includes(']')) {
+    const [h, p] = text.split(':')
+    host = h
+    const portNum = Number.parseInt(p, 10)
+    if (!Number.isFinite(portNum) || portNum < 1 || portNum > 65535) {
+      throw new Error('前端地址端口无效')
+    }
+    portSuffix = `:${portNum}`
+  }
+  host = host.trim().toLowerCase()
+  if (
+    host.length > 253 ||
+    host.includes('..') ||
+    host.startsWith('.') ||
+    host.endsWith('.')
+  ) {
+    throw new Error('域名格式无效')
+  }
+  if (!frontendDomainRe.test(host)) {
+    throw new Error('域名格式无效')
+  }
+  return `${host}${portSuffix}`
+}
+
+export function normalizeFrontendHostValues(values: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    const normalized = validateFrontendAddress(value)
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) {
+      throw new Error(`前端域名 ${normalized} 重复`)
+    }
+    seen.add(key)
+    out.push(normalized)
+  }
+  return out
+}
+
 export function validateUpstreamInput(raw: string): string {
   const text = raw.trim()
   if (!text) {
