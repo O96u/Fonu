@@ -290,10 +290,22 @@
       </div>
 
       <n-form-item
-        v-if="!applyEmailConfigured"
+        v-if="applyEmailConfigured"
         label="ACME 邮箱"
-        feedback="填写标准邮箱地址，不要包含空格或 mailto: 前缀"
+        :show-feedback="false"
+      >
+        <p class="apply-email-saved">
+          <span>{{ savedAcmeEmail }}</span>
+          <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">在设置中修改</router-link>
+        </p>
+      </n-form-item>
+
+      <n-form-item
+        v-else
+        label="ACME 邮箱"
+        :feedback="applyEmailFieldFeedback"
         :show-feedback="true"
+        :validation-status="applyEmailValidationStatus"
         required
       >
         <n-input v-model:value="applyEmail" placeholder="admin@example.com" />
@@ -571,6 +583,7 @@ import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
+import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { renderTableRowActions } from '../utils/tableActions'
 
@@ -627,6 +640,7 @@ const actalisEabKid = ref('')
 const actalisEabHmac = ref('')
 const customAcmeDirectoryUrl = ref('')
 const applyEmail = ref('')
+const savedAcmeEmail = ref('')
 const applyCertName = ref('')
 const applyDomainsText = ref('')
 const applyAutoRenew = ref(true)
@@ -941,17 +955,26 @@ function issuerTone(ca?: string) {
   return 'default'
 }
 
-const applyEmailConfigured = computed(() => applyEmail.value.trim().length > 0)
+const applyEmailConfigured = computed(() => isValidAcmeEmail(savedAcmeEmail.value))
 
-function validateApplyEmail() {
+const applyEmailValidationStatus = computed(() => {
+  const email = applyEmail.value.trim()
+  if (!email) return undefined
+  return isValidAcmeEmail(email) ? undefined : 'error'
+})
+
+const applyEmailFieldFeedback = computed(() => {
   const email = applyEmail.value.trim()
   if (!email) {
-    return '请先填写 ACME 邮箱，用于注册 ACME 账户（首次申请必填）'
+    return '填写标准邮箱地址，不要包含空格或 mailto: 前缀'
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return 'ACME 邮箱格式不正确，请填写类似 admin@example.com 的地址'
-  }
-  return ''
+  const err = validateAcmeEmailMessage(email)
+  return err || '填写标准邮箱地址，不要包含空格或 mailto: 前缀'
+})
+
+function validateApplyEmail() {
+  if (applyEmailConfigured.value) return ''
+  return validateAcmeEmailMessage(applyEmail.value)
 }
 
 function validateApplyCA(domains: string[]) {
@@ -1244,7 +1267,9 @@ async function loadCAOptions() {
   ])
   caOptions.value = options
   ddnsConfigs.value = ddns
-  applyEmail.value = settings.acme_email ?? ''
+  const storedEmail = (settings.acme_email ?? '').trim()
+  savedAcmeEmail.value = isValidAcmeEmail(storedEmail) ? storedEmail : ''
+  applyEmail.value = savedAcmeEmail.value || storedEmail
   zerosslApiKey.value = settings.zerossl_api_key ?? ''
   zerosslEabKid.value = settings.zerossl_eab_kid ?? ''
   zerosslEabHmac.value = settings.zerossl_eab_hmac_key ?? ''
@@ -1309,6 +1334,10 @@ function handleApplyJobEvent(ev: CertificateJobEvent) {
     applyFinished.value = true
     stopApplyStream()
     if (ev.result.ok) {
+      const appliedEmail = applyEmail.value.trim()
+      if (isValidAcmeEmail(appliedEmail)) {
+        savedAcmeEmail.value = appliedEmail
+      }
       message.success('证书申请成功')
       api.listCertificates().then((list) => {
         records.value = asList(list)
@@ -2106,6 +2135,16 @@ html.dark .apply-log-box {
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.5;
+}
+
+.apply-email-saved {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 14px;
+  color: var(--fonu-text);
 }
 
 .verify-step__intro {

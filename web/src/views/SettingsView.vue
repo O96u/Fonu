@@ -127,8 +127,12 @@
             <div class="settings-fields">
               <div class="settings-field">
                 <div class="settings-field__label">ACME 邮箱</div>
-                <n-input v-model:value="acmeEmail" placeholder="admin@example.com" />
-                <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册</p>
+                <n-input
+                  v-model:value="acmeEmail"
+                  placeholder="admin@example.com"
+                  :status="acmeEmailInputStatus"
+                />
+                <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册；首次可在「申请证书」中填写并保存</p>
               </div>
 
               <div class="acme-provider-block">
@@ -733,6 +737,7 @@ import {
 } from '../constants/notifyProviders'
 import { invalidateAppTimezoneCache } from '../composables/useAppTimezone'
 import { useTheme } from '../composables/useTheme'
+import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import type { StatusKind } from '../utils/status'
 
@@ -805,6 +810,11 @@ const ddnsInterval = ref(5)
 const certThreshold = ref(30)
 const logRetention = ref(30)
 const acmeEmail = ref('')
+const acmeEmailInputStatus = computed(() => {
+  const email = acmeEmail.value.trim()
+  if (!email) return undefined
+  return isValidAcmeEmail(email) ? undefined : 'error'
+})
 const zerosslApiKey = ref('')
 const zerosslHasKey = ref(false)
 const zerosslEabKid = ref('')
@@ -1431,6 +1441,11 @@ async function load() {
 }
 
 async function save() {
+  const acmeEmailErr = acmeEmail.value.trim() ? validateAcmeEmailMessage(acmeEmail.value) : ''
+  if (acmeEmailErr) {
+    message.warning(acmeEmailErr)
+    return
+  }
   saving.value = true
   try {
     const saved = await api.saveSettings(buildSavePayload())

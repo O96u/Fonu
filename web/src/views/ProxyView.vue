@@ -2369,6 +2369,25 @@ function hostBindingKey(hostname: string, port: number): string {
   return `${hostname.toLowerCase()}:${port}`
 }
 
+function formatHostConflictMessage(conflict: { host: string; port: number; rule: ProxyRule }): string {
+  const label = ruleName(conflict.rule)
+  const status = conflict.rule.enabled ? '运行中' : '已停用'
+  return (
+    `域名 ${conflict.host}:${conflict.port} 已被规则「${label}」占用（${status}）。` +
+    `同一监听入口下每个域名只能对应一条规则：若要改反代目标请编辑占用该域名的那一行；` +
+    `若仅需修改名称或上游，请保持「前端域名」不变。`
+  )
+}
+
+function listenPortForConflictCheck(payload: ProxySavePayload): number {
+  if (payload.listen_port != null && payload.listen_port > 0) return payload.listen_port
+  if (formEntryId.value != null) {
+    const group = entryGroups.value.find((g) => g.entryId === formEntryId.value)
+    if (group) return group.listen.listen_port
+  }
+  return form.listen_port
+}
+
 function findHostConflict(
   hosts: string[],
   ruleListenPort: number,
@@ -2379,7 +2398,7 @@ function findHostConflict(
   )
   if (wanted.size === 0) return null
   for (const rule of rules.value) {
-    if (excludeRuleId && rule.id === excludeRuleId) continue
+    if (excludeRuleId != null && rule.id === excludeRuleId) continue
     for (const host of asList(rule.hosts)) {
       const hostname = host.hostname.toLowerCase()
       const port = host.listen_port ?? rule.listen_port
@@ -3173,14 +3192,13 @@ async function save() {
   try {
     const basePayload = buildPayload()
     const hosts = basePayload.hosts
-    const listenPort = basePayload.listen_port ?? form.listen_port
+    const listenPort = listenPortForConflictCheck(basePayload)
     const excludeRuleId = editing.value?.id
 
     for (const host of hosts) {
       const conflict = findHostConflict([host], listenPort, excludeRuleId)
       if (conflict) {
-        const owner = primaryHost(conflict.rule)
-        message.error(`域名 ${conflict.host}:${conflict.port} 已被规则「${owner}」使用，请编辑现有规则或更换域名/端口`)
+        message.error(formatHostConflictMessage(conflict))
         return
       }
     }

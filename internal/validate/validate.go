@@ -73,6 +73,24 @@ func FrontendAddress(raw string) (hostname string, port int, err error) {
 	return host, port, nil
 }
 
+// upstreamExplicitPort returns the port in u.Host even when it equals the scheme default (80/443).
+// url.URL.Port() omits default ports, which would reject valid targets like http://192.168.1.1:80.
+func upstreamExplicitPort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if u.Host == "" {
+		return ""
+	}
+	if strings.Contains(u.Host, ":") {
+		_, port, err := net.SplitHostPort(u.Host)
+		if err == nil {
+			return port
+		}
+	}
+	return ""
+}
+
 func Upstream(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -100,7 +118,7 @@ func Upstream(raw string) (string, error) {
 	}
 
 	host := u.Hostname()
-	port := u.Port()
+	port := upstreamExplicitPort(u)
 	if host == "" {
 		return "", fmt.Errorf("目标地址主机名无效")
 	}

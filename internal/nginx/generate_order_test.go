@@ -58,7 +58,10 @@ func TestGenerateHTTPSBlockBeforeHTTPRedirect(t *testing.T) {
 	if sslIdx > redirectIdx {
 		t.Fatalf("expected ssl listen before 497 redirect in same server block:\n%s", content)
 	}
-	if strings.Count(content, "server {") != 1 {
-		t.Fatalf("expected single server block (no extra HTTP redirect server):\n%s", content)
+	if strings.Count(content, "server {") != 2 {
+		t.Fatalf("expected rule server + default_server catch-all (no extra HTTP redirect server):\n%s", content)
+	}
+	if !strings.Contains(content, "default_server") {
+		t.Fatalf("expected default_server catch-all for unknown hosts:\n%s", content)
 	}
 }

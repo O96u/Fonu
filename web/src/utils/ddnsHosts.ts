@@ -147,6 +147,22 @@ export function normalizeFrontendHostValues(values: string[]): string[] {
   return out
 }
 
+/** Authority port from raw input; URL() drops default ports (80/443) from host entirely. */
+function upstreamPortFromRaw(raw: string): string {
+  const authority = raw.trim().match(/^https?:\/\/([^/?#]+)/i)?.[1]
+  if (!authority) return ''
+  const ipv4WithPort = authority.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d+)$/)
+  if (ipv4WithPort) return ipv4WithPort[2]
+  const ipv6WithPort = authority.match(/^\[[^\]]+\]:(\d+)$/)
+  if (ipv6WithPort) return ipv6WithPort[1]
+  return ''
+}
+
+function upstreamExplicitPort(u: URL, raw: string): string {
+  if (u.port) return u.port
+  return upstreamPortFromRaw(raw)
+}
+
 export function validateUpstreamInput(raw: string): string {
   const text = raw.trim()
   if (!text) {
@@ -178,8 +194,12 @@ export function validateUpstreamInput(raw: string): string {
     throw new Error('目标地址主机名无效')
   }
   const isIPv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
-  if (isIPv4 && !u.port) {
+  const port = upstreamExplicitPort(u, text)
+  if (isIPv4 && !port) {
     throw new Error('IP 地址目标必须指定端口')
+  }
+  if (isIPv4 && port) {
+    return `${u.protocol}//${host}:${port}`
   }
   return `${u.protocol}//${u.host}`
 }

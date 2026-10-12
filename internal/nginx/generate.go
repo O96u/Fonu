@@ -49,6 +49,8 @@ http {
 	writeChinaOnlyBypassGeo(&b, rules, opts)
 	writeGlobalCustomInclude(&b, cfg, opts)
 
+	catchAllEndpoints := collectListenEndpoints(rules, cfg.CertsDir(), certs)
+
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
@@ -63,6 +65,8 @@ http {
 			return "", err
 		}
 	}
+
+	writeUnmatchedHostCatchAllServers(&b, cfg, catchAllEndpoints)
 
 	b.WriteString("}\n")
 	content := b.String()
@@ -138,7 +142,7 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			writeServerBlockHeaderComment(b, rule, serverNames, group.Port, "http")
 			b.WriteString("server {\n")
 			writeListenComments(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
-			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
+			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6, false)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
 			writeErrorPages(b, cfg)
 			writeLocationWithSecurity(b, cfg, rule, opts)
@@ -156,7 +160,7 @@ func appendSSLServerBlock(b *strings.Builder, cfg config.Config, port int, serve
 	writeServerBlockHeaderComment(&block, rule, serverNames, port, "https")
 	block.WriteString("server {\n")
 	writeListenComments(&block, port, true, rule.ListenIPv4, rule.ListenIPv6)
-	writeListenDirectives(&block, port, true, rule.ListenIPv4, rule.ListenIPv6)
+	writeListenDirectives(&block, port, true, rule.ListenIPv4, rule.ListenIPv6, false)
 	block.WriteString(fmt.Sprintf("    server_name %s;\n\n", serverNames))
 	writeCommentLine(&block, 4, "SSL 证书")
 	block.WriteString(fmt.Sprintf("    ssl_certificate %s;\n", absNginxPath(cert.CertPath)))
@@ -219,10 +223,13 @@ func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.Secur
 `, sslBlock, upstream, hostHeader))
 }
 
-func writeListenDirectives(b *strings.Builder, port int, ssl bool, ipv4 bool, ipv6 bool) {
+func writeListenDirectives(b *strings.Builder, port int, ssl bool, ipv4 bool, ipv6 bool, defaultServer bool) {
 	sslSuffix := ""
 	if ssl {
 		sslSuffix = " ssl"
+	}
+	if defaultServer {
+		sslSuffix += " default_server"
 	}
 	if ipv4 {
 		b.WriteString(fmt.Sprintf("    listen %d%s;\n", port, sslSuffix))
