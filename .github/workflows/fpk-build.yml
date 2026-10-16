@@ -1,6 +1,6 @@
 name: Build FPK
 
-# 仅打 FPK，不创建 Release、不构建 Docker。产物在 Actions Artifacts；可选挂到已有 Release。
+# 仅打 FPK。产物上传到 GitHub Release「fpk-preview」（.fpk 直链下载，非 Actions zip）。
 on:
   workflow_dispatch:
     inputs:
@@ -11,12 +11,16 @@ on:
       version:
         description: '安装包版本号（不含 v），如 1.1.10'
         required: true
-      upload_to_release:
-        description: '同时上传到已存在的 GitHub Release（需先有对应 tag）'
+      preview_tag:
+        description: '预发布 Release 的 tag（存放可直链下载的 .fpk）'
+        required: true
+        default: fpk-preview
+      also_upload_version_release:
+        description: '同时上传到已存在的版本 Release（tag 默认 v + version）'
         type: boolean
         default: false
       release_tag:
-        description: 'Release 的 tag（默认 v + version），仅 upload_to_release 时使用'
+        description: '版本 Release 的 tag（默认 v + version）'
         required: false
 
 concurrency:
@@ -27,9 +31,9 @@ jobs:
   build-fpk:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         arch: [amd64, arm64]
     steps:
@@ -67,19 +71,57 @@ jobs:
           chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
           packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "${{ inputs.version }}"
 
-      - name: Upload workflow artifact
+      - name: Stage FPK for publish job
         uses: actions/upload-artifact@v4
         with:
-          name: fonu-fpk-${{ matrix.arch }}
+          name: fonu-${{ inputs.version }}-${{ matrix.arch }}
           path: packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk
           if-no-files-found: error
+          compression-level: 0
 
-      - name: Upload to GitHub Release
-        if: inputs.upload_to_release
+  publish-fpk:
+    needs: build-fpk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built FPK files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fonu-${{ inputs.version }}-*
+          path: dist
+          merge-multiple: true
+
+      - name: List packages
+        run: ls -la dist/
+
+      - name: Publish to preview release (direct .fpk download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_TAG: ${{ inputs.preview_tag }}
+          VERSION: ${{ inputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          NOTES="Build FPK workflow run ${RUN_URL}
+
+          | 文件 | 架构 |
+          |------|------|
+          | fonu_${VERSION}_amd64.fpk | x86 (Intel/AMD) |
+          | fonu_${VERSION}_arm64.fpk | ARM64 |
+
+          在 Release 资源区直接下载 **.fpk**（不要用 Actions Artifacts 的 zip）。"
+          if ! gh release view "${PREVIEW_TAG}" >/dev/null 2>&1; then
+            gh release create "${PREVIEW_TAG}" --prerelease --title "FPK preview" --notes "${NOTES}"
+          else
+            gh release edit "${PREVIEW_TAG}" --prerelease --notes "${NOTES}"
+          fi
+          gh release upload "${PREVIEW_TAG}" dist/*.fpk --clobber
+
+      - name: Upload to version release
+        if: inputs.also_upload_version_release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
         run: |
-          gh release upload "${RELEASE_TAG}" \
-            "packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk" \
-            --clobber
+          gh release upload "${RELEASE_TAG}" dist/*.fpk --clobber

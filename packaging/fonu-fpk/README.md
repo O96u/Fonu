@@ -10,10 +10,10 @@
 
 | 方式 | 说明 |
 |------|------|
-| **仅 FPK（推荐试包）** | Actions → **Build FPK** → Run workflow：`ref`（如 `main`）、`version`（如 `1.1.10`）；完成后在 Artifacts 下载 amd64 / arm64 |
+| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`；完成后到 [Releases → fpk-preview](https://github.com/O96u/Fonu/releases/tag/fpk-preview) **直接下载** `fonu_<version>_amd64.fpk` / `_arm64.fpk`（不要用 Actions Artifacts，那是 zip） |
 | **发版一条龙** | 推送 `v*` tag → **GitHub Release** 工作流：创建 Release + 打 FPK 并上传 |
 
-单独打 FPK 时默认**不**创建 Release、**不**构建 Docker。若勾选 `upload_to_release`，需该 `v*` tag 的 Release 已存在。
+`build-fpk.sh` / fnpack 产出本身就是 **`.fpk`** 文件；只有 GitHub Actions「Artifacts」下载时才会多包一层 zip。
 
 ## 安装与访问
 
