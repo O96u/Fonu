@@ -1,5 +1,13 @@
 # Fonu FPK 真机验证清单
 
+## 安装报「应用包不符合系统要求」
+
+1. **不要安装 Actions 的 zip**：必须从 [Releases → fpk-preview](https://github.com/O96u/Fonu/releases/tag/fpk-preview) 下载 **`fonu_<版本>_amd64.fpk`**（约 35MB+）。若下过 Artifacts 的 zip，请解压后只装里面的 `.fpk`，不要把 `.zip` 改名成 `.fpk`。
+2. **架构**：x86 设备用 `_amd64.fpk`（manifest 内 `platform=x86`）；ARM 用 `_arm64.fpk`（`platform=arm`）。
+3. **系统版本**：manifest 声明 `os_min_version=1.1.0`，请确认 **设置 → 关于** 中 fnOS ≥ 1.1.0；建议升到当前稳定版后再装。
+4. **用最新构建**：重新跑 **Build FPK**（`ref=main`），不要装旧 run 里打的包。
+5. **看详细错误**（SSH）：`appcenter-cli install-fpk /path/to/fonu_xxx_amd64.fpk`
+
 在飞牛 fnOS 上安装对应架构的 `.fpk` 后逐项确认。
 
 ## 安装与生命周期

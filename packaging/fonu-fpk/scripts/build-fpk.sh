@@ -253,5 +253,12 @@ else
   exit 1
 fi
 
+echo "==> Packaged manifest:"
+grep -E '^(version|platform|os_min_version)=' "${STAGING}/manifest" 2>/dev/null || true
+if [ -f "${DIST_DIR}/${FPK_NAME}" ]; then
+  echo "==> FPK size: $(wc -c <"${DIST_DIR}/${FPK_NAME}") bytes"
+  tar -tzf "${DIST_DIR}/${FPK_NAME}" 2>/dev/null | head -n 8 || true
+fi
+
 rm -rf "${STAGING}"
 echo "==> Done: ${DIST_DIR}/${FPK_NAME}"
