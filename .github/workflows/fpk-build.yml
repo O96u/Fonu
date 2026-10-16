@@ -1,6 +1,6 @@
 name: Build FPK
 
-# 仅打 FPK。产物上传到 GitHub Release「fpk-preview」（.fpk 直链下载，非 Actions zip）。
+# 打 FPK 并上传到 GitHub Releases（资源区直接下载 .fpk，不使用 Actions Artifacts）。
 on:
   workflow_dispatch:
     inputs:
@@ -11,36 +11,34 @@ on:
       version:
         description: '安装包版本号（不含 v），如 1.1.10'
         required: true
-      preview_tag:
-        description: '预发布 Release 的 tag（存放可直链下载的 .fpk）'
-        required: true
-        default: fpk-preview
-      also_upload_version_release:
-        description: '同时上传到已存在的版本 Release（tag 默认 v + version）'
-        type: boolean
-        default: false
       release_tag:
-        description: '版本 Release 的 tag（默认 v + version）'
+        description: 'Release tag（默认 v + version，如 v1.1.10）'
         required: false
+      prerelease:
+        description: '标记为预发布 Release'
+        type: boolean
+        default: true
 
 concurrency:
   group: fpk-build-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  build-fpk:
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-    strategy:
-      fail-fast: true
-      matrix:
-        arch: [amd64, arm64]
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -61,75 +59,40 @@ jobs:
         run: |
           set -euo pipefail
           URL="${FNPACK_DOWNLOAD_URL:-https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64}"
-          echo "Downloading fnpack from ${URL}"
           curl -fsSL -o /usr/local/bin/fnpack "${URL}"
           chmod +x /usr/local/bin/fnpack
-          fnpack --help >/dev/null || true
 
-      - name: Build FPK
+      - name: Build FPK (amd64 + arm64)
         run: |
           chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
-          packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "${{ inputs.version }}"
+          packaging/fonu-fpk/scripts/build-fpk.sh amd64 "${VERSION}"
+          packaging/fonu-fpk/scripts/build-fpk.sh arm64 "${VERSION}"
+          ls -la packaging/dist/
 
-      - name: Stage FPK for publish job
-        uses: actions/upload-artifact@v4
-        with:
-          name: fonu-${{ inputs.version }}-${{ matrix.arch }}
-          path: packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk
-          if-no-files-found: error
-          compression-level: 0
-
-  publish-fpk:
-    needs: build-fpk
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download built FPK files
-        uses: actions/download-artifact@v4
-        with:
-          pattern: fonu-${{ inputs.version }}-*
-          path: dist
-          merge-multiple: true
-
-      - name: List packages
-        run: ls -la dist/
-
-      - name: Publish to preview release (direct .fpk download)
+      - name: Publish to GitHub Release
         env:
-          PREVIEW_TAG: ${{ inputs.preview_tag }}
-          VERSION: ${{ inputs.version }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
+          cd packaging/dist
           cat > release-notes.md <<EOF
-          Build FPK workflow run ${RUN_URL}
+          Fonu fnOS 原生安装包（由 [Build FPK](${RUN_URL}) 构建）
 
           | 文件 | 架构 |
           |------|------|
           | fonu_${VERSION}_amd64.fpk | x86 (Intel/AMD) |
           | fonu_${VERSION}_arm64.fpk | ARM64 |
 
-          在 Release 资源区直接下载 **.fpk**（不要用 Actions Artifacts 的 zip）。
+          请在本页 **Assets** 中直接下载 \`.fpk\` 文件（不要从 Actions Artifacts 下载 zip）。
           EOF
-          if ! gh release view "${PREVIEW_TAG}" -R "${GH_REPO}" >/dev/null 2>&1; then
-            gh release create "${PREVIEW_TAG}" -R "${GH_REPO}" --prerelease --title "FPK preview" --notes-file release-notes.md
-          else
-            gh release edit "${PREVIEW_TAG}" -R "${GH_REPO}" --prerelease --notes-file release-notes.md
+          ARGS=(--title "Fonu ${RELEASE_TAG} FPK")
+          if [ "${PRERELEASE}" = "true" ]; then
+            ARGS+=(--prerelease)
           fi
-          gh release upload "${PREVIEW_TAG}" -R "${GH_REPO}" dist/*.fpk --clobber
-
-      - name: Upload to version release
-        if: inputs.also_upload_version_release
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
-        run: |
-          gh release upload "${RELEASE_TAG}" -R "${GH_REPO}" dist/*.fpk --clobber
+          if ! gh release view "${RELEASE_TAG}" -R "${GH_REPO}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" -R "${GH_REPO}" "${ARGS[@]}" --notes-file release-notes.md
+          else
+            gh release edit "${RELEASE_TAG}" -R "${GH_REPO}" "${ARGS[@]}" --notes-file release-notes.md
+          fi
+          gh release upload "${RELEASE_TAG}" -R "${GH_REPO}" fonu_${VERSION}_amd64.fpk fonu_${VERSION}_arm64.fpk --clobber

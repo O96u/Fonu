@@ -10,10 +10,10 @@
 
 | 方式 | 说明 |
 |------|------|
-| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`；完成后到 [Releases → fpk-preview](https://github.com/O96u/Fonu/releases/tag/fpk-preview) **直接下载** `fonu_<version>_amd64.fpk` / `_arm64.fpk`（不要用 Actions Artifacts，那是 zip） |
+| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`（默认会建/更新 Release **`v<version>`**）；在 [Releases](https://github.com/O96u/Fonu/releases) 该版本的 **Assets** 里直接下 `fonu_<version>_amd64.fpk` / `_arm64.fpk` |
 | **发版一条龙** | 推送 `v*` tag → **GitHub Release** 工作流：创建 Release + 打 FPK 并上传 |
 
-`build-fpk.sh` / fnpack 产出本身就是 **`.fpk`** 文件。从 Actions 下载的 **`fonu-1.1.9-amd64.zip` 不是安装包**：解压后安装其中的 **`fonu_1.1.9_amd64.fpk`**（注意文件名是下划线 `_`，不是连字符）。
+产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
 
 ## 安装与访问
 

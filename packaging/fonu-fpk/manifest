@@ -12,4 +12,3 @@ desktop_applaunchname=fonu.main
 service_port=6893
 checkport=false
 ctl_stop=true
-changelog=fnOS 原生 FPK 试装版
