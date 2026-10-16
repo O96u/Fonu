@@ -2,9 +2,11 @@
 
 ## 安装报「应用包不符合系统要求」
 
-1. **不要安装 `fonu-1.1.9-amd64.zip`**：这是 GitHub 外壳（文件头 `PK`）。**解压**后只装 **`fonu_1.1.9_amd64.fpk`**（约 37MB，文件头 `1F 8B`）。zip 改名成 `.fpk` 也会报「不符合系统要求」。
-2. **架构**：x86 用 `_amd64.fpk`；ARM 用 `_arm64.fpk`。
-3. **系统版本**：建议 fnOS ≥ 1.1.3100；仍失败请 SSH 执行 `appcenter-cli install-fpk` 看具体原因。
+1. **只装 Release Assets 里的 `.fpk`**（约 37MB，文件头 `1F 8B`），不要装 Actions 的 zip（文件头 `PK`）。
+2. **架构**：NAS 上执行 `uname -m` → `x86_64` 用 `_amd64.fpk`；`aarch64` 用 `_arm64.fpk`。
+3. **系统版本**：manifest 要求 **fnOS ≥ 1.1.3100**（与 [nginx-web-fnos](https://github.com/chenpingonline/nginx-web-fnos) 一致）。低于此版本请先升级系统。
+4. **对照**：在同一台 NAS 试装官方第三方 [nginx-web x86_64.fpk](https://github.com/chenpingonline/nginx-web-fnos/releases)。若也失败，多为系统/权限问题；若只有 Fonu 失败，把 `appcenter-cli install-fpk` 完整输出发维护者。
+5. **SSH 安装**（看真实错误）：`appcenter-cli install-fpk /path/to/fonu_1.1.9_amd64.fpk`
 4. **用最新构建**：重新跑 **Build FPK**（`ref=main`），不要装旧 run 里打的包。
 5. **看详细错误**（SSH）：`appcenter-cli install-fpk /path/to/fonu_xxx_amd64.fpk`
 

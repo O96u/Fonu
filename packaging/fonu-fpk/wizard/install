@@ -4,12 +4,7 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "管理后台默认端口 6893；HTTP/HTTPS 反代默认 18080/9443。会话密钥留空时将在首次启动时自动生成。"
-      },
-      {
-        "type": "password",
-        "field": "wizard_session_secret",
-        "label": "会话密钥（可选）"
+        "helpText": "需要 fnOS 1.1.3100 及以上。管理后台端口 6893；HTTP/HTTPS 反代默认 18080/9443。首次启动会自动生成会话密钥。"
       }
     ]
   }
