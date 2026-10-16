@@ -110,24 +110,26 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          NOTES="Build FPK workflow run ${RUN_URL}
+          cat > release-notes.md <<EOF
+          Build FPK workflow run ${RUN_URL}
 
           | 文件 | 架构 |
           |------|------|
           | fonu_${VERSION}_amd64.fpk | x86 (Intel/AMD) |
           | fonu_${VERSION}_arm64.fpk | ARM64 |
 
-          在 Release 资源区直接下载 **.fpk**（不要用 Actions Artifacts 的 zip）。"
-          if ! gh release view "${PREVIEW_TAG}" >/dev/null 2>&1; then
-            gh release create "${PREVIEW_TAG}" --prerelease --title "FPK preview" --notes "${NOTES}"
+          在 Release 资源区直接下载 **.fpk**（不要用 Actions Artifacts 的 zip）。
+          EOF
+          if ! gh release view "${PREVIEW_TAG}" -R "${GH_REPO}" >/dev/null 2>&1; then
+            gh release create "${PREVIEW_TAG}" -R "${GH_REPO}" --prerelease --title "FPK preview" --notes-file release-notes.md
           else
-            gh release edit "${PREVIEW_TAG}" --prerelease --notes "${NOTES}"
+            gh release edit "${PREVIEW_TAG}" -R "${GH_REPO}" --prerelease --notes-file release-notes.md
           fi
-          gh release upload "${PREVIEW_TAG}" dist/*.fpk --clobber
+          gh release upload "${PREVIEW_TAG}" -R "${GH_REPO}" dist/*.fpk --clobber
 
       - name: Upload to version release
         if: inputs.also_upload_version_release
         env:
           RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
         run: |
-          gh release upload "${RELEASE_TAG}" dist/*.fpk --clobber
+          gh release upload "${RELEASE_TAG}" -R "${GH_REPO}" dist/*.fpk --clobber
