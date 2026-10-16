@@ -1,0 +1,85 @@
+name: Build FPK
+
+# 仅打 FPK，不创建 Release、不构建 Docker。产物在 Actions Artifacts；可选挂到已有 Release。
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '要构建的 Git 引用（分支 / tag / commit）'
+        required: true
+        default: main
+      version:
+        description: '安装包版本号（不含 v），如 1.1.10'
+        required: true
+      upload_to_release:
+        description: '同时上传到已存在的 GitHub Release（需先有对应 tag）'
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release 的 tag（默认 v + version），仅 upload_to_release 时使用'
+        required: false
+
+concurrency:
+  group: fpk-build-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build-fpk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install fnpack
+        env:
+          FNPACK_DOWNLOAD_URL: ${{ secrets.FNPACK_DOWNLOAD_URL }}
+        run: |
+          set -euo pipefail
+          URL="${FNPACK_DOWNLOAD_URL:-https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64}"
+          echo "Downloading fnpack from ${URL}"
+          curl -fsSL -o /usr/local/bin/fnpack "${URL}"
+          chmod +x /usr/local/bin/fnpack
+          fnpack --help >/dev/null || true
+
+      - name: Build FPK
+        run: |
+          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/main
+          packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "${{ inputs.version }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fonu-fpk-${{ matrix.arch }}
+          path: packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: inputs.upload_to_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
+        run: |
+          gh release upload "${RELEASE_TAG}" \
+            "packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk" \
+            --clobber

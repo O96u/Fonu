@@ -1,0 +1,13 @@
+appname=fonu
+version=1.1.9
+desc=飞牛 fnOS 公网访问管理（反代、DDNS、HTTPS 证书、内网穿透）
+display_name=Fonu
+maintainer=muxui
+distributor=muxui
+platform=x86_64
+source=thirdparty
+desktop_uidir=ui
+desktop_applaunchname=fonu.main
+service_port=6893
+checkport=true
+ctl_stop=true

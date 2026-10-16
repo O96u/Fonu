@@ -7,4 +7,7 @@ cmd/fonu/web/dist/
 /data/
 .DS_Store
 .cursor/
-scripts/
+/scripts/
+packaging/dist/
+packaging/fonu-fpk/.cache/
+packaging/fonu-fpk/.build-*/

@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "fonu.main": {
+      "title": "Fonu",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "6893",
+      "url": "/",
+      "allUsers": true
+    }
+  }
+}

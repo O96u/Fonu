@@ -127,7 +127,7 @@
 | **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 DNS API               |
 | **内网穿透** | 内置 frpc（v0.71.x）；Web 网关穿透 Fonu Nginx，另支持 TCP/UDP 远程端口映射 |
 | **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts                             |
-| **部署**     | Docker 多架构镜像（amd64 / arm64）、GitHub Actions CI                  |
+| **部署**     | Docker 多架构镜像（amd64 / arm64）、飞牛原生 FPK、GitHub Actions CI    |
 
 ## 部署
 
@@ -158,30 +158,24 @@ docker run -d \
 ### 其他部署方式
 
 <details>
-<summary>Docker Compose</summary>
+<summary>Docker Compose（host 模式，与快速部署一致）</summary>
 
 ```bash
-FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.host.yml up -d
+FONU_SESSION_SECRET=your-secret docker compose up -d
+```
+
+本地从源码构建镜像：
+
+```bash
+FONU_SESSION_SECRET=your-secret docker compose up -d --build
 ```
 
 </details>
 
 <details>
-<summary>Bridge 网络（端口映射，非飞牛环境可自行尝试）</summary>
+<summary>飞牛 fnOS 原生 FPK</summary>
 
-```bash
-docker pull muxui/fonu
-FONU_SESSION_SECRET=your-secret docker compose -f docker-compose.hub.yml up -d
-```
-
-</details>
-
-<details>
-<summary>本地构建</summary>
-
-```bash
-docker compose up -d --build
-```
+从 [GitHub Release](https://github.com/muxui/fonu/releases) 下载对应架构的 `.fpk`（试包可用 Actions **Build FPK**；正式发版推送 `v*` tag，见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。内置 `fonu`、nginx、frpc；管理后台与反代默认端口与 Host 模式 Docker 相同（`6893` / `18080` / `9443`）。
 
 </details>
 

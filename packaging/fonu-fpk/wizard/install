@@ -1,0 +1,3 @@
+#!/bin/bash
+# Installation wizard: optional session secret (leave empty to auto-generate on first start).
+WIZARD_SESSION_SECRET="${wizard_session_secret:-}"

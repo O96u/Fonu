@@ -1,0 +1,8 @@
+.cache/
+.build-*/
+*.fpk
+app/bin/fonu
+app/bin/nginx
+app/bin/frpc
+app/bin/mime.types
+app/lib/

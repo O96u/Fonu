@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- 飞牛 fnOS 原生 FPK：`packaging/fonu-fpk` 模板进库；**Build FPK** 工作流可单独试包，推送 `v*` tag 时一并上传 Release（默认官方 fnpack CDN）
+- 合并 Docker Compose 为单一 `docker-compose.yml`（host 模式）
+
 ## [v1.1.9] - 2026-10-12
 
 ### 修复

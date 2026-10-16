@@ -234,6 +234,12 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func ResolveMigrationsDir() (string, error) {
+	if dir := os.Getenv("FONU_MIGRATIONS_DIR"); dir != "" {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir, nil
+		}
+		return "", fmt.Errorf("FONU_MIGRATIONS_DIR is not a directory: %s", dir)
+	}
 	candidates := []string{
 		"migrations",
 		filepath.Join("..", "migrations"),

@@ -1,17 +1,21 @@
+# 飞牛 NAS 等已占用 80/443：host 网络 + 高位默认反代端口（18080/9443）
+# 拉取镜像：docker compose up -d
+# 本地构建：docker compose up -d --build
 services:
   fonu:
     build: .
+    image: muxui/fonu:latest
     container_name: fonu
     restart: unless-stopped
-    ports:
-      - "6893:6893"
-      - "18080:80"
-      - "9443:443"
+    network_mode: host
     volumes:
       - fonu-data:/data
     environment:
       FONU_DATA_DIR: /data
       FONU_LISTEN: :6893
+      FONU_SESSION_SECRET: ${FONU_SESSION_SECRET:-change-me-in-production}
+      FONU_NGINX_HTTP_PORT: ${FONU_NGINX_HTTP_PORT:-18080}
+      FONU_NGINX_HTTPS_PORT: ${FONU_NGINX_HTTPS_PORT:-9443}
 
 volumes:
   fonu-data:
