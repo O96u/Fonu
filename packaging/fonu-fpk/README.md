@@ -13,7 +13,7 @@
 | **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`；完成后到 [Releases → fpk-preview](https://github.com/O96u/Fonu/releases/tag/fpk-preview) **直接下载** `fonu_<version>_amd64.fpk` / `_arm64.fpk`（不要用 Actions Artifacts，那是 zip） |
 | **发版一条龙** | 推送 `v*` tag → **GitHub Release** 工作流：创建 Release + 打 FPK 并上传 |
 
-`build-fpk.sh` / fnpack 产出本身就是 **`.fpk`** 文件；只有 GitHub Actions「Artifacts」下载时才会多包一层 zip。
+`build-fpk.sh` / fnpack 产出本身就是 **`.fpk`** 文件。从 Actions 下载的 **`fonu-1.1.9-amd64.zip` 不是安装包**：解压后安装其中的 **`fonu_1.1.9_amd64.fpk`**（注意文件名是下划线 `_`，不是连字符）。
 
 ## 安装与访问
 

@@ -7,7 +7,6 @@ maintainer_url=https://github.com/O96u/Fonu
 distributor=muxui
 source=thirdparty
 platform=x86
-os_min_version=1.1.0
 desktop_uidir=ui
 desktop_applaunchname=fonu.main
 service_port=6893
