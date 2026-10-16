@@ -49,12 +49,12 @@ case "${ARCH}" in
   amd64)
     GOARCH=amd64
     FRP_ARCH=amd64
-    MANIFEST_PLATFORM=x86_64
+    MANIFEST_PLATFORM=x86
     ;;
   arm64)
     GOARCH=arm64
     FRP_ARCH=arm64
-    MANIFEST_PLATFORM=aarch64
+    MANIFEST_PLATFORM=arm
     ;;
   *)
     echo "unsupported arch: ${ARCH}" >&2
