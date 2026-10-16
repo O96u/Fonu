@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+# Data under TRIM_PKGVAR is preserved across upgrades.
+exit 0

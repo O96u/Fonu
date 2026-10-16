@@ -64,7 +64,7 @@ jobs:
 
       - name: Build FPK
         run: |
-          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/main
+          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
           packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "${{ inputs.version }}"
 
       - name: Upload workflow artifact

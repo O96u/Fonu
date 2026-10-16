@@ -234,7 +234,7 @@ else
   echo "platform=${MANIFEST_PLATFORM}" >>"${MANIFEST}"
 fi
 
-chmod +x "${STAGING}/cmd/main"
+chmod +x "${STAGING}/cmd/"*
 
 echo "==> fnpack build"
 (

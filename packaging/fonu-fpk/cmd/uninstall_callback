@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+# User data retention is controlled by the uninstall wizard / data-share policy.
+exit 0
