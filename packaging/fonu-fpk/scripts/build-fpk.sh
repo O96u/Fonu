@@ -72,7 +72,6 @@ https://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-8-0_10.42-1_amd64.deb
 https://deb.debian.org/debian/pool/main/o/openssl/libssl3_3.0.17-1~deb12u2_amd64.deb
 https://deb.debian.org/debian/pool/main/z/zlib/zlib1g_1.2.13.dfsg-1_amd64.deb
 https://deb.debian.org/debian/pool/main/libx/libxcrypt/libcrypt1_4.4.33-2_amd64.deb
-https://deb.debian.org/debian/pool/main/g/glibc/libc6_2.36-9+deb12u13_amd64.deb
 EOF
       ;;
     arm64)
@@ -82,7 +81,6 @@ https://deb.debian.org/debian/pool/main/p/pcre2/libpcre2-8-0_10.42-1_arm64.deb
 https://deb.debian.org/debian/pool/main/o/openssl/libssl3_3.0.17-1~deb12u2_arm64.deb
 https://deb.debian.org/debian/pool/main/z/zlib/zlib1g_1.2.13.dfsg-1_arm64.deb
 https://deb.debian.org/debian/pool/main/libx/libxcrypt/libcrypt1_4.4.33-2_arm64.deb
-https://deb.debian.org/debian/pool/main/g/glibc/libc6_2.36-9+deb12u13_arm64.deb
 EOF
       ;;
   esac
@@ -95,7 +93,10 @@ extract_deb_into_libs() {
   local deb="${work}/pkg-${idx}.deb"
   local root="${work}/root-${idx}"
   local extractor="${SCRIPT_DIR}/extract-deb.py"
-  curl -fsSL "${url}" -o "${deb}"
+  if ! curl -fsSL "${url}" -o "${deb}"; then
+    echo "failed to download Debian package: ${url}" >&2
+    return 1
+  fi
   mkdir -p "${root}"
   if command -v ar >/dev/null 2>&1 && ar t "${deb}" >/dev/null 2>&1; then
     (cd "${root}" && ar x "${deb}" && tar -xf data.tar.*)
