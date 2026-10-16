@@ -159,11 +159,12 @@ mkdir -p "${STAGING}"
 stage_pack_tree() {
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --exclude='.build-*' --exclude='*.fpk' --exclude='scripts' --exclude='.cache' \
+      --exclude='LICENSE' \
       "${PACK_DIR}/" "${STAGING}/"
     return 0
   fi
   local name
-  for name in manifest ICON.PNG ICON_256.PNG LICENSE cmd config wizard app; do
+  for name in manifest ICON.PNG ICON_256.PNG cmd config wizard app; do
     if [ -e "${PACK_DIR}/${name}" ]; then
       cp -R "${PACK_DIR}/${name}" "${STAGING}/${name}"
     fi
@@ -235,6 +236,7 @@ else
 fi
 
 chmod +x "${STAGING}/cmd/"*
+rm -f "${STAGING}/LICENSE"
 
 echo "==> fnpack build"
 (
