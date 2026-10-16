@@ -1,6 +1,6 @@
 name: Build FPK
 
-# 打 FPK 并上传到 GitHub Releases（资源区直接下载 .fpk，不使用 Actions Artifacts）。
+# 打 FPK 并上传到独立预发布 Release（不占用正式 v* 的 Latest）。
 on:
   workflow_dispatch:
     inputs:
@@ -12,12 +12,8 @@ on:
         description: '安装包版本号（不含 v），如 1.1.10'
         required: true
       release_tag:
-        description: 'Release tag（默认 v + version，如 v1.1.10）'
+        description: 'FPK Release tag（默认 fpk-v + version，勿用正式发版 v* tag）'
         required: false
-      prerelease:
-        description: '标记为预发布 Release'
-        type: boolean
-        default: true
 
 concurrency:
   group: fpk-build-${{ github.run_id }}
@@ -32,7 +28,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ inputs.version }}
-      RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('v{0}', inputs.version) }}
+      RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('fpk-v{0}', inputs.version) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,30 +65,36 @@ jobs:
           packaging/fonu-fpk/scripts/build-fpk.sh arm64 "${VERSION}"
           ls -la packaging/dist/
 
-      - name: Publish to GitHub Release
+      - name: Publish to GitHub Release (prerelease, not Latest)
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
+          if [[ "${RELEASE_TAG}" =~ ^v[0-9] ]]; then
+            echo "Refusing to publish FPK on formal release tag ${RELEASE_TAG}; use fpk-v<version> or set release_tag explicitly." >&2
+            exit 1
+          fi
           cd packaging/dist
           cat > release-notes.md <<EOF
-          Fonu fnOS 原生安装包（由 [Build FPK](${RUN_URL}) 构建）
+          Fonu fnOS 原生安装包（预发布，由 [Build FPK](${RUN_URL}) 构建）
 
           | 文件 | 架构 |
           |------|------|
           | fonu_${VERSION}_amd64.fpk | x86 (Intel/AMD) |
           | fonu_${VERSION}_arm64.fpk | ARM64 |
 
-          请在本页 **Assets** 中直接下载 \`.fpk\` 文件（不要从 Actions Artifacts 下载 zip）。
+          请在本页 **Assets** 中直接下载 \`.fpk\` 文件。正式发版 Latest 仍以 \`v*\` tag 的 Release 为准。
           EOF
-          ARGS=(--title "Fonu ${RELEASE_TAG} FPK")
-          if [ "${PRERELEASE}" = "true" ]; then
-            ARGS+=(--prerelease)
-          fi
           if ! gh release view "${RELEASE_TAG}" -R "${GH_REPO}" >/dev/null 2>&1; then
-            gh release create "${RELEASE_TAG}" -R "${GH_REPO}" "${ARGS[@]}" --notes-file release-notes.md
+            gh release create "${RELEASE_TAG}" -R "${GH_REPO}" \
+              --title "Fonu FPK ${VERSION}" \
+              --prerelease \
+              --latest=false \
+              --notes-file release-notes.md
           else
-            gh release edit "${RELEASE_TAG}" -R "${GH_REPO}" "${ARGS[@]}" --notes-file release-notes.md
+            gh release edit "${RELEASE_TAG}" -R "${GH_REPO}" \
+              --prerelease \
+              --latest=false \
+              --notes-file release-notes.md
           fi
           gh release upload "${RELEASE_TAG}" -R "${GH_REPO}" fonu_${VERSION}_amd64.fpk fonu_${VERSION}_arm64.fpk --clobber

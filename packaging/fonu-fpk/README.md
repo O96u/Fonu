@@ -10,7 +10,7 @@
 
 | 方式 | 说明 |
 |------|------|
-| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`（默认会建/更新 Release **`v<version>`**）；在 [Releases](https://github.com/O96u/Fonu/releases) 该版本的 **Assets** 里直接下 `fonu_<version>_amd64.fpk` / `_arm64.fpk` |
+| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`；产物在预发布 **`fpk-v<version>`**（如 [fpk-v1.1.9](https://github.com/O96u/Fonu/releases)），**不会**覆盖正式 `v*` 的 Latest |
 | **发版一条龙** | 推送 `v*` tag → **GitHub Release** 工作流：创建 Release + 打 FPK 并上传 |
 
 产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
