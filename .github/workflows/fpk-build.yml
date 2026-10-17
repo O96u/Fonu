@@ -60,6 +60,10 @@ jobs:
 
       - name: Build FPK (amd64 + arm64)
         run: |
+          if ! command -v readelf >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y binutils
+          fi
           chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
           packaging/fonu-fpk/scripts/build-fpk.sh amd64 "${VERSION}"
           packaging/fonu-fpk/scripts/build-fpk.sh arm64 "${VERSION}"

@@ -16,6 +16,7 @@ func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource, opts Ge
 	b.WriteString(`worker_processes auto;
 error_log ` + absNginxPath(filepath.Join(cfg.LogsDir(), "error.log")) + ` warn;
 pid ` + absNginxPath(cfg.NginxPIDFile) + `;
+lock_file ` + absNginxPath(filepath.Join(cfg.NginxDir(), "nginx.lock")) + `;
 
 events {
     worker_connections 1024;
@@ -24,6 +25,12 @@ events {
 http {
     include       ` + absNginxPath(cfg.NginxMimeTypes) + `;
     default_type  application/octet-stream;
+
+    client_body_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "client_body_temp")) + `;
+    proxy_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "proxy_temp")) + `;
+    fastcgi_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "fastcgi_temp")) + `;
+    uwsgi_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "uwsgi_temp")) + `;
+    scgi_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "scgi_temp")) + `;
 
     log_format fonu_access '$time_iso8601 $host $server_port $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent';
     access_log ` + absNginxPath(filepath.Join(cfg.LogsDir(), "access.log")) + ` fonu_access;

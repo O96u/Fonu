@@ -111,13 +111,40 @@ extract_deb_into_libs() {
   if [ -f "${root}/usr/sbin/nginx" ]; then
     install -m 755 "${root}/usr/sbin/nginx" "${BIN_DIR}/nginx"
   fi
-  find "${root}" -type f \( -name 'lib*.so*' -o -name '*.so.*' \) 2>/dev/null | while read -r so; do
-    cp -n "${so}" "${LIB_DIR}/" 2>/dev/null || true
-  done
+  # Debian ships SONAMEs as symlinks (libssl.so.3 -> libssl.so.3.*). Copy the
+  # link target under the SONAME so nginx can start via LD_LIBRARY_PATH.
+  find "${root}" \( -type f -o -type l \) \( -name 'lib*.so*' -o -name '*.so.*' \) -print0 2>/dev/null |
+    while IFS= read -r -d '' so; do
+      cp -L "${so}" "${LIB_DIR}/" 2>/dev/null || true
+    done
+}
+
+verify_nginx_libs() {
+  if ! command -v readelf >/dev/null 2>&1; then
+    echo "==> readelf not found; skipped nginx library check"
+    return 0
+  fi
+  local missing=0 name
+  while IFS= read -r name; do
+    [ -z "${name}" ] && continue
+    case "${name}" in
+      libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*)
+        continue
+        ;;
+    esac
+    if [ ! -e "${LIB_DIR}/${name}" ]; then
+      echo "nginx needs ${name}, missing from ${LIB_DIR}" >&2
+      missing=1
+    fi
+  done < <(readelf -d "${BIN_DIR}/nginx" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
+  if [ "${missing}" -ne 0 ]; then
+    return 1
+  fi
+  echo "==> nginx shared libraries present"
 }
 
 bundle_nginx() {
-  local cache="${PACK_DIR}/.cache/nginx-${ARCH}"
+  local cache="${PACK_DIR}/.cache/nginx-${ARCH}-2"
   if [ -f "${cache}/nginx" ]; then
     echo "==> Using cached nginx: ${cache}"
     install -m 755 "${cache}/nginx" "${BIN_DIR}/nginx"
@@ -208,6 +235,7 @@ install -m 755 "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" "${BIN_DIR
 rm -rf "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}" "${FRP_TGZ}"
 
 bundle_nginx
+verify_nginx_libs
 
 cp "${REPO_ROOT}/deploy/nginx/mime.types" "${BIN_DIR}/mime.types"
 mkdir -p "${STAGING}/app/migrations"
@@ -237,6 +265,54 @@ fi
 
 chmod +x "${STAGING}/cmd/"*
 rm -f "${STAGING}/LICENSE"
+
+# Windows checkouts are CRLF. fnOS runs these as shell scripts and parses
+# manifest as text; a trailing CR fails install with "应用包不符合系统要求".
+normalize_lf() {
+  local f
+  while IFS= read -r -d '' f; do
+    if grep -q $'\r' "${f}" 2>/dev/null; then
+      sed_inplace $'s/\r$//' "${f}"
+    fi
+  done < <(find "${STAGING}" -type f \
+    ! -name '*.png' ! -name '*.PNG' \
+    ! -name 'fonu' ! -name 'nginx' ! -name 'frpc' \
+    ! -name '*.so' ! -name '*.so.*' \
+    -print0)
+}
+normalize_lf
+
+verify_icons() {
+  python3 - "${STAGING}" <<'PY'
+import struct, sys
+root = sys.argv[1]
+expect = {
+    "ICON.PNG": (64, 64),
+    "ICON_256.PNG": (256, 256),
+    "app/ui/images/icon_64.png": (64, 64),
+    "app/ui/images/icon_256.png": (256, 256),
+}
+def size(path):
+    with open(path, "rb") as f:
+        sig = f.read(8)
+        if sig != b"\x89PNG\r\n\x1a\n":
+            raise SystemExit(f"{path} is not a PNG")
+        f.read(8)
+        return struct.unpack(">II", f.read(8))
+bad = False
+for rel, want in expect.items():
+    got = size(f"{root}/{rel}")
+    if got != want:
+        print(f"{rel} is {got[0]}x{got[1]}, need {want[0]}x{want[1]}", file=sys.stderr)
+        bad = True
+if bad:
+    raise SystemExit(1)
+print("icons ok")
+PY
+}
+if command -v python3 >/dev/null 2>&1; then
+  verify_icons
+fi
 
 echo "==> fnpack build"
 (

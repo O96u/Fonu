@@ -97,6 +97,10 @@ jobs:
 
       - name: Build FPK
         run: |
+          if ! command -v readelf >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y binutils
+          fi
           chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
           packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "${{ steps.semver.outputs.version }}"
 

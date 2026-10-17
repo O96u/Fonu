@@ -1,0 +1,5 @@
+packaging/fonu-fpk/** text eol=lf
+packaging/fonu-fpk/**/*.png binary
+packaging/fonu-fpk/**/*.PNG binary
+packaging/fonu-fpk/ICON.PNG binary
+packaging/fonu-fpk/ICON_256.PNG binary
