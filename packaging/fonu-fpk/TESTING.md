@@ -4,7 +4,7 @@
 
 1. **只装 Release Assets 里的 `.fpk`**（约 37MB，文件头 `1F 8B`），不要装 Actions 的 zip（文件头 `PK`）。
 2. **架构**：NAS 上执行 `uname -m` → `x86_64` 用 `_amd64.fpk`；`aarch64` 用 `_arm64.fpk`。
-3. **系统版本**：manifest 要求 **fnOS ≥ 1.1.3100**（与 [nginx-web-fnos](https://github.com/chenpingonline/nginx-web-fnos) 一致）。低于此版本请先升级系统。
+3. **系统版本**：manifest 要求 **fnOS ≥ 0.9.0**。低于此版本会提示「应用包不符合系统要求」。架构不符（x86 设备装了 arm 包，或反过来）也是这句。
 4. **对照**：在同一台 NAS 试装官方第三方 [nginx-web x86_64.fpk](https://github.com/chenpingonline/nginx-web-fnos/releases)。若也失败，多为系统/权限问题；若只有 Fonu 失败，把 `appcenter-cli install-fpk` 完整输出发维护者。
 5. **SSH 安装**（看真实错误）：`appcenter-cli install-fpk /path/to/fonu_1.1.9_amd64.fpk`
 6. **FPK 根目录不要带 `LICENSE`**（参考 nginx-web-fnos）：根目录 `LICENSE` 可能触发安装校验失败；许可文件应放在 `app.tgz` 内而非包根。
