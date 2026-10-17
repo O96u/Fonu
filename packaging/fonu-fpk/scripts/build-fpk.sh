@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build Fonu native .fpk for fnOS (linux/amd64 or linux/arm64).
 # Usage: ./scripts/build-fpk.sh <amd64|arm64> [version]
-# Intended for Linux CI (GitHub Actions). Requires: curl, go, node/npm, fnpack, python3 or ar.
+# Intended for Linux CI (GitHub Actions). Requires: curl, go, node/npm, GNU tar, python3 or ar.
+# The .fpk is a GNU tar (uid 0), same layout as nginx-web-fnos. fnpack emits a
+# PAX archive owned by the CI user, which fnOS rejects as a format mismatch.
 set -euo pipefail
 
 ARCH="${1:?usage: build-fpk.sh amd64|arm64 [version]}"
@@ -14,36 +16,16 @@ REPO_ROOT="$(cd "${PACK_DIR}/../.." && pwd)"
 STAGING="${PACK_DIR}/.build-${ARCH}"
 DIST_DIR="${REPO_ROOT}/packaging/dist"
 
-resolve_fnpack() {
-  if [ -n "${FNPACK_BIN:-}" ] && [ -f "${FNPACK_BIN}" ]; then
-    echo "${FNPACK_BIN}"
-    return 0
+create_archive() {
+  local source_dir="$1" output_file="$2"
+  if ! tar --version 2>/dev/null | grep -q 'GNU tar'; then
+    echo "GNU tar is required to build an fnOS .fpk" >&2
+    return 1
   fi
-  if command -v fnpack >/dev/null 2>&1; then
-    command -v fnpack
-    return 0
-  fi
-  local cache="${PACK_DIR}/.cache"
-  if [ -d "${cache}" ]; then
-    local f
-    for f in "${cache}"/fnpack*; do
-      [ -f "${f}" ] || continue
-      chmod +x "${f}" 2>/dev/null || true
-      echo "${f}"
-      return 0
-    done
-  fi
-  return 1
+  tar --format=gnu --sort=name --mtime='UTC 2026-09-02 00:00:00' \
+    --owner=0 --group=0 --numeric-owner \
+    -czf "$output_file" -C "$source_dir" .
 }
-
-if ! FNPACK="$(resolve_fnpack)"; then
-  echo "fnpack not found." >&2
-  echo "  Put fnpack exe in: ${PACK_DIR}/.cache/fnpack-1.2.3-windows-amd64.exe" >&2
-  echo "  Or set FNPACK_BIN, or install fnpack on PATH." >&2
-  echo "  https://developer.fnnas.com/docs/cli/fnpack" >&2
-  exit 1
-fi
-echo "==> Using fnpack: ${FNPACK}"
 
 case "${ARCH}" in
   amd64)
@@ -314,22 +296,25 @@ if command -v python3 >/dev/null 2>&1; then
   verify_icons
 fi
 
-echo "==> fnpack build"
-(
-  cd "${STAGING}"
-  "${FNPACK}" build --directory .
-)
+echo "==> Packing app.tgz and .fpk (GNU tar, uid 0)"
+create_archive "${STAGING}/app" "${STAGING}/app.tgz"
+rm -rf "${STAGING}/app"
+if command -v md5sum >/dev/null 2>&1; then
+  APP_MD5="$(md5sum "${STAGING}/app.tgz" | awk '{print $1}')"
+else
+  APP_MD5="$(md5 -q "${STAGING}/app.tgz")"
+fi
+grep -v -E '^[[:space:]]*checksum[[:space:]]*=' "${MANIFEST}" >"${MANIFEST}.tmp" || true
+mv "${MANIFEST}.tmp" "${MANIFEST}"
+printf 'checksum=%s\n' "${APP_MD5}" >>"${MANIFEST}"
 
+PACK_ROOT="$(mktemp -d)"
+cp -a "${STAGING}/manifest" "${STAGING}/cmd" "${STAGING}/config" "${STAGING}/wizard" \
+  "${STAGING}/ICON.PNG" "${STAGING}/ICON_256.PNG" "${STAGING}/app.tgz" "${PACK_ROOT}/"
 mkdir -p "${DIST_DIR}"
 FPK_NAME="fonu_${VERSION}_${ARCH}.fpk"
-if [ -f "${STAGING}/fonu.fpk" ]; then
-  mv -f "${STAGING}/fonu.fpk" "${DIST_DIR}/${FPK_NAME}"
-elif compgen -G "${STAGING}/*.fpk" >/dev/null; then
-  mv -f "${STAGING}/"*.fpk "${DIST_DIR}/${FPK_NAME}"
-else
-  echo "fnpack did not produce .fpk under ${STAGING}" >&2
-  exit 1
-fi
+create_archive "${PACK_ROOT}" "${DIST_DIR}/${FPK_NAME}"
+rm -rf "${PACK_ROOT}"
 
 echo "==> Packaged manifest:"
 grep -E '^(version|platform|os_min_version)=' "${STAGING}/manifest" 2>/dev/null || true

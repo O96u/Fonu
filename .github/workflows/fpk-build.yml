@@ -49,15 +49,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install fnpack
-        env:
-          FNPACK_DOWNLOAD_URL: ${{ secrets.FNPACK_DOWNLOAD_URL }}
-        run: |
-          set -euo pipefail
-          URL="${FNPACK_DOWNLOAD_URL:-https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64}"
-          curl -fsSL -o /usr/local/bin/fnpack "${URL}"
-          chmod +x /usr/local/bin/fnpack
-
       - name: Build FPK (amd64 + arm64)
         run: |
           if ! command -v readelf >/dev/null; then
