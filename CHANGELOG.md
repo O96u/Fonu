@@ -6,8 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### 新增
 
-- 飞牛 fnOS 原生 FPK：`packaging/fonu-fpk` 模板进库；**Build FPK** 工作流可单独试包，推送 `v*` tag 时一并上传 Release（默认官方 fnpack CDN）
+- 飞牛 fnOS 原生 FPK：`packaging/fonu-fpk` 模板进库；**Build FPK** 工作流可单独试包
 - 合并 Docker Compose 为单一 `docker-compose.yml`（host 模式）
+
+## [v1.1.10] - 2026-10-19
+
+### 修复
+
+- DDNS：调整公网 IPv4 探测源顺序（优先 icanhazip / ipip.net，`api.ipify.org` 置后），减少国内网络下的无效等待
+- DDNS：在线探测全部失败时，若已有上次成功的公网 IP，则继续与 DNS 记录比对同步，避免误报失败（任务状态为 warning，不写入内网 IP）
+
+### 变更
+
+- CI：正式 `v*` GitHub Release 不再构建/上传 FPK（请使用 **Build FPK** 工作流发布 `fpk-v*` 预发布包）
 
 ## [v1.1.9] - 2026-10-12
 

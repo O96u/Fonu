@@ -11,15 +11,16 @@ import (
 )
 
 var ipv4Providers = []string{
-	"https://api.ipify.org",
 	"https://ipv4.icanhazip.com",
-	"https://ifconfig.me/ip",
 	"http://ipv4.icanhazip.com",
+	"https://ifconfig.me/ip",
+	"https://myip.ipip.net",
+	"https://api.ipify.org",
 }
 
 var ipv6Providers = []string{
-	"https://api64.ipify.org",
 	"https://ipv6.icanhazip.com",
+	"https://api64.ipify.org",
 }
 
 func Detect(ctx context.Context) (ipv4, ipv6 string, err error) {

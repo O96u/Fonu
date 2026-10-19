@@ -559,10 +559,20 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	if !publicip.IsPublicIPv6(storeIPv6) {
 		storeIPv6 = ""
 	}
-	if cfg.IPv4Enabled && detectedIPv4 != "" {
+	ipv4DetectFallback := false
+	ipv6DetectFallback := false
+	if cfg.IPv4Enabled && detectedIPv4 == "" && storeIPv4 != "" {
+		detectedIPv4 = storeIPv4
+		ipv4DetectFallback = true
+	}
+	if cfg.IPv6Enabled && detectedIPv6 == "" && storeIPv6 != "" {
+		detectedIPv6 = storeIPv6
+		ipv6DetectFallback = true
+	}
+	if cfg.IPv4Enabled && detectedIPv4 != "" && !ipv4DetectFallback {
 		storeIPv4 = detectedIPv4
 	}
-	if cfg.IPv6Enabled && detectedIPv6 != "" {
+	if cfg.IPv6Enabled && detectedIPv6 != "" && !ipv6DetectFallback {
 		storeIPv6 = detectedIPv6
 	}
 
@@ -575,6 +585,10 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 		msg := "无法获取公网 IPv6，已跳过更新"
 		_ = s.store.UpdateStatus(ctx, cfg.ID, storeIPv4, storeIPv6, "error", msg)
 		return fmt.Errorf(msg)
+	}
+	if ipv4DetectFallback || ipv6DetectFallback {
+		s.logger.Warn("ddns using last known public ip after detect failure",
+			"domain", cfg.RootDomain, "ipv4_fallback", ipv4DetectFallback, "ipv6_fallback", ipv6DetectFallback)
 	}
 
 	recordNames := cfg.RecordNamesList()
@@ -682,6 +696,9 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 		overallStatus = "warning"
 		overallError = fmt.Sprintf("%d 个域名同步失败，其余正常", errCount)
 		lastErr = nil
+	case ipv4DetectFallback || ipv6DetectFallback:
+		overallStatus = "warning"
+		overallError = "公网 IP 在线探测失败，已使用上次成功的公网 IP 继续同步"
 	}
 	if changed {
 		s.logger.Info("ddns records updated", "provider", cfg.Provider)
