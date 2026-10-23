@@ -1,19 +1,21 @@
 name: Build FPK
 
-# 打 FPK 并上传到独立预发布 Release（不占用正式 v* 的 Latest）。
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: '要构建的 Git 引用（分支 / tag / commit）'
+        description: 'Git ref (branch/tag/commit)'
         required: true
         default: main
       version:
-        description: '安装包版本号（不含 v），如 1.1.10'
+        description: 'Package version without v (example: 1.2.0)'
         required: true
       release_tag:
-        description: 'FPK Release tag（默认 fpk-v + version，勿用正式发版 v* tag）'
+        description: 'Optional prerelease tag (default: fpk-v<version>)'
         required: false
+
+permissions:
+  contents: write
 
 concurrency:
   group: fpk-build-${{ github.run_id }}
@@ -21,15 +23,24 @@ concurrency:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ inputs.version }}
       RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('fpk-v{0}', inputs.version) }}
+      FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL }}
+      FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 }}
     steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid version'; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || { echo 'Release tag must start with fpk-'; exit 1; }
+          [[ -n "$FNPACK_URL" && "$FNPACK_URL" == https://* ]] || { echo 'Set repository variable FNPACK_LINUX_AMD64_URL to official trusted HTTPS binary URL'; exit 1; }
+          [[ "$FNPACK_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo 'Set repository variable FNPACK_LINUX_AMD64_SHA256 (64 hex characters)'; exit 1; }
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -45,51 +56,64 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Build FPK (amd64 + arm64)
+      - name: Install build dependencies and verified fnpack
+        shell: bash
         run: |
-          if ! command -v readelf >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y binutils
-          fi
-          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
-          packaging/fonu-fpk/scripts/build-fpk.sh amd64 "${VERSION}"
-          packaging/fonu-fpk/scripts/build-fpk.sh arm64 "${VERSION}"
-          ls -la packaging/dist/
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y binutils rsync curl ca-certificates
+          mkdir -p "$RUNNER_TEMP/fnpack-bin"
+          curl --fail --location --retry 3 "$FNPACK_URL" -o "$RUNNER_TEMP/fnpack-bin/fnpack"
+          echo "$FNPACK_SHA256  $RUNNER_TEMP/fnpack-bin/fnpack" | sha256sum -c -
+          chmod 755 "$RUNNER_TEMP/fnpack-bin/fnpack"
+          "$RUNNER_TEMP/fnpack-bin/fnpack" --help
+          echo "FNPACK_BIN=$RUNNER_TEMP/fnpack-bin/fnpack" >> "$GITHUB_ENV"
 
-      - name: Publish to GitHub Release (prerelease, not Latest)
+      - name: Build amd64 and arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n packaging/fonu-fpk/scripts/build-fpk.sh
+          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh
+          packaging/fonu-fpk/scripts/build-fpk.sh amd64 "$VERSION"
+          packaging/fonu-fpk/scripts/build-fpk.sh arm64 "$VERSION"
+          test -s "packaging/dist/fonu_${VERSION}_amd64.fpk"
+          test -s "packaging/dist/fonu_${VERSION}_arm64.fpk"
+          (cd packaging/dist && sha256sum "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" > SHA256SUMS)
+          ls -lh packaging/dist
+
+      - name: Upload CI artifacts for debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: fonu-fpk-${{ inputs.version }}
+          path: |
+            packaging/dist/*.fpk
+            packaging/dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish prerelease
+        shell: bash
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          if [[ "${RELEASE_TAG}" =~ ^v[0-9] ]]; then
-            echo "Refusing to publish FPK on formal release tag ${RELEASE_TAG}; use fpk-v<version> or set release_tag explicitly." >&2
-            exit 1
-          fi
           cd packaging/dist
-          cat > release-notes.md <<EOF
-          Fonu fnOS 原生安装包（预发布，由 [Build FPK](${RUN_URL}) 构建）
+          cat > release-notes.md <<NOTES
+          Fonu fnOS native packages. Built by [GitHub Actions](${RUN_URL}).
 
-          | 文件 | 架构 |
-          |------|------|
-          | fonu_${VERSION}_amd64.fpk | x86 (Intel/AMD) |
-          | fonu_${VERSION}_arm64.fpk | ARM64 |
+          - fonu_${VERSION}_amd64.fpk: Intel/AMD x86_64
+          - fonu_${VERSION}_arm64.fpk: ARM64
+          - SHA256SUMS: file integrity checksums
 
-          请在本页 **Assets** 中直接下载 \`.fpk\` 文件。正式发版 Latest 仍以 \`v*\` tag 的 Release 为准。
-          EOF
-          if ! gh release view "${RELEASE_TAG}" -R "${GH_REPO}" >/dev/null 2>&1; then
-            gh release create "${RELEASE_TAG}" -R "${GH_REPO}" \
-              --title "Fonu FPK ${VERSION}" \
-              --prerelease \
-              --latest=false \
-              --notes-file release-notes.md
+          These are prerelease assets, separate from regular v* releases.
+          NOTES
+          if gh release view "$RELEASE_TAG" -R "$GH_REPO" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" -R "$GH_REPO" --prerelease --latest=false --notes-file release-notes.md
           else
-            gh release edit "${RELEASE_TAG}" -R "${GH_REPO}" \
-              --prerelease \
-              --latest=false \
-              --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" -R "$GH_REPO" --title "Fonu FPK ${VERSION}" --prerelease --latest=false --notes-file release-notes.md
           fi
-          gh release upload "${RELEASE_TAG}" -R "${GH_REPO}" fonu_${VERSION}_amd64.fpk fonu_${VERSION}_arm64.fpk --clobber
+          gh release upload "$RELEASE_TAG" -R "$GH_REPO" "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber

@@ -16,90 +16,6 @@ REPO_ROOT="$(cd "${PACK_DIR}/../.." && pwd)"
 STAGING="${PACK_DIR}/.build-${ARCH}"
 DIST_DIR="${REPO_ROOT}/packaging/dist"
 
-# Inner app.tgz: same as nginx-web-fnos package-lib (archive directory via ".").
-create_app_archive() {
-  local source_dir="$1" output_file="$2"
-  if ! tar --version 2>/dev/null | grep -q 'GNU tar'; then
-    echo "GNU tar is required to build an fnOS .fpk" >&2
-    return 1
-  fi
-  tar --format=gnu --sort=name --mtime='UTC 2026-09-02 00:00:00' \
-    --owner=0 --group=0 --numeric-owner \
-    -czf "$output_file" -C "$source_dir" .
-}
-
-# Outer .fpk: list top-level members explicitly (fnpack / gately layout). Using "."
-# can emit a "./" root entry; avoid that for the outer archive when possible.
-create_fpk_archive() {
-  local source_dir="$1" output_file="$2"
-  local missing=0 name
-  for name in ICON.PNG ICON_256.PNG app.tgz cmd config manifest wizard; do
-    if [ ! -e "${source_dir}/${name}" ]; then
-      echo "missing FPK member: ${source_dir}/${name}" >&2
-      missing=1
-    fi
-  done
-  if [ "${missing}" -ne 0 ]; then
-    return 1
-  fi
-  tar --format=gnu --sort=name --mtime='UTC 2026-09-02 00:00:00' \
-    --owner=0 --group=0 --numeric-owner \
-    -czf "$output_file" -C "$source_dir" \
-    ICON.PNG ICON_256.PNG app.tgz cmd config manifest wizard
-}
-
-verify_fpk_listing() {
-  local fpk="$1"
-  local first
-  first="$(tar -tzf "${fpk}" 2>/dev/null | head -n 1 || true)"
-  if [ -z "${first}" ]; then
-    echo "empty or unreadable fpk: ${fpk}" >&2
-    return 1
-  fi
-  case "${first}" in
-    ./* | ./)
-      echo "warning: outer fpk first member is ${first} (prefer bare names like gately/fnpack)" >&2
-      ;;
-  esac
-  if tar -tzf "${fpk}" 2>/dev/null | grep -qx './'; then
-    echo "warning: outer fpk contains standalone ./ directory entry" >&2
-  fi
-}
-
-verify_fpk_archive() {
-  local fpk="$1"
-  echo "==> Verifying final FPK"
-  gzip -t "${fpk}"
-  tar -tzf "${fpk}" >/dev/null
-  tar -xOzf "${fpk}" app.tgz | gzip -t
-  verify_manifest_checksum "${fpk}"
-  echo "==> FPK verification passed"
-}
-
-verify_manifest_checksum() {
-  local fpk="$1"
-  local manifest_checksum app_md5
-  manifest_checksum="$(
-    tar -xOzf "${fpk}" manifest |
-      grep -E '^[[:space:]]*checksum[[:space:]]*=' |
-      sed 's/^[^=]*=[[:space:]]*//' |
-      tr -d '\r\n'
-  )"
-  if [ -z "${manifest_checksum}" ]; then
-    echo "manifest in fpk has no checksum line" >&2
-    return 1
-  fi
-  if command -v md5sum >/dev/null 2>&1; then
-    app_md5="$(tar -xOzf "${fpk}" app.tgz | md5sum | awk '{print $1}')"
-  else
-    app_md5="$(tar -xOzf "${fpk}" app.tgz | md5 -q)"
-  fi
-  if [ "${manifest_checksum}" != "${app_md5}" ]; then
-    echo "manifest checksum ${manifest_checksum} != app.tgz md5 ${app_md5}" >&2
-    return 1
-  fi
-}
-
 case "${ARCH}" in
   amd64)
     GOARCH=amd64
@@ -318,15 +234,14 @@ rm -f "${STAGING}/LICENSE"
 # manifest as text; a trailing CR fails install with "应用包不符合系统要求".
 normalize_lf() {
   local f
+  # Only normalize known text metadata and shell scripts, never bundled binary assets.
   while IFS= read -r -d '' f; do
     if grep -q $'\r' "${f}" 2>/dev/null; then
       sed_inplace $'s/\r$//' "${f}"
     fi
   done < <(
-    find "${STAGING}/cmd" "${STAGING}/wizard" \
-      -type f \( -name '*.sh' -o -name '*.sc' -o ! -name '*.*' \) -print0
-    find "${STAGING}/config" -type f -print0
     printf '%s\0' "${STAGING}/manifest"
+    find "${STAGING}/cmd" -maxdepth 1 -type f -print0
   )
 }
 normalize_lf
@@ -369,34 +284,57 @@ if command -v python3 >/dev/null 2>&1; then
   verify_icons
 fi
 
-echo "==> Packing app.tgz and .fpk (GNU tar, uid 0)"
-create_app_archive "${STAGING}/app" "${STAGING}/app.tgz"
-rm -rf "${STAGING}/app"
-if command -v md5sum >/dev/null 2>&1; then
-  APP_MD5="$(md5sum "${STAGING}/app.tgz" | awk '{print $1}')"
-else
-  APP_MD5="$(md5 -q "${STAGING}/app.tgz")"
+# fnpack performs its own app archive and checksum generation.
+# Keep the app/ directory intact and pass a complete native fnOS package tree.
+echo "==> Packing with official fnpack"
+: "${FNPACK_BIN:=fnpack}"
+if ! command -v "${FNPACK_BIN}" >/dev/null 2>&1 && [ ! -x "${FNPACK_BIN}" ]; then
+  echo "fnpack missing: set FNPACK_BIN to a trusted fnpack executable" >&2
+  exit 1
 fi
-grep -v -E '^[[:space:]]*checksum[[:space:]]*=' "${MANIFEST}" >"${MANIFEST}.tmp" || true
-mv "${MANIFEST}.tmp" "${MANIFEST}"
-printf 'checksum               = %s\n' "${APP_MD5}" >>"${MANIFEST}"
-
-PACK_ROOT="$(mktemp -d)"
-cp -a "${STAGING}/manifest" "${STAGING}/cmd" "${STAGING}/config" "${STAGING}/wizard" \
-  "${STAGING}/ICON.PNG" "${STAGING}/ICON_256.PNG" "${STAGING}/app.tgz" "${PACK_ROOT}/"
 mkdir -p "${DIST_DIR}"
 FPK_NAME="fonu_${VERSION}_${ARCH}.fpk"
-create_fpk_archive "${PACK_ROOT}" "${DIST_DIR}/${FPK_NAME}"
-rm -rf "${PACK_ROOT}"
-verify_fpk_listing "${DIST_DIR}/${FPK_NAME}"
-verify_fpk_archive "${DIST_DIR}/${FPK_NAME}"
-
-echo "==> Packaged manifest:"
-grep -E '^[[:space:]]*(version|platform|os_min_version)[[:space:]]*=' "${STAGING}/manifest" 2>/dev/null || true
-if [ -f "${DIST_DIR}/${FPK_NAME}" ]; then
-  echo "==> FPK size: $(wc -c <"${DIST_DIR}/${FPK_NAME}") bytes"
-  tar -tzf "${DIST_DIR}/${FPK_NAME}" 2>/dev/null | head -n 8 || true
+# Avoid accidentally publishing old build artifacts.
+rm -f "${DIST_DIR}/fonu.fpk" "${DIST_DIR}/${FPK_NAME}" "${STAGING}/fonu.fpk"
+(
+  cd "${DIST_DIR}"
+  "${FNPACK_BIN}" build --directory "${STAGING}"
+)
+# fnpack versions differ in where the output is written.
+GENERATED=""
+for candidate in "${DIST_DIR}/fonu.fpk" "${STAGING}/fonu.fpk" "${PACK_DIR}/fonu.fpk" "${REPO_ROOT}/fonu.fpk"; do
+  if [ -s "${candidate}" ]; then GENERATED="${candidate}"; break; fi
+done
+if [ -z "${GENERATED}" ]; then
+  echo "fnpack completed but fonu.fpk not found; check fnpack output location" >&2
+  exit 1
 fi
+mv "${GENERATED}" "${DIST_DIR}/${FPK_NAME}"
 
+# Verify the actual release file, not only staging metadata.
+python3 - "${DIST_DIR}/${FPK_NAME}" "${MANIFEST_PLATFORM}" "${VERSION}" <<'PYVERIFY'
+import hashlib, io, pathlib, tarfile, sys
+fpk, platform, version = sys.argv[1:]
+with tarfile.open(fpk, 'r:gz') as outer:
+    members = {m.name.lstrip('./'): m for m in outer.getmembers()}
+    needed = ['manifest','app.tgz','ICON.PNG','ICON_256.PNG',
+              'cmd/main','config/privilege','config/resource','wizard/install']
+    for name in needed:
+        assert name in members, f'missing FPK member: {name}'
+    manifest = outer.extractfile(members['manifest']).read().decode('utf-8')
+    fields = dict(x.split('=',1) for x in manifest.splitlines() if '=' in x)
+    fields = {k.strip():v.strip() for k,v in fields.items()}
+    assert fields.get('platform') == platform, fields
+    assert fields.get('version') == version, fields
+    app = outer.extractfile(members['app.tgz']).read()
+    assert hashlib.md5(app).hexdigest() == fields.get('checksum'), 'app.tgz checksum mismatch'
+    assert members['cmd/main'].mode & 0o111, 'cmd/main not executable'
+    with tarfile.open(fileobj=io.BytesIO(app),mode='r:gz') as inner:
+        names = {m.name.lstrip('./') for m in inner.getmembers()}
+        assert 'bin/fonu' in names, 'bin/fonu missing'
+        assert 'ui/config' in names, 'ui/config missing'
+print('FPK archive, metadata, checksum, executable and payload: OK')
+PYVERIFY
+sha256sum "${DIST_DIR}/${FPK_NAME}"
 rm -rf "${STAGING}"
 echo "==> Done: ${DIST_DIR}/${FPK_NAME}"
