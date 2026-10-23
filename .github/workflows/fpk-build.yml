@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref (branch/tag/commit)'
+        description: "Git ref (branch/tag/commit)"
         required: true
         default: main
       version:
-        description: 'Package version without v (example: 1.2.0)'
+        description: "Package version without v (example: 1.2.0)"
         required: true
       release_tag:
-        description: 'Optional prerelease tag (default: fpk-v<version>)'
+        description: "Optional prerelease tag (default: fpk-v<version>)"
         required: false
 
 permissions:
@@ -29,8 +29,8 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ inputs.version }}
       RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('fpk-v{0}', inputs.version) }}
-      FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL }}
-      FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 }}
+      FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64' }}
+      FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 || '54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93' }}
     steps:
       - name: Validate inputs
         shell: bash
@@ -38,8 +38,8 @@ jobs:
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid version'; exit 1; }
           [[ "$RELEASE_TAG" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || { echo 'Release tag must start with fpk-'; exit 1; }
-          [[ -n "$FNPACK_URL" && "$FNPACK_URL" == https://* ]] || { echo 'Set repository variable FNPACK_LINUX_AMD64_URL to official trusted HTTPS binary URL'; exit 1; }
-          [[ "$FNPACK_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo 'Set repository variable FNPACK_LINUX_AMD64_SHA256 (64 hex characters)'; exit 1; }
+          [[ -n "$FNPACK_URL" && "$FNPACK_URL" == https://* ]] || { echo 'FNPACK_URL must be an HTTPS URL'; exit 1; }
+          [[ "$FNPACK_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo 'FNPACK_SHA256 must be a 64-digit hexadecimal value'; exit 1; }
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
