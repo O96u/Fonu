@@ -1,7 +1,7 @@
 {
-  "defaults": {
-    "run-as": "package"
-  },
-  "username": "fonu",
-  "groupname": "fonu"
+    "defaults": {
+        "run-as": "package"
+    },
+    "username": "fonu",
+    "groupname": "fonu"
 }
