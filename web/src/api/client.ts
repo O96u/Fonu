@@ -4,6 +4,7 @@ import type {
   AppVersion,
   AuthStatus,
   CertificateCAOption,
+  CertExportSettings,
   CertificateRecord,
   DashboardStatus,
   DDNSConfig,
@@ -14,6 +15,7 @@ import type {
   FRPSaveResponse,
   FRPStatus,
   DiscoveredService,
+  FsDirListResponse,
   ProxyClientConn,
   ChinaCIDRStatus,
   ProxyEntry,
@@ -249,6 +251,7 @@ export const api = {
     ca?: string
     email?: string
     name?: string
+    export?: CertExportSettings
   }) =>
     request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
@@ -265,11 +268,30 @@ export const api = {
       }),
     }),
   certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,
+  updateCertificate: (
+    domain: string,
+    payload: {
+      name?: string
+      export?: CertExportSettings
+      certificate?: string
+      private_key?: string
+    },
+  ) =>
+    request<CertificateRecord>(`/api/certificates/${encodeURIComponent(domain)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  syncCertificateExport: (domain: string) =>
+    request<CertificateRecord>(
+      `/api/certificates/${encodeURIComponent(domain)}/export/sync`,
+      { method: 'POST' },
+    ),
   importCertificate: (payload: {
     certificate?: string
     private_key?: string
     cert_path?: string
     key_path?: string
+    export?: CertExportSettings
   }) =>
     request<CertificateRecord>('/api/certificates/import', {
       method: 'POST',
@@ -371,6 +393,13 @@ export const api = {
     const q = new URLSearchParams()
     if (host) q.set('host', host)
     return request<DiscoveredService[]>(`/api/discovery/scan?${q}`)
+  },
+
+  listFsDirectories: (path?: string) => {
+    const q = new URLSearchParams()
+    if (path?.trim()) q.set('path', path.trim())
+    const suffix = q.toString() ? `?${q}` : ''
+    return request<FsDirListResponse>(`/api/fs/directories${suffix}`)
   },
 
   async exportBackup() {

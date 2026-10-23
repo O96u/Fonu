@@ -22,8 +22,9 @@ type Record struct {
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 	LastRenewAt *time.Time `json:"last_renew_at,omitempty"`
 	Status      string     `json:"status"`
-	LastError   string     `json:"last_error,omitempty"`
-	DaysLeft    int        `json:"days_left"`
+	LastError   string            `json:"last_error,omitempty"`
+	DaysLeft    int               `json:"days_left"`
+	Export      ExportConfig `json:"export,omitempty"`
 }
 
 type Store struct {
@@ -37,7 +38,7 @@ func NewStore(db *sql.DB) *Store {
 func (s *Store) List(ctx context.Context) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, '')
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, '')
 		FROM certificates ORDER BY id ASC
 	`)
 	if err != nil {
@@ -93,6 +94,29 @@ func (s *Store) SetName(ctx context.Context, domain, name string) error {
 	return err
 }
 
+func (s *Store) SetExport(ctx context.Context, domain string, cfg ExportConfig) error {
+	raw, err := cfg.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE certificates SET export_json = ?, updated_at = datetime('now') WHERE domain = ?
+	`, raw, domain)
+	return err
+}
+
+// UpdateMeta updates display name and export mapping for an existing certificate.
+func (s *Store) UpdateMeta(ctx context.Context, domain, name string, cfg ExportConfig) error {
+	raw, err := cfg.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE certificates SET name = ?, export_json = ?, updated_at = datetime('now') WHERE domain = ?
+	`, strings.TrimSpace(name), raw, domain)
+	return err
+}
+
 func (s *Store) Delete(ctx context.Context, domain string) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM certificates WHERE domain = ?`, domain)
 	if err != nil {
@@ -111,7 +135,7 @@ func (s *Store) Delete(ctx context.Context, domain string) error {
 func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, '')
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, '')
 		FROM certificates WHERE domain = ?
 	`, domain)
 	rec, err := scanRecord(row)
@@ -126,9 +150,15 @@ func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var wildcard int
 	var domainsJSON string
 	var expiresAt, lastRenewAt sql.NullString
-	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError); err != nil {
+	var exportJSON string
+	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON); err != nil {
 		return Record{}, err
 	}
+	exportCfg, err := ParseExportConfig(exportJSON)
+	if err != nil {
+		return Record{}, err
+	}
+	rec.Export = exportCfg
 	rec.Wildcard = wildcard == 1
 	rec.Domains = decodeDomains(domainsJSON, rec.Domain, rec.Wildcard)
 	if expiresAt.Valid {

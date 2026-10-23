@@ -4,7 +4,9 @@ go 1.23.0
 
 require (
 	github.com/go-acme/lego/v4 v4.23.1
+	github.com/google/uuid v1.6.0
 	github.com/nrdcg/dnspod-go v0.4.0
+	github.com/pkg/sftp v1.13.9
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.1128
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.0.1128
 	github.com/volcengine/volcengine-go-sdk v1.2.53
@@ -22,10 +24,10 @@ require (
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.64 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

@@ -6,6 +6,7 @@ import (
 
 	"github.com/fonu/fonu/internal/acme"
 	"github.com/fonu/fonu/internal/auth"
+	"github.com/fonu/fonu/internal/certexport"
 	"github.com/fonu/fonu/internal/backup"
 	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/config"
@@ -26,6 +27,7 @@ type Deps struct {
 	Proxy      *service.ProxyService
 	DDNS       *ddns.Service
 	ACME       *acme.Service
+	CertExport *certexport.Service
 	Settings   *settings.Store
 	ChinaCIDR  *chinacidr.Service
 	Backup     *backup.Service

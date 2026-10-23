@@ -4,10 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.2.0] - 2026-10-23
+
 ### 新增
 
+- 证书管理：每张证书可单独配置 **目录映射**（申请 / 导入 / 编辑），将 Fonu 证书目录下的 PEM 复制到多个本机目标路径；内容变化后可执行可选 Shell 重载命令（环境变量 `certName` / `certDir` / `certFile` / `keyFile`）
+- 证书管理：每张证书可配置 **SSH 上传**（SFTP），支持密码或私钥、SOCKS5/HTTP 代理、远程目录与上传后远程命令；列表与详情 API 对密码/私钥脱敏，留空保存表示保留已存凭据
+- 证书管理：导入证书可在编辑中修改名称、映射/SSH 配置，并重新上传 PEM 覆盖
+- 管理 API：`GET /api/fs/directories` 供 Web 浏览本机目录（映射目标路径选择）；`PUT /api/certificates/{domain}`、`POST .../export/sync` 管理导出与手动同步
 - 飞牛 fnOS 原生 FPK：`packaging/fonu-fpk` 模板进库；**Build FPK** 工作流可单独试包
 - 合并 Docker Compose 为单一 `docker-compose.yml`（host 模式）
+
+### 变更
+
+- 证书申请/导入向导与 CA 选择界面文案与布局优化；映射与 SSH 配置集中在 `CertExportFields` 组件
 
 ## [v1.1.10] - 2026-10-19
 

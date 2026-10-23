@@ -18,7 +18,7 @@ func NewRouter(deps Deps) http.Handler {
 		nginxHandler:    NewNginxHandler(deps.Proxy),
 		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
-		certHandler:     NewCertHandler(deps.ACME),
+		certHandler:     NewCertHandler(deps.ACME, deps.CertExport),
 		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy, deps.Notify),
 		chinaCIDRHandler: NewChinaCIDRHandler(deps.ChinaCIDR),
 		logsHandler:      logsHandler,
@@ -93,6 +93,8 @@ func NewRouter(deps Deps) http.Handler {
 	protect("GET /api/certificates/jobs/{id}/stream", r.certHandler.ApplyJobStream)
 	protect("POST /api/certificates/import", r.certHandler.Import)
 	protect("POST /api/certificates/renew", r.certHandler.Renew)
+	protect("PUT /api/certificates/{domain}", r.certHandler.Update)
+	protect("POST /api/certificates/{domain}/export/sync", r.certHandler.SyncExport)
 	protect("GET /api/certificates/{domain}/download", r.certHandler.Download)
 	protect("DELETE /api/certificates/{domain}", r.certHandler.Delete)
 	notifyHandler := NewNotifyHandler(deps.Notify)
@@ -110,6 +112,8 @@ func NewRouter(deps Deps) http.Handler {
 	protect("GET /api/backup/export", r.backupHandler.Export)
 	protect("POST /api/backup/restore", r.backupHandler.Restore)
 	protect("GET /api/discovery/scan", r.discoveryHandler.Scan)
+	fsHandler := NewFSHandler()
+	protect("GET /api/fs/directories", fsHandler.ListDirectories)
 	if deps.FRP != nil {
 		frpHandler := NewFRPHandler(deps.FRP, deps.Proxy)
 		protect("GET /api/frp", frpHandler.Get)

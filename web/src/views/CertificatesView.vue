@@ -6,7 +6,7 @@
     <template #actions>
       <n-button @click="openImport">导入证书</n-button>
       <n-button type="primary" @click="openApply">
-        <template #icon><n-icon :size="18"><CertApplyIcon /></n-icon></template>
+        <template #icon><n-icon :component="AddOutline" :size="18" /></template>
         申请证书
       </n-button>
     </template>
@@ -105,7 +105,7 @@
           <div class="cert-empty-actions">
             <n-button @click="openImport">导入证书</n-button>
             <n-button type="primary" @click="openApply">
-              <template #icon><n-icon :size="18"><CertApplyIcon /></n-icon></template>
+              <template #icon><n-icon :component="AddOutline" :size="18" /></template>
               申请证书
             </n-button>
           </div>
@@ -141,14 +141,9 @@
     @after-leave="resetApplyWizard"
   >
     <template #header>
-      <div class="modal-header modal-header--with-icon">
-        <span class="modal-header__icon" aria-hidden="true">
-          <CertApplyIcon />
-        </span>
-        <div class="modal-header__text">
-          <div class="modal-header__title">申请证书</div>
-          <div class="modal-header__desc">通过 DNS-01 验证自动申请证书，证书归属于域名而非 DNS 服务商</div>
-        </div>
+      <div class="modal-header">
+        <div class="modal-header__title">申请证书</div>
+        <div class="modal-header__desc">通过 DNS-01 验证自动申请证书，证书归属于域名而非 DNS 服务商</div>
       </div>
     </template>
 
@@ -170,35 +165,32 @@
       </div>
     </div>
 
-    <n-alert
-      v-if="applyStep === 1 && !applyEmailConfigured"
-      type="warning"
-      :bordered="false"
-      class="form-alert apply-email-alert"
-      title="请先填写 ACME 邮箱"
-    >
-      首次申请证书需要注册 ACME 账户，请填写有效邮箱（如 admin@example.com），用于账户注册与到期提醒，保存后下次无需重复填写。
-    </n-alert>
-
     <n-form v-if="applyStep === 1" label-placement="top" class="cert-form">
-      <n-form-item label="证书名称" feedback="仅用于本地识别，可自定义" :show-feedback="true" required>
-        <n-input v-model:value="applyCertName" placeholder="例如 example" />
+      <n-form-item label="证书名称" :show-feedback="false" required>
+        <n-input v-model:value="applyCertName" placeholder="仅用于本地识别，可自定义" />
       </n-form-item>
 
-      <n-form-item
-        label="域名"
-        feedback="每行一个域名，支持通配符（例如：*.example.com）"
-        :show-feedback="true"
-        required
-      >
+      <n-form-item label="域名" :show-feedback="false" required>
         <n-input
           v-model:value="applyDomainsText"
           class="domains-input"
           type="textarea"
           :rows="5"
           :autosize="{ minRows: 5, maxRows: 12 }"
-          placeholder="example.com&#10;*.example.com&#10;api.example.com"
+          placeholder="每行一个，支持通配符 *.example.com&#10;example.com&#10;*.example.com&#10;api.example.com"
           @update:value="syncCertNameFromDomains"
+        />
+      </n-form-item>
+
+      <n-form-item
+        label="账户邮箱"
+        :feedback="applyEmailFieldFeedback"
+        :show-feedback="!!applyEmailFieldFeedback"
+        :validation-status="applyEmailValidationStatus"
+      >
+        <n-input
+          v-model:value="applyEmail"
+          placeholder="留空使用续签设置中的默认邮箱"
         />
       </n-form-item>
 
@@ -289,27 +281,7 @@
         <n-switch v-model:value="applyAutoRenew" />
       </div>
 
-      <n-form-item
-        v-if="applyEmailConfigured"
-        label="ACME 邮箱"
-        :show-feedback="false"
-      >
-        <p class="apply-email-saved">
-          <span>{{ savedAcmeEmail }}</span>
-          <router-link class="ca-hint__link" :to="{ name: 'settings', query: { tab: 'acme' } }">在设置中修改</router-link>
-        </p>
-      </n-form-item>
-
-      <n-form-item
-        v-else
-        label="ACME 邮箱"
-        :feedback="applyEmailFieldFeedback"
-        :show-feedback="true"
-        :validation-status="applyEmailValidationStatus"
-        required
-      >
-        <n-input v-model:value="applyEmail" placeholder="admin@example.com" />
-      </n-form-item>
+      <CertExportFields v-model:form="applyExportForm" />
 
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </n-form>
@@ -478,27 +450,41 @@
       </n-form-item>
 
       <template v-if="importMode === 'paste'">
-        <n-form-item label="证书 (PEM)" :show-feedback="false">
-          <n-input
-            v-model:value="importForm.certificate"
-            class="pem-input"
-            type="textarea"
-            :rows="4"
-            placeholder="-----BEGIN CERTIFICATE-----"
-          />
-          <input ref="certFileInput" type="file" accept=".pem,.crt,.cer" class="file-input" @change="onCertFile" />
-          <n-button text type="primary" class="file-btn" @click="certFileInput?.click()">从本机文件读取</n-button>
+        <n-form-item label="证书 (PEM)" required :show-feedback="false">
+          <div class="pem-field">
+            <n-input
+              v-model:value="importForm.certificate"
+              class="pem-input"
+              type="textarea"
+              :rows="4"
+              placeholder="-----BEGIN CERTIFICATE-----，包含中间证书"
+            />
+            <input ref="certFileInput" type="file" accept=".pem,.crt,.cer" class="file-input" @change="onCertFile" />
+            <n-button text type="primary" size="small" class="pem-field__file" @click="certFileInput?.click()">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" :size="16" />
+              </template>
+              从文件读取
+            </n-button>
+          </div>
         </n-form-item>
-        <n-form-item label="私钥 (PEM)" :show-feedback="false">
-          <n-input
-            v-model:value="importForm.private_key"
-            class="pem-input"
-            type="textarea"
-            :rows="4"
-            placeholder="-----BEGIN PRIVATE KEY-----"
-          />
-          <input ref="keyFileInput" type="file" accept=".pem,.key" class="file-input" @change="onKeyFile" />
-          <n-button text type="primary" class="file-btn" @click="keyFileInput?.click()">从本机文件读取</n-button>
+        <n-form-item label="私钥 (PEM)" required :show-feedback="false">
+          <div class="pem-field">
+            <n-input
+              v-model:value="importForm.private_key"
+              class="pem-input"
+              type="textarea"
+              :rows="4"
+              placeholder="-----BEGIN PRIVATE KEY-----"
+            />
+            <input ref="keyFileInput" type="file" accept=".pem,.key" class="file-input" @change="onKeyFile" />
+            <n-button text type="primary" size="small" class="pem-field__file" @click="keyFileInput?.click()">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" :size="16" />
+              </template>
+              从文件读取
+            </n-button>
+          </div>
         </n-form-item>
       </template>
 
@@ -514,6 +500,8 @@
           <n-input v-model:value="importForm.key_path" placeholder=".data/certs/example.com/privatekey.pem" />
         </n-form-item>
       </template>
+
+      <CertExportFields v-model:form="importExportForm" />
     </n-form>
     <template #footer>
       <n-space justify="end">
@@ -522,10 +510,101 @@
       </n-space>
     </template>
   </n-modal>
+
+  <n-modal
+    v-model:show="showCertEdit"
+    preset="card"
+    title="编辑证书"
+    :style="{ width: 'min(560px, 92vw)' }"
+    :segmented="{ content: true, footer: 'soft' }"
+  >
+    <n-form label-placement="top">
+      <n-form-item label="证书名称" :show-feedback="false">
+        <n-input v-model:value="editCertName" placeholder="本地识别用" />
+      </n-form-item>
+
+      <template v-if="editCertImported">
+        <n-form-item label="关联域名" :show-feedback="false">
+          <n-input :value="editCertDomainsText" readonly />
+        </n-form-item>
+        <n-form-item label="证书 (PEM)" :show-feedback="false">
+          <div class="pem-field">
+            <n-input
+              v-model:value="editImportCert"
+              class="pem-input"
+              type="textarea"
+              :rows="3"
+              placeholder="留空表示不更换，需包含中间证书"
+            />
+            <input
+              ref="editCertFileInput"
+              type="file"
+              accept=".pem,.crt,.cer"
+              class="file-input"
+              @change="onEditCertFile"
+            />
+            <n-button text type="primary" size="small" class="pem-field__file" @click="editCertFileInput?.click()">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" :size="16" />
+              </template>
+              从文件读取
+            </n-button>
+          </div>
+        </n-form-item>
+        <n-form-item label="私钥 (PEM)" :show-feedback="false">
+          <div class="pem-field">
+            <n-input
+              v-model:value="editImportKey"
+              class="pem-input"
+              type="textarea"
+              :rows="3"
+              placeholder="留空表示不更换"
+            />
+            <input
+              ref="editKeyFileInput"
+              type="file"
+              accept=".pem,.key"
+              class="file-input"
+              @change="onEditKeyFile"
+            />
+            <n-button text type="primary" size="small" class="pem-field__file" @click="editKeyFileInput?.click()">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" :size="16" />
+              </template>
+              从文件读取
+            </n-button>
+          </div>
+        </n-form-item>
+      </template>
+
+      <CertExportFields
+        v-model:form="editExportForm"
+        :source-dir="editCertSourceHint"
+        show-sync-status
+      />
+    </n-form>
+    <template #footer>
+      <div class="cert-edit-footer">
+        <n-button
+          quaternary
+          type="primary"
+          :loading="editExportSyncing"
+          :disabled="!editExportForm.enabled && !editExportForm.ssh.enabled"
+          @click="syncEditCertExport"
+        >
+          立即同步
+        </n-button>
+        <n-space>
+          <n-button @click="showCertEdit = false">取消</n-button>
+          <n-button type="primary" :loading="editSaving" @click="saveCertEdit">保存</n-button>
+        </n-space>
+      </div>
+    </template>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch, type VNode } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
 import {
   NAlert,
   NButton,
@@ -548,9 +627,11 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import {
+  AddOutline,
   AlertCircleOutline,
   CheckmarkCircleOutline,
   CloseCircleOutline,
+  CloudUploadOutline,
   FolderOpenOutline,
   InformationCircleOutline,
   SearchOutline,
@@ -563,7 +644,6 @@ import type {
   CertificateRecord,
   DDNSConfig,
 } from '../api/types'
-import CertApplyIcon from '../components/icons/CertApplyIcon.vue'
 import CustomAcmeCaIcon from '../components/icons/CustomAcmeCaIcon.vue'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
@@ -582,6 +662,13 @@ import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
+import CertExportFields from '../components/CertExportFields.vue'
+import {
+  emptyExportForm,
+  exportPayload,
+  loadExportFormFromSettings,
+  type CertExportFormModel,
+} from '../utils/certExportForm'
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
@@ -595,11 +682,27 @@ const records = ref<CertificateRecord[]>([])
 const loading = ref(false)
 const downloadingDomain = ref('')
 const loadError = ref('')
+const showCertEdit = ref(false)
+const editCertDomain = ref('')
+const editCertName = ref('')
+const editCertSourceHint = ref('')
+const editCertImported = ref(false)
+const editCertDomainsText = ref('')
+const editImportCert = ref('')
+const editImportKey = ref('')
+const editCertFileInput = ref<HTMLInputElement | null>(null)
+const editKeyFileInput = ref<HTMLInputElement | null>(null)
+const editSaving = ref(false)
+const editExportSyncing = ref(false)
 const applying = ref(false)
 const renewingDomain = ref('')
 const importing = ref(false)
 const showImport = ref(false)
 const showApply = ref(false)
+
+const applyExportForm = reactive<CertExportFormModel>(emptyExportForm())
+const importExportForm = reactive<CertExportFormModel>(emptyExportForm())
+const editExportForm = reactive<CertExportFormModel>(emptyExportForm())
 
 const applyModalWidth = computed(() => {
   if (applyStep.value === 3) return 'min(720px, 96vw)'
@@ -955,8 +1058,6 @@ function issuerTone(ca?: string) {
   return 'default'
 }
 
-const applyEmailConfigured = computed(() => isValidAcmeEmail(savedAcmeEmail.value))
-
 const applyEmailValidationStatus = computed(() => {
   const email = applyEmail.value.trim()
   if (!email) return undefined
@@ -966,15 +1067,27 @@ const applyEmailValidationStatus = computed(() => {
 const applyEmailFieldFeedback = computed(() => {
   const email = applyEmail.value.trim()
   if (!email) {
-    return '填写标准邮箱地址，不要包含空格或 mailto: 前缀'
+    if (savedAcmeEmail.value) return ''
+    return '未配置默认邮箱时请填写，或在设置 → ACME 账户中配置'
   }
   const err = validateAcmeEmailMessage(email)
-  return err || '填写标准邮箱地址，不要包含空格或 mailto: 前缀'
+  if (err && err.includes('请先填写')) {
+    return '邮箱格式不正确，请填写类似 admin@example.com 的地址'
+  }
+  return err || ''
 })
 
 function validateApplyEmail() {
-  if (applyEmailConfigured.value) return ''
-  return validateAcmeEmailMessage(applyEmail.value)
+  const email = applyEmail.value.trim()
+  if (!email) {
+    if (savedAcmeEmail.value) return ''
+    return '请填写账户邮箱，或在设置 → ACME 账户中配置默认邮箱'
+  }
+  const err = validateAcmeEmailMessage(email)
+  if (err && err.includes('请先填写')) {
+    return '邮箱格式不正确，请填写类似 admin@example.com 的地址'
+  }
+  return err
 }
 
 function validateApplyCA(domains: string[]) {
@@ -1089,7 +1202,6 @@ const columns: DataTableColumns<CertificateRecord> = [
       return renderTableRowActions([
         {
           label: '编辑',
-          show: row.acme_ca !== 'imported',
           onClick: () => editCert(row),
         },
         {
@@ -1126,7 +1238,7 @@ async function downloadCert(row: CertificateRecord, part: 'zip' | 'cert' | 'key'
 
 function confirmRenew(row: CertificateRecord) {
   if (row.acme_ca === 'imported') {
-    message.warning('手动导入的证书请重新导入，无法续签')
+    message.warning('导入的证书无法续签，可在编辑中更换证书与私钥')
     return
   }
   const domains = row.domains?.length ? row.domains.join('、') : row.domain
@@ -1150,21 +1262,73 @@ function confirmRenew(row: CertificateRecord) {
   })
 }
 
-const editingCertDomain = ref('')
-
 function editCert(row: CertificateRecord) {
-  editingCertDomain.value = row.domain
-  applyCA.value = row.acme_ca || 'letsencrypt'
-  // 保留设置中的 ACME 邮箱，不清空
-  const domains = row.domains ?? [row.domain]
-  applyDomainsText.value = domains.join('\n')
-  applyCertName.value = row.name?.trim() || certDisplayName(row.domain)
-  applyStep.value = 1
-  applyError.value = ''
-  applyLogLines.value = []
-  applyResult.value = null
-  applyFinished.value = false
-  showApply.value = true
+  editCertDomain.value = row.domain
+  editCertName.value = row.name?.trim() || certDisplayName(row.domain)
+  editCertImported.value = row.acme_ca === 'imported'
+  editCertDomainsText.value = row.domains?.length ? row.domains.join('\n') : row.domain
+  editImportCert.value = ''
+  editImportKey.value = ''
+  editCertSourceHint.value = row.cert_path
+    ? row.cert_path.replace(/[/\\]fullchain\.pem$/i, '')
+    : ''
+  Object.assign(editExportForm, loadExportFormFromSettings(row.export))
+  showCertEdit.value = true
+}
+
+async function onEditCertFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  editImportCert.value = await file.text()
+}
+
+async function onEditKeyFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  editImportKey.value = await file.text()
+}
+
+async function saveCertEdit() {
+  if (!editCertDomain.value) return
+  const certPEM = editImportCert.value.trim()
+  const keyPEM = editImportKey.value.trim()
+  if (editCertImported.value && ((certPEM && !keyPEM) || (!certPEM && keyPEM))) {
+    message.warning('更换证书需同时填写证书与私钥，或全部留空')
+    return
+  }
+  editSaving.value = true
+  try {
+    const updated = await api.updateCertificate(editCertDomain.value, {
+      name: editCertName.value.trim(),
+      export: exportPayload(editExportForm),
+      ...(editCertImported.value && certPEM && keyPEM
+        ? { certificate: certPEM, private_key: keyPEM }
+        : {}),
+    })
+    records.value = records.value.map((r) => (r.id === updated.id ? updated : r))
+    Object.assign(editExportForm, loadExportFormFromSettings(updated.export))
+    message.success('已保存')
+    showCertEdit.value = false
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+async function syncEditCertExport() {
+  if (!editCertDomain.value) return
+  editExportSyncing.value = true
+  try {
+    const updated = await api.syncCertificateExport(editCertDomain.value)
+    records.value = records.value.map((r) => (r.id === updated.id ? updated : r))
+    Object.assign(editExportForm, loadExportFormFromSettings(updated.export))
+    message.success('已同步到目标目录')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '同步失败')
+  } finally {
+    editExportSyncing.value = false
+  }
 }
 
 function confirmDelete(row: CertificateRecord) {
@@ -1216,7 +1380,9 @@ function resetApplyWizard() {
   applySaveDnsProfile.value = false
   applyDnsProfileRemark.value = ''
   applyAutoRenew.value = true
+  Object.assign(applyExportForm, emptyExportForm())
   applyCA.value = 'letsencrypt'
+  applyEmail.value = ''
   applyError.value = ''
   resetApplyProgress()
 }
@@ -1269,7 +1435,6 @@ async function loadCAOptions() {
   ddnsConfigs.value = ddns
   const storedEmail = (settings.acme_email ?? '').trim()
   savedAcmeEmail.value = isValidAcmeEmail(storedEmail) ? storedEmail : ''
-  applyEmail.value = savedAcmeEmail.value || storedEmail
   zerosslApiKey.value = settings.zerossl_api_key ?? ''
   zerosslEabKid.value = settings.zerossl_eab_kid ?? ''
   zerosslEabHmac.value = settings.zerossl_eab_hmac_key ?? ''
@@ -1412,6 +1577,7 @@ async function submitApply() {
             ca: applyCA.value,
             email: applyEmail.value.trim(),
             name: applyCertName.value.trim(),
+            export: exportPayload(applyExportForm),
           }
         : {
             dns: {
@@ -1426,6 +1592,7 @@ async function submitApply() {
             ca: applyCA.value,
             email: applyEmail.value.trim(),
             name: applyCertName.value.trim(),
+            export: exportPayload(applyExportForm),
           }
     const { job_id } = await api.applyCertificate(payload)
     applyStep.value = 3
@@ -1455,6 +1622,7 @@ function openImport() {
     cert_path: '',
     key_path: '',
   }
+  Object.assign(importExportForm, emptyExportForm())
   showImport.value = true
 }
 
@@ -1487,15 +1655,18 @@ async function submitImport() {
 
   importing.value = true
   try {
+    const exportSettings = exportPayload(importExportForm)
     const payload =
       importMode.value === 'path'
         ? {
             cert_path: importForm.value.cert_path,
             key_path: importForm.value.key_path,
+            export: exportSettings,
           }
         : {
             certificate: importForm.value.certificate,
             private_key: importForm.value.private_key,
+            export: exportSettings,
           }
     const record = await api.importCertificate(payload)
     records.value = [record, ...records.value.filter((r) => r.id !== record.id)]
@@ -1859,10 +2030,6 @@ html.dark .apply-log-box {
   min-height: 128px;
 }
 
-.apply-email-alert {
-  margin-bottom: 12px;
-}
-
 .form-alert {
   width: 100%;
 }
@@ -1900,30 +2067,6 @@ html.dark .apply-log-box {
 .ca-hint__sep {
   margin: 0 4px;
   opacity: 0.6;
-}
-
-.modal-header--with-icon {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.modal-header__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  color: #fff;
-  background: linear-gradient(145deg, #34d399, #059669);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
-  font-size: 22px;
-}
-
-.modal-header__text {
-  min-width: 0;
 }
 
 .apply-cert-modal .cert-form :deep(.n-form-item) {
@@ -1990,7 +2133,7 @@ html.dark .apply-log-box {
 .ca-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -1999,15 +2142,15 @@ html.dark .apply-log-box {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px 12px 12px;
+  gap: 10px;
+  padding: 8px 10px 8px 8px;
   border: 1px solid var(--fonu-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--fonu-surface);
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, box-shadow 0.15s;
-  min-height: 72px;
+  min-height: 0;
 }
 
 .ca-card:hover {
@@ -2021,10 +2164,10 @@ html.dark .apply-log-box {
 
 .ca-card__check {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 18px;
-  height: 18px;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   border: 2px solid #d1d5db;
   background: #fff;
@@ -2039,24 +2182,24 @@ html.dark .apply-log-box {
 .ca-card--active .ca-card__check::after {
   content: '';
   position: absolute;
-  left: 4px;
+  left: 3px;
   top: 1px;
   width: 4px;
-  height: 7px;
+  height: 6px;
   border: solid #fff;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 
 .ca-card__logo {
-  flex: 0 0 56px;
+  flex: 0 0 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  padding: 6px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  padding: 2px;
+  border-radius: 8px;
   background-color: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
   overflow: hidden;
@@ -2065,27 +2208,28 @@ html.dark .apply-log-box {
 .ca-card__logo img {
   width: 100%;
   height: 100%;
-  max-height: 48px;
   object-fit: contain;
+  object-position: center;
   display: block;
+  transform: scale(1.12);
 }
 
 .ca-card__custom-icon {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   color: var(--fonu-text-secondary);
 }
 
 .ca-card__text {
   flex: 1;
   min-width: 0;
-  padding-right: 22px;
+  padding-right: 18px;
 }
 
 .ca-card__title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--fonu-text);
 }
 
@@ -2098,9 +2242,9 @@ html.dark .apply-log-box {
 }
 
 .ca-card__sub {
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.4;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--fonu-text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2135,16 +2279,6 @@ html.dark .apply-log-box {
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.5;
-}
-
-.apply-email-saved {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  font-size: 14px;
-  color: var(--fonu-text);
 }
 
 .verify-step__intro {
@@ -2278,8 +2412,21 @@ html.dark .apply-log-box {
   color: var(--fonu-text-secondary);
 }
 
-.file-btn {
-  margin-top: var(--fonu-space-2);
+.pem-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--fonu-space-2);
+  width: 100%;
+}
+
+.pem-field__file {
+  padding-left: 0;
+  font-size: 13px;
+}
+
+.pem-field__file :deep(.n-button__icon) {
+  margin-right: 2px;
 }
 
 .domain-preview {
@@ -2306,6 +2453,14 @@ html.dark .apply-log-box {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+.cert-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fonu-space-3);
+  width: 100%;
 }
 
 @media (max-width: 1199px) {

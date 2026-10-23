@@ -232,11 +232,60 @@ export interface CertificateRecord {
   domains?: string[]
   wildcard: boolean
   acme_ca?: string
+  cert_path?: string
+  key_path?: string
   status: string
   days_left: number
   last_error?: string
   expires_at?: string
   last_renew_at?: string
+  export?: CertExportSettings
+}
+
+export interface FsDirEntry {
+  name: string
+  path: string
+}
+
+export interface FsDirListResponse {
+  path: string
+  parent: string
+  entries: FsDirEntry[]
+}
+
+export interface CertSSHExportSettings {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  auth_type: 'password' | 'private_key'
+  password?: string
+  has_password?: boolean
+  private_key?: string
+  has_private_key?: boolean
+  private_key_path?: string
+  private_key_passphrase?: string
+  has_passphrase?: boolean
+  remote_dir: string
+  on_upload_shell: string
+  proxy_enabled?: boolean
+  proxy_type?: 'socks5' | 'http'
+  proxy_host?: string
+  proxy_port?: number
+  proxy_username?: string
+  proxy_password?: string
+  has_proxy_password?: boolean
+  last_sync_at?: string
+  last_error?: string
+}
+
+export interface CertExportSettings {
+  enabled: boolean
+  targets: string[]
+  on_change_shell: string
+  last_sync_at?: string
+  last_error?: string
+  ssh?: CertSSHExportSettings
 }
 
 export interface AccessLogEntry {

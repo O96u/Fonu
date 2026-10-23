@@ -6,15 +6,18 @@ import (
 	"net/http"
 	"strings"
 
+	certstore "github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/certexport"
 )
 
 type CertHandler struct {
-	svc *acme.Service
+	svc    *acme.Service
+	export *certexport.Service
 }
 
-func NewCertHandler(svc *acme.Service) *CertHandler {
-	return &CertHandler{svc: svc}
+func NewCertHandler(svc *acme.Service, export *certexport.Service) *CertHandler {
+	return &CertHandler{svc: svc, export: export}
 }
 
 func (h *CertHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -22,6 +25,9 @@ func (h *CertHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取证书失败")
 		return
+	}
+	for i := range records {
+		records[i].Export = records[i].Export.RedactSecrets()
 	}
 	writeJSON(w, http.StatusOK, records)
 }
@@ -43,16 +49,17 @@ func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 
 func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Domain         string          `json:"domain"`
-		DNSZone        string          `json:"dns_zone"`
-		DDNSConfigID   int64           `json:"ddns_config_id"`
-		DNS            acme.InlineDNS  `json:"dns"`
-		SaveDNSProfile bool            `json:"save_dns_profile"`
-		DNSProfileName string          `json:"dns_profile_name"`
-		Domains        []string        `json:"domains"`
-		CA             string          `json:"ca"`
-		Email          string          `json:"email"`
-		Name           string          `json:"name"`
+		Domain         string                 `json:"domain"`
+		DNSZone        string                 `json:"dns_zone"`
+		DDNSConfigID   int64                  `json:"ddns_config_id"`
+		DNS            acme.InlineDNS         `json:"dns"`
+		SaveDNSProfile bool                   `json:"save_dns_profile"`
+		DNSProfileName string                 `json:"dns_profile_name"`
+		Domains        []string               `json:"domains"`
+		CA             string                 `json:"ca"`
+		Email          string                 `json:"email"`
+		Name           string                 `json:"name"`
+		Export         certstore.ExportConfig `json:"export"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	domains := req.Domains
@@ -64,6 +71,7 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		InlineDNS:      req.DNS,
 		SaveDNSProfile: req.SaveDNSProfile,
 		DNSProfileName: req.DNSProfileName,
+		Export:         req.Export,
 	}, req.Name)
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())
@@ -98,21 +106,69 @@ func (h *CertHandler) ApplyJobStream(w http.ResponseWriter, r *http.Request) {
 
 func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Certificate string `json:"certificate"`
-		PrivateKey  string `json:"private_key"`
-		CertPath    string `json:"cert_path"`
-		KeyPath     string `json:"key_path"`
+		Certificate string                 `json:"certificate"`
+		PrivateKey  string                 `json:"private_key"`
+		CertPath    string                 `json:"cert_path"`
+		KeyPath     string                 `json:"key_path"`
+		Export      certstore.ExportConfig `json:"export"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
-	record, err := h.svc.Import(r.Context(), req.Certificate, req.PrivateKey, req.CertPath, req.KeyPath)
+	record, err := h.svc.Import(r.Context(), req.Certificate, req.PrivateKey, req.CertPath, req.KeyPath, req.Export)
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, record)
+	writeJSON(w, http.StatusOK, redactCertRecord(record))
+}
+
+func (h *CertHandler) Update(w http.ResponseWriter, r *http.Request) {
+	domain := strings.TrimSpace(r.PathValue("domain"))
+	if domain == "" {
+		writeError(r, w, http.StatusBadRequest, "域名不能为空")
+		return
+	}
+	var req struct {
+		Name        string                 `json:"name"`
+		Export      certstore.ExportConfig `json:"export"`
+		Certificate string                 `json:"certificate"`
+		PrivateKey  string                 `json:"private_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	record, err := h.svc.Update(r.Context(), domain, req.Name, req.Export, req.Certificate, req.PrivateKey)
+	if err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, redactCertRecord(record))
+}
+
+func (h *CertHandler) SyncExport(w http.ResponseWriter, r *http.Request) {
+	domain := strings.TrimSpace(r.PathValue("domain"))
+	if domain == "" {
+		writeError(r, w, http.StatusBadRequest, "域名不能为空")
+		return
+	}
+	if err := h.export.SyncRecord(r.Context(), domain); err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err := h.svc.Get(r.Context(), domain)
+	if err != nil {
+		writeError(r, w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, redactCertRecord(rec))
+}
+
+func redactCertRecord(rec certstore.Record) certstore.Record {
+	rec.Export = rec.Export.RedactSecrets()
+	return rec
 }
 
 func (h *CertHandler) Download(w http.ResponseWriter, r *http.Request) {
