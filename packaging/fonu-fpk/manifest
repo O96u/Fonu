@@ -1,10 +1,11 @@
 appname=fonu
 version=@VERSION@
 display_name=Fonu
-desc="""Fonu 是面向飞牛 fnOS 的公网访问管理工具，提供反向代理、DDNS、HTTPS 证书与内网穿透。"""
+desc="""面向飞牛 fnOS 的轻量公网访问工具：独立 Nginx 反向代理、DDNS、HTTPS 证书与 FRP 内网穿透，不改动系统 Nginx。"""
 platform=@PLATFORM@
 source=thirdparty
 maintainer=muxui
+maintainer_url=https://muxui.com/posts/fonu-fnos-ddns-https-reverse-proxy/
 distributor=muxui
 distributor_url=https://github.com/O96u/Fonu
 ctl_stop=true

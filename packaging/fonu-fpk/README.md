@@ -21,15 +21,16 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 
 | 方式 | 说明 |
 |------|------|
-| **仅 FPK（推荐试包）** | Actions → **Build FPK** → 填 `version`；可选 `nginx_version`（默认最新 1.30.x）；产物在预发布 **`fpk-v<version>`** |
-| **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.2.0` |
+| **正式发版** | 推送 `v*` tag 后，`.fpk` 会出现在对应 GitHub Release 的 **Assets** |
+| **手动试包** | Actions → **Build FPK** → 填 `version`；可选 `nginx_version`（默认最新 1.30.x）；产物在预发布 **`fpk-v<version>`**，若已有 `v<version>` Release 会同时挂到该版本 Assets |
+| **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.2.1` |
 
 产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
 
 ## 安装与访问
 
 ```bash
-appcenter-cli install-fpk fonu_1.2.0_amd64.fpk
+appcenter-cli install-fpk fonu_1.2.1_amd64.fpk
 ```
 
 | 入口 | 默认地址（安装时可改） |

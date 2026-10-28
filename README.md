@@ -175,7 +175,7 @@ FONU_SESSION_SECRET=your-secret docker compose up -d --build
 <details>
 <summary>飞牛 fnOS 原生 FPK</summary>
 
-从 [GitHub Release](https://github.com/muxui/fonu/releases) 下载对应架构的 `.fpk`（试包走 Actions **Build FPK**，见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。内置 `fonu`、源码编译的 nginx 1.30.x、frpc；安装目录为 `/var/apps/fonu`。管理后台与反代默认端口与 Host 模式 Docker 相同（`6893` / `18080` / `9443`）。
+从 [GitHub Release](https://github.com/O96u/Fonu/releases) **Assets** 下载对应架构的 `.fpk`（试包仍可走 Actions **Build FPK**，见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。内置 `fonu`、源码编译的 nginx 1.30.x、frpc；安装目录为 `/var/apps/fonu`。管理后台与反代默认端口与 Host 模式 Docker 相同（`6893` / `18080` / `9443`）。
 
 </details>
 

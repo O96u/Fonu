@@ -1,6 +1,9 @@
 name: Build FPK
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       ref:
@@ -8,14 +11,14 @@ on:
         required: true
         default: main
       version:
-        description: "Package version without v (example: 1.2.0)"
+        description: "Package version without v (example: 1.2.1)"
         required: true
       nginx_version:
         description: "Nginx source version (empty = latest 1.30.x stable)"
         required: false
         default: ""
       release_tag:
-        description: "Optional prerelease tag (default: fpk-v<version>)"
+        description: "Optional trial prerelease tag (default: fpk-v<version>)"
         required: false
 
 permissions:
@@ -26,7 +29,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.out.outputs.version }}
+      ref: ${{ steps.out.outputs.ref }}
+      attach_tag: ${{ steps.out.outputs.attach_tag }}
+      trial_tag: ${{ steps.out.outputs.trial_tag }}
+    steps:
+      - name: Resolve version and tags
+        id: out
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            ref="${{ inputs.ref }}"
+            trial_tag="${{ inputs.release_tag }}"
+            [ -z "$trial_tag" ] && trial_tag="fpk-v${version}"
+            attach_tag="v${version}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+            ref="${GITHUB_REF}"
+            trial_tag=""
+            attach_tag="v${version}"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "Invalid version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "attach_tag=$attach_tag" >> "$GITHUB_OUTPUT"
+          echo "trial_tag=$trial_tag" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: setup
     strategy:
       fail-fast: false
       matrix:
@@ -37,18 +72,17 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     env:
-      VERSION: ${{ inputs.version }}
-      NGINX_VERSION: ${{ inputs.nginx_version }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      NGINX_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.nginx_version || '' }}
       FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64' }}
       FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 || '54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93' }}
       FNPACK_ARM64_URL: ${{ vars.FNPACK_LINUX_ARM64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-arm64' }}
       FNPACK_ARM64_SHA256: ${{ vars.FNPACK_LINUX_ARM64_SHA256 || '' }}
     steps:
-      - name: Validate inputs
+      - name: Validate nginx version
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid version'; exit 1; }
           if [ -n "$NGINX_VERSION" ]; then
             [[ "$NGINX_VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid nginx_version'; exit 1; }
           fi
@@ -56,7 +90,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -114,7 +148,6 @@ jobs:
           BUILD_MODE: payload
         run: |
           set -euo pipefail
-          # Never reuse binaries from an earlier compiler environment.
           rm -rf packaging/fonu-fpk/.cache packaging/dist/payload-${{ matrix.arch }}
           bash packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "$VERSION"
 
@@ -134,24 +167,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fonu-fpk-${{ matrix.arch }}
-          path: packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk
+          path: packaging/dist/fonu_${{ needs.setup.outputs.version }}_${{ matrix.arch }}.fpk
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [setup, build]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      VERSION: ${{ inputs.version }}
-      RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('fpk-v{0}', inputs.version) }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      ATTACH_TAG: ${{ needs.setup.outputs.attach_tag }}
+      TRIAL_TAG: ${{ needs.setup.outputs.trial_tag }}
     steps:
-      - name: Validate release tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || { echo 'Release tag must start with fpk-'; exit 1; }
-
       - name: Download packages
         uses: actions/download-artifact@v4
         with:
@@ -169,12 +197,14 @@ jobs:
           sha256sum "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" > SHA256SUMS
           ls -lh
 
-      - name: Publish prerelease
+      - name: Publish trial prerelease
+        if: env.TRIAL_TAG != ''
         shell: bash
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          [[ "$TRIAL_TAG" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || { echo 'Trial tag must start with fpk-'; exit 1; }
           cd packaging/dist
           cat > release-notes.md <<NOTES
           Fonu fnOS native packages. Built by [GitHub Actions](${RUN_URL}).
@@ -186,11 +216,35 @@ jobs:
           Bundled nginx is compiled from current stable 1.30.x with fnOS paths
           under \`/var/apps/fonu/{target,var,shares}\`.
 
-          These are prerelease assets, separate from regular v* releases.
+          Trial packages. Formal releases attach the same \`.fpk\` files to the matching \`v*\` GitHub Release.
           NOTES
-          if gh release view "$RELEASE_TAG" -R "$GH_REPO" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" -R "$GH_REPO" --prerelease --latest=false --notes-file release-notes.md
+          if gh release view "$TRIAL_TAG" -R "$GH_REPO" >/dev/null 2>&1; then
+            gh release edit "$TRIAL_TAG" -R "$GH_REPO" --prerelease --latest=false --notes-file release-notes.md
           else
-            gh release create "$RELEASE_TAG" -R "$GH_REPO" --title "Fonu FPK ${VERSION}" --prerelease --latest=false --notes-file release-notes.md
+            gh release create "$TRIAL_TAG" -R "$GH_REPO" --title "Fonu FPK ${VERSION}" --prerelease --latest=false --notes-file release-notes.md
           fi
-          gh release upload "$RELEASE_TAG" -R "$GH_REPO" "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
+          gh release upload "$TRIAL_TAG" -R "$GH_REPO" "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
+
+      - name: Attach FPK to GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          ready=0
+          for _ in $(seq 1 36); do
+            if gh release view "$ATTACH_TAG" -R "$GH_REPO" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ready" -ne 1 ]; then
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "GitHub Release $ATTACH_TAG not found after waiting" >&2
+              exit 1
+            fi
+            echo "No $ATTACH_TAG release yet; skipped attaching to Latest"
+            exit 0
+          fi
+          gh release upload "$ATTACH_TAG" -R "$GH_REPO" \
+            "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
