@@ -200,7 +200,7 @@ mkdir -p "${STAGING}"
 stage_pack_tree() {
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --exclude='.build-*' --exclude='*.fpk' --exclude='scripts' --exclude='.cache' \
-      --exclude='LICENSE' \
+      --exclude='LICENSE' --exclude='ICON_64.PNG' \
       "${PACK_DIR}/" "${STAGING}/"
     return 0
   fi
@@ -315,8 +315,8 @@ verify_icons() {
 import struct, sys
 root = sys.argv[1]
 expect = {
+    # fnpack only ships ICON.PNG (64) and ICON_256.PNG at the FPK root.
     "ICON.PNG": (64, 64),
-    "ICON_64.PNG": (64, 64),
     "ICON_256.PNG": (256, 256),
     "app/ui/images/ICON.PNG": (64, 64),
     "app/ui/images/icon_64.png": (64, 64),
@@ -375,7 +375,7 @@ import hashlib, io, pathlib, tarfile, sys
 fpk, platform, version = sys.argv[1:]
 with tarfile.open(fpk, 'r:gz') as outer:
     members = {m.name.lstrip('./'): m for m in outer.getmembers()}
-    needed = ['manifest','app.tgz','ICON.PNG','ICON_64.PNG','ICON_256.PNG',
+    needed = ['manifest','app.tgz','ICON.PNG','ICON_256.PNG',
               'cmd/main','config/privilege','config/resource','wizard/install']
     for name in needed:
         assert name in members, f'missing FPK member: {name}'
