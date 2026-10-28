@@ -316,7 +316,9 @@ import struct, sys
 root = sys.argv[1]
 expect = {
     "ICON.PNG": (64, 64),
+    "ICON_64.PNG": (64, 64),
     "ICON_256.PNG": (256, 256),
+    "app/ui/images/ICON.PNG": (64, 64),
     "app/ui/images/icon_64.png": (64, 64),
     "app/ui/images/icon_256.png": (256, 256),
 }
@@ -373,7 +375,7 @@ import hashlib, io, pathlib, tarfile, sys
 fpk, platform, version = sys.argv[1:]
 with tarfile.open(fpk, 'r:gz') as outer:
     members = {m.name.lstrip('./'): m for m in outer.getmembers()}
-    needed = ['manifest','app.tgz','ICON.PNG','ICON_256.PNG',
+    needed = ['manifest','app.tgz','ICON.PNG','ICON_64.PNG','ICON_256.PNG',
               'cmd/main','config/privilege','config/resource','wizard/install']
     for name in needed:
         assert name in members, f'missing FPK member: {name}'

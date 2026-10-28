@@ -1,13 +1,18 @@
 {
   ".url": {
     "fonu.Application": {
-      "title": "Fonu",
-      "icon": "images/icon_{0}.png",
-      "type": "iframe",
-      "protocol": "",
+      "noDisplay": false,
+      "allUsers": true,
+      "fileTypes": [],
+      "control": {
+        "accessPerm": "readonly"
+      },
+      "protocol": "http",
       "port": "6893",
-      "url": "/",
-      "allUsers": true
+      "title": "Fonu",
+      "icon": "images/ICON.PNG",
+      "type": "iframe",
+      "url": "/"
     }
   }
 }
