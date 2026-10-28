@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_ROOT="/var/apps/${TRIM_APPNAME:-fonu}"
+
+mkdir -p \
+  "${TRIM_PKGVAR}" \
+  "${TRIM_PKGETC}" \
+  "${TRIM_PKGVAR}/cache/client_temp" \
+  "${TRIM_PKGVAR}/cache/proxy_temp" \
+  "${TRIM_PKGVAR}/cache/fastcgi_temp" \
+  "${TRIM_PKGVAR}/cache/uwsgi_temp" \
+  "${TRIM_PKGVAR}/cache/scgi_temp" \
+  "${TRIM_PKGVAR}/nginx" \
+  "${TRIM_PKGVAR}/frp" \
+  "${TRIM_PKGVAR}/logs" \
+  "${TRIM_PKGVAR}/certs"
+
+mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
+
+if [ -n "${wizard_session_secret:-}" ]; then
+  ENV_FILE="${TRIM_PKGETC}/fonu.env"
+  printf 'FONU_SESSION_SECRET=%s\n' "${wizard_session_secret}" >"${ENV_FILE}"
+  chmod 600 "${ENV_FILE}"
+fi
+
+exit 0

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Pre-install: fnpack requires this hook; Fonu has no pre-install work.
+set -euo pipefail
+exit 0

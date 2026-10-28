@@ -1,0 +1,17 @@
+appname               = fonu
+version               = @VERSION@
+display_name          = Fonu
+desc                  = 飞牛 fnOS 公网访问管理（反代、DDNS、HTTPS 证书、内网穿透）
+maintainer            = muxui
+maintainer_url        = https://github.com/O96u/Fonu
+distributor           = muxui
+distributor_url       = https://github.com/O96u/Fonu
+source                = thirdparty
+platform              = @PLATFORM@
+os_min_version        = 0.9.0
+desktop_uidir         = ui
+desktop_applaunchname = fonu.main
+service_port          = 6893
+checkport             = false
+ctl_stop              = true
+disable_authorization_path = false

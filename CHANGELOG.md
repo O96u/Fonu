@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- 飞牛 fnOS 原生 FPK：按 `/var/apps/fonu/{target,var,shares}` 布局打包；内置从源码编译的 nginx **1.30.x**（替代已停止维护的 1.28/1.29 与 Debian 1.22 解包）
+
 ## [v1.2.0] - 2026-10-23
 
 ### 新增

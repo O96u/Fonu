@@ -1,0 +1,184 @@
+name: Build FPK
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/tag/commit)"
+        required: true
+        default: main
+      version:
+        description: "Package version without v (example: 1.2.0)"
+        required: true
+      nginx_version:
+        description: "Nginx source version (empty = latest 1.30.x stable)"
+        required: false
+        default: ""
+      release_tag:
+        description: "Optional prerelease tag (default: fpk-v<version>)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fpk-build-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ inputs.version }}
+      NGINX_VERSION: ${{ inputs.nginx_version }}
+      FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64' }}
+      FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 || '54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93' }}
+      FNPACK_ARM64_URL: ${{ vars.FNPACK_LINUX_ARM64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-arm64' }}
+      FNPACK_ARM64_SHA256: ${{ vars.FNPACK_LINUX_ARM64_SHA256 || '' }}
+    steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid version'; exit 1; }
+          if [ -n "$NGINX_VERSION" ]; then
+            [[ "$NGINX_VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid nginx_version'; exit 1; }
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install build dependencies and fnpack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc make binutils rsync curl ca-certificates jq python3 \
+            libpcre3-dev libpcre2-dev zlib1g-dev libssl-dev
+          mkdir -p "$RUNNER_TEMP/fnpack-bin"
+          host_arch="$(uname -m)"
+          if [ "$host_arch" = "x86_64" ]; then
+            url="$FNPACK_URL"
+            sha="$FNPACK_SHA256"
+          else
+            url="$FNPACK_ARM64_URL"
+            sha="${FNPACK_ARM64_SHA256:-}"
+          fi
+          if curl --fail --location --retry 3 "$url" -o "$RUNNER_TEMP/fnpack-bin/fnpack"; then
+            if [ -n "$sha" ]; then
+              echo "$sha  $RUNNER_TEMP/fnpack-bin/fnpack" | sha256sum -c -
+            fi
+            chmod 755 "$RUNNER_TEMP/fnpack-bin/fnpack"
+          elif [ "$host_arch" != "x86_64" ]; then
+            sudo apt-get install -y qemu-user-static
+            curl --fail --location --retry 3 "$FNPACK_URL" -o "$RUNNER_TEMP/fnpack-bin/fnpack.amd64"
+            echo "$FNPACK_SHA256  $RUNNER_TEMP/fnpack-bin/fnpack.amd64" | sha256sum -c -
+            chmod 755 "$RUNNER_TEMP/fnpack-bin/fnpack.amd64"
+            printf '%s\n' '#!/bin/sh' 'exec qemu-x86_64-static "$(dirname "$0")/fnpack.amd64" "$@"' > "$RUNNER_TEMP/fnpack-bin/fnpack"
+            chmod 755 "$RUNNER_TEMP/fnpack-bin/fnpack"
+          else
+            echo "failed to download fnpack from $url" >&2
+            exit 1
+          fi
+          "$RUNNER_TEMP/fnpack-bin/fnpack" --help
+          echo "FNPACK_BIN=$RUNNER_TEMP/fnpack-bin/fnpack" >> "$GITHUB_ENV"
+
+      - name: Build ${{ matrix.arch }} FPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n packaging/fonu-fpk/scripts/build-fpk.sh
+          chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
+          packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "$VERSION"
+          test -s "packaging/dist/fonu_${VERSION}_${{ matrix.arch }}.fpk"
+          ls -lh packaging/dist
+
+      - name: Upload ${{ matrix.arch }} package
+        uses: actions/upload-artifact@v4
+        with:
+          name: fonu-fpk-${{ matrix.arch }}
+          path: packaging/dist/fonu_${{ inputs.version }}_${{ matrix.arch }}.fpk
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.release_tag != '' && inputs.release_tag || format('fpk-v{0}', inputs.version) }}
+    steps:
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || { echo 'Release tag must start with fpk-'; exit 1; }
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fonu-fpk-*
+          merge-multiple: true
+          path: packaging/dist
+
+      - name: Checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          test -s "fonu_${VERSION}_amd64.fpk"
+          test -s "fonu_${VERSION}_arm64.fpk"
+          sha256sum "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" > SHA256SUMS
+          ls -lh
+
+      - name: Publish prerelease
+        shell: bash
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          cat > release-notes.md <<NOTES
+          Fonu fnOS native packages. Built by [GitHub Actions](${RUN_URL}).
+
+          - fonu_${VERSION}_amd64.fpk: Intel/AMD x86_64
+          - fonu_${VERSION}_arm64.fpk: ARM64
+          - SHA256SUMS: file integrity checksums
+
+          Bundled nginx is compiled from current stable 1.30.x with fnOS paths
+          under \`/var/apps/fonu/{target,var,shares}\`.
+
+          These are prerelease assets, separate from regular v* releases.
+          NOTES
+          if gh release view "$RELEASE_TAG" -R "$GH_REPO" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" -R "$GH_REPO" --prerelease --latest=false --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" -R "$GH_REPO" --title "Fonu FPK ${VERSION}" --prerelease --latest=false --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" -R "$GH_REPO" "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
