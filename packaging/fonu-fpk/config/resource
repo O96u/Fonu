@@ -1,5 +1,1 @@
-{
-    "data-share": {
-        "shares": [{"name": "etc", "permission": {"rw": ["fonu"]}}]
-    }
-}
+{}

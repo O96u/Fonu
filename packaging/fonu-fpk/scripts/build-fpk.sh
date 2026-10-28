@@ -184,7 +184,15 @@ resolve_fnpack_bin() {
 }
 
 echo "==> Fonu FPK build (${ARCH}, v${VERSION})"
+# Keep compilation and packaging independently runnable in CI.
+MODE="${BUILD_MODE:-all}"
+case "$MODE" in all|payload|package) ;; *) echo "invalid BUILD_MODE: $MODE" >&2; exit 1 ;; esac
+resolve_fnpack_bin
+FNPACK_BIN="$(command -v "$FNPACK_BIN" || printf '%s' "$FNPACK_BIN")"
+if [[ "$FNPACK_BIN" != /* ]]; then FNPACK_BIN="$(cd "$(dirname "$FNPACK_BIN")" && pwd)/$(basename "$FNPACK_BIN")"; fi
+if [ "$MODE" != package ]; then
 resolve_nginx_version
+fi
 
 echo "==> Staging FPK tree"
 rm -rf "${STAGING}"
@@ -207,6 +215,7 @@ stage_pack_tree() {
 stage_pack_tree
 mkdir -p "${STAGING}/app"
 
+if [ "$MODE" != package ]; then
 echo "==> Building web (Vite)"
 (
   cd "${REPO_ROOT}/web"
@@ -252,16 +261,42 @@ cp "${REPO_ROOT}/deploy/nginx/mime.types" "${STAGING}/app/mime.types"
 mkdir -p "${STAGING}/app/migrations"
 cp -R "${REPO_ROOT}/migrations/." "${STAGING}/app/migrations/"
 
+mkdir -p "${DIST_DIR}/payload-${ARCH}"
+cp "${STAGING}/app/"{fonu,Nginx,frpc} "${DIST_DIR}/payload-${ARCH}/"
+if [ "$MODE" = payload ]; then
+  echo "==> Payload ready: ${DIST_DIR}/payload-${ARCH}"
+  exit 0
+fi
+else
+  cp "${DIST_DIR}/payload-${ARCH}/"{fonu,Nginx,frpc} "${STAGING}/app/"
+  cp "${REPO_ROOT}/deploy/nginx/mime.types" "${STAGING}/app/mime.types"
+  mkdir -p "${STAGING}/app/migrations"
+  cp -R "${REPO_ROOT}/migrations/." "${STAGING}/app/migrations/"
+fi
+
+# Reject wrong-architecture payloads before producing an installable package.
+python3 - "${STAGING}/app" "$ARCH" <<'PYELF'
+import pathlib, struct, sys
+root, arch = sys.argv[1:]
+for name in ('fonu', 'Nginx', 'frpc'):
+    header = (pathlib.Path(root) / name).read_bytes()[:20]
+    if header[:6] != b'\x7fELF\x02\x01' or struct.unpack('<H', header[18:20])[0] != {'amd64':62, 'arm64':183}[arch]:
+        raise SystemExit(f'{name}: expected Linux ELF64 {arch}')
+print('All payload architectures verified')
+PYELF
+
 echo "==> Updating manifest (version=${VERSION}, platform=${MANIFEST_PLATFORM})"
 MANIFEST="${STAGING}/manifest"
 sed_inplace "s/@VERSION@/${VERSION}/g" "${MANIFEST}"
 sed_inplace "s/@PLATFORM@/${MANIFEST_PLATFORM}/g" "${MANIFEST}"
 
 chmod +x "${STAGING}/cmd/"* "${STAGING}/app/fonu" "${STAGING}/app/frpc" "${STAGING}/app/Nginx"
+find "${STAGING}/config" "${STAGING}/wizard" "${STAGING}/app/ui" -type f -exec chmod 644 {} +
+chmod 644 "${STAGING}/manifest" "${STAGING}/ICON.PNG" "${STAGING}/ICON_256.PNG"
 rm -f "${STAGING}/LICENSE"
 
 # Windows checkouts are CRLF. fnOS runs these as shell scripts and parses
-# manifest as text; a trailing CR fails install with "应用包不符合系统要求".
+# manifest as text; normalize line endings for Linux tooling.
 normalize_lf() {
   local f
   while IFS= read -r -d '' f; do
@@ -324,7 +359,7 @@ rm -f "${DIST_DIR}/fonu.fpk" "${DIST_DIR}/${FPK_NAME}" "${STAGING}/fonu.fpk"
   "${FNPACK_BIN}" build --directory "${STAGING}"
 )
 GENERATED=""
-for candidate in "${DIST_DIR}/fonu.fpk" "${STAGING}/fonu.fpk" "${PACK_DIR}/fonu.fpk" "${REPO_ROOT}/fonu.fpk"; do
+for candidate in "${DIST_DIR}/fonu.fpk" "${STAGING}/fonu.fpk" ; do
   if [ -s "${candidate}" ]; then GENERATED="${candidate}"; break; fi
 done
 if [ -z "${GENERATED}" ]; then
@@ -347,6 +382,7 @@ with tarfile.open(fpk, 'r:gz') as outer:
     fields = {k.strip():v.strip() for k,v in fields.items()}
     assert fields.get('platform') == platform, fields
     assert fields.get('version') == version, fields
+    assert fields.get('desktop_applaunchname') == 'fonu.Application', fields
     app = outer.extractfile(members['app.tgz']).read()
     assert hashlib.md5(app).hexdigest() == fields.get('checksum'), 'app.tgz checksum mismatch'
     assert members['cmd/main'].mode & 0o111, 'cmd/main not executable'
@@ -360,4 +396,4 @@ if command -v sha256sum >/dev/null 2>&1; then
   sha256sum "${DIST_DIR}/${FPK_NAME}"
 fi
 rm -rf "${STAGING}"
-echo "==> Done: ${DIST_DIR}/${FPK_NAME} (nginx ${NGINX_VERSION})"
+echo "==> Done: ${DIST_DIR}/${FPK_NAME}"
