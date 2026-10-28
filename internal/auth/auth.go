@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -35,8 +36,6 @@ func (s *Service) IsInitialized(ctx context.Context) (bool, error) {
 	return count > 0, err
 }
 
-const defaultAdminUsername = "admin"
-
 func (s *Service) EnsureDefaultAdmin(ctx context.Context, log *slog.Logger) error {
 	initialized, err := s.IsInitialized(ctx)
 	if err != nil {
@@ -46,20 +45,15 @@ func (s *Service) EnsureDefaultAdmin(ctx context.Context, log *slog.Logger) erro
 		return nil
 	}
 
-	password, err := generatePassword(16)
-	if err != nil {
+	username := strings.TrimSpace(os.Getenv("FONU_ADMIN_USERNAME"))
+	password := os.Getenv("FONU_ADMIN_PASSWORD")
+	if username == "" || password == "" {
+		return nil
+	}
+	if err := s.Setup(ctx, username, password); err != nil {
 		return err
 	}
-	if err := s.Setup(ctx, defaultAdminUsername, password); err != nil {
-		return err
-	}
-
-	log.Info(
-		"首次启动已创建管理员账户，请使用以下凭据登录，并在「设置」中尽快修改密码",
-		"module", "SYSTEM",
-		"username", defaultAdminUsername,
-		"password", password,
-	)
+	log.Info("已使用安装时设置的管理员账号", "module", "SYSTEM", "username", username)
 	return nil
 }
 
@@ -224,18 +218,3 @@ func randomToken(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generatePassword(length int) (string, error) {
-	const letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	if length < 8 {
-		length = 8
-	}
-	out := make([]byte, length)
-	randBytes := make([]byte, length)
-	if _, err := rand.Read(randBytes); err != nil {
-		return "", err
-	}
-	for i := range out {
-		out[i] = letters[int(randBytes[i])%len(letters)]
-	}
-	return string(out), nil
-}

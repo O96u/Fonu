@@ -2,6 +2,7 @@
 set -euo pipefail
 
 APP_ROOT="/var/apps/${TRIM_APPNAME:-fonu}"
+ENV_FILE="${TRIM_PKGETC}/fonu.env"
 
 mkdir -p \
   "${TRIM_PKGVAR}" \
@@ -17,11 +18,66 @@ mkdir -p \
   "${TRIM_PKGVAR}/certs"
 
 mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
+mkdir -p "${APP_ROOT}/shares/www" "${APP_ROOT}/shares/certs" 2>/dev/null || true
 
-if [ -n "${wizard_session_secret:-}" ]; then
-  ENV_FILE="${TRIM_PKGETC}/fonu.env"
-  printf 'FONU_SESSION_SECRET=%s\n' "${wizard_session_secret}" >"${ENV_FILE}"
-  chmod 600 "${ENV_FILE}"
+valid_port() {
+  local p="${1:-}"
+  [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1024 ] && [ "$p" -le 65535 ]
+}
+
+ADMIN_PORT="${wizard_admin_port:-6893}"
+HTTP_PORT="${wizard_http_port:-18080}"
+HTTPS_PORT="${wizard_https_port:-9443}"
+USERNAME="${wizard_admin_username:-}"
+PASSWORD="${wizard_admin_password:-}"
+PASSWORD_CONFIRM="${wizard_admin_password_confirm:-}"
+
+if ! valid_port "$ADMIN_PORT" || ! valid_port "$HTTP_PORT" || ! valid_port "$HTTPS_PORT"; then
+  echo "ports must be integers between 1024 and 65535" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-install.log}"
+  exit 1
+fi
+if [ "$ADMIN_PORT" = "$HTTP_PORT" ] || [ "$ADMIN_PORT" = "$HTTPS_PORT" ] || [ "$HTTP_PORT" = "$HTTPS_PORT" ]; then
+  echo "admin/http/https ports must be different" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-install.log}"
+  exit 1
+fi
+if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+  echo "admin username and password are required" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-install.log}"
+  exit 1
+fi
+if [ "${#PASSWORD}" -lt 8 ]; then
+  echo "admin password must be at least 8 characters" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-install.log}"
+  exit 1
+fi
+if [ "$PASSWORD" != "$PASSWORD_CONFIRM" ]; then
+  echo "admin passwords do not match" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-install.log}"
+  exit 1
+fi
+
+umask 077
+{
+  printf 'FONU_ADMIN_USERNAME=%q\n' "$USERNAME"
+  printf 'FONU_ADMIN_PASSWORD=%q\n' "$PASSWORD"
+  printf 'FONU_ADMIN_PORT=%q\n' "$ADMIN_PORT"
+  printf 'FONU_LISTEN=%q\n' ":${ADMIN_PORT}"
+  printf 'FONU_NGINX_HTTP_PORT=%q\n' "$HTTP_PORT"
+  printf 'FONU_NGINX_HTTPS_PORT=%q\n' "$HTTPS_PORT"
+} >"${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+
+UI_CONFIG="${TRIM_APPDEST}/ui/config"
+if [ -f "$UI_CONFIG" ]; then
+  python3 - "$UI_CONFIG" "$ADMIN_PORT" <<'PY' 2>/dev/null || true
+import json, sys
+path, port = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    data = json.load(f)
+app = data.get(".url", {}).get("fonu.Application")
+if isinstance(app, dict):
+    app["port"] = str(port)
+    with open(path, "w", encoding="utf-8") as out:
+        json.dump(data, out, ensure_ascii=False, indent=2)
+        out.write("\n")
+PY
 fi
 
 exit 0

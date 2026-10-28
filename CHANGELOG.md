@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ### 新增
 
 - 飞牛 fnOS 原生 FPK：按 `/var/apps/fonu/{target,var,shares}` 布局打包；内置从源码编译的 nginx **1.30.x**（替代已停止维护的 1.28/1.29 与 Debian 1.22 解包）
+- 飞牛 FPK 安装向导可自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口；并声明 `etc` / `www` / `certs` 共享目录
+- 首次打开管理后台进入 `/setup` 页，自行创建管理员账号（用户名、密码、确认密码；不再生成随机密码）
+
+### 变更
+
+- 未通过安装向导或环境变量提供账号时，不再自动生成 `admin` 初始密码
 
 ## [v1.2.0] - 2026-10-23
 

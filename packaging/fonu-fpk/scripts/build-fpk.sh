@@ -376,7 +376,7 @@ fpk, platform, version = sys.argv[1:]
 with tarfile.open(fpk, 'r:gz') as outer:
     members = {m.name.lstrip('./'): m for m in outer.getmembers()}
     needed = ['manifest','app.tgz','ICON.PNG','ICON_256.PNG',
-              'cmd/main','config/privilege','config/resource','wizard/install']
+              'cmd/main','config/privilege','config/resource','wizard/install','wizard/config']
     for name in needed:
         assert name in members, f'missing FPK member: {name}'
     manifest = outer.extractfile(members['manifest']).read().decode('utf-8')

@@ -51,8 +51,22 @@ func TestAuthSetupAndLoginFlow(t *testing.T) {
 		t.Fatalf("status code: %d", statusRec.Code)
 	}
 
-	if err := authSvc.Setup(context.Background(), "admin", "password123"); err != nil {
-		t.Fatalf("setup admin: %v", err)
+	setupBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "password123",
+	})
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
+	setupRec := httptest.NewRecorder()
+	handler.ServeHTTP(setupRec, setupReq)
+	if setupRec.Code != http.StatusOK {
+		t.Fatalf("setup status: %d body=%s", setupRec.Code, setupRec.Body.String())
+	}
+
+	setupAgain := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
+	setupAgainRec := httptest.NewRecorder()
+	handler.ServeHTTP(setupAgainRec, setupAgain)
+	if setupAgainRec.Code != http.StatusBadRequest {
+		t.Fatalf("second setup status: %d body=%s", setupAgainRec.Code, setupAgainRec.Body.String())
 	}
 
 	loginBody, _ := json.Marshal(map[string]string{

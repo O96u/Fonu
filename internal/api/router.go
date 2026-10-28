@@ -32,6 +32,7 @@ func NewRouter(deps Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/version", Version(deps.Config))
 	mux.HandleFunc("GET /api/auth/status", r.authHandler.Status)
+	mux.HandleFunc("POST /api/auth/setup", r.authHandler.Setup)
 	mux.HandleFunc("POST /api/auth/login", r.authHandler.Login)
 	mux.HandleFunc("POST /api/auth/logout", r.authHandler.Logout)
 

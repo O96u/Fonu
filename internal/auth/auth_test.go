@@ -25,9 +25,19 @@ func TestEnsureDefaultAdminCreatesOnce(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	if err := svc.EnsureDefaultAdmin(context.Background(), logger); err != nil {
-		t.Fatalf("first bootstrap: %v", err)
+		t.Fatalf("bootstrap without env: %v", err)
 	}
 	initialized, err := svc.IsInitialized(context.Background())
+	if err != nil || initialized {
+		t.Fatalf("expected uninitialized admin without env, got initialized=%v err=%v", initialized, err)
+	}
+
+	t.Setenv("FONU_ADMIN_USERNAME", "admin")
+	t.Setenv("FONU_ADMIN_PASSWORD", "password123")
+	if err := svc.EnsureDefaultAdmin(context.Background(), logger); err != nil {
+		t.Fatalf("first bootstrap: %v", err)
+	}
+	initialized, err = svc.IsInitialized(context.Background())
 	if err != nil || !initialized {
 		t.Fatalf("expected initialized admin, got initialized=%v err=%v", initialized, err)
 	}
@@ -37,6 +47,9 @@ func TestEnsureDefaultAdminCreatesOnce(t *testing.T) {
 	}
 	if _, err := svc.Login(context.Background(), "admin", "wrong-password"); err != ErrUnauthorized {
 		t.Fatalf("expected unauthorized for wrong password, got %v", err)
+	}
+	if _, err := svc.Login(context.Background(), "admin", "password123"); err != nil {
+		t.Fatalf("login with wizard password: %v", err)
 	}
 }
 

@@ -1,10 +1,67 @@
 [
   {
-    "stepTitle": "安装",
+    "stepTitle": "安装 Fonu",
     "items": [
       {
+        "type": "text",
+        "field": "wizard_admin_username",
+        "label": "管理员用户名",
+        "initValue": "admin",
+        "rules": [
+          { "required": true, "message": "请输入用户名" }
+        ]
+      },
+      {
+        "type": "password",
+        "field": "wizard_admin_password",
+        "label": "管理员密码",
+        "rules": [
+          { "required": true, "message": "请输入密码" },
+          { "min": 8, "message": "密码至少 8 位" }
+        ]
+      },
+      {
+        "type": "password",
+        "field": "wizard_admin_password_confirm",
+        "label": "确认密码",
+        "rules": [
+          { "required": true, "message": "请再次输入密码" },
+          { "min": 8, "message": "密码至少 8 位" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_admin_port",
+        "label": "管理后台端口",
+        "initValue": "6893",
+        "rules": [
+          { "required": true, "message": "请输入管理后台端口" },
+          { "pattern": "^[0-9]+$", "message": "端口必须是数字" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_http_port",
+        "label": "HTTP 端口（默认 18080）",
+        "initValue": "18080",
+        "rules": [
+          { "required": true, "message": "请输入 HTTP 端口" },
+          { "pattern": "^[0-9]+$", "message": "端口必须是数字" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_https_port",
+        "label": "HTTPS 端口（默认 9443）",
+        "initValue": "9443",
+        "rules": [
+          { "required": true, "message": "请输入 HTTPS 端口" },
+          { "pattern": "^[0-9]+$", "message": "端口必须是数字" }
+        ]
+      },
+      {
         "type": "tips",
-        "helpText": "管理后台端口 6893；HTTP/HTTPS 反代默认 18080/9443。首次启动会自动生成会话密钥。"
+        "helpText": "HTTP / HTTPS 是反代监听端口，默认 18080 和 9443，可按本机占用情况修改。三个端口不能相同，且需大于 1024。应用会创建 etc、www、certs 共享目录；需要访问 NAS 其他文件夹时，请在应用设置「访问权限」中添加。"
       }
     ]
   }

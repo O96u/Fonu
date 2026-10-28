@@ -32,13 +32,13 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 appcenter-cli install-fpk fonu_1.2.0_amd64.fpk
 ```
 
-| 入口 | 地址 |
+| 入口 | 默认地址（安装时可改） |
 |------|------|
 | 管理后台 | `http://<NAS-IP>:6893` |
-| HTTP 反代默认 | `http://<NAS-IP>:18080` |
-| HTTPS 反代默认 | `https://<NAS-IP>:9443` |
+| HTTP 反代 | `http://<NAS-IP>:18080` |
+| HTTPS 反代 | `https://<NAS-IP>:9443` |
 
-初始 `admin` 密码见 `TRIM_PKGVAR/fonu.log`。
+安装向导中自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口。未在向导中设账号时，打开管理后台会进入 `/setup`。共享目录为 `etc`、`www`、`certs`；NAS 其他文件夹在应用设置「访问权限」中添加。
 
 ## 统一网关
 

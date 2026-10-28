@@ -57,6 +57,25 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
+	if err := h.auth.Setup(r.Context(), req.Username, req.Password); err != nil {
+		writeError(r, w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sessionID, err := h.auth.Login(r.Context(), req.Username, req.Password)
+	if err != nil {
+		writeError(r, w, http.StatusInternalServerError, "管理员已创建，请重新登录")
+		return
+	}
+	setSessionCookie(w, sessionID)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "管理员已创建"})
+}
+
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -1,3 +1,63 @@
 #!/bin/bash
 set -euo pipefail
+
+ENV_FILE="${TRIM_PKGETC}/fonu.env"
+
+valid_port() {
+  local p="${1:-}"
+  [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1024 ] && [ "$p" -le 65535 ]
+}
+
+if [ -f "$ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  set -a
+  source "$ENV_FILE"
+  set +a
+fi
+
+ADMIN_PORT="${wizard_admin_port:-${FONU_ADMIN_PORT:-6893}}"
+HTTP_PORT="${wizard_http_port:-${FONU_NGINX_HTTP_PORT:-18080}}"
+HTTPS_PORT="${wizard_https_port:-${FONU_NGINX_HTTPS_PORT:-9443}}"
+
+if ! valid_port "$ADMIN_PORT" || ! valid_port "$HTTP_PORT" || ! valid_port "$HTTPS_PORT"; then
+  echo "ports must be integers between 1024 and 65535" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-config.log}"
+  exit 1
+fi
+if [ "$ADMIN_PORT" = "$HTTP_PORT" ] || [ "$ADMIN_PORT" = "$HTTPS_PORT" ] || [ "$HTTP_PORT" = "$HTTPS_PORT" ]; then
+  echo "admin/http/https ports must be different" >"${TRIM_TEMP_LOGFILE:-/tmp/fonu-config.log}"
+  exit 1
+fi
+
+umask 077
+{
+  if [ -n "${FONU_ADMIN_USERNAME:-}" ]; then
+    printf 'FONU_ADMIN_USERNAME=%q\n' "$FONU_ADMIN_USERNAME"
+  fi
+  if [ -n "${FONU_ADMIN_PASSWORD:-}" ]; then
+    printf 'FONU_ADMIN_PASSWORD=%q\n' "$FONU_ADMIN_PASSWORD"
+  fi
+  printf 'FONU_ADMIN_PORT=%q\n' "$ADMIN_PORT"
+  printf 'FONU_LISTEN=%q\n' ":${ADMIN_PORT}"
+  printf 'FONU_NGINX_HTTP_PORT=%q\n' "$HTTP_PORT"
+  printf 'FONU_NGINX_HTTPS_PORT=%q\n' "$HTTPS_PORT"
+} >"${ENV_FILE}.tmp"
+mv "${ENV_FILE}.tmp" "${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+
+UI_CONFIG="${TRIM_APPDEST}/ui/config"
+if [ -f "$UI_CONFIG" ]; then
+  python3 - "$UI_CONFIG" "$ADMIN_PORT" <<'PY' 2>/dev/null || true
+import json, sys
+path, port = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    data = json.load(f)
+app = data.get(".url", {}).get("fonu.Application")
+if isinstance(app, dict):
+    app["port"] = str(port)
+    with open(path, "w", encoding="utf-8") as out:
+        json.dump(data, out, ensure_ascii=False, indent=2)
+        out.write("\n")
+PY
+fi
+
 exit 0
