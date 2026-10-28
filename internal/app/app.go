@@ -73,7 +73,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	}
 
 	authSvc := auth.New(conn)
-	if err := authSvc.EnsureDefaultAdmin(context.Background(), logger); err != nil {
+	if err := authSvc.ApplyInstallAdmin(context.Background(), cfg.DataDir+"/admin.bootstrap", logger); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("bootstrap admin: %w", err)
 	}

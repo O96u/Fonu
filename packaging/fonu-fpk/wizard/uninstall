@@ -1,0 +1,21 @@
+[
+  {
+    "stepTitle": "确认",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "卸载将停止 Fonu 并从应用中心移除。默认保留数据库、证书、日志和「应用文件 / fonu」共享目录，便于再次安装后恢复。"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_delete_data",
+        "label": "是否删除所有数据",
+        "initValue": "no",
+        "options": [
+          { "label": "保留数据", "value": "no" },
+          { "label": "删除所有数据（数据库、证书、日志、配置和共享目录，不可恢复）", "value": "yes" }
+        ]
+      }
+    ]
+  }
+]

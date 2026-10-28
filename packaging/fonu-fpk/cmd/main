@@ -32,6 +32,7 @@ ensure_runtime_dirs() {
     "${TRIM_PKGVAR}/logs" \
     "${TRIM_PKGVAR}/certs"
   mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
+  mkdir -p "${APP_ROOT}/shares/fonu/etc" "${APP_ROOT}/shares/fonu/www" "${APP_ROOT}/shares/fonu/certs" 2>/dev/null || true
 }
 
 load_env() {
@@ -66,8 +67,6 @@ load_env() {
   export FONU_MIGRATIONS_DIR="${FONU_MIGRATIONS_DIR:-${TRIM_APPDEST}/migrations}"
   export FONU_NGINX_HTTP_PORT="${FONU_NGINX_HTTP_PORT:-18080}"
   export FONU_NGINX_HTTPS_PORT="${FONU_NGINX_HTTPS_PORT:-9443}"
-  export FONU_ADMIN_USERNAME="${FONU_ADMIN_USERNAME:-}"
-  export FONU_ADMIN_PASSWORD="${FONU_ADMIN_PASSWORD:-}"
   export FONU_SESSION_SECRET
 }
 
@@ -123,10 +122,23 @@ start_app() {
   cd "${TRIM_APPDEST}"
   nohup "$APP_BIN" >>"$LOG_FILE" 2>&1 &
   echo "$!" >"$PID_FILE"
-  sleep 1
-  if ! status_app; then
-    log_msg "Fonu failed to start; see ${LOG_FILE}"
-    exit 1
+  admin_port="${FONU_ADMIN_PORT:-6893}"
+  ready=0
+  count=0
+  while [ "$count" -lt 40 ]; do
+    if ! status_app; then
+      log_msg "Fonu failed to start; see ${LOG_FILE}"
+      exit 1
+    fi
+    if (echo >/dev/tcp/127.0.0.1/"${admin_port}") >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 0.25
+    count=$((count + 1))
+  done
+  if [ "$ready" -ne 1 ]; then
+    log_msg "Fonu process is up but :${admin_port} not accepting connections yet"
   fi
 }
 

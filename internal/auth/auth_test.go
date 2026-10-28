@@ -53,6 +53,41 @@ func TestEnsureDefaultAdminCreatesOnce(t *testing.T) {
 	}
 }
 
+func TestApplyInstallAdminReplacesExisting(t *testing.T) {
+	dir := t.TempDir()
+	conn, err := db.Open(filepath.Join(dir, "fonu.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(context.Background(), conn, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	svc := New(conn)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if err := svc.Setup(context.Background(), "admin", "oldpassword"); err != nil {
+		t.Fatalf("seed admin: %v", err)
+	}
+
+	boot := filepath.Join(dir, "admin.bootstrap")
+	if err := os.WriteFile(boot, []byte(`{"username":"ou","password":"newpass12"}`), 0o600); err != nil {
+		t.Fatalf("write bootstrap: %v", err)
+	}
+	if err := svc.ApplyInstallAdmin(context.Background(), boot, logger); err != nil {
+		t.Fatalf("apply install admin: %v", err)
+	}
+	if _, err := os.Stat(boot); !os.IsNotExist(err) {
+		t.Fatal("expected bootstrap file to be removed")
+	}
+	if _, err := svc.Login(context.Background(), "ou", "newpass12"); err != nil {
+		t.Fatalf("login with install credentials: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), "admin", "oldpassword"); err != ErrUnauthorized {
+		t.Fatalf("old credentials should fail, got %v", err)
+	}
+}
+
 func TestChangeUsername(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "fonu.db"))
 	if err != nil {

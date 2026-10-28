@@ -38,7 +38,7 @@ appcenter-cli install-fpk fonu_1.2.0_amd64.fpk
 | HTTP 反代 | `http://<NAS-IP>:18080` |
 | HTTPS 反代 | `https://<NAS-IP>:9443` |
 
-安装向导中自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口。未在向导中设账号时，打开管理后台会进入 `/setup`。共享目录为 `etc`、`www`、`certs`；NAS 其他文件夹在应用设置「访问权限」中添加。
+安装向导中自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口。未在向导中设账号时，打开管理后台会进入 `/setup`。共享目录在「应用文件 / fonu」下的 `etc`、`www`、`certs`；NAS 其他文件夹在应用设置「访问权限」中添加。卸载时可选择是否删除全部数据。
 
 ## 统一网关
 

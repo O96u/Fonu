@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,32 @@ func (s *Service) IsInitialized(ctx context.Context) (bool, error) {
 	return count > 0, err
 }
 
+type installAdminFile struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (s *Service) ApplyInstallAdmin(ctx context.Context, bootstrapPath string, log *slog.Logger) error {
+	if bootstrapPath != "" {
+		raw, err := os.ReadFile(bootstrapPath)
+		if err == nil {
+			defer func() { _ = os.Remove(bootstrapPath) }()
+			var boot installAdminFile
+			if err := json.Unmarshal(raw, &boot); err != nil {
+				return fmt.Errorf("read install admin: %w", err)
+			}
+			if err := s.upsertAdmin(ctx, strings.TrimSpace(boot.Username), boot.Password, log); err != nil {
+				return err
+			}
+			return nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return s.EnsureDefaultAdmin(ctx, log)
+}
+
 func (s *Service) EnsureDefaultAdmin(ctx context.Context, log *slog.Logger) error {
 	initialized, err := s.IsInitialized(ctx)
 	if err != nil {
@@ -44,16 +71,47 @@ func (s *Service) EnsureDefaultAdmin(ctx context.Context, log *slog.Logger) erro
 	if initialized {
 		return nil
 	}
-
 	username := strings.TrimSpace(os.Getenv("FONU_ADMIN_USERNAME"))
 	password := os.Getenv("FONU_ADMIN_PASSWORD")
 	if username == "" || password == "" {
 		return nil
 	}
-	if err := s.Setup(ctx, username, password); err != nil {
+	return s.upsertAdmin(ctx, username, password, log)
+}
+
+func (s *Service) upsertAdmin(ctx context.Context, username, password string, log *slog.Logger) error {
+	if username == "" || password == "" {
+		return nil
+	}
+	initialized, err := s.IsInitialized(ctx)
+	if err != nil {
 		return err
 	}
-	log.Info("已使用安装时设置的管理员账号", "module", "SYSTEM", "username", username)
+	if !initialized {
+		if err := s.Setup(ctx, username, password); err != nil {
+			return err
+		}
+		log.Info("已使用安装时设置的管理员账号", "module", "SYSTEM", "username", username)
+		return nil
+	}
+	if err := validate.Username(username); err != nil {
+		return err
+	}
+	if err := validate.Password(password); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	var adminID int
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM admins ORDER BY id LIMIT 1`).Scan(&adminID); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE admins SET username = ?, password_hash = ? WHERE id = ?`, username, string(hash), adminID); err != nil {
+		return err
+	}
+	log.Info("已按安装向导更新管理员账号", "module", "SYSTEM", "username", username)
 	return nil
 }
 

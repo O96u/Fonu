@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_ROOT="/var/apps/${TRIM_APPNAME:-fonu}"
 ENV_FILE="${TRIM_PKGETC}/fonu.env"
+BOOTSTRAP_FILE="${TRIM_PKGVAR}/admin.bootstrap"
 
 mkdir -p \
   "${TRIM_PKGVAR}" \
@@ -18,7 +19,7 @@ mkdir -p \
   "${TRIM_PKGVAR}/certs"
 
 mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
-mkdir -p "${APP_ROOT}/shares/www" "${APP_ROOT}/shares/certs" 2>/dev/null || true
+mkdir -p "${APP_ROOT}/shares/fonu/etc" "${APP_ROOT}/shares/fonu/www" "${APP_ROOT}/shares/fonu/certs" 2>/dev/null || true
 
 valid_port() {
   local p="${1:-}"
@@ -55,14 +56,25 @@ fi
 
 umask 077
 {
-  printf 'FONU_ADMIN_USERNAME=%q\n' "$USERNAME"
-  printf 'FONU_ADMIN_PASSWORD=%q\n' "$PASSWORD"
   printf 'FONU_ADMIN_PORT=%q\n' "$ADMIN_PORT"
   printf 'FONU_LISTEN=%q\n' ":${ADMIN_PORT}"
   printf 'FONU_NGINX_HTTP_PORT=%q\n' "$HTTP_PORT"
   printf 'FONU_NGINX_HTTPS_PORT=%q\n' "$HTTPS_PORT"
 } >"${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
+
+export wizard_admin_username="$USERNAME"
+export wizard_admin_password="$PASSWORD"
+python3 - "$BOOTSTRAP_FILE" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+payload = {
+    "username": os.environ.get("wizard_admin_username", "").strip(),
+    "password": os.environ.get("wizard_admin_password", ""),
+}
+path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+path.chmod(0o600)
+PY
 
 UI_CONFIG="${TRIM_APPDEST}/ui/config"
 if [ -f "$UI_CONFIG" ]; then

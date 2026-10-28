@@ -30,12 +30,6 @@ fi
 
 umask 077
 {
-  if [ -n "${FONU_ADMIN_USERNAME:-}" ]; then
-    printf 'FONU_ADMIN_USERNAME=%q\n' "$FONU_ADMIN_USERNAME"
-  fi
-  if [ -n "${FONU_ADMIN_PASSWORD:-}" ]; then
-    printf 'FONU_ADMIN_PASSWORD=%q\n' "$FONU_ADMIN_PASSWORD"
-  fi
   printf 'FONU_ADMIN_PORT=%q\n' "$ADMIN_PORT"
   printf 'FONU_LISTEN=%q\n' ":${ADMIN_PORT}"
   printf 'FONU_NGINX_HTTP_PORT=%q\n' "$HTTP_PORT"

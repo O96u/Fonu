@@ -1,9 +1,9 @@
 {
     "data-share": {
         "shares": [
-            { "name": "etc" },
-            { "name": "www" },
-            { "name": "certs" }
+            { "name": "fonu/etc" },
+            { "name": "fonu/www" },
+            { "name": "fonu/certs" }
         ]
     }
 }
