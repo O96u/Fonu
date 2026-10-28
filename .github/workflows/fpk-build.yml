@@ -108,7 +108,19 @@ jobs:
           "$RUNNER_TEMP/fnpack-bin/fnpack" --help
           echo "FNPACK_BIN=$RUNNER_TEMP/fnpack-bin/fnpack" >> "$GITHUB_ENV"
 
-      - name: Build ${{ matrix.arch }} FPK
+      - name: Compile native payload (reference nginx build flow)
+        shell: bash
+        env:
+          BUILD_MODE: payload
+        run: |
+          set -euo pipefail
+          # Never reuse binaries from an earlier compiler environment.
+          rm -rf packaging/fonu-fpk/.cache packaging/dist/payload-${{ matrix.arch }}
+          bash packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "$VERSION"
+
+      - name: Package verified native payload with fnpack
+        env:
+          BUILD_MODE: package
         shell: bash
         run: |
           set -euo pipefail

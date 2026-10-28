@@ -2,14 +2,9 @@
 
 ## 安装报「应用包不符合系统要求」
 
-1. **只装 Release Assets 里的 `.fpk`**（约 37MB，文件头 `1F 8B`），不要装 Actions 的 zip（文件头 `PK`）。
-2. **架构**：NAS 上执行 `uname -m` → `x86_64` 用 `_amd64.fpk`；`aarch64` 用 `_arm64.fpk`。
-3. **系统版本**：manifest 要求 **fnOS ≥ 0.9.0**。低于此版本会提示「应用包不符合系统要求」。架构不符（x86 设备装了 arm 包，或反过来）也是这句。
-4. **对照**：在同一台 NAS 试装官方第三方 [nginx-web x86_64.fpk](https://github.com/chenpingonline/nginx-web-fnos/releases)。若也失败，多为系统/权限问题；若只有 Fonu 失败，把 `appcenter-cli install-fpk` 完整输出发维护者。
-5. **SSH 安装**（看真实错误）：`appcenter-cli install-fpk /path/to/fonu_1.1.9_amd64.fpk`
-6. **FPK 根目录不要带 `LICENSE`**（参考 nginx-web-fnos）：根目录 `LICENSE` 可能触发安装校验失败；许可文件应放在 `app.tgz` 内而非包根。
-4. **用最新构建**：重新跑 **Build FPK**（`ref=main`），不要装旧 run 里打的包。
-5. **看详细错误**（SSH）：`appcenter-cli install-fpk /path/to/fonu_xxx_amd64.fpk`
+安装提示本身不足以确定根因。请记录 NAS 的 `uname -m`、系统完整版本，以及 `appcenter-cli install-fpk /path/to/package.fpk` 的完整输出。
+
+新构建分为原生 payload 编译和独立 package 阶段。后者从干净目录重新装配模板，校验 fonu、Nginx、frpc 的 ELF 架构后调用官方 fnpack，不从其他目录拾取旧 FPK。此前关于 CRLF、LICENSE 必然引发该提示的判断没有实机日志支持。
 
 在飞牛 fnOS 上安装对应架构的 `.fpk` 后逐项确认。
 
