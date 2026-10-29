@@ -41,6 +41,17 @@ appcenter-cli install-fpk fonu_1.2.1_amd64.fpk
 
 安装向导中自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口。未在向导中设账号时，打开管理后台会进入 `/setup`。共享目录在「应用文件 / fonu」下的 `etc`、`www`、`certs`；NAS 其他文件夹在应用设置「访问权限」中添加。卸载时可选择是否删除全部数据。
 
+## 数据与日志位置
+
+| 内容 | 位置 |
+|------|------|
+| 应用文件共享（etc / www / certs） | 文件管理器 → **应用文件 / fonu/** |
+| 数据库、证书、Nginx 配置、程序日志 | **`/var/apps/fonu/var/`**（`TRIM_PKGVAR`，不在应用文件里） |
+| 启动脚本日志 | `/var/apps/fonu/var/fonu.log` |
+| 后台「日志中心」来源 | `/var/apps/fonu/var/logs/app.log` 等 |
+
+卸载时选「删除所有数据」会清理 `var/`、`etc/` 以及 `TRIM_DATA_SHARE_PATHS` 指向的共享目录；若未生效，查看卸载过程日志（`TRIM_TEMP_LOGFILE` 或应用中心任务详情）。
+
 ## 统一网关
 
 未实现，见 [GATEWAY.md](./GATEWAY.md)。

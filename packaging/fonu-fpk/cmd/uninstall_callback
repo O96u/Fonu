@@ -1,28 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-delete_data="${wizard_delete_data:-no}"
-case "$delete_data" in
-  yes|true|1|on) ;;
-  *) exit 0 ;;
-esac
+# shellcheck source=uninstall_purge_data.sh
+. "$(dirname "$0")/uninstall_purge_data.sh"
 
-APP_ROOT="/var/apps/${TRIM_APPNAME:-fonu}"
-
-if [ -n "${TRIM_PKGVAR:-}" ]; then
-  rm -rf "${TRIM_PKGVAR}"
-fi
-if [ -n "${TRIM_PKGETC:-}" ]; then
-  rm -rf "${TRIM_PKGETC}"
-fi
-rm -rf "${APP_ROOT}/shares/fonu" "${APP_ROOT}/share/fonu"
-
-if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
-  IFS=':' read -r -a share_paths <<<"${TRIM_DATA_SHARE_PATHS}"
-  for path in "${share_paths[@]}"; do
-    [ -n "$path" ] || continue
-    rm -rf "$path"
-  done
+if should_purge_fonu_data; then
+  purge_fonu_user_data
 fi
 
 exit 0

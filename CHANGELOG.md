@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
 - 未通过安装向导或环境变量提供账号时，不再自动生成 `admin` 初始密码
 - 飞牛应用信息：开发者 muxui 指向介绍文，发布者 muxui 指向 GitHub 仓库
 
+### 修复
+
+- 飞牛卸载选「删除所有数据」时可靠清理 `var/`、配置与「应用文件 / fonu」共享目录；文档说明运行日志不在应用文件目录
+
 ## [v1.2.0] - 2026-10-23
 
 ### 新增
