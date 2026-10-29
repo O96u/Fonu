@@ -12,6 +12,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/O96u/Fonu/releases/latest"><img src="https://img.shields.io/github/v/release/O96u/Fonu?style=flat-square&label=release" alt="Latest release" /></a>
   <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?sort=semver&style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/目标平台-飞牛_fnOS-22c55e?style=flat-square" alt="飞牛 fnOS" />
   <img src="https://img.shields.io/badge/其他环境-未测试-94a3b8?style=flat-square" alt="其他环境未测试" />
@@ -131,9 +132,26 @@
 
 ## 部署
 
+当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.2.2** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
-### 快速部署（推荐 · 飞牛 fnOS · Host 模式）
+### 飞牛 fnOS 原生 FPK（推荐）
+
+从 Release **Assets** 下载 `fonu_1.2.2_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
+
+| 入口 | 默认地址（安装向导可改） |
+| ---- | ------------------------ |
+| 管理后台 | `http://<NAS-IP>:6893` |
+| HTTP 反代 | `http://<NAS-IP>:18080` |
+| HTTPS 反代 | `https://<NAS-IP>:9443` |
+
+- 安装向导可设管理员账号与上述端口；共享目录在 **应用文件 / fonu** 下的 `etc` / `www` / `certs`（可选，见下）
+- **运行数据**（数据库、证书工作副本、Nginx 配置、日志）在 **`/var/apps/fonu/var/`**（`@appdata`），**不会**自动出现在「应用文件」里
+- 证书 **目录映射** 若要在文件管理器可见：目标填 **应用文件 / fonu/certs** 对应的 Linux 绝对路径，或在应用设置 **访问权限** 中添加文件夹；勿填 `/etc/...` 或飞牛系统证书目录
+- 更完整的 FPK 说明、Docker 迁移、证书映射步骤：[packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)
+
+### 快速部署 · Docker · Host 模式
 
 飞牛系统已占用 **80/443**，使用 **host 网络** + **高位反代端口**，避免与系统 Nginx 冲突。
 
@@ -155,8 +173,6 @@ docker run -d \
 - `./data` 挂载后自动作为数据目录，存放数据库、Nginx 配置、证书与日志
 - 飞牛系统已占用 80/443，容器默认反代端口为 `18080`、`9443`，可通过环境变量修改
 
-### 其他部署方式
-
 <details>
 <summary>Docker Compose（host 模式，与快速部署一致）</summary>
 
@@ -172,12 +188,13 @@ FONU_SESSION_SECRET=your-secret docker compose up -d --build
 
 </details>
 
-<details>
-<summary>飞牛 fnOS 原生 FPK</summary>
+### 从 Docker 迁到 FPK
 
-从 [GitHub Release](https://github.com/O96u/Fonu/releases) **Assets** 下载对应架构的 `.fpk`（试包仍可走 Actions **Build FPK**，见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。内置 `fonu`、源码编译的 nginx 1.30.x、frpc；安装目录为 `/var/apps/fonu`。管理后台与反代默认端口与 Host 模式 Docker 相同（`6893` / `18080` / `9443`）。
+1. 停 Docker 版，安装 FPK，将原 volume **`/data` 内容复制到** `/var/apps/fonu/var/`。
+2. 备份导入（设置页 tar.gz）**不含**加密密钥：DDNS / 通知里的 Token 需在界面 **重新保存**，或把 Docker 的 `FONU_SESSION_SECRET` 写入 `/var/apps/fonu/etc/session_secret` 后重启。
+3. 检查 `/var/apps/fonu/etc/fonu.env`：删除 `FONU_DATA_DIR=...@appdata...`、`FONU_NGINX_MIME_TYPES=/etc/nginx/...` 等 Docker 残留行；重启后在 **反向代理** 保存一次以重生成 Nginx 配置。
 
-</details>
+详见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)「从 Docker 迁到原生 FPK」一节。
 
 ### 首次登录
 
@@ -251,9 +268,9 @@ vhostHTTPSPort = 443
 2. **端口冲突**：宿主机已有 Nginx（如飞牛系统）占用 80/443 时，不要让 Fonu 反代规则监听 80/443；使用 `18080/9443` 或 host 模式 + 环境变量。
 3. **已有反代规则**：修改 `FONU_NGINX_HTTP_PORT` / `FONU_NGINX_HTTPS_PORT` 后，**不会自动更新**数据库中已有规则的端口，需在反代页手动修改并保存。
 4. **访问日志**：仅统计经 Fonu Nginx 反代的域名流量，不包含管理后台 `:6893` 的请求。
-5. **证书与 DNS**：HTTPS 申请前请确保域名 DNS 已解析到本机，且 DDNS 凭证能管理对应根域。使用 **目录映射** 时，目标路径须为 Fonu 进程可写路径（Docker 请将宿主机目录挂载到容器内对应路径）。
-6. **数据持久化**：Docker 部署请挂载 volume 到 `FONU_DATA_DIR`，避免容器重建后配置丢失。
-7. **备份**：可通过设置页导出配置；重要证书与数据库建议定期备份 `FONU_DATA_DIR` 目录。
+5. **证书与 DNS**：HTTPS 申请前请确保域名 DNS 已解析到本机，且 DDNS 凭证能管理对应根域。**目录映射** 目标须为进程可写路径——Docker 请将宿主机目录 **挂载进容器**；FPK 请用 **应用文件 / fonu/certs** 或应用设置 **访问权限** 中的目录（步骤见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。
+6. **数据持久化**：Docker 挂载 volume 到 `FONU_DATA_DIR`（默认 `/data`）；FPK 数据在 `/var/apps/fonu/var/`，卸载可选删除全部数据。
+7. **备份**：设置页导出/导入为 `fonu.db` + `nginx` + `certs` 打包；**不含** `FONU_SESSION_SECRET`，跨环境恢复后敏感项可能需重填。也可直接备份整个数据目录。
 
 ## 本地开发
 
@@ -270,7 +287,7 @@ go test ./...
 cd web && npm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.2.2**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 
