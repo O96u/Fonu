@@ -675,6 +675,7 @@ import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import { certSourceDir } from '../utils/certStorageNames'
+import { renderTableRowActions } from '../utils/tableActions'
 
 type ImportMode = 'paste' | 'path'
 
