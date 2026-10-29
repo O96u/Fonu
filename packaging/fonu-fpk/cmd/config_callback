@@ -8,6 +8,18 @@ valid_port() {
   [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1024 ] && [ "$p" -le 65535 ]
 }
 
+append_preserved_fonu_env() {
+  local dest="$1"
+  [ ! -f "$ENV_FILE" ] && return 0
+  while IFS= read -r line; do
+    case "$line" in
+      FONU_DATA_DIR=*|FONU_SESSION_SECRET=*|FONU_NGINX_MIME_TYPES=*)
+        printf '%s\n' "$line" >>"$dest"
+        ;;
+    esac
+  done <"$ENV_FILE"
+}
+
 if [ -f "$ENV_FILE" ]; then
   # shellcheck disable=SC1090
   set -a
@@ -35,6 +47,7 @@ umask 077
   printf 'FONU_NGINX_HTTP_PORT=%q\n' "$HTTP_PORT"
   printf 'FONU_NGINX_HTTPS_PORT=%q\n' "$HTTPS_PORT"
 } >"${ENV_FILE}.tmp"
+append_preserved_fonu_env "${ENV_FILE}.tmp"
 mv "${ENV_FILE}.tmp" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 

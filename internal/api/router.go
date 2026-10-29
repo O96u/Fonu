@@ -89,6 +89,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/dnshe/accounts/{id}/gifts/accept", dnsheHandler.AcceptGift)
 	protect("POST /api/dnshe/accounts/{id}/gifts/{giftId}/cancel", dnsheHandler.CancelGift)
 	protect("GET /api/certificates", r.certHandler.List)
+	protect("GET /api/certificates/export-paths", r.certHandler.ExportPaths)
 	protect("GET /api/certificates/ca-options", r.certHandler.Options)
 	protect("POST /api/certificates/apply", r.certHandler.Apply)
 	protect("GET /api/certificates/jobs/{id}/stream", r.certHandler.ApplyJobStream)

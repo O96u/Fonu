@@ -281,7 +281,7 @@
         <n-switch v-model:value="applyAutoRenew" />
       </div>
 
-      <CertExportFields v-model:form="applyExportForm" />
+      <CertExportFields v-model:form="applyExportForm" v-bind="certExportFieldProps" />
 
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </n-form>
@@ -501,7 +501,7 @@
         </n-form-item>
       </template>
 
-      <CertExportFields v-model:form="importExportForm" />
+      <CertExportFields v-model:form="importExportForm" v-bind="certExportFieldProps" />
     </n-form>
     <template #footer>
       <n-space justify="end">
@@ -581,6 +581,7 @@
         v-model:form="editExportForm"
         :source-dir="editCertSourceHint"
         show-sync-status
+        v-bind="certExportFieldProps"
       />
     </n-form>
     <template #footer>
@@ -642,6 +643,7 @@ import type {
   CertificateJobDone,
   CertificateJobEvent,
   CertificateRecord,
+  CertExportPathHints,
   DDNSConfig,
 } from '../api/types'
 import CustomAcmeCaIcon from '../components/icons/CustomAcmeCaIcon.vue'
@@ -672,7 +674,7 @@ import {
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
-import { renderTableRowActions } from '../utils/tableActions'
+import { certSourceDir } from '../utils/certStorageNames'
 
 type ImportMode = 'paste' | 'path'
 
@@ -703,6 +705,12 @@ const showApply = ref(false)
 const applyExportForm = reactive<CertExportFormModel>(emptyExportForm())
 const importExportForm = reactive<CertExportFormModel>(emptyExportForm())
 const editExportForm = reactive<CertExportFormModel>(emptyExportForm())
+const certExportHints = ref<CertExportPathHints | null>(null)
+
+const certExportFieldProps = computed(() => ({
+  deployKind: certExportHints.value?.deploy_kind ?? 'generic',
+  suggestedExportTargets: certExportHints.value?.suggested_export_targets ?? [],
+}))
 
 const applyModalWidth = computed(() => {
   if (applyStep.value === 3) return 'min(720px, 96vw)'
@@ -1269,9 +1277,7 @@ function editCert(row: CertificateRecord) {
   editCertDomainsText.value = row.domains?.length ? row.domains.join('\n') : row.domain
   editImportCert.value = ''
   editImportKey.value = ''
-  editCertSourceHint.value = row.cert_path
-    ? row.cert_path.replace(/[/\\]fullchain\.pem$/i, '')
-    : ''
+  editCertSourceHint.value = certSourceDir(certExportHints.value?.certs_dir ?? '', row)
   Object.assign(editExportForm, loadExportFormFromSettings(row.export))
   showCertEdit.value = true
 }
@@ -1460,6 +1466,15 @@ async function load() {
     loading.value = false
   }
   loadCAOptions().catch(() => {})
+  loadExportPathHints().catch(() => {})
+}
+
+async function loadExportPathHints() {
+  try {
+    certExportHints.value = await api.getCertificateExportPaths()
+  } catch {
+    certExportHints.value = null
+  }
 }
 
 async function openApply() {

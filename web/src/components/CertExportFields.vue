@@ -18,13 +18,16 @@
           <div class="cert-export-panel__block">
             <div class="cert-export-panel__label">目标目录</div>
             <p class="cert-export-panel__tip">
-              填写 Fonu 进程能访问的绝对路径。Docker 部署时请把宿主机目录挂载到该路径，否则证书只会写在容器内。
+              {{ exportTip }}
+            </p>
+            <p v-if="suggestedExportTargets.length" class="cert-export-panel__tip cert-export-panel__tip--muted">
+              建议路径：{{ suggestedExportTargets.join('、') }}
             </p>
             <div class="cert-export__targets">
               <div v-for="(_, index) in form.targets" :key="index" class="cert-export__target-row">
                 <DirectoryPathInput
                   :value="form.targets[index]"
-                  placeholder="/etc/app/certs"
+                  :placeholder="targetPlaceholder"
                   size="small"
                   @update:value="form.targets[index] = $event"
                 />
@@ -57,7 +60,7 @@
               v-model:value="form.on_change_shell"
               type="textarea"
               :autosize="{ minRows: 2, maxRows: 2 }"
-              placeholder="复制完成后执行，如 docker exec nginx nginx -s reload"
+              placeholder="复制完成后执行；飞牛原生应用通常无法执行 systemctl / docker"
               size="small"
             />
           </div>
@@ -254,15 +257,33 @@ import type { CertExportFormModel } from '../utils/certExportForm'
 const form = defineModel<CertExportFormModel>('form', { required: true })
 const sshKeyPasteInput = ref<HTMLInputElement | null>(null)
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     sourceDir?: string
     showSyncStatus?: boolean
+    deployKind?: string
+    suggestedExportTargets?: string[]
   }>(),
   {
     sourceDir: '',
     showSyncStatus: false,
+    deployKind: 'generic',
+    suggestedExportTargets: () => [],
   },
+)
+
+const exportTip = computed(() => {
+  if (props.deployKind === 'fnos') {
+    return '目标必须是 fonu 应用用户可写的绝对路径。可在「应用设置 → 访问权限」添加文件夹；优先使用下方建议的「应用文件 / fonu/certs」路径。无法写入飞牛系统证书目录（/usr/trim/...）或整盘根目录。'
+  }
+  if (props.deployKind === 'docker') {
+    return '填写 Fonu 进程能访问的绝对路径。Docker 部署时请把宿主机目录挂载到该路径，否则证书只会写在容器内。'
+  }
+  return '填写 Fonu 进程能写的绝对路径；仅用于复制 PEM，不会自动导入系统证书库。'
+})
+
+const targetPlaceholder = computed(
+  () => props.suggestedExportTargets[0] || '/path/to/export',
 )
 
 const sshKeyPlaceholder = computed(() => {
@@ -360,6 +381,11 @@ async function onSSHKeyPasteFile(event: Event) {
   font-size: 12px;
   line-height: 1.45;
   color: var(--fonu-text-muted);
+}
+
+.cert-export-panel__tip--muted {
+  margin-top: calc(-1 * var(--fonu-space-1));
+  font-size: 11px;
 }
 
 .cert-export-panel__grid {

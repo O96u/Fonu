@@ -31,7 +31,7 @@ func Load() Config {
 		SessionSecret:         envOr("FONU_SESSION_SECRET", "change-me-in-production"),
 		NginxBin:              envOr("FONU_NGINX_BIN", "nginx"),
 		NginxPIDFile:          envOr("FONU_NGINX_PID", dataDir+"/nginx/nginx.pid"),
-		NginxMimeTypes:        envOr("FONU_NGINX_MIME_TYPES", defaultMimeTypes()),
+		NginxMimeTypes:        resolveNginxMimeTypes(dataDir, os.Getenv("FONU_NGINX_MIME_TYPES")),
 		NginxDefaultHTTPPort:  envIntOr("FONU_NGINX_HTTP_PORT", 80),
 		NginxDefaultHTTPSPort: envIntOr("FONU_NGINX_HTTPS_PORT", 443),
 		FrpcBin:               envOr("FONU_FRPC_BIN", "frpc"),
@@ -135,17 +135,33 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func defaultMimeTypes() string {
-	candidates := []string{
-		"/etc/nginx/mime.types",
-		"deploy/nginx/mime.types",
+func resolveNginxMimeTypes(dataDir, fromEnv string) string {
+	if fromEnv != "" {
+		if _, err := os.Stat(fromEnv); err == nil {
+			return fromEnv
+		}
 	}
-	for _, path := range candidates {
+	for _, path := range mimeTypesCandidates(dataDir) {
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
 	}
-	return "/etc/nginx/mime.types"
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), "mime.types")
+	}
+	return filepath.Join(dataDir, "mime.types")
+}
+
+func mimeTypesCandidates(dataDir string) []string {
+	out := []string{
+		filepath.Join(dataDir, "mime.types"),
+		"/etc/nginx/mime.types",
+		"deploy/nginx/mime.types",
+	}
+	if exe, err := os.Executable(); err == nil {
+		out = append([]string{filepath.Join(filepath.Dir(exe), "mime.types")}, out...)
+	}
+	return out
 }
 
 func envIntOr(key string, fallback int) int {

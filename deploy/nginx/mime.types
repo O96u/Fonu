@@ -1,11 +1,10 @@
 types {
     text/html                             html htm shtml;
     text/css                              css;
-    text/javascript                       js;
     application/json                      json;
+    application/javascript                js;
     image/gif                             gif;
     image/jpeg                            jpeg jpg;
-    application/javascript                js;
     application/octet-stream              bin exe dll;
     image/png                             png;
     image/svg+xml                         svg svgz;

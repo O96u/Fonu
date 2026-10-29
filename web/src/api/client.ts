@@ -4,6 +4,7 @@ import type {
   AppVersion,
   AuthStatus,
   CertificateCAOption,
+  CertExportPathHints,
   CertExportSettings,
   CertificateRecord,
   DashboardStatus,
@@ -240,6 +241,7 @@ export const api = {
     ),
 
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
+  getCertificateExportPaths: () => request<CertExportPathHints>('/api/certificates/export-paths'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
   applyCertificate: (payload: {
     dns_zone?: string

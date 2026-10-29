@@ -242,6 +242,14 @@ export interface CertificateRecord {
   export?: CertExportSettings
 }
 
+export interface CertExportPathHints {
+  certs_dir: string
+  deploy_kind: 'fnos' | 'docker' | 'generic' | string
+  data_share_paths: string[]
+  accessible_paths: string[]
+  suggested_export_targets: string[]
+}
+
 export interface FsDirEntry {
   name: string
   path: string

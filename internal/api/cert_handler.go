@@ -32,6 +32,10 @@ func (h *CertHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, records)
 }
 
+func (h *CertHandler) ExportPaths(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.export.PathHints())
+}
+
 func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, []map[string]string{
 		{"value": acme.CALetsEncrypt, "label": acme.CALabel(acme.CALetsEncrypt)},

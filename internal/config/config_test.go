@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -31,5 +32,20 @@ func TestLoadNginxDefaultPortsFallback(t *testing.T) {
 	cfg := Load()
 	if cfg.NginxDefaultHTTPPort != 80 || cfg.NginxDefaultHTTPSPort != 443 {
 		t.Fatalf("ports %d %d", cfg.NginxDefaultHTTPPort, cfg.NginxDefaultHTTPSPort)
+	}
+}
+
+func TestResolveNginxMimeTypesIgnoresMissingDockerPath(t *testing.T) {
+	dir := t.TempDir()
+	mime := filepath.Join(dir, "mime.types")
+	if err := os.WriteFile(mime, []byte("types { text/html html; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FONU_NGINX_MIME_TYPES", "/etc/nginx/mime.types")
+	t.Setenv("FONU_DATA_DIR", dir)
+
+	cfg := Load()
+	if cfg.NginxMimeTypes != mime {
+		t.Fatalf("mime types %q want %q", cfg.NginxMimeTypes, mime)
 	}
 }

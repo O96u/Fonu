@@ -70,7 +70,7 @@ const props = withDefaults(
     size?: 'small' | 'medium' | 'large'
   }>(),
   {
-    placeholder: '/etc/app/certs',
+    placeholder: '绝对路径',
     size: 'small',
   },
 )

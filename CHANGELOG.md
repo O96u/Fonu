@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.2.2] - 2026-10-29
+
+### 变更
+
+- 飞牛 FPK：证书映射说明与建议路径（`GET /api/certificates/export-paths`）；编辑证书时源目录按运行时 `certs` 目录展示
+- 配置向导改写 `fonu.env` 时保留 `FONU_DATA_DIR` 等迁移相关变量；无效 Docker 的 `mime.types` 路径自动回退
+- FPK：`FONU_NGINX_PID` 与 `nginx.conf` 统一为 `var/nginx/nginx.pid`；内置 `mime.types` 去掉重复 `js` 映射
+
 ## [v1.2.1] - 2026-10-28
 
 ### 新增
@@ -12,12 +20,10 @@ All notable changes to this project will be documented in this file.
 - 飞牛 FPK 安装向导可自定义管理员用户名、密码和管理后台 / HTTP / HTTPS 端口；共享目录位于「应用文件 / fonu」下的 `etc` / `www` / `certs`
 - 首次打开管理后台进入 `/setup` 页，自行创建管理员账号（用户名、密码、确认密码；不再生成随机密码）
 - 飞牛 FPK 卸载向导可选择是否删除所有数据
-- 正式 `v*` GitHub Release 的 Assets 同时包含 amd64 / arm64 `.fpk`；仍可用 **Build FPK** 手动试包
 
 ### 变更
 
 - 未通过安装向导或环境变量提供账号时，不再自动生成 `admin` 初始密码
-- 飞牛应用信息：开发者 muxui 指向介绍文，发布者 muxui 指向 GitHub 仓库
 
 ### 修复
 
