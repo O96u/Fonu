@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.2] - 2026-11-02
+
+### 变更
+
+- 仪表盘离开后保留页面，回来先显示上次的数字和地图，再在后台刷新
+- 首页统计合成一次 `GET /api/analytics/overview`（含最近访问和按服务汇总），结果缓存 15 秒；聚合查询并行。SQLite 使用 WAL
+- 独立 IP、拦截、疑似扫描补上较昨日。问题 URL 只展示 5 条
+
+### 修复
+
+- 访问日志偏移在循环里被重新声明，同一段日志被反复写入，首页「今天」持续上涨
+- 平均耗时不再把 WebSocket（HTTP 101）的整段连接时长，以及没有请求行的 `-`，算进普通请求
+
 ## [v1.3.1] - 2026-11-02
 
 ### 新增

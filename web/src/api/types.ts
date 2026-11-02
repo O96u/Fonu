@@ -240,6 +240,10 @@ export interface AnalyticsKPI {
   risk_requests: number
   yesterday_total: number
   request_trend?: number | null
+  yesterday_unique_ips: number
+  unique_ip_trend?: number | null
+  yesterday_risk: number
+  risk_trend?: number | null
   bytes_total: number
 }
 
@@ -271,8 +275,12 @@ export interface AnalyticsOverview {
     rate_limited_429: number
     auth_failed_401: number
     scan_suspected: number
+    yesterday_scan: number
+    scan_trend?: number | null
   }
   anomaly?: AnalyticsAnomaly
+  recent_events?: AwarenessEvent[]
+  by_service?: AwarenessServiceRow[]
   /** 本机公网 IP 的归属地，飞线终点按这个落点，不写死城市。 */
   server?: {
     country?: string

@@ -249,7 +249,7 @@ func (s *Service) recentEvents(ctx context.Context, limit int) ([]awareness.Even
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT ts, client_ip, service, host, path, status, kind, geo_label
 		FROM access_facts
-		ORDER BY ts DESC
+		ORDER BY ts DESC, id DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {

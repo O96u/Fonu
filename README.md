@@ -132,13 +132,13 @@
 
 ## 部署
 
-当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.1** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.2** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
 ### 飞牛 fnOS 原生 FPK（推荐）
 
-从 Release **Assets** 下载 `fonu_1.3.1_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
+从 Release **Assets** 下载 `fonu_1.3.2_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
@@ -287,7 +287,7 @@ go test ./...
 cd web && npm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.1**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.2**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 

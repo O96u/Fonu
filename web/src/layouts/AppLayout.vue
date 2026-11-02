@@ -192,7 +192,11 @@
 
       <n-layout-content class="content">
         <div class="page-shell page-body">
-          <router-view />
+          <router-view v-slot="{ Component }">
+            <keep-alive include="DashboardView">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
       </n-layout-content>
     </n-layout>

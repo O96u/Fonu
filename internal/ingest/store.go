@@ -3,28 +3,29 @@ package ingest
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/fonu/fonu/internal/logstore"
 )
 
 type FactRow struct {
-	TS         time.Time
-	ClientIP   string
-	Host       string
-	Service    string
-	Method     string
-	Path       string
-	Status     int
-	BytesSent  int64
-	RequestMS  float64
-	UserAgent  string
-	Kind       string
-	GeoCountry string
+	TS          time.Time
+	ClientIP    string
+	Host        string
+	Service     string
+	Method      string
+	Path        string
+	Status      int
+	BytesSent   int64
+	RequestMS   float64
+	UserAgent   string
+	Kind        string
+	GeoCountry  string
 	GeoProvince string
-	GeoCity    string
-	GeoLabel   string
-	GeoPending bool
+	GeoCity     string
+	GeoLabel    string
+	GeoPending  bool
 }
 
 type Store struct {
@@ -40,6 +41,19 @@ type IngestState struct {
 	FileSize  int64
 	MtimeNs   int64
 	UpdatedAt time.Time
+}
+
+func (s *Store) MaxTS(ctx context.Context) (time.Time, bool) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(ts) FROM access_facts`).Scan(&raw)
+	if err != nil || !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, raw.String)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }
 
 func (s *Store) LoadState(ctx context.Context, logPath string) (IngestState, error) {

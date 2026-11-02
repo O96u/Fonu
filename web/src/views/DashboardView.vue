@@ -49,7 +49,7 @@
             <h2 class="awareness-title">趋势与记录</h2>
             <p class="awareness-subtitle">曲线跟着上面的时间范围。右侧是最近 5 分钟的上下行。</p>
           </div>
-          <span v-if="awareness" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
+          <span v-if="analyticsOverview" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
         </div>
         <n-alert v-if="awarenessNginxWarning" type="warning" :bordered="false" class="awareness-alert">
           <div class="awareness-alert__content">
@@ -71,11 +71,11 @@
             </div>
             <div class="panel__body awareness-charts-panel__trend">
               <AwarenessTrendChart
-                v-if="awareness"
-                :labels="awareness.hourly_labels"
-                :requests="awareness.hourly_requests"
-                :uniqueIPs="awareness.hourly_unique_ips"
-                :current-bucket="awareness.current_hour_bucket"
+                v-if="analyticsOverview"
+                :labels="analyticsOverview.series.labels"
+                :requests="analyticsOverview.series.requests"
+                :uniqueIPs="analyticsOverview.series.unique_ips"
+                :current-bucket="analyticsOverview.series.current_bucket"
               />
               <EmptyState v-else title="正在读取" description="访问趋势马上出来。" />
             </div>
@@ -173,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
   ChevronForwardOutline,
@@ -191,7 +191,6 @@ import type {
   AnalyticsOverview,
   AwarenessEvent,
   AwarenessEventKind,
-  AwarenessLiveSnapshot,
   AwarenessRange,
   AwarenessServiceRow,
   CertificateRecord,
@@ -213,10 +212,11 @@ import { formatLogTime, formatRate, formatRelativeTime } from '../utils/format'
 import { displayGeoLabel } from '../utils/geoDisplay'
 import { httpStatusKind } from '../utils/status'
 
+defineOptions({ name: 'DashboardView' })
+
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
-const awareness = ref<AwarenessLiveSnapshot | null>(null)
 const analyticsOverview = ref<AnalyticsOverview | null>(null)
 const awarenessRange = ref<AwarenessRange>('today')
 const ddnsConfigs = ref<DDNSConfig[]>([])
@@ -328,7 +328,7 @@ const trafficChart = computed(() => {
 })
 
 const awarenessUpdatedLabel = computed(() => {
-  const raw = awareness.value?.updated_at
+  const raw = analyticsOverview.value?.updated_at
   if (!raw) return '—'
   return formatRelativeTime(raw) || formatLogTime(raw, { timeZone: logTimeZone.value })
 })
@@ -365,7 +365,7 @@ const awarenessTrendTitle = computed(() => {
 })
 
 const awarenessTrendTag = computed(() => {
-  const g = awareness.value?.trend_granularity
+  const g = analyticsOverview.value?.series?.granularity
   if (g === 'daily') return '按日统计'
   return '2 小时粒度 · 已过去时段'
 })
@@ -376,8 +376,8 @@ watch(awarenessRange, () => {
   void refreshAwareness()
 })
 
-const awarenessEvents = computed(() => awareness.value?.recent_events ?? [])
-const awarenessServices = computed(() => awareness.value?.by_service ?? [])
+const awarenessEvents = computed(() => analyticsOverview.value?.recent_events ?? [])
+const awarenessServices = computed(() => analyticsOverview.value?.by_service ?? [])
 
 /** Backend returns at most 20 services sorted by request volume. */
 const awarenessServiceListHint = computed(() => {
@@ -513,20 +513,12 @@ function recordRateSample() {
 
 async function refreshAwareness() {
   const range = awarenessRange.value
-  await Promise.all([
-    api
-      .getAnalyticsOverview(range)
-      .then((overview) => {
-        if (awarenessRange.value === range) analyticsOverview.value = overview
-      })
-      .catch(() => {}),
-    api
-      .getAwarenessLive(range)
-      .then((live) => {
-        if (awarenessRange.value === range) awareness.value = live
-      })
-      .catch(() => {}),
-  ])
+  try {
+    const overview = await api.getAnalyticsOverview(range)
+    if (awarenessRange.value === range) analyticsOverview.value = overview
+  } catch {
+    // 轮询失败时保留上一份数据
+  }
 }
 
 function startAwarenessPoll() {
@@ -568,13 +560,16 @@ function stopTrafficPoll() {
 }
 
 async function load() {
-  loading.value = true
-  loadError.value = ''
+  const background = status.value != null
+  if (!background) loading.value = true
   try {
     status.value = await api.getStatus()
+    loadError.value = ''
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
-    message.error('加载仪表盘失败')
+    if (!background) {
+      loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
+      message.error('加载仪表盘失败')
+    }
     return
   } finally {
     loading.value = false
@@ -595,12 +590,19 @@ async function loadDashboardExtras() {
     .catch(() => {})
 }
 
-onMounted(() => {
-  load()
-  refreshAwareness()
-  refreshTraffic()
+function resumeDashboard() {
+  void load()
+  void refreshAwareness()
+  void refreshTraffic()
   startTrafficPoll()
   startAwarenessPoll()
+}
+
+onActivated(resumeDashboard)
+
+onDeactivated(() => {
+  stopTrafficPoll()
+  stopAwarenessPoll()
 })
 
 onUnmounted(() => {

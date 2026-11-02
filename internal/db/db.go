@@ -17,12 +17,13 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", path)
+	// WAL 让首页的多条统计查询和日志写入同时进行。busy_timeout 盖住短暂的写锁。
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", path)
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	conn.SetMaxOpenConns(1)
+	conn.SetMaxOpenConns(4)
 	return conn, nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/fonu/fonu/internal/analytics"
 	"github.com/fonu/fonu/internal/api"
 	"github.com/fonu/fonu/internal/auth"
+	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/backup"
 	"github.com/fonu/fonu/internal/certexport"
 	"github.com/fonu/fonu/internal/certificate"
@@ -117,6 +118,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	serverGeo := analytics.NewServerGeo(ddnsSvc, ipLocateSvc)
 	serverGeo.Warm()
 	analyticsSvc.SetServerGeo(serverGeo.Resolve)
+	analyticsSvc.SetEventGeo(func(events []awareness.Event) {
+		awareness.EnrichEventsGeo(events, ipLocateSvc)
+	})
 
 	handler := api.NewRouter(api.Deps{
 		Config:     cfg,

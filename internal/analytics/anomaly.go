@@ -11,7 +11,7 @@ import (
 const (
 	anomalySlowMS     = 1000
 	anomalyIssueAvgMS = 500
-	anomalyIssueLimit = 8
+	anomalyIssueLimit = 5
 	anomalyTrendDays  = 7
 )
 
@@ -57,12 +57,17 @@ type AnomalyBlock struct {
 }
 
 type anomalyDay struct {
-	total     int
-	status4xx int
-	status5xx int
-	slow      int
-	avgMS     float64
+	total        int
+	status4xx    int
+	status5xx    int
+	slow         int
+	latencyCount int
+	avgMS        float64
 }
+
+// 耗时只统计真正返回的短请求。101 的 $request_time 是 WebSocket 整段连接时间，
+// path 为 "-" 的是没有请求行的超时或坏请求，放进平均值会把今天拉到几万毫秒。
+const anomalyLatencyWhere = `status != 101 AND path != '-'`
 
 func (s *Service) queryAnomaly(ctx context.Context, now time.Time, loc *time.Location, ipFilter string) (AnomalyBlock, error) {
 	out := AnomalyBlock{
@@ -101,7 +106,7 @@ func (s *Service) queryAnomaly(ctx context.Context, now time.Time, loc *time.Loc
 	out.Status5xx = anomalyCountMetric(today.status5xx, yesterday.status5xx, today.total)
 	out.Status4xx = anomalyCountMetric(today.status4xx, yesterday.status4xx, today.total)
 	out.AvgRequestMS = anomalyFloatMetric(today.avgMS, yesterday.avgMS)
-	out.SlowRate = anomalyFloatMetric(anomalyRate(today.slow, today.total), anomalyRate(yesterday.slow, yesterday.total))
+	out.SlowRate = anomalyFloatMetric(anomalyRate(today.slow, today.latencyCount), anomalyRate(yesterday.slow, yesterday.latencyCount))
 
 	urls, err := s.queryAnomalyURLs(ctx, todayStart, now, todayStart.AddDate(0, 0, -1), todayStart, ipFilter)
 	if err != nil {
@@ -117,8 +122,9 @@ func (s *Service) queryAnomalyDays(ctx context.Context, start, end time.Time, ip
 		       COUNT(*) AS total,
 		       SUM(CASE WHEN status >= 400 AND status < 500 THEN 1 ELSE 0 END),
 		       SUM(CASE WHEN status >= 500 AND status < 600 THEN 1 ELSE 0 END),
-		       SUM(CASE WHEN request_ms >= ? THEN 1 ELSE 0 END),
-		       AVG(NULLIF(request_ms, 0))
+		       SUM(CASE WHEN `+anomalyLatencyWhere+` AND request_ms >= ? THEN 1 ELSE 0 END),
+		       AVG(CASE WHEN `+anomalyLatencyWhere+` THEN request_ms END),
+		       SUM(CASE WHEN `+anomalyLatencyWhere+` THEN 1 ELSE 0 END)
 		FROM access_facts
 		WHERE ts >= ? AND ts <= ?`+ipFilter+`
 		GROUP BY day
@@ -132,7 +138,7 @@ func (s *Service) queryAnomalyDays(ctx context.Context, start, end time.Time, ip
 		var day string
 		var snap anomalyDay
 		var avg sql.NullFloat64
-		if err := rows.Scan(&day, &snap.total, &snap.status4xx, &snap.status5xx, &snap.slow, &avg); err != nil {
+		if err := rows.Scan(&day, &snap.total, &snap.status4xx, &snap.status5xx, &snap.slow, &avg, &snap.latencyCount); err != nil {
 			return nil, err
 		}
 		if avg.Valid {
@@ -150,9 +156,9 @@ func (s *Service) queryAnomalyURLs(ctx context.Context, curStart, curEnd, prevSt
 		       COUNT(*) AS requests,
 		       SUM(CASE WHEN status >= 500 AND status < 600 THEN 1 ELSE 0 END) AS errors_5xx,
 		       SUM(CASE WHEN request_ms >= ? THEN 1 ELSE 0 END) AS slow_requests,
-		       AVG(NULLIF(request_ms, 0)) AS avg_ms
+		       AVG(request_ms) AS avg_ms
 		FROM access_facts
-		WHERE ts >= ? AND ts <= ? AND path != ''` + ipFilter + `
+		WHERE ts >= ? AND ts <= ? AND path != '' AND ` + anomalyLatencyWhere + ipFilter + `
 		GROUP BY p
 		HAVING errors_5xx > 0 OR slow_requests > 0 OR COALESCE(avg_ms, 0) >= ?
 		ORDER BY errors_5xx DESC, slow_requests DESC, avg_ms DESC, requests DESC
@@ -169,9 +175,9 @@ func (s *Service) queryAnomalyURLs(ctx context.Context, curStart, curEnd, prevSt
 		       COUNT(*) AS requests,
 		       SUM(CASE WHEN status >= 500 AND status < 600 THEN 1 ELSE 0 END) AS errors_5xx,
 		       SUM(CASE WHEN request_ms >= ? THEN 1 ELSE 0 END) AS slow_requests,
-		       AVG(NULLIF(request_ms, 0)) AS avg_ms
+		       AVG(request_ms) AS avg_ms
 		FROM access_facts
-		WHERE ts >= ? AND ts < ? AND path != ''`+ipFilter+`
+		WHERE ts >= ? AND ts < ? AND path != '' AND `+anomalyLatencyWhere+ipFilter+`
 		GROUP BY p
 	`, anomalySlowMS, prevStart.UTC().Format(time.RFC3339), prevEnd.UTC().Format(time.RFC3339))
 	if err != nil {

@@ -3,7 +3,6 @@ package ingest
 import (
 	"bufio"
 	"context"
-	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -132,6 +131,7 @@ func (s *Service) tailLoop(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	}
+	s.rewindSkippedTail(ctx)
 	st, _ := s.store.LoadState(ctx, s.path)
 	offset := st.Offset
 	lastSave := time.Now()
@@ -140,14 +140,18 @@ func (s *Service) tailLoop(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		offset, batch := s.readFrom(offset)
+		// 必须把新偏移赋给外层 offset。写成 offset, batch := 会在 for 里重新声明，
+		// 外层偏移停住，同一段日志会按每批反复写入。
+		next, batch := s.readFrom(offset)
 		if len(batch) > 0 {
 			if err := s.store.InsertBatch(ctx, batch); err != nil {
 				s.logger.Warn("insert batch failed", "error", err.Error())
-			} else {
-				s.dispatch(batch)
+				time.Sleep(500 * time.Millisecond)
+				continue
 			}
+			s.dispatch(batch)
 		}
+		offset = next
 		if time.Since(lastSave) >= stateSaveEvery {
 			_ = s.persistOffset(ctx, offset)
 			lastSave = time.Now()
@@ -190,33 +194,78 @@ func (s *Service) readFrom(offset int64) (int64, []FactRow) {
 	bindings := s.bindings
 	s.mu.RUnlock()
 
+	// 按实际读到的字节推进偏移。不能用 SeekCurrent：bufio 会预读，
+	// 文件位置已经跑到缓冲区末尾，下一次会把还没解析的行跳掉。
 	var batch []FactRow
 	reader := bufio.NewReader(file)
+	var consumed int64
 	for {
 		line, err := reader.ReadString('\n')
+		// Wait for a complete record before committing its byte offset.
+		if err != nil && !strings.HasSuffix(line, "\n") {
+			return offset + consumed, batch
+		}
 		if len(line) > 0 {
+			consumed += int64(len(line))
 			row, ok := s.parseLine(strings.TrimRight(strings.TrimRight(line, "\n"), "\r"), bindings)
 			if ok {
 				batch = append(batch, row)
 				s.realtime.Add(row)
 			}
 			if len(batch) >= batchSize {
-				pos, seekErr := file.Seek(0, io.SeekCurrent)
-				if seekErr == nil {
-					return pos, batch
-				}
-				return info.Size(), batch
+				return offset + consumed, batch
 			}
 		}
 		if err != nil {
-			if err == io.EOF {
-				pos, seekErr := file.Seek(0, io.SeekCurrent)
-				if seekErr == nil {
-					return pos, batch
+			return offset + consumed, batch
+		}
+	}
+}
+
+// rewindSkippedTail 补上「扫描中途遇到 EOF，随后又把偏移记到文件末尾」漏掉的尾巴。
+// 迁移或复制 access.log 时，文件还在变长就会出现这种情况。
+func (s *Service) rewindSkippedTail(ctx context.Context) {
+	st, err := s.store.LoadState(ctx, s.path)
+	if err != nil || st.Offset <= 0 {
+		return
+	}
+	info, err := os.Stat(s.path)
+	if err != nil || info.Size() == 0 || st.Offset < info.Size() {
+		return
+	}
+	maxTS, ok := s.store.MaxTS(ctx)
+	if !ok {
+		return
+	}
+	off, found := s.firstByteAfter(maxTS)
+	if !found || off >= st.Offset {
+		return
+	}
+	s.logger.Info("access log tail was skipped, rereading", "from_offset", off, "saved_offset", st.Offset)
+	_ = s.persistOffset(ctx, off)
+}
+
+func (s *Service) firstByteAfter(maxTS time.Time) (int64, bool) {
+	file, err := os.Open(s.path)
+	if err != nil {
+		return 0, false
+	}
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	var pos int64
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			entry, ok := logstore.ParseAccess(strings.TrimRight(strings.TrimRight(line, "\n"), "\r"))
+			if ok {
+				if at, okTime := logstore.ParseAccessTime(entry.Time); okTime && at.After(maxTS) {
+					return pos, true
 				}
-				return info.Size(), batch
 			}
-			return offset, batch
+			pos += int64(len(line))
+		}
+		if err != nil {
+			return 0, false
 		}
 	}
 }
@@ -419,42 +468,42 @@ func (s *Service) runBackfill(ctx context.Context) {
 		return
 	}
 
-	file, err := os.Open(s.path)
-	if err != nil {
-		s.seekEOF(ctx)
-		return
-	}
-	defer file.Close()
-
-	s.mu.RLock()
-	bindings := s.bindings
-	s.mu.RUnlock()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	var batch []FactRow
-	for scanner.Scan() {
+	offset := int64(0)
+	lastSave := time.Now()
+	for {
 		if ctx.Err() != nil {
 			return
 		}
-		row, ok := s.parseLine(scanner.Text(), bindings)
-		if !ok {
-			continue
+		info, err := os.Stat(s.path)
+		if err != nil {
+			return
 		}
-		batch = append(batch, row)
-		if len(batch) >= batchSize {
+		if offset >= info.Size() {
+			break
+		}
+		next, batch := s.readFrom(offset)
+		if len(batch) > 0 {
 			if err := s.store.InsertBatch(ctx, batch); err != nil {
 				s.logger.Warn("backfill batch failed", "error", err.Error())
+				return
 			}
-			batch = batch[:0]
-			time.Sleep(backfillSleep)
 		}
+		if next <= offset {
+			break
+		}
+		offset = next
+		if time.Since(lastSave) >= stateSaveEvery {
+			_ = s.persistOffset(ctx, offset)
+			lastSave = time.Now()
+		}
+		// 这一轮已经读到当时的文件尾。后面若还在追加，交给 tail。
+		if len(batch) < batchSize {
+			break
+		}
+		time.Sleep(backfillSleep)
 	}
-	if len(batch) > 0 {
-		_ = s.store.InsertBatch(ctx, batch)
-	}
-	s.seekEOF(ctx)
-	s.logger.Info("access analytics backfill finished")
+	_ = s.persistOffset(ctx, offset)
+	s.logger.Info("access analytics backfill finished", "offset", offset)
 }
 
 func (s *Service) seekEOF(ctx context.Context) {

@@ -120,8 +120,15 @@ watch(regionVisitorsAll, () => {
         label="独立 IP"
         :value="data ? (data.kpi.unique_ips ?? 0).toLocaleString() : '—'"
         :compare="!!data && range === 'today'"
+        :delta="data?.kpi.unique_ip_trend"
+        :previous="data ? (data.kpi.yesterday_unique_ips ?? 0).toLocaleString() : undefined"
       />
-      <MetricStat label="拦截" :compare="!!data && range === 'today'">
+      <MetricStat
+        label="拦截"
+        :compare="!!data && range === 'today'"
+        :delta="data?.kpi.risk_trend"
+        :previous="data ? (data.kpi.yesterday_risk ?? 0).toLocaleString() : undefined"
+      >
         <RouterLink :to="{ name: 'logs', query: { tab: 'access', kind: 'intercept' } }">
           {{ data ? (data.kpi.risk_requests ?? 0).toLocaleString() : '—' }}
         </RouterLink>
@@ -130,6 +137,8 @@ watch(regionVisitorsAll, () => {
         label="疑似扫描"
         :value="data ? (data.funnel.scan_suspected ?? 0).toLocaleString() : '—'"
         :compare="!!data && range === 'today'"
+        :delta="data?.funnel.scan_trend"
+        :previous="data ? (data.funnel.yesterday_scan ?? 0).toLocaleString() : undefined"
       />
     </div>
 

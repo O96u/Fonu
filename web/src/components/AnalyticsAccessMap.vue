@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onUnmounted, ref, watch } from 'vue'
 import { use, registerMap } from 'echarts/core'
 import { MapChart, LinesChart, EffectScatterChart, ScatterChart } from 'echarts/charts'
 import { GeoComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
@@ -15,6 +15,9 @@ import EmptyState from './EmptyState.vue'
 
 use([CanvasRenderer, MapChart, LinesChart, EffectScatterChart, ScatterChart, GeoComponent, TooltipComponent, VisualMapComponent])
 
+registerMap('china', chinaJson as unknown as Parameters<typeof registerMap>[1])
+registerMap('world', worldJson as unknown as Parameters<typeof registerMap>[1])
+
 const props = defineProps<{
   data: AnalyticsOverview | null
 }>()
@@ -22,7 +25,7 @@ const props = defineProps<{
 type MapScope = 'china' | 'world'
 type MapMetric = 'requests' | 'intercept'
 
-const mapReady = ref(false)
+const mapReady = ref(true)
 const mapStageRef = ref<HTMLElement | null>(null)
 const layoutSizePercent = ref(100)
 const scope = defineModel<MapScope>('scope', { default: 'world' })
@@ -95,12 +98,6 @@ function updateMapLayout() {
   layoutCenter.value = cfg.center
 }
 
-onMounted(() => {
-  registerMap('china', chinaJson as unknown as Parameters<typeof registerMap>[1])
-  registerMap('world', worldJson as unknown as Parameters<typeof registerMap>[1])
-  mapReady.value = true
-})
-
 function bindStageObserver() {
   stageResizeObserver?.disconnect()
   stageResizeObserver = null
@@ -110,6 +107,10 @@ function bindStageObserver() {
   stageResizeObserver = new ResizeObserver(() => updateMapLayout())
   stageResizeObserver.observe(el)
 }
+
+onActivated(() => {
+  void nextTick(bindStageObserver)
+})
 
 onUnmounted(() => {
   stageResizeObserver?.disconnect()

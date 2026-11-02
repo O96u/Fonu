@@ -28,6 +28,23 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.2',
+    date: '2026-11-02',
+    url: `${GITHUB_RELEASES}/tag/v1.3.2`,
+    markdown: [
+      '### 变更',
+      '',
+      '- 仪表盘离开后保留页面，回来先显示上次结果',
+      '- 首页统计合成一次请求，并缓存 15 秒',
+      '- 独立 IP、拦截、疑似扫描补上较昨日',
+      '',
+      '### 修复',
+      '',
+      '- 访问日志不再被重复计入今天',
+      '- 平均耗时不再被 WebSocket 长连接拉高',
+    ].join('\n'),
+  },
+  {
     version: '1.3.1',
     date: '2026-11-02',
     url: `${GITHUB_RELEASES}/tag/v1.3.1`,
@@ -60,12 +77,6 @@ export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-10-28',
     url: `${GITHUB_RELEASES}/tag/v1.2.1`,
     markdown: '- 飞牛原生 FPK，内置 nginx 1.30，安装向导可自定义账号与端口\n- 首次打开进入 /setup 创建管理员',
-  },
-  {
-    version: '1.2.0',
-    date: '2026-10-23',
-    url: `${GITHUB_RELEASES}/tag/v1.2.0`,
-    markdown: '- 证书可单独配置目录映射和 SSH 上传\n- 飞牛 FPK 打包模板进库',
   },
 ]
 

@@ -34,6 +34,8 @@ const anomaly = computed<AnalyticsAnomaly>(() => {
   )
 })
 
+const topURLs = computed(() => (anomaly.value.top_urls ?? []).slice(0, 5))
+
 function ms(n: number): string {
   if (!Number.isFinite(n)) return '0 ms'
   return `${Math.round(n)} ms`
@@ -61,7 +63,7 @@ const cards = computed(() => {
     {
       key: 'latency',
       label: '平均耗时',
-      hint: '单次请求',
+      hint: '不含长连接',
       value: ms(a.avg_request_ms.current),
       delta: a.avg_request_ms.change_rate,
       previous: ms(a.avg_request_ms.previous),
@@ -184,7 +186,7 @@ function deltaText(n: number, unit: string): string {
           <h3>问题 URL</h3>
           <p>5xx 或慢请求较多的路径。</p>
         </div>
-        <div v-if="anomaly.top_urls?.length" class="anomaly-table">
+        <div v-if="topURLs.length" class="anomaly-table">
           <div class="anomaly-table__head">
             <span>访问</span>
             <span>5xx</span>
@@ -192,7 +194,7 @@ function deltaText(n: number, unit: string): string {
             <span>慢请求</span>
             <span>对比昨日</span>
           </div>
-          <div v-for="row in anomaly.top_urls" :key="row.path" class="anomaly-table__row">
+          <div v-for="row in topURLs" :key="row.path" class="anomaly-table__row">
             <div class="anomaly-table__path">
               <span class="mono" :title="row.path">{{ row.path }}</span>
               <small>请求数 {{ row.requests.toLocaleString() }}</small>

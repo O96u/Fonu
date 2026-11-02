@@ -18,8 +18,10 @@ type Service struct {
 	ingest    *ingest.Service
 	serverGeo func(context.Context) ServerNode
 
-	overviewMu    sync.Mutex
-	overviewCache map[string]overviewCacheItem
+	overviewMu     sync.Mutex
+	overviewCache  map[string]overviewCacheItem
+	overviewFlight map[string]*overviewCall
+	eventGeo       func([]awareness.Event)
 }
 
 type overviewCacheItem struct {
@@ -27,9 +29,14 @@ type overviewCacheItem struct {
 	ov Overview
 }
 
-// 首页会同时打 overview 和 awareness/live，后者内部再算一遍 overview。
-// 短缓存把同一次进入合成一次聚合。
-const overviewCacheTTL = 3 * time.Second
+// 首页每 5 秒刷新一次。缓存盖住这一轮，同一时间只算一份。
+const overviewCacheTTL = 15 * time.Second
+
+type overviewCall struct {
+	done chan struct{}
+	ov   Overview
+	err  error
+}
 
 func New(db *sql.DB, settingsStore *settings.Store, ingestSvc *ingest.Service) *Service {
 	return &Service{db: db, settings: settingsStore, ingest: ingestSvc}
@@ -52,6 +59,8 @@ type Overview struct {
 	Funnel         FunnelBlock             `json:"funnel"`
 	Server         ServerNode              `json:"server"`
 	Anomaly        AnomalyBlock            `json:"anomaly"`
+	RecentEvents   []awareness.Event       `json:"recent_events"`
+	ByService      []awareness.ServiceRow  `json:"by_service"`
 }
 
 // SetServerGeo supplies the machine's own location (public IP → 归属地) for the map hub.
@@ -62,22 +71,36 @@ func (s *Service) SetServerGeo(fn func(context.Context) ServerNode) {
 	s.serverGeo = fn
 }
 
+// SetEventGeo fills recent-event locations while the overview is built.
+func (s *Service) SetEventGeo(fn func([]awareness.Event)) {
+	if s == nil {
+		return
+	}
+	s.eventGeo = fn
+}
+
 type KPIBlock struct {
-	TotalRequests  int   `json:"total_requests"`
-	UniqueIPs      int   `json:"unique_ips"`
-	RiskRequests   int   `json:"risk_requests"`
-	YesterdayTotal int   `json:"yesterday_total"`
-	RequestTrend   *int  `json:"request_trend,omitempty"`
-	BytesTotal     int64 `json:"bytes_total"`
+	TotalRequests      int   `json:"total_requests"`
+	UniqueIPs          int   `json:"unique_ips"`
+	RiskRequests       int   `json:"risk_requests"`
+	YesterdayTotal     int   `json:"yesterday_total"`
+	RequestTrend       *int  `json:"request_trend,omitempty"`
+	YesterdayUniqueIPs int   `json:"yesterday_unique_ips"`
+	UniqueIPTrend      *int  `json:"unique_ip_trend,omitempty"`
+	YesterdayRisk      int   `json:"yesterday_risk"`
+	RiskTrend          *int  `json:"risk_trend,omitempty"`
+	BytesTotal         int64 `json:"bytes_total"`
 }
 
 type FunnelBlock struct {
-	Safe           int `json:"safe"`
-	BlockedTotal   int `json:"blocked_total"`
-	Blocked403     int `json:"blocked_403"`
-	RateLimited429 int `json:"rate_limited_429"`
-	AuthFailed401  int `json:"auth_failed_401"`
-	ScanSuspected  int `json:"scan_suspected"`
+	Safe           int  `json:"safe"`
+	BlockedTotal   int  `json:"blocked_total"`
+	Blocked403     int  `json:"blocked_403"`
+	RateLimited429 int  `json:"rate_limited_429"`
+	AuthFailed401  int  `json:"auth_failed_401"`
+	ScanSuspected  int  `json:"scan_suspected"`
+	YesterdayScan  int  `json:"yesterday_scan"`
+	ScanTrend      *int `json:"scan_trend,omitempty"`
 }
 
 type SeriesBlock struct {
@@ -126,19 +149,40 @@ type StatusRow struct {
 func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, error) {
 	rangeKey = awareness.NormalizeRange(rangeKey)
 	s.overviewMu.Lock()
-	defer s.overviewMu.Unlock()
 	if item, ok := s.overviewCache[rangeKey]; ok && time.Since(item.at) < overviewCacheTTL {
+		s.overviewMu.Unlock()
 		return item.ov, nil
 	}
+	if call, ok := s.overviewFlight[rangeKey]; ok {
+		s.overviewMu.Unlock()
+		select {
+		case <-call.done:
+			return call.ov, call.err
+		case <-ctx.Done():
+			return Overview{}, ctx.Err()
+		}
+	}
+	call := &overviewCall{done: make(chan struct{})}
+	if s.overviewFlight == nil {
+		s.overviewFlight = map[string]*overviewCall{}
+	}
+	s.overviewFlight[rangeKey] = call
+	s.overviewMu.Unlock()
+
 	ov, err := s.computeOverview(ctx, rangeKey)
-	if err != nil {
-		return ov, err
+
+	s.overviewMu.Lock()
+	if err == nil {
+		if s.overviewCache == nil {
+			s.overviewCache = map[string]overviewCacheItem{}
+		}
+		s.overviewCache[rangeKey] = overviewCacheItem{at: time.Now(), ov: ov}
 	}
-	if s.overviewCache == nil {
-		s.overviewCache = make(map[string]overviewCacheItem)
-	}
-	s.overviewCache[rangeKey] = overviewCacheItem{at: time.Now(), ov: ov}
-	return ov, nil
+	call.ov, call.err = ov, err
+	delete(s.overviewFlight, rangeKey)
+	close(call.done)
+	s.overviewMu.Unlock()
+	return ov, err
 }
 
 func (s *Service) computeOverview(ctx context.Context, rangeKey string) (Overview, error) {
@@ -149,69 +193,124 @@ func (s *Service) computeOverview(ctx context.Context, rangeKey string) (Overvie
 	start := period.Start.UTC().Format(time.RFC3339)
 	end := period.End.UTC().Format(time.RFC3339)
 
-	excludePrivate, _ := s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs)
+	excludePrivate := false
+	if s.settings != nil {
+		excludePrivate, _ = s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs)
+	}
 	ipFilter := ""
 	if excludePrivate {
 		ipFilter = ` AND client_ip NOT IN ('127.0.0.1','::1') AND client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip NOT GLOB '172.[16-31].*' `
 	}
 
 	out := Overview{
-		UpdatedAt: now.UTC().Format(time.RFC3339),
-		Timezone:  tz,
-		Range:     rangeKey,
-	}
-	geoDone := make(chan ServerNode, 1)
-	if s.serverGeo != nil {
-		go func() {
-			geoDone <- s.serverGeo(ctx)
-		}()
+		UpdatedAt:    now.UTC().Format(time.RFC3339),
+		Timezone:     tz,
+		Range:        rangeKey,
+		RecentEvents: []awareness.Event{},
+		ByService:    []awareness.ServiceRow{},
 	}
 	if s.ingest != nil {
 		out.BackfillActive = s.ingest.BackfillActive()
 		out.Realtime = s.ingest.Realtime().Snapshot(now)
 	}
 
-	kpi, funnel, err := s.queryKPI(ctx, start, end, ipFilter)
-	if err != nil {
-		return out, err
+	var (
+		kpi       KPIBlock
+		funnel    FunnelBlock
+		kpiErr    error
+		series    SeriesBlock
+		seriesAt  int
+		seriesErr error
+		provinces []ProvinceRow
+		countries []CountryRow
+		regions   []RegionVisitorRow
+		topIPs    []TopIPRow
+		clients   []ClientRow
+		statuses  []StatusRow
+		anomaly   AnomalyBlock
+		anomalyOK bool
+		recent    []awareness.Event
+		services  []awareness.ServiceRow
+		yKPI      KPIBlock
+		yFunnel   FunnelBlock
+		server    ServerNode
+	)
+	var wg sync.WaitGroup
+	spawn := func(fn func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fn()
+		}()
 	}
-	out.KPI = kpi
-	out.Funnel = funnel
-
+	spawn(func() { kpi, funnel, kpiErr = s.queryKPI(ctx, start, end, ipFilter) })
+	spawn(func() { series, seriesAt, seriesErr = s.querySeries(ctx, period, ipFilter) })
+	spawn(func() { provinces, _ = s.queryProvinces(ctx, start, end, ipFilter) })
+	spawn(func() { countries, _ = s.queryCountries(ctx, start, end, ipFilter) })
+	spawn(func() { regions, _ = s.queryRegionVisitors(ctx, start, end, ipFilter, 60) })
+	spawn(func() { topIPs, _ = s.queryTopIPs(ctx, start, end, ipFilter, 15) })
+	spawn(func() { clients, _ = s.queryClients(ctx, start, end, ipFilter) })
+	spawn(func() { statuses, _ = s.queryStatus(ctx, start, end, ipFilter) })
+	spawn(func() {
+		var err error
+		anomaly, err = s.queryAnomaly(ctx, now, loc, ipFilter)
+		anomalyOK = err == nil
+	})
+	spawn(func() { recent, _ = s.recentEvents(ctx, 30) })
+	spawn(func() { services, _ = s.byService(ctx, rangeKey) })
 	if rangeKey == awareness.RangeToday {
 		yStart := startOfDay(now.AddDate(0, 0, -1), loc).UTC().Format(time.RFC3339)
 		yEnd := startOfDay(now, loc).UTC().Format(time.RFC3339)
-		yesterday, _ := s.countRequests(ctx, yStart, yEnd, ipFilter)
-		out.KPI.YesterdayTotal = yesterday
-		out.KPI.RequestTrend = requestTrendPercent(out.KPI.TotalRequests, yesterday)
-	}
-
-	series, cur, err := s.querySeries(ctx, period, ipFilter)
-	if err != nil {
-		return out, err
-	}
-	out.Series = series
-	out.Series.CurrentBucket = cur
-
-	out.ByProvince, _ = s.queryProvinces(ctx, start, end, ipFilter)
-	if countries, err := s.queryCountries(ctx, start, end, ipFilter); err == nil {
-		out.ByCountry = mergeCountryRows(countries)
-	}
-	if regions, err := s.queryRegionVisitors(ctx, start, end, ipFilter, 60); err == nil {
-		out.RegionVisitors = mergeRegionVisitors(regions, 0)
-	}
-	out.TopIPs, _ = s.queryTopIPs(ctx, start, end, ipFilter, 15)
-	out.Clients, _ = s.queryClients(ctx, start, end, ipFilter)
-	out.StatusCodes, _ = s.queryStatus(ctx, start, end, ipFilter)
-	if anomaly, err := s.queryAnomaly(ctx, now, loc, ipFilter); err == nil {
-		out.Anomaly = anomaly
+		spawn(func() { yKPI, yFunnel, _ = s.queryKPI(ctx, yStart, yEnd, ipFilter) })
 	}
 	if s.serverGeo != nil {
-		select {
-		case out.Server = <-geoDone:
-		case <-ctx.Done():
-		}
+		spawn(func() { server = s.serverGeo(ctx) })
 	}
+	wg.Wait()
+	if kpiErr != nil {
+		return out, kpiErr
+	}
+	if seriesErr != nil {
+		return out, seriesErr
+	}
+
+	out.KPI = kpi
+	out.Funnel = funnel
+	if rangeKey == awareness.RangeToday {
+		out.KPI.YesterdayTotal = yKPI.TotalRequests
+		out.KPI.RequestTrend = requestTrendPercent(out.KPI.TotalRequests, yKPI.TotalRequests)
+		out.KPI.YesterdayUniqueIPs = yKPI.UniqueIPs
+		out.KPI.UniqueIPTrend = requestTrendPercent(out.KPI.UniqueIPs, yKPI.UniqueIPs)
+		out.KPI.YesterdayRisk = yKPI.RiskRequests
+		out.KPI.RiskTrend = requestTrendPercent(out.KPI.RiskRequests, yKPI.RiskRequests)
+		out.Funnel.YesterdayScan = yFunnel.ScanSuspected
+		out.Funnel.ScanTrend = requestTrendPercent(out.Funnel.ScanSuspected, yFunnel.ScanSuspected)
+	}
+	out.Series = series
+	out.Series.CurrentBucket = seriesAt
+	out.ByProvince = provinces
+	if countries != nil {
+		out.ByCountry = mergeCountryRows(countries)
+	}
+	if regions != nil {
+		out.RegionVisitors = mergeRegionVisitors(regions, 0)
+	}
+	out.TopIPs = topIPs
+	out.Clients = clients
+	out.StatusCodes = statuses
+	if anomalyOK {
+		out.Anomaly = anomaly
+	}
+	if len(recent) > 0 {
+		if s.eventGeo != nil {
+			s.eventGeo(recent)
+		}
+		out.RecentEvents = recent
+	}
+	if len(services) > 0 {
+		out.ByService = services
+	}
+	out.Server = server
 	return out, nil
 }
 
@@ -245,12 +344,10 @@ func (s *Service) LiveSnapshot(ctx context.Context, rangeKey string) (awareness.
 	if err != nil {
 		return awareness.LiveSnapshot{}, err
 	}
-	recent, _ := s.recentEvents(ctx, 30)
 	topIPs := make([]awareness.TopIP, 0, len(ov.TopIPs))
 	for _, row := range ov.TopIPs {
 		topIPs = append(topIPs, awareness.TopIP{IP: row.IP, Requests: row.Requests})
 	}
-	byService, _ := s.byService(ctx, ov.Range)
 	return awareness.LiveSnapshot{
 		UpdatedAt:        ov.UpdatedAt,
 		Timezone:         ov.Timezone,
@@ -273,9 +370,9 @@ func (s *Service) LiveSnapshot(ctx context.Context, rangeKey string) (awareness.
 		HourlyUniqueIPs:   ov.Series.UniqueIPs,
 		HourlyLabels:      ov.Series.Labels,
 		CurrentHourBucket: ov.Series.CurrentBucket,
-		RecentEvents:      recent,
+		RecentEvents:      ov.RecentEvents,
 		TopIPs:            topIPs,
-		ByService:         byService,
+		ByService:         ov.ByService,
 	}, nil
 }
 
@@ -328,12 +425,12 @@ func (s *Service) queryKPI(ctx context.Context, start, end, ipFilter string) (KP
 			COUNT(*),
 			COUNT(DISTINCT client_ip),
 			COALESCE(SUM(bytes_sent), 0),
-			SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed','scan_suspected','abnormal_burst') THEN 1 ELSE 0 END),
-			SUM(CASE WHEN status >= 200 AND status < 400 AND kind = 'access' THEN 1 ELSE 0 END),
-			SUM(CASE WHEN kind = 'blocked' OR status = 403 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN kind = 'rate_limited' OR status = 429 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN kind = 'auth_failed' OR status = 401 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN kind = 'scan_suspected' THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed','scan_suspected','abnormal_burst') THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status >= 200 AND status < 400 AND kind = 'access' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind = 'blocked' OR status = 403 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind = 'rate_limited' OR status = 429 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind = 'auth_failed' OR status = 401 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind = 'scan_suspected' THEN 1 ELSE 0 END), 0)
 		FROM access_facts WHERE ts >= ? AND ts <= ?` + ipFilter
 	err := s.db.QueryRowContext(ctx, q, start, end).Scan(
 		&kpi.TotalRequests,
