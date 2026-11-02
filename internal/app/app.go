@@ -14,6 +14,7 @@ import (
 	"github.com/fonu/fonu/internal/acme"
 	"github.com/fonu/fonu/internal/api"
 	"github.com/fonu/fonu/internal/auth"
+	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/ddns"
@@ -24,6 +25,7 @@ import (
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/dnsherenew"
 	"github.com/fonu/fonu/internal/frp"
+	"github.com/fonu/fonu/internal/iplocate"
 	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/nginx"
@@ -104,7 +106,10 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)
-	trafficCollector := traffic.NewCollector(conn, filepath.Join(cfg.LogsDir(), "access.log"), notifySvc)
+	accessLogPath := filepath.Join(cfg.LogsDir(), "access.log")
+	trafficCollector := traffic.NewCollector(conn, accessLogPath, notifySvc)
+	awarenessAnalyzer := awareness.NewAnalyzer(accessLogPath, settingsStore, proxySvc.List)
+	ipLocateSvc := iplocate.New(cfg)
 
 	handler := api.NewRouter(api.Deps{
 		Config:     cfg,
@@ -122,6 +127,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		DNSHERenew: dnsheRenewSvc,
 		FRP:        frpMgr,
 		Traffic:    trafficCollector,
+		Awareness:  awarenessAnalyzer,
+		IPLocate:   ipLocateSvc,
 		StaticFS:   staticFS,
 		StartedAt:  startedAt,
 	})
@@ -178,6 +185,14 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	)
 	sched.Start(ctx)
 	trafficCollector.Start(ctx)
+	awarenessAnalyzer.Start(ctx)
+	go func() {
+		if err := ipLocateSvc.Ensure(ctx); err != nil {
+			logger.Warn("ip2region init failed; geo labels disabled until database is available", "module", "IPLOCATE", "error", err.Error())
+		} else {
+			logger.Info("ip2region ready", "module", "IPLOCATE", "path", ipLocateSvc.DBPath())
+		}
+	}()
 	go certExportSvc.SyncAllEnabled(ctx)
 
 	app := &App{

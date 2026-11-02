@@ -579,12 +579,12 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	if cfg.IPv4Enabled && detectedIPv4 == "" {
 		msg := "无法获取公网 IPv4，已跳过更新（不会写入内网 IP）"
 		_ = s.store.UpdateStatus(ctx, cfg.ID, storeIPv4, storeIPv6, "error", msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 	if cfg.IPv6Enabled && detectedIPv6 == "" {
 		msg := "无法获取公网 IPv6，已跳过更新"
 		_ = s.store.UpdateStatus(ctx, cfg.ID, storeIPv4, storeIPv6, "error", msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 	if ipv4DetectFallback || ipv6DetectFallback {
 		s.logger.Warn("ddns using last known public ip after detect failure",

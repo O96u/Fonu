@@ -82,8 +82,7 @@ func (m *Manager) nginxGlobalArgs() []string {
 }
 
 func (m *Manager) available() bool {
-	_, err := exec.LookPath(m.cfg.NginxBin)
-	return err == nil
+	return BinAvailable(m.cfg.NginxBin)
 }
 
 func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSource) (ApplyResult, error) {

@@ -151,6 +151,73 @@ export interface ApiError {
   error: string
 }
 
+export type AwarenessEventKind =
+  | 'access'
+  | 'blocked'
+  | 'rate_limited'
+  | 'auth_failed'
+  | 'scan_suspected'
+  | 'abnormal_burst'
+
+export interface AwarenessEvent {
+  at: string
+  client_ip: string
+  service: string
+  domain: string
+  path: string
+  status: number
+  kind: AwarenessEventKind
+  summary: string
+  geo?: string
+}
+
+export interface AwarenessTopIP {
+  ip: string
+  requests: number
+  services: string[]
+  kinds: AwarenessEventKind[]
+}
+
+export interface AwarenessServiceRow {
+  service: string
+  requests: number
+  unique_ips: number
+  blocked: number
+  scan_suspected: number
+}
+
+export interface AwarenessTodayStats {
+  total_requests: number
+  unique_ips: number
+  safe: number
+  blocked_403: number
+  rate_limited_429: number
+  auth_failed_401: number
+  blocked_total: number
+  scan_suspected: number
+  abnormal_burst: number
+}
+
+export type AwarenessRange = 'today' | '7d' | '30d' | 'all'
+
+export interface AwarenessLiveSnapshot {
+  updated_at: string
+  timezone: string
+  range?: AwarenessRange
+  trend_granularity?: 'two_hour' | 'daily'
+  window_minutes: number
+  today: AwarenessTodayStats
+  request_yesterday: number
+  request_trend?: number | null
+  hourly_requests: number[]
+  hourly_unique_ips: number[]
+  hourly_labels: string[]
+  current_hour_bucket: number
+  recent_events: AwarenessEvent[]
+  top_ips: AwarenessTopIP[]
+  by_service: AwarenessServiceRow[]
+}
+
 export interface DashboardStatus {
   public_ipv4: string
   public_ipv6: string
@@ -164,6 +231,8 @@ export interface DashboardStatus {
   certificate_summary?: string
   proxy_count: number
   nginx_status: string
+  nginx_available?: boolean
+  nginx_bin?: string
   request_today: number
   request_yesterday?: number
   request_trend?: number | null
@@ -306,6 +375,11 @@ export interface AccessLogEntry {
   response_time: number
   client_ip: string
   upstream: string
+  /** Present when loaded with kind/ip filter from API */
+  service?: string
+  awareness_kind?: AwarenessEventKind | string
+  block_reason?: string
+  geo?: string
 }
 
 export interface SystemLogEntry {

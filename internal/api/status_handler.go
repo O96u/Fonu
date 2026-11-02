@@ -8,13 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fonu/fonu/internal/acme"
 	certstore "github.com/fonu/fonu/internal/certificate"
+	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/ddns"
 	"github.com/fonu/fonu/internal/logstore"
+	"github.com/fonu/fonu/internal/nginx"
 	"github.com/fonu/fonu/internal/publicip"
 	"github.com/fonu/fonu/internal/service"
 )
@@ -24,16 +27,24 @@ type StatusHandler struct {
 	proxySvc     *service.ProxyService
 	ddnsSvc      *ddns.Service
 	acmeSvc      *acme.Service
+	awareness    *awareness.Analyzer
 	startedAt    string
 	nginxPIDFile string
+
+	publicIPMu      sync.Mutex
+	publicIPv4      string
+	publicIPv6      string
+	publicIPSource  string
+	publicIPCachedAt time.Time
 }
 
-func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc *ddns.Service, acmeSvc *acme.Service, startedAt, nginxPIDFile string) *StatusHandler {
+func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc *ddns.Service, acmeSvc *acme.Service, awarenessSvc *awareness.Analyzer, startedAt, nginxPIDFile string) *StatusHandler {
 	return &StatusHandler{
 		cfg:          cfg,
 		proxySvc:     proxySvc,
 		ddnsSvc:      ddnsSvc,
 		acmeSvc:      acmeSvc,
+		awareness:    awarenessSvc,
 		startedAt:    startedAt,
 		nginxPIDFile: nginxPIDFile,
 	}
@@ -52,6 +63,8 @@ type statusResponse struct {
 	CertificateSummary string `json:"certificate_summary,omitempty"`
 	ProxyCount        int     `json:"proxy_count"`
 	NginxStatus       string  `json:"nginx_status"`
+	NginxAvailable    bool    `json:"nginx_available"`
+	NginxBin          string  `json:"nginx_bin,omitempty"`
 	RequestToday         int      `json:"request_today"`
 	RequestYesterday     int      `json:"request_yesterday"`
 	RequestTrend         *int     `json:"request_trend,omitempty"`
@@ -84,9 +97,21 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	certStatus, certDays, certCount, certSummary := summarizeCertificates(records)
 
 	accessLog := filepath.Join(h.cfg.LogsDir(), "access.log")
-	total, errors, avgMs := logstore.CountTodayAccess(accessLog)
-	yesterday, _, _ := logstore.CountAccessForDay(accessLog, time.Now().AddDate(0, 0, -1))
-	hourly, hourlyLabels := logstore.HourlyAccessCounts(accessLog)
+	total := 0
+	yesterday := 0
+	errors := 0
+	var hourly []int
+	var hourlyLabels []string
+	var trend *int
+	avgMs := 0.0
+	if h.awareness != nil {
+		total, yesterday, hourly, hourlyLabels, errors, trend = h.awareness.MetricsForStatus()
+	} else {
+		total, errors, avgMs = logstore.CountTodayAccess(accessLog)
+		yesterday, _, _ = logstore.CountAccessForDay(accessLog, time.Now().AddDate(0, 0, -1))
+		hourly, hourlyLabels = logstore.HourlyAccessCounts(accessLog)
+		trend = requestTrendPercent(total, yesterday)
+	}
 
 	started, _ := time.Parse(time.RFC3339, h.startedAt)
 	uptime := time.Since(started).Seconds()
@@ -104,9 +129,11 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 		CertificateSummary: certSummary,
 		ProxyCount:        len(rules),
 		NginxStatus:       nginxStatus,
+		NginxAvailable:    nginx.BinAvailable(h.cfg.NginxBin),
+		NginxBin:          h.cfg.NginxBin,
 		RequestToday:         total,
 		RequestYesterday:     yesterday,
-		RequestTrend:         requestTrendPercent(total, yesterday),
+		RequestTrend:         trend,
 		RequestsHourly:       hourly,
 		RequestsHourlyLabels: hourlyLabels,
 		ErrorToday:           errors,
@@ -123,13 +150,28 @@ func (h *StatusHandler) resolvePublicIPs(ctx context.Context) (ipv4, ipv6, sourc
 	if ipv4, ipv6, ok := h.ddnsSvc.LastKnownPublicIPs(ctx); ok {
 		return ipv4, ipv6, "ddns"
 	}
-	detectCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+
+	const cacheTTL = 5 * time.Minute
+	h.publicIPMu.Lock()
+	if h.publicIPSource != "" && time.Since(h.publicIPCachedAt) < cacheTTL {
+		ipv4, ipv6, source = h.publicIPv4, h.publicIPv6, h.publicIPSource
+		h.publicIPMu.Unlock()
+		return ipv4, ipv6, source
+	}
+	h.publicIPMu.Unlock()
+
+	detectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
 	ipv4, ipv6, err := publicip.Detect(detectCtx)
+	source = "detect"
 	if err != nil {
-		return "", ipv6, "none"
+		source = "none"
 	}
-	return ipv4, ipv6, "detect"
+	h.publicIPMu.Lock()
+	h.publicIPv4, h.publicIPv6, h.publicIPSource = ipv4, ipv6, source
+	h.publicIPCachedAt = time.Now()
+	h.publicIPMu.Unlock()
+	return ipv4, ipv6, source
 }
 
 func summarizeCertificates(records []certstore.Record) (status string, days int, count int, summary string) {

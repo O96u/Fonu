@@ -19,6 +19,21 @@ check_process() {
 }
 
 ensure_runtime_dirs() {
+  seed_bundled_geo() {
+    local bundle="${TRIM_APPDEST}/geo/ip2region_v4.xdb"
+    local dest="${TRIM_PKGVAR}/geo/ip2region_v4.xdb"
+    local min_bytes=1048576
+    [ -f "$bundle" ] || return 0
+    if [ -f "$dest" ]; then
+      local sz
+      sz="$(wc -c <"$dest" | tr -d ' \n')"
+      [ "${sz:-0}" -ge "$min_bytes" ] && return 0
+      rm -f "$dest"
+    fi
+    mkdir -p "${TRIM_PKGVAR}/geo"
+    install -m 644 "$bundle" "$dest"
+  }
+
   mkdir -p \
     "${TRIM_PKGVAR}" \
     "${TRIM_PKGETC}" \
@@ -31,6 +46,7 @@ ensure_runtime_dirs() {
     "${TRIM_PKGVAR}/frp" \
     "${TRIM_PKGVAR}/logs" \
     "${TRIM_PKGVAR}/certs"
+  seed_bundled_geo
   mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
   mkdir -p "${APP_ROOT}/shares/fonu/etc" "${APP_ROOT}/shares/fonu/www" "${APP_ROOT}/shares/fonu/certs" 2>/dev/null || true
 }

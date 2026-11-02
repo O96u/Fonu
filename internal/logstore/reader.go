@@ -23,6 +23,7 @@ type AccessEntry struct {
 	Upstream      string  `json:"upstream"`
 	RequestLength int64   `json:"request_length,omitempty"`
 	BytesSent     int64   `json:"bytes_sent,omitempty"`
+	UserAgent     string  `json:"user_agent,omitempty"`
 }
 
 type SystemEntry struct {
@@ -112,7 +113,28 @@ func AccessEndpointFilter(endpoints []AccessEndpoint) LineFilter {
 }
 
 func parseAccess(line string) (AccessEntry, bool) {
-	line = strings.TrimSpace(line)
+	line, ua := peelTrailingQuotedUserAgent(strings.TrimSpace(line))
+	entry, ok := parseAccessCore(line)
+	if !ok {
+		return AccessEntry{}, false
+	}
+	entry.UserAgent = ua
+	return entry, true
+}
+
+func peelTrailingQuotedUserAgent(line string) (rest, userAgent string) {
+	if line == "" || line[len(line)-1] != '"' {
+		return line, ""
+	}
+	sep := strings.LastIndex(line, ` "`)
+	if sep < 0 {
+		return line, ""
+	}
+	userAgent = line[sep+2 : len(line)-1]
+	return strings.TrimSpace(line[:sep]), userAgent
+}
+
+func parseAccessCore(line string) (AccessEntry, bool) {
 	if m := accessReWithPortAndBytes.FindStringSubmatch(line); len(m) == 12 {
 		status, _ := strconv.Atoi(m[6])
 		rt, _ := strconv.ParseFloat(m[7], 64)
@@ -265,6 +287,16 @@ func parseSystem(line string) (SystemEntry, bool) {
 
 const hourlyBucketCount = 12
 
+// HourlyBucketCount is the number of two-hour buckets used for dashboard charts (0–24h).
+func HourlyBucketCount() int {
+	return hourlyBucketCount
+}
+
+// IsDashboardAccess reports whether an access line should count toward dashboard metrics.
+func IsDashboardAccess(entry AccessEntry) bool {
+	return isDashboardAccess(entry)
+}
+
 func isDashboardAccess(entry AccessEntry) bool {
 	switch entry.Path {
 	case "/favicon.ico", "/robots.txt":
@@ -386,28 +418,6 @@ func CountAccessForDay(path string, day time.Time) (total int, errors int, avgMs
 		avgMs = sum / float64(total) * 1000
 	}
 	return total, errors, avgMs
-}
-
-func tailLines(path string, max int) ([]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-		if len(lines) > max {
-			lines = lines[1:]
-		}
-	}
-	return lines, scanner.Err()
 }
 
 func asString(v any) string {

@@ -11,7 +11,8 @@ import (
 func TestHourlyAccessCountsCalendarDay(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "access.log")
-	now := time.Now()
+	// Fix "now" at noon so morning and late-morning lines are not treated as future buckets.
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.Local)
 	todayMorning := time.Date(now.Year(), now.Month(), now.Day(), 8, 15, 0, 0, now.Location())
 	todayNoon := time.Date(now.Year(), now.Month(), now.Day(), 11, 30, 0, 0, now.Location())
 	yesterday := todayMorning.Add(-24 * time.Hour)
@@ -25,7 +26,7 @@ func TestHourlyAccessCountsCalendarDay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, labels := HourlyAccessCounts(path)
+	got, labels := hourlyAccessCountsForDay(path, now)
 	if len(got) != 12 || len(labels) != 12 {
 		t.Fatalf("expected 12 buckets, got %d counts / %d labels", len(got), len(labels))
 	}

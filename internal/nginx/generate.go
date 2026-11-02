@@ -32,7 +32,7 @@ http {
     uwsgi_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "uwsgi_temp")) + `;
     scgi_temp_path ` + absNginxPath(filepath.Join(cfg.NginxDir(), "scgi_temp")) + `;
 
-    log_format fonu_access '$time_iso8601 $host $server_port $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent';
+    log_format fonu_access '$time_iso8601 $host $server_port $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent "$http_user_agent"';
     access_log ` + absNginxPath(filepath.Join(cfg.LogsDir(), "access.log")) + ` fonu_access;
 
     sendfile on;

@@ -23,14 +23,14 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 |------|------|
 | **正式发版** | 推送 `v*` tag 后，`.fpk` 会出现在对应 GitHub Release 的 **Assets** |
 | **手动试包** | Actions → **Build FPK** → 填 `version`；可选 `nginx_version`（默认最新 1.30.x）；产物在预发布 **`fpk-v<version>`**，若已有 `v<version>` Release 会同时挂到该版本 Assets |
-| **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.2.2` |
+| **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.3.0` |
 
 产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
 
 ## 安装与访问
 
 ```bash
-appcenter-cli install-fpk fonu_1.2.2_amd64.fpk
+appcenter-cli install-fpk fonu_1.3.0_amd64.fpk
 ```
 
 | 入口 | 默认地址（安装时可改） |
@@ -69,6 +69,22 @@ Docker 把数据放在 volume 的 `/data`（飞牛上常见为 **`/vol1/@appdata
 | 数据库、证书、Nginx 配置、程序日志 | **`/var/apps/fonu/var/`**（`TRIM_PKGVAR`，不在应用文件里） |
 | 启动脚本日志 | `/var/apps/fonu/var/fonu.log` |
 | 后台「日志中心」来源 | `/var/apps/fonu/var/logs/app.log` 等 |
+| IP 归属离线库 | **`/var/apps/fonu/var/geo/ip2region_v4.xdb`**（FPK 安装包内置副本，首次启动复制；缺失时可联网下载） |
+| 反代访问日志（感知 / 拦截 / 归属） | **`/var/apps/fonu/var/logs/access.log`**（需 Nginx 反代已启用并产生访问） |
+
+## 动态感知、拦截记录与 IP 归属（v1.3.0+）
+
+管理端 **首页** 会读取 Fonu 内置 Nginx 的 `access.log`，展示今日/7 天/30 天/全部的访问与 **策略拦截** 统计、漏斗、趋势，以及 **最近 30 条** 反代访问（含 200/403 等，不按拦截类型过滤）。
+
+| 能力 | 说明 |
+|------|------|
+| **启用 UA / 完整感知** | 在 **反向代理** 中任意规则点一次 **保存**，以重生成 Nginx 配置并写入 `User-Agent` 字段；仅升级未保存过时，旧日志行可能无 UA |
+| **拦截记录** | 日志中心 → 访问类型 **拦截**，或首页 KPI/漏斗跳转；「拦截原因」为根据状态码/路径等的 **启发式文案**，不是 Nginx 规则名 |
+| **IP 归属地** | 依赖 `var/geo/ip2region_v4.xdb`（IPv4 离线库）。**FPK** 在 `target/fonu` 同级的应用目录附带 `geo/ip2region_v4.xdb`，启动时复制到 `var/geo/`；Docker/本地若无文件，会在 `{数据目录}/geo/` **自动下载**（需能访问 GitHub 或镜像） |
+| **手动放置离线库** | 将上游 `ip2region_v4.xdb` 放到 **`/var/apps/fonu/var/geo/ip2region_v4.xdb`**（体积应 ≥ 1MB），重启 Fonu |
+| **精度与缓存** | 中国多数显示到 **省 · 市 · 运营商**，一般不到区县；7d/30d/all 统计约 **45 秒** 缓存；拦截列表扫描 access.log 尾部约 **8000 行** |
+
+若首页感知为空：确认反代端口有真实访问、Nginx 进程正常，并查看 `var/logs/app.log` 是否有 `IPLOCATE` 或 Nginx 相关错误。
 
 ## 证书映射：用户操作指南（飞牛 FPK）
 

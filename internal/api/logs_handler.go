@@ -4,29 +4,90 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
+	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/config"
+	"github.com/fonu/fonu/internal/iplocate"
 	"github.com/fonu/fonu/internal/logstore"
+	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/service"
 )
 
 type LogsHandler struct {
-	cfg config.Config
+	cfg      config.Config
+	proxySvc *service.ProxyService
+	geo      *iplocate.Service
 }
 
-func NewLogsHandler(cfg config.Config) *LogsHandler {
-	return &LogsHandler{cfg: cfg}
+func NewLogsHandler(cfg config.Config, proxySvc *service.ProxyService, geo *iplocate.Service) *LogsHandler {
+	return &LogsHandler{cfg: cfg, proxySvc: proxySvc, geo: geo}
+}
+
+type accessLogRow struct {
+	logstore.AccessEntry
+	Geo string `json:"geo,omitempty"`
+}
+
+func (h *LogsHandler) enrichAccessRows(entries []logstore.AccessEntry) []accessLogRow {
+	out := make([]accessLogRow, len(entries))
+	cache := map[string]string{}
+	for i := range entries {
+		out[i].AccessEntry = entries[i]
+		if h.geo != nil {
+			out[i].Geo = h.geo.LookupCached(entries[i].ClientIP, cache)
+		}
+	}
+	return out
+}
+
+func (h *LogsHandler) enrichFilteredRows(entries []awareness.EnrichedAccessLog) {
+	if h.geo == nil {
+		return
+	}
+	cache := map[string]string{}
+	for i := range entries {
+		entries[i].Geo = h.geo.LookupCached(entries[i].ClientIP, cache)
+	}
 }
 
 func (h *LogsHandler) Access(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 100)
 	keyword := r.URL.Query().Get("keyword")
 	status := queryInt(r, "status", 0)
-	entries, err := logstore.ReadAccess(filepath.Join(h.cfg.LogsDir(), "access.log"), limit, keyword, status)
+	clientIP := strings.TrimSpace(r.URL.Query().Get("ip"))
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+
+	path := filepath.Join(h.cfg.LogsDir(), "access.log")
+	if kind != "" || clientIP != "" {
+		var bindings proxy.BindingIndex
+		if h.proxySvc != nil {
+			if rules, err := h.proxySvc.List(r.Context()); err == nil {
+				bindings = proxy.BuildBindingIndex(rules)
+			}
+		}
+		entries, err := awareness.FilterAccessLog(path, awareness.AccessLogFilter{
+			Limit:    limit,
+			Keyword:  keyword,
+			Status:   status,
+			ClientIP: clientIP,
+			Kind:     kind,
+		}, bindings)
+		if err != nil {
+			writeError(r, w, http.StatusInternalServerError, "读取访问日志失败")
+			return
+		}
+		h.enrichFilteredRows(entries)
+		writeJSON(w, http.StatusOK, entries)
+		return
+	}
+
+	entries, err := logstore.ReadAccess(path, limit, keyword, status)
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取访问日志失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, entries)
+	writeJSON(w, http.StatusOK, h.enrichAccessRows(entries))
 }
 
 func (h *LogsHandler) Error(w http.ResponseWriter, r *http.Request) {

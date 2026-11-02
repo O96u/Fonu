@@ -90,6 +90,8 @@ const (
 	KeyDNSHEDomainOrder      = "dnshe_domain_order"      // JSON: {account_id: [subdomain_id...]}
 )
 
+const DefaultTimezone = "Asia/Shanghai"
+
 var Defaults = map[string]string{
 	KeyTheme:              "system",
 	KeyTimezone:           "Asia/Shanghai",

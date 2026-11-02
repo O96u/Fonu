@@ -156,6 +156,42 @@ verify_nginx_binary() {
   echo "==> nginx ${NGINX_VERSION} ready"
 }
 
+IP2REGION_V4_URL="${IP2REGION_V4_URL:-https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb}"
+MIN_IP2REGION_BYTES=1048576
+
+bundle_ip2region() {
+  local cache="${CACHE_DIR}/ip2region_v4.xdb"
+  local dest="${STAGING}/app/geo/ip2region_v4.xdb"
+  mkdir -p "${CACHE_DIR}" "${STAGING}/app/geo"
+  if [ -f "${cache}" ]; then
+    local csz
+    csz="$(wc -c <"${cache}" | tr -d ' \n')"
+    if [ "${csz:-0}" -ge "${MIN_IP2REGION_BYTES}" ]; then
+      echo "==> Using cached ip2region v4 xdb"
+      install -m 644 "${cache}" "${dest}"
+      return 0
+    fi
+  fi
+  echo "==> Downloading ip2region v4 xdb"
+  local tmp="${CACHE_DIR}/ip2region_v4.xdb.part"
+  local url
+  for url in "${IP2REGION_V4_URL}" "https://ghfast.top/${IP2REGION_V4_URL}"; do
+    if curl -fsSL --retry 3 -o "${tmp}" "${url}"; then
+      local sz
+      sz="$(wc -c <"${tmp}" | tr -d ' \n')"
+      if [ "${sz:-0}" -ge "${MIN_IP2REGION_BYTES}" ]; then
+        mv "${tmp}" "${cache}"
+        install -m 644 "${cache}" "${dest}"
+        echo "==> ip2region v4 xdb ready (${sz} bytes)"
+        return 0
+      fi
+    fi
+    rm -f "${tmp}"
+  done
+  echo "WARNING: ip2region v4 download failed; runtime will try to download on first use" >&2
+  rmdir "${STAGING}/app/geo" 2>/dev/null || true
+}
+
 resolve_fnpack_bin() {
   if [ -n "${FNPACK_BIN:-}" ]; then
     if command -v "${FNPACK_BIN}" >/dev/null 2>&1 || [ -f "${FNPACK_BIN}" ]; then
@@ -254,6 +290,8 @@ else
   rm -rf "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}" "${FRP_TGZ}"
 fi
 
+bundle_ip2region
+
 bundle_nginx
 verify_nginx_binary
 
@@ -272,6 +310,7 @@ else
   cp "${REPO_ROOT}/deploy/nginx/mime.types" "${STAGING}/app/mime.types"
   mkdir -p "${STAGING}/app/migrations"
   cp -R "${REPO_ROOT}/migrations/." "${STAGING}/app/migrations/"
+  bundle_ip2region
 fi
 
 # Reject wrong-architecture payloads before producing an installable package.

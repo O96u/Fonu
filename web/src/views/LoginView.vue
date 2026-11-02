@@ -21,7 +21,7 @@
         <n-button type="primary" block size="large" :loading="loading" attr-type="submit">登录</n-button>
       </n-form>
 
-      <p class="auth-hint">登录后可在「设置」中修改用户名和密码。</p>
+      <p class="auth-hint">登录后可在右上角账户菜单中修改用户名和密码。</p>
     </div>
   </div>
 </template>

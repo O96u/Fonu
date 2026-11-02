@@ -1,9 +1,9 @@
 <template>
-  <VChart class="chart" :option="option" autoresize />
+  <VChart class="chart" :class="{ 'chart--compact': compact }" :option="option" autoresize />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, withDefaults } from 'vue'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
@@ -14,11 +14,15 @@ import { formatRate } from '../utils/format'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 
-const props = defineProps<{
-  labels: string[]
-  upload: number[]
-  download: number[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    labels: string[]
+    upload: number[]
+    download: number[]
+    compact?: boolean
+  }>(),
+  { compact: false },
+)
 
 const { isDark } = useTheme()
 
@@ -33,7 +37,7 @@ const option = computed(() => {
   const splitColor = isDark.value ? '#334155' : '#e5e7eb'
 
   return {
-    grid: { left: 4, right: 8, top: 8, bottom: 4, containLabel: true },
+    grid: { left: 4, right: 8, top: props.compact ? 4 : 8, bottom: props.compact ? 0 : 4, containLabel: true },
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDark.value ? '#1e293b' : '#fff',
@@ -116,5 +120,9 @@ const option = computed(() => {
 .chart {
   width: 100%;
   height: 160px;
+}
+
+.chart--compact {
+  height: 128px;
 }
 </style>

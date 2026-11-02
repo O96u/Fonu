@@ -11,7 +11,7 @@ on:
         required: true
         default: main
       version:
-        description: "Package version without v (example: 1.2.1)"
+        description: "Package version without v (example: 1.3.0)"
         required: true
       nginx_version:
         description: "Nginx source version (empty = latest 1.30.x stable)"

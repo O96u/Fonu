@@ -85,6 +85,9 @@ export function resolveAccessServiceLabel(
   entry: AccessLogEntry,
   index: Map<string, ProxyBinding>,
 ): string {
+  if (entry.service?.trim()) {
+    return entry.service.trim()
+  }
   const host = normalizeAccessHost(entry.domain)
   const port = entry.server_port ?? 0
 

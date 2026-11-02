@@ -41,12 +41,23 @@
         <LogToolbar
           v-model:keyword="accessKeyword"
           v-model:status="accessStatus"
+          v-model:kind="accessKind"
           :show-domain="true"
           :show-status="true"
+          :show-kind="true"
           :auto-refresh="autoRefresh"
           @refresh="loadAccess"
           @toggle-auto="autoRefresh = !autoRefresh"
         />
+        <p v-if="accessFilterBanner" class="tab-hint access-filter-banner">
+          {{ accessFilterBanner }}
+          <router-link v-if="accessKind || accessClientIP" :to="{ name: 'logs', query: { tab: 'access' } }" class="access-filter-clear">
+            清除筛选
+          </router-link>
+        </p>
+        <p v-if="accessKind === 'intercept' && accessFilterBanner" class="tab-hint">
+          策略拦截：403 / 429 / 401 等拒绝响应。「拦截原因」为启发式说明，并非 Nginx 规则名。
+        </p>
         <n-data-table
           v-if="filteredAccessLogs.length > 0"
           class="log-table"
@@ -54,7 +65,7 @@
           :data="pagedAccessLogs"
           :loading="loadingAccess"
           :bordered="false"
-          :scroll-x="920"
+          :scroll-x="accessTableScrollX"
           :row-class-name="accessRowClassName"
         />
         <LogPagination
@@ -64,8 +75,8 @@
         />
         <EmptyState
           v-if="!loadingAccess && accessLogs.length === 0"
-          title="暂无访问日志"
-          description="此处记录经 Nginx 反向代理的访问（非 Fonu 管理界面本身）。请通过代理域名访问后刷新。"
+          :title="accessEmptyTitle"
+          :description="accessEmptyDescription"
         />
       </n-tab-pane>
 
@@ -124,7 +135,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import {
   NButton,
   NDataTable,
@@ -194,13 +205,15 @@ const LogToolbar = defineComponent({
   props: {
     keyword: { type: String, default: '' },
     status: { type: Number as () => number | null, default: null },
+    kind: { type: String, default: '' },
     level: { type: String, default: '' },
     showDomain: Boolean,
     showStatus: Boolean,
+    showKind: Boolean,
     showLevel: Boolean,
     autoRefresh: Boolean,
   },
-  emits: ['update:keyword', 'update:status', 'update:level', 'refresh', 'toggle-auto'],
+  emits: ['update:keyword', 'update:status', 'update:kind', 'update:level', 'refresh', 'toggle-auto'],
   setup(props, { emit }) {
     return () =>
       h('div', { class: 'toolbar' }, [
@@ -217,8 +230,24 @@ const LogToolbar = defineComponent({
               placeholder: '状态码',
               clearable: true,
               style: 'width: 120px',
-              options: [200, 301, 400, 403, 404, 500].map((c) => ({ label: String(c), value: c })),
+              options: [200, 301, 400, 403, 404, 429, 500].map((c) => ({ label: String(c), value: c })),
               'onUpdate:value': (v: number | null) => emit('update:status', v),
+            })
+          : null,
+        props.showKind
+          ? h(NSelect, {
+              value: props.kind || null,
+              placeholder: '访问类型',
+              clearable: true,
+              style: 'width: 160px',
+              options: [
+                { label: '策略拦截', value: 'intercept' },
+                { label: '403 拒绝', value: '403' },
+                { label: '429 限流', value: '429' },
+                { label: '401 未授权', value: '401' },
+                { label: '疑似扫描', value: 'scan' },
+              ],
+              'onUpdate:value': (v: string | null) => emit('update:kind', v ?? ''),
             })
           : null,
         props.showLevel
@@ -247,20 +276,55 @@ const LogToolbar = defineComponent({
 
 const message = useMessage()
 const route = useRoute()
+const router = useRouter()
 const LOG_TABS = ['system', 'access', 'nginx', 'frp'] as const
 type LogTab = (typeof LOG_TABS)[number]
 
-function resolveTab(queryTab: unknown): LogTab {
-  if (queryTab === 'error' || queryTab === 'nginx') return 'nginx'
-  if (queryTab === 'stream') return 'access'
-  if (queryTab === 'frp') return 'frp'
-  if (typeof queryTab === 'string' && (LOG_TABS as readonly string[]).includes(queryTab)) {
-    return queryTab as LogTab
+function resolveTab(query: RouteLocationNormalizedLoaded['query']): LogTab {
+  const qtab = query.tab
+  if (qtab === 'error' || qtab === 'nginx') return 'nginx'
+  if (qtab === 'stream') return 'access'
+  if (qtab === 'frp') return 'frp'
+  if (typeof qtab === 'string' && (LOG_TABS as readonly string[]).includes(qtab)) {
+    return qtab as LogTab
   }
+  if (typeof query.kind === 'string' && query.kind.trim()) return 'access'
+  if (typeof query.ip === 'string' && query.ip.trim()) return 'access'
   return 'system'
 }
 
-const tab = ref(resolveTab(route.query.tab))
+function applyRouteQuery(from: RouteLocationNormalizedLoaded = route) {
+  syncingRouteQuery = true
+  accessKind.value = typeof from.query.kind === 'string' ? from.query.kind : ''
+  accessClientIP.value = typeof from.query.ip === 'string' ? from.query.ip : ''
+  if (typeof from.query.keyword === 'string') {
+    accessKeyword.value = from.query.keyword
+  }
+  tab.value = resolveTab(from.query)
+  syncingRouteQuery = false
+}
+
+const ACCESS_KIND_LABELS: Record<string, string> = {
+  intercept: '策略拦截（403 / 429 / 401）',
+  '403': 'HTTP 403',
+  '429': 'HTTP 429',
+  '401': 'HTTP 401',
+  scan: '疑似扫描',
+}
+
+const accessFilterBanner = computed(() => {
+  const parts: string[] = []
+  if (accessKind.value) {
+    parts.push(`筛选：${ACCESS_KIND_LABELS[accessKind.value] ?? accessKind.value}`)
+  }
+  if (accessClientIP.value) {
+    parts.push(`来源 IP：${accessClientIP.value}`)
+  }
+  if (parts.length === 0) return ''
+  return `${parts.join(' · ')} · 共 ${filteredAccessLogs.value.length} 条（最近日志片段内匹配）`
+})
+
+const tab = ref<LogTab>(resolveTab(route.query))
 const pageError = ref('')
 const autoRefresh = ref(false)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -278,6 +342,8 @@ const loadingSystem = ref(false)
 
 const accessKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const accessStatus = ref<number | null>(null)
+const accessKind = ref(typeof route.query.kind === 'string' ? route.query.kind : '')
+const accessClientIP = ref(typeof route.query.ip === 'string' ? route.query.ip : '')
 const errorKeyword = ref('')
 const frpKeyword = ref('')
 const systemKeyword = ref('')
@@ -288,7 +354,43 @@ const errorPage = ref(1)
 const frpPage = ref(1)
 const systemPage = ref(1)
 
+/** Avoid writing URL while applying ?kind= / ?ip= from navigation (route.query can lag one tick). */
+let syncingRouteQuery = false
+
+const usesServerAccessFilter = computed(() => Boolean(accessKind.value.trim() || accessClientIP.value.trim()))
+
+const accessEmptyTitle = computed(() => {
+  if (accessKind.value === 'intercept') return '暂无策略拦截记录'
+  if (accessClientIP.value) return '该 IP 暂无匹配访问'
+  return '暂无访问日志'
+})
+
+const accessEmptyDescription = computed(() => {
+  if (accessKind.value === 'intercept') {
+    return '近期反代访问中未出现 403/429/401。可在反代规则中启用 IP 白名单、限流或认证后再观察。'
+  }
+  if (accessClientIP.value) {
+    return `未在最近扫描的 access.log 片段中找到 ${accessClientIP.value} 的记录。`
+  }
+  return '此处记录经 Nginx 反向代理的访问（非 Fonu 管理界面本身）。请通过代理域名访问后刷新。'
+})
+
+const showAccessBlockReason = computed(
+  () =>
+    accessKind.value === 'intercept' ||
+    accessKind.value === '403' ||
+    accessKind.value === '429' ||
+    accessKind.value === '401' ||
+    accessKind.value === 'scan' ||
+    accessLogs.value.some((row) => Boolean(row.block_reason)),
+)
+
+const accessTableScrollX = computed(() => (showAccessBlockReason.value ? 1120 : 920))
+
 const filteredAccessLogs = computed(() => {
+  if (usesServerAccessFilter.value) {
+    return accessLogs.value
+  }
   return accessLogs.value.filter((log) => {
     if (accessKeyword.value) {
       const kw = accessKeyword.value.toLowerCase()
@@ -387,7 +489,8 @@ function systemRowClassName(row: SystemLogEntry) {
   return 'log-row'
 }
 
-const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
+const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
+  const cols: DataTableColumns<AccessLogEntry> = [
   { title: '时间', key: 'time', width: 168, render: (row) => logTimeCell(row.time) },
   {
     title: '服务',
@@ -418,6 +521,24 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
     width: 68,
     render: (row) => h(NTag, { size: 'small', bordered: false, type: statusTagType(row.status) }, () => String(row.status)),
   },
+  ]
+
+  if (showAccessBlockReason.value) {
+    cols.push({
+      title: '拦截原因',
+      key: 'block_reason',
+      width: 200,
+      ellipsis: { tooltip: true },
+      render: (row) =>
+        h(
+          'span',
+          { class: 'log-block-reason', title: row.block_reason || '—' },
+          row.block_reason?.trim() || '—',
+        ),
+    })
+  }
+
+  cols.push(
   {
     title: '耗时',
     key: 'response_time',
@@ -427,10 +548,20 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => [
   {
     title: '来源 IP',
     key: 'client_ip',
-    width: 140,
-    render: (row) => h('span', { class: 'mono nowrap', title: row.client_ip }, row.client_ip),
+    width: 168,
+    render: (row) => {
+      const geo = row.geo?.trim()
+      return h('div', { class: 'ip-geo-cell' }, [
+        h('span', { class: 'mono ip-geo-cell__ip', title: row.client_ip }, row.client_ip),
+        geo
+          ? h('span', { class: 'ip-geo-cell__geo', title: geo }, geo)
+          : h('span', { class: 'ip-geo-cell__geo ip-geo-cell__geo--empty' }, '—'),
+      ])
+    },
   },
-])
+  )
+  return cols
+})
 
 const errorColumns: DataTableColumns<ParsedNginxError> = [
   { title: '时间', key: 'time', width: 170, render: (row) => logTimeCell(row.time || '-') },
@@ -538,7 +669,15 @@ async function loadAccess() {
   loadingAccess.value = true
   try {
     await loadProxyRules()
-    accessLogs.value = asList(await api.getAccessLogs({ limit: 100 }))
+    accessLogs.value = asList(
+      await api.getAccessLogs({
+        limit: usesServerAccessFilter.value ? 200 : 100,
+        keyword: accessKeyword.value.trim() || undefined,
+        status: accessStatus.value || undefined,
+        kind: accessKind.value.trim() || undefined,
+        ip: accessClientIP.value.trim() || undefined,
+      }),
+    )
   } catch (error) {
     message.error(error instanceof Error ? error.message : '加载访问日志失败')
   } finally {
@@ -584,14 +723,51 @@ async function loadSystemLogs() {
 async function loadAll() {
   pageError.value = ''
   try {
-    await Promise.all([loadAccess(), loadErrorLogs(), loadSystemLogs()])
+    await Promise.all([loadErrorLogs(), loadSystemLogs()])
+    if (tab.value === 'access') await loadAccess()
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   }
 }
 
+function pushAccessQueryPatch(patch: { kind?: string; ip?: string; tab?: string }) {
+  const query: Record<string, string | undefined> = { ...route.query } as Record<string, string>
+  query.tab = patch.tab ?? 'access'
+  if (patch.kind !== undefined) {
+    if (patch.kind) query.kind = patch.kind
+    else delete query.kind
+  }
+  void router.replace({ name: 'logs', query }).catch(() => {})
+}
+
 watch([accessKeyword, accessStatus], () => {
   accessPage.value = 1
+  if (tab.value === 'access' && usesServerAccessFilter.value) void loadAccess()
+})
+
+watch(accessKind, (kind) => {
+  accessPage.value = 1
+  if (syncingRouteQuery) return
+  const inUrl = typeof route.query.kind === 'string' ? route.query.kind : ''
+  if (kind === inUrl) {
+    if (tab.value === 'access') void loadAccess()
+    return
+  }
+  pushAccessQueryPatch({ kind, tab: 'access' })
+})
+
+watch(accessClientIP, (ip) => {
+  accessPage.value = 1
+  if (syncingRouteQuery) return
+  const inUrl = typeof route.query.ip === 'string' ? route.query.ip : ''
+  if (ip === inUrl) {
+    if (tab.value === 'access') void loadAccess()
+    return
+  }
+  const query: Record<string, string | undefined> = { ...route.query, tab: 'access' } as Record<string, string>
+  if (ip) query.ip = ip
+  else delete query.ip
+  void router.replace({ name: 'logs', query }).catch(() => {})
 })
 
 watch(errorKeyword, () => {
@@ -612,29 +788,38 @@ watch(autoRefresh, (on) => {
 })
 
 watch(
-  () => route.query.keyword,
-  (keyword) => {
-    if (typeof keyword === 'string') accessKeyword.value = keyword
-  },
-)
-
-watch(
-  () => route.query.tab,
-  (queryTab) => {
-    tab.value = resolveTab(queryTab)
+  () =>
+    [
+      route.query.tab,
+      route.query.kind,
+      route.query.ip,
+      typeof route.query.keyword === 'string' ? route.query.keyword : '',
+    ] as const,
+  () => {
+    applyRouteQuery()
+    if (tab.value === 'access') void loadAccess()
   },
 )
 
 watch(tab, (name) => {
-  if (name === 'access') loadAccess()
-  else if (name === 'nginx') loadErrorLogs()
+  if (name === 'access') {
+    if (route.query.tab !== 'access') {
+      void router.replace({ query: { ...route.query, tab: 'access' } }).catch(() => {})
+    }
+    void loadAccess()
+  } else if (name === 'nginx') loadErrorLogs()
   else if (name === 'frp') loadFrpLogs()
   else if (name === 'system') loadSystemLogs()
 })
 
+onBeforeRouteUpdate((to) => {
+  applyRouteQuery(to)
+  if (tab.value === 'access') void loadAccess()
+})
+
 onMounted(() => {
-  tab.value = resolveTab(route.query.tab)
-  loadAll()
+  applyRouteQuery()
+  void loadAll()
 })
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
@@ -658,6 +843,29 @@ onUnmounted(() => {
   margin: 0 var(--fonu-space-5) var(--fonu-space-3);
   font-size: 13px;
   color: var(--fonu-text-muted);
+}
+
+.access-filter-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fonu-space-2);
+  padding: var(--fonu-space-2) var(--fonu-space-3);
+  border-radius: 8px;
+  background: var(--fonu-surface-muted, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--fonu-border);
+  color: var(--fonu-text);
+}
+
+.access-filter-clear {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--fonu-primary);
+  text-decoration: none;
+}
+
+.access-filter-clear:hover {
+  text-decoration: underline;
 }
 
 .log-pagination {
@@ -720,6 +928,64 @@ onUnmounted(() => {
 .mono {
   font-family: var(--fonu-mono);
   font-size: 12px;
+}
+
+.logs-card :deep(.ip-geo-cell) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+.logs-card :deep(.ip-geo-cell__ip) {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logs-card :deep(.ip-geo-cell__geo) {
+  display: block;
+  width: 100%;
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logs-card :deep(.ip-geo-cell__geo--empty) {
+  opacity: 0.45;
+}
+
+.ip-geo-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ip-geo-cell__ip {
+  display: block;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ip-geo-cell__geo {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fonu-text-muted);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .log-duration {

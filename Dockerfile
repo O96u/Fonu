@@ -9,7 +9,7 @@ COPY web/ ./
 ENV VITE_APP_VERSION=$VERSION
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.23-bookworm AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-builder
 ARG VERSION
 ARG TARGETARCH
 WORKDIR /src

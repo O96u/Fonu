@@ -1,7 +1,7 @@
 appname=fonu
 version=@VERSION@
 display_name=Fonu
-desc="""面向飞牛 fnOS 的轻量公网访问工具：独立 Nginx 反向代理、DDNS、HTTPS 证书与 FRP 内网穿透，不改动系统 Nginx。"""
+desc="""面向飞牛 fnOS 的轻量公网访问工具：独立 Nginx 反向代理、DDNS、HTTPS 证书与 FRP 内网穿透；首页动态感知、拦截日志与 IP 归属地，不改动系统 Nginx。"""
 platform=@PLATFORM@
 source=thirdparty
 maintainer=muxui

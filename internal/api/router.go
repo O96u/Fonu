@@ -11,12 +11,12 @@ import (
 )
 
 func NewRouter(deps Deps) http.Handler {
-	logsHandler := NewLogsHandler(deps.Config)
+	logsHandler := NewLogsHandler(deps.Config, deps.Proxy, deps.IPLocate)
 	r := &Router{
 		authHandler:     NewAuthHandler(deps.Auth, deps.Notify),
 		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
 		nginxHandler:    NewNginxHandler(deps.Proxy),
-		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.StartedAt, deps.Config.NginxPIDFile),
+		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.Awareness, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME, deps.CertExport),
 		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy, deps.Notify),
@@ -43,6 +43,10 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
 	protect("POST /api/auth/username", r.authHandler.ChangeUsername)
 	protect("GET /api/status", r.statusHandler.Get)
+	if deps.Awareness != nil {
+		awarenessHandler := NewAwarenessHandler(deps.Awareness, deps.IPLocate)
+		protect("GET /api/awareness/live", awarenessHandler.Live)
+	}
 	protect("GET /api/proxies", r.proxyHandler.List)
 	protect("GET /api/proxy-entries", r.proxyHandler.ListEntries)
 	protect("POST /api/proxy-entries", r.proxyHandler.CreateEntry)

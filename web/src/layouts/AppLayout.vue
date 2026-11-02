@@ -11,7 +11,11 @@
       @collapse="collapsed = true"
       @expand="collapsed = false"
     >
-      <router-link class="brand" :class="{ 'brand--collapsed': collapsed }" :to="{ name: 'dashboard' }">
+      <router-link
+        class="brand"
+        :class="{ 'brand--collapsed': collapsed }"
+        :to="{ name: 'dashboard' }"
+      >
         <img class="brand__logo" :src="logoImg" alt="Fonu" />
         <div v-if="!collapsed" class="brand__text">
           <div class="brand__name">Fonu</div>
@@ -32,19 +36,25 @@
         <div class="sider-footer__version-row">
           <div class="sider-footer__title">
             <span class="sider-footer__brand">Fonu</span>
-            <span class="sider-footer__version">v{{ appVersion }}</span>
+            <a
+              v-if="hasUpdate"
+              class="sider-footer__version-chip sider-footer__version-chip--update"
+              :href="latestReleaseUrl || GITHUB_REPO_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="latestVersion ? `有新版本 v${latestVersion}` : '查看发布版本'"
+            >
+              <span class="sider-footer__version">v{{ appVersion }}</span>
+              <span class="sider-footer__update-dot" aria-label="有新版本" />
+            </a>
+            <span
+              v-else
+              class="sider-footer__version-chip"
+              :title="`当前版本 v${appVersion}`"
+            >
+              <span class="sider-footer__version">v{{ appVersion }}</span>
+            </span>
           </div>
-          <a
-            v-if="hasUpdate"
-            class="sider-footer__update"
-            :href="latestReleaseUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <n-icon :component="ArrowUpOutline" />
-            有新版本
-            <n-icon :component="OpenOutline" />
-          </a>
         </div>
 
         <div class="sider-footer__status">
@@ -76,12 +86,118 @@
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
             <n-button quaternary class="user-btn">
               <n-icon :component="PersonOutline" class="user-btn__icon" />
-              <span class="user-name">管理员</span>
-              <n-icon :component="ChevronDownOutline" class="user-btn__chevron" />
+              <span class="user-name">{{ displayUsername }}</span>
+              <n-icon
+                :component="ChevronDownOutline"
+                class="user-btn__chevron"
+              />
             </n-button>
           </n-dropdown>
         </div>
       </header>
+
+      <n-modal
+        v-model:show="usernameModalOpen"
+        preset="card"
+        title="修改用户名"
+        class="user-account-modal"
+        :style="{ width: 'min(420px, calc(100vw - 32px))' }"
+        :mask-closable="!changingUsername"
+      >
+        <n-form
+          label-placement="top"
+          :show-feedback="false"
+          class="user-account-form"
+        >
+          <n-form-item label="新用户名">
+            <n-input
+              v-model:value="usernameForm.new_username"
+              autocomplete="username"
+            />
+          </n-form-item>
+          <n-form-item label="当前密码">
+            <n-input
+              v-model:value="usernameForm.password"
+              type="password"
+              show-password-on="click"
+              autocomplete="current-password"
+              placeholder="验证身份"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button
+              :disabled="changingUsername"
+              @click="usernameModalOpen = false"
+              >取消</n-button
+            >
+            <n-button
+              type="primary"
+              :loading="changingUsername"
+              :disabled="!usernameChanged"
+              @click="submitUsername"
+            >
+              保存
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
+      <n-modal
+        v-model:show="passwordModalOpen"
+        preset="card"
+        title="修改密码"
+        class="user-account-modal"
+        :style="{ width: 'min(420px, calc(100vw - 32px))' }"
+        :mask-closable="!changingPassword"
+      >
+        <n-form
+          label-placement="top"
+          :show-feedback="false"
+          class="user-account-form"
+        >
+          <n-form-item label="当前密码">
+            <n-input
+              v-model:value="passwordForm.old_password"
+              type="password"
+              show-password-on="click"
+              autocomplete="current-password"
+            />
+          </n-form-item>
+          <n-form-item label="新密码">
+            <n-input
+              v-model:value="passwordForm.new_password"
+              type="password"
+              show-password-on="click"
+              autocomplete="new-password"
+            />
+          </n-form-item>
+          <n-form-item label="确认新密码">
+            <n-input
+              v-model:value="passwordForm.confirm_password"
+              type="password"
+              show-password-on="click"
+              autocomplete="new-password"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button
+              :disabled="changingPassword"
+              @click="passwordModalOpen = false"
+              >取消</n-button
+            >
+            <n-button
+              type="primary"
+              :loading="changingPassword"
+              @click="submitPassword"
+              >保存</n-button
+            >
+          </n-space>
+        </template>
+      </n-modal>
 
       <n-layout-content class="content">
         <div class="page-shell page-body">
@@ -93,21 +209,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   NButton,
   NDropdown,
+  NForm,
+  NFormItem,
   NIcon,
+  NInput,
   NLayout,
   NLayoutContent,
   NLayoutSider,
   NMenu,
+  NModal,
+  NSpace,
   useMessage,
+  type DropdownOption,
   type MenuOption,
-} from 'naive-ui'
+} from "naive-ui";
 import {
-  ArrowUpOutline,
   ChevronDownOutline,
   CloudOutline,
   CogOutline,
@@ -118,62 +239,72 @@ import {
   LockClosedOutline,
   LogoGithub,
   MoonOutline,
-  OpenOutline,
   PersonOutline,
   SunnyOutline,
   SwapHorizontalOutline,
-} from '@vicons/ionicons5'
-import { api } from '../api/client'
-import { GITHUB_REPO, GITHUB_REPO_URL } from '../constants/app'
-import { useTheme } from '../composables/useTheme'
-import { fetchLatestRelease, isNewerVersion } from '../utils/version'
-import logoImg from '../assets/brand/logo.png'
+} from "@vicons/ionicons5";
+import { api } from "../api/client";
+import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
+import { useTheme } from "../composables/useTheme";
+import { fetchLatestRelease, isNewerVersion } from "../utils/version";
+import logoImg from "../assets/brand/logo.png";
 
-const route = useRoute()
-const router = useRouter()
-const message = useMessage()
-const { isDark, toggleTheme } = useTheme()
-const collapsed = ref(false)
-const datetime = ref('')
-const appVersion = ref(__APP_VERSION__)
-const latestVersion = ref('')
-const latestReleaseUrl = ref('')
-const hasUpdate = ref(false)
-let clockTimer: number | undefined
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
+const { isDark, toggleTheme } = useTheme();
+const collapsed = ref(false);
+const datetime = ref("");
+const appVersion = ref(__APP_VERSION__);
+const adminUsername = ref("");
+const usernameModalOpen = ref(false);
+const passwordModalOpen = ref(false);
+const changingUsername = ref(false);
+const changingPassword = ref(false);
+const usernameForm = reactive({ new_username: "", password: "" });
+const passwordForm = reactive({
+  old_password: "",
+  new_password: "",
+  confirm_password: "",
+});
+const latestVersion = ref("");
+const latestReleaseUrl = ref("");
+const hasUpdate = ref(false);
+let clockTimer: number | undefined;
 
 async function checkForUpdate() {
-  const release = await fetchLatestRelease()
+  const release = await fetchLatestRelease();
   if (!release) {
-    return
+    return;
   }
 
-  latestVersion.value = release.version
-  latestReleaseUrl.value = release.url
-  hasUpdate.value = isNewerVersion(release.version, appVersion.value)
+  latestVersion.value = release.version;
+  latestReleaseUrl.value = release.url;
+  hasUpdate.value = isNewerVersion(release.version, appVersion.value);
 }
 
 async function loadVersion() {
   try {
-    const { version } = await api.getVersion()
+    const { version } = await api.getVersion();
     if (version) {
-      appVersion.value = version
+      appVersion.value = version;
     }
   } catch {
     // keep build-time fallback
   }
 
-  await checkForUpdate()
+  await checkForUpdate();
 }
 
 const menuDefs = [
-  { label: '仪表盘', key: 'dashboard', icon: GridOutline },
-  { label: 'DDNS', key: 'ddns', icon: CloudOutline },
-  { label: '证书管理', key: 'certificates', icon: LockClosedOutline },
-  { label: '反向代理', key: 'proxies', icon: SwapHorizontalOutline },
-  { label: '内网穿透', key: 'frp', icon: GitNetworkOutline },
-  { label: '日志中心', key: 'logs', icon: DocumentTextOutline },
-  { label: '系统设置', key: 'settings', icon: CogOutline },
-]
+  { label: "仪表盘", key: "dashboard", icon: GridOutline },
+  { label: "DDNS", key: "ddns", icon: CloudOutline },
+  { label: "证书管理", key: "certificates", icon: LockClosedOutline },
+  { label: "反向代理", key: "proxies", icon: SwapHorizontalOutline },
+  { label: "内网穿透", key: "frp", icon: GitNetworkOutline },
+  { label: "日志中心", key: "logs", icon: DocumentTextOutline },
+  { label: "系统设置", key: "settings", icon: CogOutline },
+];
 
 const menuOptions = computed<MenuOption[]>(() =>
   menuDefs.map((item) => ({
@@ -181,48 +312,150 @@ const menuOptions = computed<MenuOption[]>(() =>
     key: item.key,
     icon: () => h(NIcon, null, { default: () => h(item.icon) }),
   })),
-)
+);
 
 const activeKey = computed(() => {
-  const name = route.name
-  return typeof name === 'string' ? name : 'dashboard'
-})
+  const name = route.name;
+  return typeof name === "string" ? name : "dashboard";
+});
 
-const userMenuOptions = [{ label: '退出登录', key: 'logout' }]
+const displayUsername = computed(() => adminUsername.value.trim() || "管理员");
+
+const usernameChanged = computed(
+  () =>
+    usernameForm.new_username.trim() !== "" &&
+    usernameForm.new_username.trim() !== adminUsername.value,
+);
+
+const userMenuOptions: DropdownOption[] = [
+  { label: "修改用户名", key: "username" },
+  { label: "修改密码", key: "password" },
+  { type: "divider", key: "account-divider" },
+  { label: "退出登录", key: "logout" },
+];
 
 function updateClock() {
-  const now = new Date()
-  const date = now.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
-  datetime.value = `${date} ${time} · ${weekday}`
+  const now = new Date();
+  const date = now.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const time = now.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const weekday = now.toLocaleDateString("zh-CN", { weekday: "long" });
+  datetime.value = `${date} ${time} · ${weekday}`;
 }
 
 function handleMenu(key: string) {
-  router.push({ name: key })
+  router.push({ name: key });
+}
+
+async function loadAuthProfile() {
+  try {
+    const status = await api.authStatus();
+    if (status.username) {
+      adminUsername.value = status.username;
+      usernameForm.new_username = status.username;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function openUsernameModal() {
+  usernameForm.new_username = adminUsername.value;
+  usernameForm.password = "";
+  usernameModalOpen.value = true;
+}
+
+function openPasswordModal() {
+  passwordForm.old_password = "";
+  passwordForm.new_password = "";
+  passwordForm.confirm_password = "";
+  passwordModalOpen.value = true;
+}
+
+async function submitUsername() {
+  const newUsername = usernameForm.new_username.trim();
+  if (!newUsername) {
+    message.warning("请填写登录用户名");
+    return;
+  }
+  if (!usernameForm.password) {
+    message.warning("修改用户名需填写当前密码");
+    return;
+  }
+  changingUsername.value = true;
+  try {
+    await api.changeUsername(usernameForm.password, newUsername);
+    adminUsername.value = newUsername;
+    usernameForm.new_username = newUsername;
+    usernameForm.password = "";
+    usernameModalOpen.value = false;
+    message.success("用户名已更新");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "更新用户名失败");
+  } finally {
+    changingUsername.value = false;
+  }
+}
+
+async function submitPassword() {
+  if (!passwordForm.old_password || !passwordForm.new_password) {
+    message.warning("请填写当前密码和新密码");
+    return;
+  }
+  if (passwordForm.new_password !== passwordForm.confirm_password) {
+    message.warning("两次输入的新密码不一致");
+    return;
+  }
+  changingPassword.value = true;
+  try {
+    await api.changePassword(
+      passwordForm.old_password,
+      passwordForm.new_password,
+    );
+    passwordForm.old_password = "";
+    passwordForm.new_password = "";
+    passwordForm.confirm_password = "";
+    passwordModalOpen.value = false;
+    message.success("密码已更新");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "更新密码失败");
+  } finally {
+    changingPassword.value = false;
+  }
 }
 
 async function handleUserMenu(key: string) {
-  if (key === 'logout') {
-    await api.logout()
-    message.success('已退出登录')
-    router.push({ name: 'login' })
+  if (key === "username") {
+    openUsernameModal();
+    return;
+  }
+  if (key === "password") {
+    openPasswordModal();
+    return;
+  }
+  if (key === "logout") {
+    await api.logout();
+    message.success("已退出登录");
+    router.push({ name: "login" });
   }
 }
 
 onMounted(() => {
-  loadVersion()
-  updateClock()
-  clockTimer = window.setInterval(updateClock, 30_000)
-})
+  loadVersion();
+  loadAuthProfile();
+  updateClock();
+  clockTimer = window.setInterval(updateClock, 30_000);
+});
 
 onUnmounted(() => {
-  if (clockTimer) clearInterval(clockTimer)
-})
+  if (clockTimer) clearInterval(clockTimer);
+});
 </script>
 
 <style scoped>
@@ -330,49 +563,69 @@ onUnmounted(() => {
 }
 
 .sider-footer__version-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   margin-bottom: var(--fonu-space-4);
 }
 
 .sider-footer__title {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .sider-footer__brand {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
   color: var(--fonu-text);
 }
 
-.sider-footer__version {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.sider-footer__update {
+.sider-footer__version-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fonu-text-muted) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fonu-border) 80%, transparent);
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.sider-footer__version-chip--update {
+  cursor: pointer;
+  border-color: color-mix(in srgb, #ef4444 35%, var(--fonu-border));
+  background: color-mix(in srgb, #ef4444 8%, transparent);
+}
+
+.sider-footer__version-chip--update:hover {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border-color: color-mix(in srgb, #ef4444 45%, var(--fonu-border));
+}
+
+.sider-footer__version {
   font-size: 11px;
   font-weight: 500;
-  color: var(--fonu-brand);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: opacity 0.15s;
+  font-variant-numeric: tabular-nums;
+  color: var(--fonu-text-secondary);
+  line-height: 1;
 }
 
-.sider-footer__update:hover {
-  opacity: 0.8;
+.sider-footer__version-chip--update .sider-footer__version {
+  color: var(--fonu-text);
 }
 
-.sider-footer__update :deep(.n-icon) {
-  font-size: 12px;
+.sider-footer__update-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 28%, transparent);
+  flex-shrink: 0;
 }
 
 .sider-footer__status {
@@ -454,6 +707,18 @@ onUnmounted(() => {
 .user-name {
   font-size: 14px;
   color: var(--fonu-text);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-account-form :deep(.n-form-item) {
+  margin-bottom: var(--fonu-space-4);
+}
+
+.user-account-form :deep(.n-form-item:last-child) {
+  margin-bottom: 0;
 }
 
 .content {

@@ -3,6 +3,8 @@ import type {
   ApiError,
   AppVersion,
   AuthStatus,
+  AwarenessLiveSnapshot,
+  AwarenessRange,
   CertificateCAOption,
   CertExportPathHints,
   CertExportSettings,
@@ -119,6 +121,10 @@ export const api = {
     }),
 
   getStatus: () => request<DashboardStatus>('/api/status'),
+  getAwarenessLive: (range: AwarenessRange = 'today') => {
+    const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
+    return request<AwarenessLiveSnapshot>(`/api/awareness/live${q}`)
+  },
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
   listProxyEntries: () => request<ProxyEntry[]>('/api/proxy-entries'),
   createProxyEntry: (payload: ProxyEntrySavePayload) =>
@@ -375,11 +381,19 @@ export const api = {
     }),
   getFRPLogs: (limit = 200) => request<string[]>(`/api/frp/logs?limit=${limit}`),
 
-  getAccessLogs: (params?: { limit?: number; keyword?: string; status?: number }) => {
+  getAccessLogs: (params?: {
+    limit?: number
+    keyword?: string
+    status?: number
+    kind?: string
+    ip?: string
+  }) => {
     const q = new URLSearchParams()
     if (params?.limit) q.set('limit', String(params.limit))
     if (params?.keyword) q.set('keyword', params.keyword)
     if (params?.status) q.set('status', String(params.status))
+    if (params?.kind) q.set('kind', params.kind)
+    if (params?.ip) q.set('ip', params.ip)
     return request<AccessLogEntry[]>(`/api/logs/access?${q}`)
   },
   getErrorLogs: (params?: { limit?: number; keyword?: string }) => {

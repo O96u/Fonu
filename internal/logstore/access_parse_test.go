@@ -2,6 +2,20 @@ package logstore
 
 import "testing"
 
+func TestParseAccessWithUserAgent(t *testing.T) {
+	line := `2026-09-12T19:55:18+08:00 speedtest.example.com 6893 GET /api 200 0.010 1.2.3.4 192.168.1.1:8080 512 4096 "Mozilla/5.0 (ScannerBot)"`
+	entry, ok := parseAccess(line)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if entry.UserAgent != "Mozilla/5.0 (ScannerBot)" {
+		t.Fatalf("ua=%q", entry.UserAgent)
+	}
+	if entry.ServerPort != 6893 {
+		t.Fatalf("server_port=%d", entry.ServerPort)
+	}
+}
+
 func TestParseRealNginxAccessLine(t *testing.T) {
 	line := "2026-09-12T19:55:18+08:00 127.0.0.1 GET / 200 0.000 127.0.0.1 [::1]:5173"
 	entry, ok := parseAccess(line)

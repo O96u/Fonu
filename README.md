@@ -16,7 +16,7 @@
   <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?sort=semver&style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/目标平台-飞牛_fnOS-22c55e?style=flat-square" alt="飞牛 fnOS" />
   <img src="https://img.shields.io/badge/其他环境-未测试-94a3b8?style=flat-square" alt="其他环境未测试" />
-  <img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />
+  <img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />
   <img src="https://img.shields.io/badge/Vue-3-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3" />
   <img src="https://img.shields.io/badge/Nginx-内置-009639?style=flat-square&logo=nginx&logoColor=white" alt="Nginx" />
   <a href="https://www.gnu.org/licenses/gpl-3.0.html"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="GPL-3.0" /></a>
@@ -37,8 +37,8 @@
 | **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP                    |
 | **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎 DNS；单任务多根域名，自动同步公网 IP         |
 | **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；按证书配置本机目录映射或 SSH（SFTP）上传与重载命令；申请进度实时日志 |
-| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；请求趋势与运行健康度                                        |
-| **日志中心**   | 系统日志、Nginx 访问日志、Nginx 错误日志；分页筛选与自动刷新                                   |
+| **仪表盘**     | 公网 IP、域名、证书、服务状态一览；**动态感知**（访问/拦截漏斗、趋势、最近 30 条访问）；请求趋势与运行健康度 |
+| **日志中心**   | 系统日志、Nginx 访问日志（含 **拦截筛选**、来源 IP **归属地**）、Nginx 错误日志；分页筛选与自动刷新 |
 | **内网穿透**   | FRP 客户端：Nginx Web 网关穿透 + TCP/UDP 端口隧道；连接设置与隧道可分开保存后启动 |
 | **系统设置**   | 常规 / 通知 / 安全 / 高级分栏；邮件/Webhook/Telegram 告警、备份与恢复                          |
 | **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                                               |
@@ -122,7 +122,7 @@
 
 | 层级         | 技术                                                                   |
 | ------------ | ---------------------------------------------------------------------- |
-| **后端**     | Go 1.23、标准库 HTTP、SQLite（modernc.org/sqlite）                     |
+| **后端**     | Go 1.27、标准库 HTTP、SQLite（modernc.org/sqlite）                     |
 | **反向代理** | 内置 Nginx（动态生成配置、热重载）                                     |
 | **证书**     | go-acme/lego（Let's Encrypt）                                          |
 | **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 DNS API               |
@@ -132,13 +132,13 @@
 
 ## 部署
 
-当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.2.2** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.0** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
 ### 飞牛 fnOS 原生 FPK（推荐）
 
-从 Release **Assets** 下载 `fonu_1.2.2_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
+从 Release **Assets** 下载 `fonu_1.3.0_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
@@ -287,7 +287,7 @@ go test ./...
 cd web && npm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.2.2**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.0**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/auth"
 	"github.com/fonu/fonu/internal/certexport"
 	"github.com/fonu/fonu/internal/backup"
@@ -14,6 +15,7 @@ import (
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/dnsherenew"
 	"github.com/fonu/fonu/internal/frp"
+	"github.com/fonu/fonu/internal/iplocate"
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
@@ -35,6 +37,8 @@ type Deps struct {
 	DNSHERenew *dnsherenew.Service
 	FRP        *frp.Manager
 	Traffic    *traffic.Collector
+	Awareness  *awareness.Analyzer
+	IPLocate   *iplocate.Service
 	Notify     *notify.Service
 	StaticFS   fs.FS
 	StartedAt  string

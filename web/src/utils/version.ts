@@ -26,10 +26,15 @@ export function compareVersions(a: string, b: string): number {
 }
 
 export function isNewerVersion(latest: string, current: string): boolean {
-  if (!latest || !current || current === 'dev') {
+  if (!latest) {
     return false
   }
-  return compareVersions(latest, current) > 0
+  const cur = current.replace(/^v/i, '').trim()
+  if (!cur || cur === 'dev') {
+    // 本地 dev 构建：与 GitHub 最新正式版对比，便于侧栏更新提示联调
+    return compareVersions(latest, '0.0.0') > 0
+  }
+  return compareVersions(latest, cur) > 0
 }
 
 export async function fetchLatestRelease(): Promise<LatestRelease | null> {

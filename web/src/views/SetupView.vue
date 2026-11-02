@@ -24,7 +24,7 @@
         <n-button type="primary" block size="large" :loading="loading" attr-type="submit">创建并登录</n-button>
       </n-form>
 
-      <p class="auth-hint">首次使用请自定义管理员用户名和密码。创建后可在「设置」中修改。</p>
+      <p class="auth-hint">首次使用请自定义管理员用户名和密码。创建后可在右上角账户菜单中修改。</p>
     </div>
   </div>
 </template>

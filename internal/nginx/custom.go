@@ -239,7 +239,7 @@ http {
     default_type  application/octet-stream;
 
     # 访问日志格式与路径
-    log_format fonu_access '$time_iso8601 $host $server_port $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent';
+    log_format fonu_access '$time_iso8601 $host $server_port $request_method $request_uri $status $request_time $remote_addr $upstream_addr $request_length $bytes_sent "$http_user_agent"';
     access_log %s fonu_access;
 
     # 传输优化

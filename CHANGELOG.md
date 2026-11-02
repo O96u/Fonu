@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.0] - 2026-11-02
+
+### 新增
+
+- 首页 **动态感知**：基于反代 `access.log` 实时展示独立 IP、访问量、策略拦截、漏斗与趋势；最近 30 条事件与按服务汇总（今日为 15 分钟滑动窗口 + 2 小时趋势；**最近 7 天 / 30 天 / 全部** 为日志全量扫描并按日聚合，结果缓存约 45 秒）
+- **拦截记录**：`GET /api/logs/access?kind=intercept`（及 `403`/`429`/`401`/`scan`、`ip=`）返回带来源 IP、反代服务名与启发式 **拦截原因**；日志中心访问类型筛选；首页拦截 KPI / 漏斗 /「拦截记录」跳转
+- **IP 归属地**：离线 ip2region IPv4 库（`{数据目录}/geo/ip2region_v4.xdb`）；首页访问记录与日志中心来源 IP 展示国家/地区（中国一般为省 · 市 · 运营商，精度取决于离线库，多数不到区县级）
+
+### 变更
+
+- 构建工具链升级至 **Go 1.27.3**；同步升级 `golang.org/x/crypto`、`golang.org/x/net`、`github.com/go-acme/lego/v4` 等依赖以覆盖近期安全修复
+- Go 1.27 对 `fmt.Errorf` 非常量格式串更严格：`internal/ddns` 相应调整
+- Nginx `fonu_access` 日志增加 `User-Agent` 字段（**保存反代配置后生效**）；`/api/status` 请求统计改读感知引擎快照，修复首页「今日请求」不刷新与时区不一致问题
+- `GET /api/awareness/live?range=today|7d|30d|all` 支持多时间范围统计
+- 首页与感知引擎启动优化：访问日志 **从文件尾部读取**（今日 bootstrap / 最近 N 条）；感知 bootstrap **异步**不阻塞进程启动；`/api/status` 公网 IP 探测 **缓存 5 分钟**；仪表盘 **先加载 status** 再异步拉取日志与证书列表
+- 首页 **访问记录 · 最近 30 条** 固定为 access.log **尾部最新 30 条**反代访问（200/403 等全部状态，不按时间范围或拦截类型过滤；仍排除 favicon 等噪声路径）
+- 侧栏 **版本号** 胶囊样式；检测到 GitHub Release 新版本时显示 **更新红点**
+- 飞牛 FPK 构建时 **预打包** `ip2region_v4.xdb`；首次启动从应用目录复制到 `var/geo/`（缺失时仍可联网下载）
+
 ## [v1.2.2] - 2026-10-29
 
 ### 变更
