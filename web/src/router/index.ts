@@ -3,13 +3,6 @@ import { api } from '../api/client'
 import AppLayout from '../layouts/AppLayout.vue'
 import LoginView from '../views/LoginView.vue'
 import SetupView from '../views/SetupView.vue'
-import ProxyView from '../views/ProxyView.vue'
-import DashboardView from '../views/DashboardView.vue'
-import DdnsView from '../views/DdnsView.vue'
-import CertificatesView from '../views/CertificatesView.vue'
-import LogsView from '../views/LogsView.vue'
-import SettingsView from '../views/SettingsView.vue'
-import FrpView from '../views/FrpView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,44 +18,44 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'dashboard',
-          component: DashboardView,
+          component: () => import('../views/DashboardView.vue'),
           meta: { title: '仪表盘', description: '查看 Fonu 运行状态与关键指标' },
         },
         {
           path: 'ddns',
           name: 'ddns',
-          component: DdnsView,
+          component: () => import('../views/DdnsView.vue'),
           meta: { title: 'DDNS', description: '自动同步公网 IP 到 DNS 解析' },
         },
         { path: 'dnshe-domains', redirect: { name: 'ddns' } },
         {
           path: 'certificates',
           name: 'certificates',
-          component: CertificatesView,
+          component: () => import('../views/CertificatesView.vue'),
           meta: { title: '证书管理', description: '通过 ACME 自动申请和续签证书' },
         },
         {
           path: 'proxies',
           name: 'proxies',
-          component: ProxyView,
+          component: () => import('../views/ProxyView.vue'),
           meta: { title: '反向代理', description: '管理通过域名访问的 NAS 服务' },
         },
         {
           path: 'frp',
           name: 'frp',
-          component: FrpView,
+          component: () => import('../views/FrpView.vue'),
           meta: { title: '内网穿透', description: '通过 FRP 将公网流量转发到 Fonu Nginx' },
         },
         {
           path: 'logs',
           name: 'logs',
-          component: LogsView,
+          component: () => import('../views/LogsView.vue'),
           meta: { title: '日志中心', description: '查看系统、访问与 Nginx 错误日志' },
         },
         {
           path: 'settings',
           name: 'settings',
-          component: SettingsView,
+          component: () => import('../views/SettingsView.vue'),
           meta: { title: '系统设置', description: '配置系统参数与运行策略' },
         },
       ],
@@ -71,6 +64,9 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (to.name === 'dashboard') {
+    void import('../components/AnalyticsAccessMap.vue')
+  }
   const status = await api.authStatus()
   if (!status.initialized && to.name !== 'setup') {
     return { name: 'setup' }

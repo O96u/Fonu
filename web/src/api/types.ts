@@ -200,6 +200,88 @@ export interface AwarenessTodayStats {
 
 export type AwarenessRange = 'today' | '7d' | '30d' | 'all'
 
+export interface AnomalyMetric {
+  current: number
+  previous: number
+  delta: number
+  change_rate?: number | null
+  share?: number | null
+}
+
+export interface AnalyticsAnomaly {
+  slow_threshold_ms: number
+  total_requests: number
+  status_5xx: AnomalyMetric
+  status_4xx: AnomalyMetric
+  avg_request_ms: AnomalyMetric
+  slow_rate: AnomalyMetric
+  trend: { label: string; status_4xx: number; status_5xx: number; avg_request_ms: number }[]
+  top_urls: {
+    path: string
+    requests: number
+    errors_5xx: number
+    errors_5xx_delta: number
+    slow: number
+    avg_request_ms: number
+    avg_request_delta_ms: number
+  }[]
+}
+
+export interface AnalyticsRealtime {
+  qps: number
+  traffic_kbps: number
+  avg_upstream_ms: number
+  window_sec: number
+}
+
+export interface AnalyticsKPI {
+  total_requests: number
+  unique_ips: number
+  risk_requests: number
+  yesterday_total: number
+  request_trend?: number | null
+  bytes_total: number
+}
+
+export interface AnalyticsOverview {
+  updated_at: string
+  timezone: string
+  range: AwarenessRange
+  backfill_active: boolean
+  realtime: AnalyticsRealtime
+  kpi: AnalyticsKPI
+  series: {
+    labels: string[]
+    requests: number[]
+    unique_ips: number[]
+    bytes: number[]
+    granularity: string
+    current_bucket: number
+  }
+  by_province: { province: string; requests: number; intercept: number }[]
+  by_country: { country: string; requests: number; intercept: number }[]
+  region_visitors: { region: string; visitors: number }[]
+  top_ips: { ip: string; requests: number; bytes: number; geo: string }[]
+  clients: { name: string; requests: number }[]
+  status_codes: { status: number; count: number }[]
+  funnel: {
+    safe: number
+    blocked_total: number
+    blocked_403: number
+    rate_limited_429: number
+    auth_failed_401: number
+    scan_suspected: number
+  }
+  anomaly?: AnalyticsAnomaly
+  /** 本机公网 IP 的归属地，飞线终点按这个落点，不写死城市。 */
+  server?: {
+    country?: string
+    province?: string
+    city?: string
+    label?: string
+  }
+}
+
 export interface AwarenessLiveSnapshot {
   updated_at: string
   timezone: string

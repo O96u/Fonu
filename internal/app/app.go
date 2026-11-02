@@ -12,23 +12,24 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/analytics"
 	"github.com/fonu/fonu/internal/api"
 	"github.com/fonu/fonu/internal/auth"
-	"github.com/fonu/fonu/internal/awareness"
+	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/certexport"
+	"github.com/fonu/fonu/internal/certificate"
+	"github.com/fonu/fonu/internal/chinacidr"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/ddns"
-	"github.com/fonu/fonu/internal/backup"
-	"github.com/fonu/fonu/internal/chinacidr"
-	"github.com/fonu/fonu/internal/certificate"
-	"github.com/fonu/fonu/internal/certexport"
 	"github.com/fonu/fonu/internal/discovery"
 	"github.com/fonu/fonu/internal/dnsherenew"
 	"github.com/fonu/fonu/internal/frp"
+	"github.com/fonu/fonu/internal/ingest"
 	"github.com/fonu/fonu/internal/iplocate"
 	"github.com/fonu/fonu/internal/logstore"
-	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/nginx"
+	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/scheduler"
 	"github.com/fonu/fonu/internal/secret"
@@ -107,9 +108,15 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)
 	accessLogPath := filepath.Join(cfg.LogsDir(), "access.log")
-	trafficCollector := traffic.NewCollector(conn, accessLogPath, notifySvc)
-	awarenessAnalyzer := awareness.NewAnalyzer(accessLogPath, settingsStore, proxySvc.List)
 	ipLocateSvc := iplocate.New(cfg)
+	ingestStore := ingest.NewStore(conn)
+	ingestSvc := ingest.NewService(ingestStore, accessLogPath, settingsStore, ipLocateSvc, notifySvc, proxySvc.List, logger)
+	trafficCollector := traffic.NewCollector(conn, accessLogPath, notifySvc)
+	trafficCollector.AttachIngest(ingestSvc)
+	analyticsSvc := analytics.New(conn, settingsStore, ingestSvc)
+	serverGeo := analytics.NewServerGeo(ddnsSvc, ipLocateSvc)
+	serverGeo.Warm()
+	analyticsSvc.SetServerGeo(serverGeo.Resolve)
 
 	handler := api.NewRouter(api.Deps{
 		Config:     cfg,
@@ -127,7 +134,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		DNSHERenew: dnsheRenewSvc,
 		FRP:        frpMgr,
 		Traffic:    trafficCollector,
-		Awareness:  awarenessAnalyzer,
+		Analytics:  analyticsSvc,
+		Ingest:     ingestSvc,
 		IPLocate:   ipLocateSvc,
 		StaticFS:   staticFS,
 		StartedAt:  startedAt,
@@ -184,8 +192,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		},
 	)
 	sched.Start(ctx)
+	ingestSvc.Start(ctx)
 	trafficCollector.Start(ctx)
-	awarenessAnalyzer.Start(ctx)
 	go func() {
 		if err := ipLocateSvc.Ensure(ctx); err != nil {
 			logger.Warn("ip2region init failed; geo labels disabled until database is available", "module", "IPLOCATE", "error", err.Error())

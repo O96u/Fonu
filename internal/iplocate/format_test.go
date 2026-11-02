@@ -27,14 +27,13 @@ func TestFormatRegionForeign(t *testing.T) {
 
 func TestFormatRegionUnitedStatesAmazon(t *testing.T) {
 	got := FormatRegion("United States|0|California|San Jose|Amazon")
-	want := "美国 · 加利福尼亚 · 圣何塞 · 亚马逊"
+	want := "美国"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 	got = FormatRegion("United States|0|0|San Jose|Amazon")
-	want = "美国 · 圣何塞 · 亚马逊"
-	if got != want {
-		t.Fatalf("short got %q want %q", got, want)
+	if got != "美国" {
+		t.Fatalf("short got %q want 美国", got)
 	}
 }
 

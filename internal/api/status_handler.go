@@ -6,17 +6,15 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fonu/fonu/internal/acme"
+	"github.com/fonu/fonu/internal/analytics"
 	certstore "github.com/fonu/fonu/internal/certificate"
-	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/ddns"
-	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/nginx"
 	"github.com/fonu/fonu/internal/publicip"
 	"github.com/fonu/fonu/internal/service"
@@ -27,53 +25,53 @@ type StatusHandler struct {
 	proxySvc     *service.ProxyService
 	ddnsSvc      *ddns.Service
 	acmeSvc      *acme.Service
-	awareness    *awareness.Analyzer
+	analytics    *analytics.Service
 	startedAt    string
 	nginxPIDFile string
 
-	publicIPMu      sync.Mutex
-	publicIPv4      string
-	publicIPv6      string
-	publicIPSource  string
+	publicIPMu       sync.Mutex
+	publicIPv4       string
+	publicIPv6       string
+	publicIPSource   string
 	publicIPCachedAt time.Time
 }
 
-func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc *ddns.Service, acmeSvc *acme.Service, awarenessSvc *awareness.Analyzer, startedAt, nginxPIDFile string) *StatusHandler {
+func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc *ddns.Service, acmeSvc *acme.Service, analyticsSvc *analytics.Service, startedAt, nginxPIDFile string) *StatusHandler {
 	return &StatusHandler{
 		cfg:          cfg,
 		proxySvc:     proxySvc,
 		ddnsSvc:      ddnsSvc,
 		acmeSvc:      acmeSvc,
-		awareness:    awarenessSvc,
+		analytics:    analyticsSvc,
 		startedAt:    startedAt,
 		nginxPIDFile: nginxPIDFile,
 	}
 }
 
 type statusResponse struct {
-	PublicIPv4        string  `json:"public_ipv4"`
-	PublicIPv6        string  `json:"public_ipv6"`
-	PublicIPSource    string  `json:"public_ip_source"`
-	DDNSStatus        string  `json:"ddns_status"`
-	DDNSCount         int     `json:"ddns_count"`
-	DDNSLastUpdated   string  `json:"ddns_last_updated,omitempty"`
-	CertificateStatus  string `json:"certificate_status"`
-	CertificateDays    int    `json:"certificate_days"`
-	CertificateCount   int    `json:"certificate_count"`
-	CertificateSummary string `json:"certificate_summary,omitempty"`
-	ProxyCount        int     `json:"proxy_count"`
-	NginxStatus       string  `json:"nginx_status"`
-	NginxAvailable    bool    `json:"nginx_available"`
-	NginxBin          string  `json:"nginx_bin,omitempty"`
+	PublicIPv4           string   `json:"public_ipv4"`
+	PublicIPv6           string   `json:"public_ipv6"`
+	PublicIPSource       string   `json:"public_ip_source"`
+	DDNSStatus           string   `json:"ddns_status"`
+	DDNSCount            int      `json:"ddns_count"`
+	DDNSLastUpdated      string   `json:"ddns_last_updated,omitempty"`
+	CertificateStatus    string   `json:"certificate_status"`
+	CertificateDays      int      `json:"certificate_days"`
+	CertificateCount     int      `json:"certificate_count"`
+	CertificateSummary   string   `json:"certificate_summary,omitempty"`
+	ProxyCount           int      `json:"proxy_count"`
+	NginxStatus          string   `json:"nginx_status"`
+	NginxAvailable       bool     `json:"nginx_available"`
+	NginxBin             string   `json:"nginx_bin,omitempty"`
 	RequestToday         int      `json:"request_today"`
 	RequestYesterday     int      `json:"request_yesterday"`
 	RequestTrend         *int     `json:"request_trend,omitempty"`
 	RequestsHourly       []int    `json:"requests_hourly"`
 	RequestsHourlyLabels []string `json:"requests_hourly_labels"`
 	ErrorToday           int      `json:"error_today"`
-	AvgResponseMs     float64 `json:"avg_response_ms"`
-	StartedAt         string  `json:"started_at"`
-	UptimeSeconds     int64   `json:"uptime_seconds"`
+	AvgResponseMs        float64  `json:"avg_response_ms"`
+	StartedAt            string   `json:"started_at"`
+	UptimeSeconds        int64    `json:"uptime_seconds"`
 }
 
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -96,50 +94,32 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	records, _ := h.acmeSvc.List(r.Context())
 	certStatus, certDays, certCount, certSummary := summarizeCertificates(records)
 
-	accessLog := filepath.Join(h.cfg.LogsDir(), "access.log")
-	total := 0
-	yesterday := 0
-	errors := 0
-	var hourly []int
-	var hourlyLabels []string
-	var trend *int
-	avgMs := 0.0
-	if h.awareness != nil {
-		total, yesterday, hourly, hourlyLabels, errors, trend = h.awareness.MetricsForStatus()
-	} else {
-		total, errors, avgMs = logstore.CountTodayAccess(accessLog)
-		yesterday, _, _ = logstore.CountAccessForDay(accessLog, time.Now().AddDate(0, 0, -1))
-		hourly, hourlyLabels = logstore.HourlyAccessCounts(accessLog)
-		trend = requestTrendPercent(total, yesterday)
-	}
+	// 访问量由 /api/analytics/overview 提供。这里再扫一遍会让首页每次进入多等一轮聚合。
+	hourly := []int{}
+	hourlyLabels := []string{}
 
 	started, _ := time.Parse(time.RFC3339, h.startedAt)
 	uptime := time.Since(started).Seconds()
 
 	writeJSON(w, http.StatusOK, statusResponse{
-		PublicIPv4:        ipv4,
-		PublicIPv6:        ipv6,
-		PublicIPSource:    ipSource,
-		DDNSStatus:        ddnsStatus,
-		DDNSCount:         ddnsCount,
-		DDNSLastUpdated:   ddnsLastUpdated,
-		CertificateStatus:  certStatus,
-		CertificateDays:    certDays,
-		CertificateCount:   certCount,
-		CertificateSummary: certSummary,
-		ProxyCount:        len(rules),
-		NginxStatus:       nginxStatus,
-		NginxAvailable:    nginx.BinAvailable(h.cfg.NginxBin),
-		NginxBin:          h.cfg.NginxBin,
-		RequestToday:         total,
-		RequestYesterday:     yesterday,
-		RequestTrend:         trend,
+		PublicIPv4:           ipv4,
+		PublicIPv6:           ipv6,
+		PublicIPSource:       ipSource,
+		DDNSStatus:           ddnsStatus,
+		DDNSCount:            ddnsCount,
+		DDNSLastUpdated:      ddnsLastUpdated,
+		CertificateStatus:    certStatus,
+		CertificateDays:      certDays,
+		CertificateCount:     certCount,
+		CertificateSummary:   certSummary,
+		ProxyCount:           len(rules),
+		NginxStatus:          nginxStatus,
+		NginxAvailable:       nginx.BinAvailable(h.cfg.NginxBin),
+		NginxBin:             h.cfg.NginxBin,
 		RequestsHourly:       hourly,
 		RequestsHourlyLabels: hourlyLabels,
-		ErrorToday:           errors,
-		AvgResponseMs:     avgMs,
-		StartedAt:         h.startedAt,
-		UptimeSeconds: int64(uptime),
+		StartedAt:            h.startedAt,
+		UptimeSeconds:        int64(uptime),
 	})
 }
 

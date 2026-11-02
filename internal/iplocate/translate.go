@@ -7,38 +7,10 @@ import (
 
 func formatForeignLabel(country, province, city, isp string) string {
 	c := translateCountry(country)
-	segments := []string{c}
-
-	if province != "" && !equalFold(province, country) {
-		if p := localizeLabel(province, regionNames); p != "" && !equalFold(p, c) {
-			segments = append(segments, p)
-		} else if containsHan(province) {
-			segments = append(segments, province)
-		} else if !equalFold(province, c) {
-			segments = append(segments, province)
-		}
+	if c == "" {
+		return localizeISP(isp)
 	}
-	if city != "" && !isCountryCode(city) && !equalFold(city, province) && !equalFold(city, country) {
-		if ct := localizeLabel(city, cityNames); ct != "" {
-			if len(segments) == 0 || !equalFold(segments[len(segments)-1], ct) {
-				segments = append(segments, ct)
-			}
-		} else if containsHan(city) {
-			segments = append(segments, city)
-		} else if len(segments) > 0 {
-			segments = append(segments, city)
-		}
-	}
-
-	label := strings.Join(segments, " · ")
-	ispLabel := localizeISP(isp)
-	if ispLabel == "" {
-		return label
-	}
-	if label == "" {
-		return ispLabel
-	}
-	return label + " · " + ispLabel
+	return c
 }
 
 func localizeISP(raw string) string {

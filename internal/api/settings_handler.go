@@ -93,6 +93,11 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		settings.KeyChinaCIDRUpdateHours:  true,
 		settings.KeyChinaCIDRSourceV4:     true,
 		settings.KeyChinaCIDRSourceV6:     true,
+		settings.KeyAnalyticsRetentionDays:       true,
+		settings.KeyAnalyticsExcludePrivateIPs:   true,
+		settings.KeyAnalyticsGeoRemoteEnabled:    true,
+		settings.KeyAnalyticsGeoRemoteURL:        true,
+		settings.KeyAnalyticsSkipHistoryBackfill: true,
 	}
 	filtered := map[string]string{}
 	for key, value := range req {
@@ -200,6 +205,13 @@ func (h *SettingsHandler) validateSetting(key, value string) error {
 			n, err := strconv.Atoi(value)
 			if err != nil || n < 3 || n > 100 {
 				return fmt.Errorf("登录失败阈值需在 3–100 之间")
+			}
+		}
+	case settings.KeyLogRetentionDays, settings.KeyAnalyticsRetentionDays:
+		if value != "" {
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 1 || n > 365 {
+				return fmt.Errorf("保留天数需在 1–365 之间")
 			}
 		}
 	case settings.KeyGlobalIPBlacklist, settings.KeyGlobalIPWhitelist:

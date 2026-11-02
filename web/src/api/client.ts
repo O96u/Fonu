@@ -4,6 +4,7 @@ import type {
   AppVersion,
   AuthStatus,
   AwarenessLiveSnapshot,
+  AnalyticsOverview,
   AwarenessRange,
   CertificateCAOption,
   CertExportPathHints,
@@ -124,6 +125,10 @@ export const api = {
   getAwarenessLive: (range: AwarenessRange = 'today') => {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
     return request<AwarenessLiveSnapshot>(`/api/awareness/live${q}`)
+  },
+  getAnalyticsOverview: (range: AwarenessRange = 'today') => {
+    const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
+    return request<AnalyticsOverview>(`/api/analytics/overview${q}`)
   },
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
   listProxyEntries: () => request<ProxyEntry[]>('/api/proxy-entries'),

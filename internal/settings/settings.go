@@ -88,6 +88,11 @@ const (
 	KeyDNSHEDomainAutoRenew  = "dnshe_domain_auto_renew" // JSON: {full_domain: bool}，缺省为开启
 	KeyDNSHEAccounts         = "dnshe_accounts"          // JSON: 多账户（凭据加密内嵌）
 	KeyDNSHEDomainOrder      = "dnshe_domain_order"      // JSON: {account_id: [subdomain_id...]}
+	KeyAnalyticsRetentionDays       = "analytics_retention_days"
+	KeyAnalyticsExcludePrivateIPs   = "analytics_exclude_private_ips"
+	KeyAnalyticsGeoRemoteEnabled    = "analytics_geo_remote_enabled"
+	KeyAnalyticsGeoRemoteURL        = "analytics_geo_remote_url"
+	KeyAnalyticsSkipHistoryBackfill = "analytics_skip_history_backfill"
 )
 
 const DefaultTimezone = "Asia/Shanghai"
@@ -101,6 +106,11 @@ var Defaults = map[string]string{
 	KeyACMECA:                    "letsencrypt",
 	KeyChinaCIDRUpdateHours:      "24",
 	KeyNginxGlobalMode:           "auto",
+	KeyAnalyticsRetentionDays:    "30",
+	KeyAnalyticsExcludePrivateIPs:  "true",
+	KeyAnalyticsGeoRemoteEnabled:   "false",
+	KeyAnalyticsGeoRemoteURL:       "http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN",
+	KeyAnalyticsSkipHistoryBackfill: "false",
 }
 
 type Store struct {

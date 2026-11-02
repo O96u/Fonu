@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fonu/fonu/internal/ingest"
 	"github.com/fonu/fonu/internal/logstore"
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/proxy"
@@ -68,6 +69,15 @@ func NewCollector(db *sql.DB, accessLogPath string, notifySvc *notify.Service) *
 	}
 }
 
+func (c *Collector) AttachIngest(ingestSvc interface{ OnLine(h ingest.LineHandler) }) {
+	if ingestSvc == nil {
+		return
+	}
+	ingestSvc.OnLine(func(p ingest.ParsedLine) {
+		c.ingestEntry(p.Entry, true)
+	})
+}
+
 func (c *Collector) Start(ctx context.Context) {
 	if totals, err := c.store.LoadTotals(ctx); err == nil {
 		c.mu.Lock()
@@ -79,7 +89,6 @@ func (c *Collector) Start(ctx context.Context) {
 		c.mu.Unlock()
 	}
 
-	go c.tailLoop(ctx)
 	go c.persistLoop(ctx)
 }
 
@@ -168,6 +177,10 @@ func (c *Collector) ingestLine(line string, trackLive bool) {
 	if !ok || entry.Domain == "" {
 		return
 	}
+	c.ingestEntry(entry, trackLive)
+}
+
+func (c *Collector) ingestEntry(entry logstore.AccessEntry, trackLive bool) {
 	host := EndpointKey(entry.Domain, entry.ServerPort)
 	up := entry.RequestLength
 	down := entry.BytesSent

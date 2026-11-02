@@ -86,7 +86,8 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: uniqueIPs,
-        lineStyle: { width: 2, color: '#94a3b8' },
+        color: '#10b981',
+        lineStyle: { width: 2, color: '#10b981' },
       },
     ],
   }

@@ -364,6 +364,11 @@ func calendarHourlyLabels() []string {
 	return labels
 }
 
+// ParseAccessTime parses fonu_access time field.
+func ParseAccessTime(raw string) (time.Time, bool) {
+	return parseAccessTime(raw)
+}
+
 func parseAccessTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	for _, layout := range []string{

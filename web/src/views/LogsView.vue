@@ -162,6 +162,7 @@ import {
 } from '../utils/accessService'
 import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatLogTime, formatMs } from '../utils/format'
+import { displayGeoLabel } from '../utils/geoDisplay'
 import {
   frpLevelTagType,
   latencyClass,
@@ -550,11 +551,12 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     key: 'client_ip',
     width: 168,
     render: (row) => {
-      const geo = row.geo?.trim()
+      const geoRaw = row.geo?.trim()
+      const geo = geoRaw ? displayGeoLabel(geoRaw) : ''
       return h('div', { class: 'ip-geo-cell' }, [
         h('span', { class: 'mono ip-geo-cell__ip', title: row.client_ip }, row.client_ip),
         geo
-          ? h('span', { class: 'ip-geo-cell__geo', title: geo }, geo)
+          ? h('span', { class: 'ip-geo-cell__geo', title: geoRaw }, geo)
           : h('span', { class: 'ip-geo-cell__geo ip-geo-cell__geo--empty' }, '—'),
       ])
     },

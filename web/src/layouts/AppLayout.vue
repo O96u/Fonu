@@ -36,24 +36,15 @@
         <div class="sider-footer__version-row">
           <div class="sider-footer__title">
             <span class="sider-footer__brand">Fonu</span>
-            <a
-              v-if="hasUpdate"
-              class="sider-footer__version-chip sider-footer__version-chip--update"
-              :href="latestReleaseUrl || GITHUB_REPO_URL"
-              target="_blank"
-              rel="noopener noreferrer"
-              :title="latestVersion ? `有新版本 v${latestVersion}` : '查看发布版本'"
-            >
-              <span class="sider-footer__version">v{{ appVersion }}</span>
-              <span class="sider-footer__update-dot" aria-label="有新版本" />
-            </a>
-            <span
-              v-else
+            <router-link
               class="sider-footer__version-chip"
-              :title="`当前版本 v${appVersion}`"
+              :class="{ 'sider-footer__version-chip--update': hasUpdate }"
+              :to="{ name: 'settings', query: { tab: 'version' } }"
+              :title="hasUpdate && latestVersion ? `有新版本 v${latestVersion}，打开版本页` : `当前版本 v${appVersion}`"
             >
               <span class="sider-footer__version">v{{ appVersion }}</span>
-            </span>
+              <span v-if="hasUpdate" class="sider-footer__update-dot" aria-label="有新版本" />
+            </router-link>
           </div>
         </div>
 
@@ -268,7 +259,6 @@ const passwordForm = reactive({
   confirm_password: "",
 });
 const latestVersion = ref("");
-const latestReleaseUrl = ref("");
 const hasUpdate = ref(false);
 let clockTimer: number | undefined;
 
@@ -279,14 +269,13 @@ async function checkForUpdate() {
   }
 
   latestVersion.value = release.version;
-  latestReleaseUrl.value = release.url;
   hasUpdate.value = isNewerVersion(release.version, appVersion.value);
 }
 
 async function loadVersion() {
   try {
     const { version } = await api.getVersion();
-    if (version) {
+    if (version && /^\d+\.\d+/.test(version.replace(/^v/i, "").trim())) {
       appVersion.value = version;
     }
   } catch {
@@ -585,6 +574,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
   padding: 3px 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--fonu-text-muted) 10%, transparent);

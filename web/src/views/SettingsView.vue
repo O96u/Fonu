@@ -57,6 +57,43 @@
         </div>
       </FonuCard>
 
+      <FonuCard title="访问统计" subtitle="SQLite 入库与仪表盘口径">
+        <div class="settings-fields">
+          <div class="settings-field">
+            <div class="settings-field__row">
+              <span class="settings-field__label">统计保留天数</span>
+              <n-input-number v-model:value="analyticsRetention" :min="1" :max="365" class="settings-field__input" />
+            </div>
+            <p class="field-hint">超过保留天数的 access_facts 记录将被自动清理（默认 30 天）</p>
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">UV 排除内网 IP</div>
+              <div class="form-switch-row__hint">独立 IP 统计不包含内网/本机地址</div>
+            </div>
+            <n-switch v-model:value="analyticsExcludePrivate" />
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">跳过历史 access.log 导入</div>
+              <div class="form-switch-row__hint">开启后仅从升级后新产生的访问开始统计</div>
+            </div>
+            <n-switch v-model:value="analyticsSkipBackfill" />
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">远程 IP 归属地补齐</div>
+              <div class="form-switch-row__hint">需出站访问外网 API，默认关闭；离线 ip2region 优先</div>
+            </div>
+            <n-switch v-model:value="analyticsGeoRemote" />
+          </div>
+          <div v-if="analyticsGeoRemote" class="settings-field">
+            <div class="settings-field__label">远程批量查询 URL</div>
+            <n-input v-model:value="analyticsGeoRemoteURL" placeholder="http://ip-api.com/batch?..." />
+          </div>
+        </div>
+      </FonuCard>
+
       <FonuCard title="数据" subtitle="备份与恢复">
         <div class="data-actions">
           <button type="button" class="data-action-card" :disabled="exporting" @click="exportBackup">
@@ -668,16 +705,22 @@
       </FonuCard>
         </div>
       </n-tab-pane>
+
+      <n-tab-pane name="version" tab="版本">
+        <div class="settings-grid settings-grid--single">
+          <SettingsVersionCard />
+        </div>
+      </n-tab-pane>
     </n-tabs>
 
-    <div class="save-bar">
+    <div v-if="settingsTab !== 'version'" class="save-bar">
       <n-button type="primary" size="large" :loading="saving" @click="save">保存设置</n-button>
     </div>
   </n-spin>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NButton,
@@ -718,6 +761,7 @@ import AcmeApplyLink from '../components/AcmeApplyLink.vue'
 import ConfiguredSecretField from '../components/ConfiguredSecretField.vue'
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import FonuCard from '../components/FonuCard.vue'
+import SettingsVersionCard from '../components/SettingsVersionCard.vue'
 import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -744,7 +788,7 @@ import type { StatusKind } from '../utils/status'
 const message = useMessage()
 const route = useRoute()
 
-const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced'])
+const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced', 'version'])
 const { setThemeMode } = useTheme()
 const saving = ref(false)
 const loading = ref(false)
@@ -809,6 +853,11 @@ const notifyTelegram = reactive({
 const ddnsInterval = ref(5)
 const certThreshold = ref(30)
 const logRetention = ref(30)
+const analyticsRetention = ref(30)
+const analyticsExcludePrivate = ref(true)
+const analyticsSkipBackfill = ref(false)
+const analyticsGeoRemote = ref(false)
+const analyticsGeoRemoteURL = ref('')
 const acmeEmail = ref('')
 const acmeEmailInputStatus = computed(() => {
   const email = acmeEmail.value.trim()
@@ -926,6 +975,13 @@ function applySettingsToForm(settings: Record<string, string>) {
   ddnsInterval.value = Number(settings.ddns_check_interval_minutes ?? 5)
   certThreshold.value = Number(settings.cert_renew_threshold_days ?? 30)
   logRetention.value = Number(settings.log_retention_days ?? 30)
+  analyticsRetention.value = Number(settings.analytics_retention_days ?? 30)
+  analyticsExcludePrivate.value = settings.analytics_exclude_private_ips !== 'false'
+  analyticsSkipBackfill.value = settings.analytics_skip_history_backfill === 'true'
+  analyticsGeoRemote.value = settings.analytics_geo_remote_enabled === 'true'
+  analyticsGeoRemoteURL.value =
+    settings.analytics_geo_remote_url ??
+    'http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN'
   acmeEmail.value = settings.acme_email ?? ''
   zerosslHasKey.value = Boolean(settings.zerossl_api_key?.trim())
   zerosslApiKey.value = ''
@@ -1345,6 +1401,11 @@ function buildSavePayload() {
     ddns_check_interval_minutes: String(ddnsInterval.value),
     cert_renew_threshold_days: String(certThreshold.value),
     log_retention_days: String(logRetention.value),
+    analytics_retention_days: String(analyticsRetention.value),
+    analytics_exclude_private_ips: analyticsExcludePrivate.value ? 'true' : 'false',
+    analytics_skip_history_backfill: analyticsSkipBackfill.value ? 'true' : 'false',
+    analytics_geo_remote_enabled: analyticsGeoRemote.value ? 'true' : 'false',
+    analytics_geo_remote_url: analyticsGeoRemoteURL.value.trim(),
     acme_email: acmeEmail.value.trim(),
     trusted_proxy_json: buildTrustedProxyJSON(),
     global_ip_blacklist: buildGlobalIPListJSON(globalIPBlacklistText.value),
@@ -1532,11 +1593,16 @@ async function onRestoreFile({ file }: { file: UploadFileInfo }) {
   }
 }
 
-onMounted(() => {
-  const tab = route.query.tab
+function applySettingsTab(tab: unknown) {
   if (typeof tab === 'string' && SETTINGS_TAB_NAMES.has(tab)) {
     settingsTab.value = tab
   }
+}
+
+watch(() => route.query.tab, applySettingsTab)
+
+onMounted(() => {
+  applySettingsTab(route.query.tab)
   void load()
 })
 </script>

@@ -16,7 +16,7 @@ func NewRouter(deps Deps) http.Handler {
 		authHandler:     NewAuthHandler(deps.Auth, deps.Notify),
 		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
 		nginxHandler:    NewNginxHandler(deps.Proxy),
-		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.Awareness, deps.StartedAt, deps.Config.NginxPIDFile),
+		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.Analytics, deps.StartedAt, deps.Config.NginxPIDFile),
 		ddnsHandler:     NewDDNSHandler(deps.DDNS),
 		certHandler:     NewCertHandler(deps.ACME, deps.CertExport),
 		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy, deps.Notify),
@@ -43,9 +43,11 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
 	protect("POST /api/auth/username", r.authHandler.ChangeUsername)
 	protect("GET /api/status", r.statusHandler.Get)
-	if deps.Awareness != nil {
-		awarenessHandler := NewAwarenessHandler(deps.Awareness, deps.IPLocate)
+	if deps.Analytics != nil {
+		awarenessHandler := NewAwarenessHandler(deps.Analytics, deps.IPLocate)
 		protect("GET /api/awareness/live", awarenessHandler.Live)
+		analyticsHandler := NewAnalyticsHandler(deps.Analytics)
+		protect("GET /api/analytics/overview", analyticsHandler.Overview)
 	}
 	protect("GET /api/proxies", r.proxyHandler.List)
 	protect("GET /api/proxy-entries", r.proxyHandler.ListEntries)

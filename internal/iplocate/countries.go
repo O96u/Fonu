@@ -190,3 +190,8 @@ func translateCountry(name string) string {
 	}
 	return name
 }
+
+// NormalizeCountry returns a 中文 country name when possible (analytics / UI).
+func NormalizeCountry(name string) string {
+	return translateCountry(name)
+}

@@ -5,7 +5,8 @@ import (
 	"log/slog"
 
 	"github.com/fonu/fonu/internal/acme"
-	"github.com/fonu/fonu/internal/awareness"
+	"github.com/fonu/fonu/internal/analytics"
+	"github.com/fonu/fonu/internal/ingest"
 	"github.com/fonu/fonu/internal/auth"
 	"github.com/fonu/fonu/internal/certexport"
 	"github.com/fonu/fonu/internal/backup"
@@ -37,7 +38,8 @@ type Deps struct {
 	DNSHERenew *dnsherenew.Service
 	FRP        *frp.Manager
 	Traffic    *traffic.Collector
-	Awareness  *awareness.Analyzer
+	Analytics  *analytics.Service
+	Ingest     *ingest.Service
 	IPLocate   *iplocate.Service
 	Notify     *notify.Service
 	StaticFS   fs.FS

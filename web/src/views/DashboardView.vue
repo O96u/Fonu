@@ -2,89 +2,54 @@
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
   <template v-else>
-    <section class="hero-banner">
-      <div class="hero-content">
-        <h1 class="hero-banner__title">{{ greetingText }}</h1>
-        <p class="hero-banner__desc">Fonu 正在为你的 NAS 提供稳定、安全的访问服务。</p>
-        <div class="hero-banner__badges">
-          <span class="hero-banner__badge"><n-icon :component="CheckmarkCircleOutline" /> 简单易用</span>
-          <span class="hero-banner__badge"><n-icon :component="FlashOutline" /> 安全稳定</span>
-          <span class="hero-banner__badge"><n-icon :component="GlobeOutline" /> 随时随地访问</span>
-        </div>
-      </div>
-      <img class="hero-art" :src="bannerImg" alt="" aria-hidden="true" />
-    </section>
-
     <n-spin :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
-          <template #extra><StatusBadge v-if="publicIPv4Label !== '-'" value="ok" text="正常" /></template>
+          <template #extra><StatusBadge v-if="publicIPv4Label !== '-'" value="ok" text="已获取" /></template>
           <template #value>
             <span class="stat-primary mono">{{ publicIPv4Label }}</span>
           </template>
-          <p class="stat-desc mono">{{ publicIPv6Label }}</p>
-          <div class="stat-foot">
-            <div class="stat-foot__line">{{ publicIPSourceLabel }}</div>
-            <div class="stat-foot__muted">上次更新 {{ formatRelativeTime(status?.ddns_last_updated) || '刚刚' }}</div>
-          </div>
+          <p class="stat-desc">{{ publicIPv6Label }} · {{ publicIPSourceLabel }}</p>
         </StatCard>
 
         <StatCard label="域名" tone="green">
           <template #icon><n-icon :component="WifiOutline" /></template>
-          <template #extra><StatusBadge :value="status?.ddns_status" text="正常" /></template>
+          <template #extra><StatusBadge :value="status?.ddns_status" /></template>
           <template #value>{{ domainCountLabel }}</template>
-          <p class="stat-desc">{{ domainSubLabel }}</p>
-          <div class="stat-foot">
-            <div class="stat-foot__line">{{ domainExamplesLabel }}</div>
-            <div class="stat-foot__muted">上次检查 {{ formatRelativeTime(status?.ddns_last_updated) || '刚刚' }}</div>
-          </div>
+          <p class="stat-desc">{{ domainExamplesLabel }}</p>
         </StatCard>
 
-        <StatCard label="HTTPS 证书" tone="blue">
+        <StatCard label="证书" tone="blue">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>
-          <template #extra><StatusBadge :value="status?.certificate_status" text="正常" /></template>
+          <template #extra><StatusBadge :value="status?.certificate_status" /></template>
           <template #value>{{ certCountLabel }}</template>
-          <p class="stat-desc">{{ certSubLabel }}</p>
-          <div v-if="primaryCert" class="stat-foot">
-            <div class="stat-foot__line mono">{{ certDisplayName }}</div>
-            <div class="stat-foot__muted">
-              到期 {{ formatDate(primaryCert.expires_at) }} · 剩余 {{ primaryCert.days_left }} 天
-            </div>
-          </div>
+          <p v-if="primaryCert" class="stat-desc">
+            {{ certDisplayName }} · 剩余 {{ primaryCert.days_left }} 天
+          </p>
+          <p v-else class="stat-desc">还没有 HTTPS 证书</p>
         </StatCard>
 
-        <StatCard label="服务" tone="teal">
+        <StatCard label="Nginx" tone="teal">
           <template #icon><n-icon :component="GitNetworkOutline" /></template>
-          <template #extra><StatusBadge value="ok" text="正常" /></template>
-          <template #value>{{ coreServiceCountLabel }}</template>
-          <p class="stat-desc">核心服务运行正常</p>
-          <div class="stat-foot">
-            <div class="stat-foot__line">Fonu / Nginx / DDNS / 证书</div>
-            <div class="stat-foot__muted">上次检查 {{ formatRelativeTime(status?.started_at) || '刚刚' }}</div>
-          </div>
+          <template #extra><StatusBadge :value="status?.nginx_status" /></template>
+          <template #value>{{ nginxRunningLabel }}</template>
+          <p class="stat-desc">反代进程</p>
         </StatCard>
       </div>
+    </n-spin>
+
+    <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" />
+
+    <AnalyticsAnomalySection :data="analyticsOverview" />
 
       <section class="awareness-section">
         <div class="awareness-header">
           <div>
-            <h2 class="awareness-title">动态感知</h2>
-            <p class="awareness-subtitle">基于反代访问日志，实时识别 IP、服务访问与策略拦截（启发式分析，非专业 WAF）</p>
+            <h2 class="awareness-title">趋势与记录</h2>
+            <p class="awareness-subtitle">曲线跟着上面的时间范围。右侧是最近 5 分钟的上下行。</p>
           </div>
-          <div class="awareness-range" role="tablist" aria-label="时间范围">
-            <button
-              v-for="opt in awarenessRangeOptions"
-              :key="opt.key"
-              type="button"
-              class="awareness-range__btn"
-              :class="{ 'awareness-range__btn--active': awarenessRange === opt.key }"
-              :aria-selected="awarenessRange === opt.key"
-              @click="setAwarenessRange(opt.key)"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
+          <span v-if="awareness" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
         </div>
         <n-alert v-if="awarenessNginxWarning" type="warning" :bordered="false" class="awareness-alert">
           <div class="awareness-alert__content">
@@ -94,59 +59,6 @@
             </router-link>
           </div>
         </n-alert>
-        <n-alert v-else type="success" :bordered="false" class="awareness-alert">
-          数据更新至 {{ awarenessUpdatedLabel }} · 仅统计 Fonu 反代流量
-        </n-alert>
-
-        <div class="awareness-kpi-row">
-          <div class="awareness-kpi">
-            <span class="awareness-kpi__label">独立 IP</span>
-            <span class="awareness-kpi__value">{{ (awareness?.today.unique_ips ?? 0).toLocaleString() }}</span>
-          </div>
-          <div class="awareness-kpi">
-            <span class="awareness-kpi__label">{{ awarenessVisitLabel }}</span>
-            <span class="awareness-kpi__value">{{ (awareness?.today.total_requests ?? 0).toLocaleString() }}</span>
-          </div>
-          <div class="awareness-kpi awareness-kpi--danger">
-            <span class="awareness-kpi__label">拦截次数</span>
-            <router-link
-              :to="{ name: 'logs', query: { tab: 'access', kind: 'intercept' } }"
-              class="awareness-kpi__value awareness-kpi__link"
-            >
-              {{ (awareness?.today.blocked_total ?? 0).toLocaleString() }}
-            </router-link>
-            <span v-if="awareness" class="awareness-kpi__hint">
-              403 {{ awareness.today.blocked_403 }} · 429 {{ awareness.today.rate_limited_429 }} · 401 {{ awareness.today.auth_failed_401 }}
-            </span>
-          </div>
-        </div>
-
-        <div class="awareness-funnel">
-          <div class="awareness-funnel__step">
-            <span class="awareness-funnel__label">外部总访问</span>
-            <span class="awareness-funnel__value">{{ (awareness?.today.total_requests ?? 0).toLocaleString() }} 次</span>
-          </div>
-          <div class="awareness-funnel__arrow" aria-hidden="true">→</div>
-          <div class="awareness-funnel__split">
-            <div class="awareness-funnel__box awareness-funnel__box--safe">
-              <span class="awareness-funnel__box-label">安全访问</span>
-              <span class="awareness-funnel__box-value">{{ (awareness?.today.safe ?? 0).toLocaleString() }}</span>
-            </div>
-            <div class="awareness-funnel__box awareness-funnel__box--block">
-              <span class="awareness-funnel__box-label">策略拦截</span>
-              <router-link
-                :to="{ name: 'logs', query: { tab: 'access', kind: 'intercept' } }"
-                class="awareness-funnel__box-value awareness-funnel__link"
-              >
-                {{ (awareness?.today.blocked_total ?? 0).toLocaleString() }}
-              </router-link>
-            </div>
-            <div class="awareness-funnel__box awareness-funnel__box--warn">
-              <span class="awareness-funnel__box-label">疑似扫描/异常</span>
-              <span class="awareness-funnel__box-value">{{ awarenessScanTotal }}</span>
-            </div>
-          </div>
-        </div>
 
         <FonuCard class="panel awareness-charts-panel">
           <div class="awareness-charts-panel__block">
@@ -165,7 +77,7 @@
                 :uniqueIPs="awareness.hourly_unique_ips"
                 :current-bucket="awareness.current_hour_bucket"
               />
-              <EmptyState v-else title="加载中" description="正在连接感知引擎…" />
+              <EmptyState v-else title="正在读取" description="访问趋势马上出来。" />
             </div>
           </div>
           <div class="awareness-charts-panel__divider" aria-hidden="true" />
@@ -257,15 +169,13 @@
           </FonuCard>
         </div>
       </section>
-    </n-spin>
   </template>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
-  CheckmarkCircleOutline,
   ChevronForwardOutline,
   EyeOutline,
   FlashOutline,
@@ -276,9 +186,9 @@ import {
   WifiOutline,
 } from '@vicons/ionicons5'
 import { RouterLink } from 'vue-router'
-import bannerImg from '../assets/brand/banner.png'
 import { api, asList } from '../api/client'
 import type {
+  AnalyticsOverview,
   AwarenessEvent,
   AwarenessEventKind,
   AwarenessLiveSnapshot,
@@ -290,6 +200,8 @@ import type {
   ProxyTraffic,
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
+import AnalyticsInsightSection from '../components/AnalyticsInsightSection.vue'
+import AnalyticsAnomalySection from '../components/AnalyticsAnomalySection.vue'
 import AwarenessTrendChart from '../components/AwarenessTrendChart.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
@@ -297,21 +209,16 @@ import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import StatCard from '../components/StatCard.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAppTimezone } from '../composables/useAppTimezone'
-import { formatDate, formatLogTime, formatRate, formatRelativeTime } from '../utils/format'
+import { formatLogTime, formatRate, formatRelativeTime } from '../utils/format'
+import { displayGeoLabel } from '../utils/geoDisplay'
 import { httpStatusKind } from '../utils/status'
 
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
 const awareness = ref<AwarenessLiveSnapshot | null>(null)
+const analyticsOverview = ref<AnalyticsOverview | null>(null)
 const awarenessRange = ref<AwarenessRange>('today')
-
-const awarenessRangeOptions: { key: AwarenessRange; label: string }[] = [
-  { key: 'today', label: '今天' },
-  { key: '7d', label: '最近 7 天' },
-  { key: '30d', label: '最近 30 天' },
-  { key: 'all', label: '全部' },
-]
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
 const loading = ref(false)
@@ -324,14 +231,6 @@ let trafficTimer: ReturnType<typeof setInterval> | null = null
 let awarenessTimer: ReturnType<typeof setInterval> | null = null
 const AWARENESS_POLL_MS = 5000
 const awarenessTableScrollHeight = 360
-
-function timeGreeting(hour: number): string {
-  if (hour >= 5 && hour < 12) return '上午好'
-  if (hour >= 12 && hour < 18) return '下午好'
-  return '晚上好'
-}
-
-const greetingText = computed(() => `${timeGreeting(new Date().getHours())}，管理员`)
 
 const primaryCert = computed(() => {
   if (certificates.value.length === 0) return null
@@ -351,13 +250,22 @@ const publicIPv6Label = computed(() => {
 const publicIPSourceLabel = computed(() => {
   switch (status.value?.public_ip_source) {
     case 'ddns':
-      return status.value?.public_ipv4 || status.value?.public_ipv6
-        ? '来源：DDNS 已同步记录'
-        : '来源：DDNS 已配置，等待同步'
+      return status.value?.public_ipv4 || status.value?.public_ipv6 ? 'DDNS' : 'DDNS 等待同步'
     case 'detect':
-      return '来源：出口 IP 探测（未配置 DDNS）'
+      return '出口探测'
     default:
-      return '来源：暂无'
+      return '暂无来源'
+  }
+})
+
+const nginxRunningLabel = computed(() => {
+  switch (status.value?.nginx_status) {
+    case 'running':
+      return '运行中'
+    case 'stopped':
+      return '已停止'
+    default:
+      return '—'
   }
 })
 
@@ -365,12 +273,6 @@ const domainCountLabel = computed(() => {
   const count = status.value?.ddns_count ?? ddnsConfigs.value.length
   if (count === 0) return '未配置'
   return `${count} 个`
-})
-
-const domainSubLabel = computed(() => {
-  const count = status.value?.ddns_count ?? ddnsConfigs.value.length
-  if (count === 0) return '尚未配置域名解析'
-  return '已配置并正常解析的域名'
 })
 
 const domainExamplesLabel = computed(() => {
@@ -385,7 +287,7 @@ const domainExamplesLabel = computed(() => {
       else examples.push(`${name}.${root}`)
     }
   }
-  return examples.length > 0 ? examples.join(', ') : '暂无域名记录'
+  return examples.length > 0 ? examples.join(', ') : '还没有域名'
 })
 
 const certCountLabel = computed(() => {
@@ -393,14 +295,6 @@ const certCountLabel = computed(() => {
   if (count === 0) return '未申请'
   return `${count} 个`
 })
-
-const certSubLabel = computed(() => {
-  if (!primaryCert.value) return '尚未申请 HTTPS 证书'
-  if (status.value?.certificate_status === 'ok') return '证书有效，自动续期中'
-  return '证书需要关注'
-})
-
-const coreServiceCountLabel = computed(() => '4 个')
 
 const trafficTotals = computed(() => {
   let uploadRate = 0
@@ -452,12 +346,6 @@ const awarenessNginxWarning = computed((): string | null => {
   return 'Nginx 尚未运行。请在「反向代理」保存规则以启动进程，再通过反代端口（默认 18080 / 9443）产生访问后，动态感知才会有数据。'
 })
 
-const awarenessScanTotal = computed(() => {
-  const t = awareness.value?.today
-  if (!t) return '0'
-  return (t.scan_suspected + t.abnormal_burst).toLocaleString()
-})
-
 const awarenessPeriodLabel = computed(() => {
   switch (awarenessRange.value) {
     case '7d':
@@ -469,11 +357,6 @@ const awarenessPeriodLabel = computed(() => {
     default:
       return '当日'
   }
-})
-
-const awarenessVisitLabel = computed(() => {
-  if (awarenessRange.value === 'today') return '当日访问'
-  return `${awarenessPeriodLabel.value}访问`
 })
 
 const awarenessTrendTitle = computed(() => {
@@ -489,11 +372,9 @@ const awarenessTrendTag = computed(() => {
 
 const awarenessRecentScopeLabel = '全部访问'
 
-function setAwarenessRange(r: AwarenessRange) {
-  if (awarenessRange.value === r) return
-  awarenessRange.value = r
+watch(awarenessRange, () => {
   void refreshAwareness()
-}
+})
 
 const awarenessEvents = computed(() => awareness.value?.recent_events ?? [])
 const awarenessServices = computed(() => awareness.value?.by_service ?? [])
@@ -507,7 +388,8 @@ const awarenessServiceListHint = computed(() => {
 })
 
 function renderAccessIPCell(row: { client_ip: string; geo?: string }) {
-  const geo = row.geo?.trim()
+  const geoRaw = row.geo?.trim()
+  const geo = geoRaw ? displayGeoLabel(geoRaw) : ''
   return h('div', { class: 'ip-geo-cell' }, [
     h(
       RouterLink,
@@ -519,7 +401,7 @@ function renderAccessIPCell(row: { client_ip: string; geo?: string }) {
       () => row.client_ip,
     ),
     geo
-      ? h('span', { class: 'ip-geo-cell__geo', title: geo }, geo)
+      ? h('span', { class: 'ip-geo-cell__geo', title: geoRaw }, geo)
       : h('span', { class: 'ip-geo-cell__geo ip-geo-cell__geo--empty' }, '—'),
   ])
 }
@@ -630,20 +512,21 @@ function recordRateSample() {
 }
 
 async function refreshAwareness() {
-  try {
-    awareness.value = await api.getAwarenessLive(awarenessRange.value)
-    if (status.value && awareness.value && awarenessRange.value === 'today') {
-      status.value = {
-        ...status.value,
-        request_today: awareness.value.today.total_requests,
-        requests_hourly: awareness.value.hourly_requests,
-        requests_hourly_labels: awareness.value.hourly_labels,
-        error_today: awareness.value.today.blocked_total,
-      }
-    }
-  } catch {
-    // ignore poll errors
-  }
+  const range = awarenessRange.value
+  await Promise.all([
+    api
+      .getAnalyticsOverview(range)
+      .then((overview) => {
+        if (awarenessRange.value === range) analyticsOverview.value = overview
+      })
+      .catch(() => {}),
+    api
+      .getAwarenessLive(range)
+      .then((live) => {
+        if (awarenessRange.value === range) awareness.value = live
+      })
+      .catch(() => {}),
+  ])
 }
 
 function startAwarenessPoll() {
@@ -733,123 +616,18 @@ onUnmounted(() => {
   gap: var(--fonu-space-4);
 }
 
-.hero-banner {
-  position: relative;
-  overflow: hidden;
-  margin-bottom: var(--fonu-space-4);
-  min-height: 208px;
-  height: 220px;
-  border-radius: 16px;
-  box-shadow: var(--fonu-shadow);
-  border: 1px solid rgba(16, 185, 129, 0.08);
-  background: linear-gradient(100deg, #f4fffc 0%, #f1fbff 55%, #eef9ff 100%);
+.stats-row :deep(.stat-card) {
+  min-height: 0;
+  padding: 14px 16px;
 }
 
-html[data-theme='dark'] .hero-banner,
-html.dark .hero-banner {
-  background: linear-gradient(100deg, #0f172a 0%, #134e4a 100%);
-  border-color: rgba(16, 185, 129, 0.15);
+.stats-row :deep(.stat-card__header) {
+  margin-bottom: 8px;
 }
 
-.hero-content {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  width: 46%;
-  height: 100%;
-  padding: 28px 32px;
-  box-sizing: border-box;
-}
-
-.hero-art {
-  position: absolute;
-  z-index: 1;
-  right: 0;
-  bottom: 0;
-  height: 100%;
-  width: auto;
-  max-width: none;
-  object-fit: contain;
-  object-position: right bottom;
-  pointer-events: none;
-  user-select: none;
-}
-
-html[data-theme='dark'] .hero-art,
-html.dark .hero-art {
-  opacity: 0.9;
-}
-
-.hero-banner__title {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--fonu-text);
-  letter-spacing: -0.03em;
-}
-
-.hero-banner__desc {
-  margin: 10px 0 0;
-  font-size: 14px;
-  color: var(--fonu-text-secondary);
-  max-width: 520px;
-  line-height: 1.65;
-}
-
-.hero-banner__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.hero-banner__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  color: var(--fonu-text-secondary);
-  background: var(--fonu-surface);
-  border: 1px solid rgba(16, 185, 129, 0.14);
-}
-
-.hero-banner__badge .n-icon {
-  font-size: 16px;
-  color: var(--fonu-brand);
-}
-
-@media (max-width: 768px) {
-  .hero-content {
-    width: 100%;
-    padding: 22px 20px;
-  }
-
-  .hero-banner {
-    height: auto;
-    min-height: 180px;
-  }
-
-  .hero-art {
-    height: 100%;
-    opacity: 0.28;
-  }
-
-  html[data-theme='dark'] .hero-art,
-  html.dark .hero-art {
-    opacity: 0.22;
-  }
-
-  .hero-banner__title {
-    font-size: 24px;
-  }
-
-  .hero-banner__badges {
-    gap: 8px;
-  }
+.stats-row :deep(.stat-card__value),
+.stats-row :deep(.stat-card__value-slot) {
+  font-size: 18px;
 }
 
 .stats-row {
@@ -876,55 +654,23 @@ html.dark .hero-art {
 
 .awareness-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--fonu-text);
 }
 
 .awareness-subtitle {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   font-size: 13px;
   color: var(--fonu-text-secondary);
   max-width: 640px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
-.awareness-range {
-  display: inline-flex;
-  flex-shrink: 0;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
-  gap: 2px;
-}
-
-.awareness-range__btn {
-  border: none;
-  background: transparent;
-  padding: 6px 12px;
-  font-size: 13px;
-  border-radius: 8px;
-  color: var(--fonu-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-.awareness-range__btn--active {
-  background: var(--fonu-brand);
-  color: #fff;
-  font-weight: 600;
-}
-
-.awareness-range__btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.awareness-range__btn:not(:disabled):not(.awareness-range__btn--active):hover {
-  background: rgba(16, 185, 129, 0.08);
-  color: var(--fonu-text);
+.awareness-updated {
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+  padding-top: 2px;
 }
 
 .awareness-alert {
@@ -950,146 +696,6 @@ html.dark .hero-art {
 
 .awareness-alert__link:hover {
   text-decoration: underline;
-}
-
-.awareness-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--fonu-space-4);
-}
-
-.awareness-kpi {
-  padding: var(--fonu-space-4) var(--fonu-space-5);
-  border-radius: 14px;
-  background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.awareness-kpi--danger {
-  border-color: rgba(239, 68, 68, 0.22);
-}
-
-.awareness-kpi--danger .awareness-kpi__value {
-  color: #ef4444;
-}
-
-.awareness-kpi__label {
-  font-size: 13px;
-  color: var(--fonu-text-muted);
-}
-
-.awareness-kpi__value {
-  font-size: 28px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--fonu-text);
-}
-
-.awareness-kpi__link,
-.awareness-funnel__link {
-  text-decoration: none;
-  color: inherit;
-}
-
-.awareness-kpi__link:hover,
-.awareness-funnel__link:hover {
-  text-decoration: underline;
-  color: var(--fonu-danger, #d03050);
-}
-
-.awareness-kpi__hint {
-  font-size: 11px;
-  color: var(--fonu-text-muted);
-}
-
-.awareness-funnel {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-4);
-  flex-wrap: wrap;
-  padding: var(--fonu-space-4) var(--fonu-space-5);
-  border-radius: 14px;
-  background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
-}
-
-.awareness-funnel__step {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 120px;
-}
-
-.awareness-funnel__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.awareness-funnel__value {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.awareness-funnel__arrow {
-  font-size: 20px;
-  color: var(--fonu-text-muted);
-}
-
-.awareness-funnel__split {
-  display: flex;
-  flex: 1;
-  gap: var(--fonu-space-3);
-  flex-wrap: wrap;
-}
-
-.awareness-funnel__box {
-  flex: 1;
-  min-width: 140px;
-  padding: 12px 16px;
-  border-radius: 12px;
-}
-
-.awareness-funnel__box--safe {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.awareness-funnel__box--block {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-.awareness-funnel__box--warn {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-}
-
-.awareness-funnel__box-label {
-  display: block;
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-}
-
-.awareness-funnel__box-value {
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.awareness-funnel__box--safe .awareness-funnel__box-value {
-  color: #059669;
-}
-
-.awareness-funnel__box--block .awareness-funnel__box-value {
-  color: #dc2626;
-}
-
-.awareness-funnel__box--warn .awareness-funnel__box-value {
-  color: #d97706;
 }
 
 .awareness-lists {
@@ -1231,17 +837,17 @@ html.dark .hero-art {
 }
 
 .stat-primary {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--fonu-text);
   line-height: 1.3;
 }
 
 .stat-desc {
-  margin: 8px 0 0;
-  font-size: 13px;
+  margin: 4px 0 0;
+  font-size: 12px;
   color: var(--fonu-text-secondary);
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .stat-foot {
@@ -1613,7 +1219,6 @@ a.ip-geo-cell__ip:hover {
 
 @media (max-width: 1199px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .awareness-kpi-row,
   .awareness-lists {
     grid-template-columns: 1fr;
   }

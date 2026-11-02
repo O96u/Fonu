@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.1] - 2026-11-02
+
+### 新增
+
+- **访问统计（SQLite）**：反代 `access.log` 增量写入 `access_facts`。首页按今天 / 7 天 / 30 天 / 全部展示请求、独立 IP、拦截、疑似扫描，以及中国 / 世界访问地图；`GET /api/analytics/overview`
+- **异常**：今天相对昨天的 5xx、4xx、平均耗时、慢请求，以及问题 URL
+- 设置 · **访问统计**：保留天数、UV 排除内网、跳过历史导入、可选远程 IP 归属地补齐（默认关，离线 ip2region 优先）
+- 设置 · **版本**：展示最近五次 GitHub Release 说明（支持 Markdown）。侧栏版本号进入该页，有新版本时显示红点
+
+### 变更
+
+- 访问日志 **单 tail 入库**：流量统计改由 ingest 事件驱动，不再单独 tail `access.log`
+- `/api/status` 不再为首页请求数重扫 access.log；访问类指标以 SQLite 聚合为准
+- 首页去掉横幅和重复的漏斗统计；今天的数字和昨天比，地图与趋势共用同一时间范围
+- 登录页 logo 与站点图标改为小图
+
+### 修复
+
+- 趋势图里独立 IP 折线颜色与图例一致
+
 ## [v1.3.0] - 2026-11-02
 
 ### 新增
