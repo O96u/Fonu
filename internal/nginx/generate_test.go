@@ -37,6 +37,10 @@ func TestGenerateIncludesWebSocketAndProxy(t *testing.T) {
 		"listen 80;",
 		"server_name nas.example.com",
 		"proxy_pass http://192.168.1.10:5666",
+		"proxy_set_header Host $http_host",
+		"proxy_set_header X-Forwarded-Host $http_host",
+		"proxy_set_header Origin $http_origin",
+		"proxy_set_header Referer $http_referer",
 		"proxy_set_header Upgrade $http_upgrade",
 		"proxy_buffering off",
 	} {

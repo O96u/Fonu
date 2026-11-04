@@ -12,6 +12,89 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func QuickCheck(path string) error {
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", filepath.ToSlash(path)))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var result string
+	if err := conn.QueryRow("PRAGMA quick_check").Scan(&result); err != nil {
+		return err
+	}
+	if result != "ok" {
+		return fmt.Errorf("sqlite quick_check: %s", result)
+	}
+	return nil
+}
+
+func PrepareRestore(path string) error {
+	if err := QuickCheck(path); err == nil {
+		return nil
+	}
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(30000)", filepath.ToSlash(path)))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetMaxOpenConns(1)
+
+	rows, err := conn.Query("PRAGMA integrity_check(50)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	indexOnly := true
+	count := 0
+	for rows.Next() {
+		var msg string
+		if err := rows.Scan(&msg); err != nil {
+			return err
+		}
+		if msg == "ok" {
+			return nil
+		}
+		count++
+		if !strings.HasPrefix(msg, "wrong # of entries in index ") {
+			indexOnly = false
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !indexOnly || count == 0 {
+		return fmt.Errorf("sqlite integrity check failed")
+	}
+	// 旧版导出是直接复制正在写入的库，索引计数会和表对不上。数据页还在，重建索引即可。
+	if _, err := conn.Exec("REINDEX"); err != nil {
+		return err
+	}
+	var result string
+	if err := conn.QueryRow("PRAGMA quick_check").Scan(&result); err != nil {
+		return err
+	}
+	if result != "ok" {
+		return fmt.Errorf("sqlite quick_check: %s", result)
+	}
+	return nil
+}
+
+func Snapshot(src, dst string) error {
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(30000)", filepath.ToSlash(src)))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetMaxOpenConns(1)
+	dest := strings.ReplaceAll(filepath.ToSlash(dst), "'", "''")
+	_, err = conn.Exec(fmt.Sprintf("VACUUM INTO '%s'", dest))
+	return err
+}
+
 func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err

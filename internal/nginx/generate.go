@@ -199,7 +199,7 @@ func writeLocationWithSecurity(b *strings.Builder, cfg config.Config, rule proxy
 func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.SecurityConfig) {
 	sec = sec.Normalize()
 	writeProxyBodyComments(b, upstream, sec)
-	hostHeader := "$host"
+	hostHeader := "$http_host"
 	if sec.ProxyHostUpstream {
 		hostHeader = "$proxy_host"
 	}
@@ -220,9 +220,11 @@ func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.Secur
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Forwarded-Port $server_port;
         proxy_set_header X-Real-Proto $scheme;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header Referer $http_referer;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_buffering off;

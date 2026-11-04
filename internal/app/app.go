@@ -60,6 +60,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 			return nil, err
 		}
 	}
+	if err := backup.ApplyPending(cfg.DataDir); err != nil {
+		return nil, err
+	}
 
 	conn, err := db.Open(cfg.DBPath())
 	if err != nil {
@@ -217,6 +220,17 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		shutdownFn: cancel,
 		db:         conn,
 	}
+	backupSvc.SetOnRestored(func() {
+		time.Sleep(2 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = app.Shutdown(ctx)
+		time.Sleep(300 * time.Millisecond)
+		if err := relaunch(); err != nil {
+			app.logger.Error("restore relaunch failed", "module", "SYSTEM", "error", err.Error())
+			os.Exit(1)
+		}
+	})
 
 	if err := app.bootstrapNginx(context.Background(), proxySvc); err != nil {
 		cancel()

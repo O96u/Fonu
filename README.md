@@ -132,13 +132,18 @@
 
 ## 部署
 
-当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.2** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.3** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
 ### 飞牛 fnOS 原生 FPK（推荐）
 
-从 Release **Assets** 下载 `fonu_1.3.2_<amd64|arm64>.fpk` 安装（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`；**非 root**（`run-as: package`，用户 `fonu`）。
+从 Release **Assets** 下载对应架构的 `.fpk`（勿用 Actions Artifacts 的 zip）。内置 `fonu`、源码编译的 **nginx 1.30.x**、`frpc`。两个包的应用名都是 `fonu`，**只装一个**；后装的会替换已安装的 Fonu，数据仍在 `/var/apps/fonu`。
+
+| 包 | 权限 | 怎么选 |
+| ---- | ---- | ---- |
+| `fonu_1.3.3_amd64.fpk`、`fonu_1.3.3_arm64.fpk` | 应用用户 `fonu`（`run-as: package`） | 默认。证书映射和其他目录在应用设置「访问权限」里授权。这个包可以提交飞牛应用中心。 |
+| `fonu_1.3.3_amd64_root.fpk`、`fonu_1.3.3_arm64_root.fpk` | `root`（`run-as: root`） | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只在 GitHub Release 提供。进程以 root 运行，能写系统目录、监听特权端口，风险也更大，请自行决定要不要装。 |
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
@@ -287,7 +292,7 @@ go test ./...
 cd web && npm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.2**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.3**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 

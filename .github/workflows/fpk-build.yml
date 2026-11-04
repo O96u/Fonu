@@ -161,13 +161,16 @@ jobs:
           chmod +x packaging/fonu-fpk/scripts/build-fpk.sh packaging/fonu-fpk/cmd/*
           packaging/fonu-fpk/scripts/build-fpk.sh "${{ matrix.arch }}" "$VERSION"
           test -s "packaging/dist/fonu_${VERSION}_${{ matrix.arch }}.fpk"
+          test -s "packaging/dist/fonu_${VERSION}_${{ matrix.arch }}_root.fpk"
           ls -lh packaging/dist
 
       - name: Upload ${{ matrix.arch }} package
         uses: actions/upload-artifact@v4
         with:
           name: fonu-fpk-${{ matrix.arch }}
-          path: packaging/dist/fonu_${{ needs.setup.outputs.version }}_${{ matrix.arch }}.fpk
+          path: |
+            packaging/dist/fonu_${{ needs.setup.outputs.version }}_${{ matrix.arch }}.fpk
+            packaging/dist/fonu_${{ needs.setup.outputs.version }}_${{ matrix.arch }}_root.fpk
           if-no-files-found: error
 
   publish:
@@ -194,7 +197,9 @@ jobs:
           cd packaging/dist
           test -s "fonu_${VERSION}_amd64.fpk"
           test -s "fonu_${VERSION}_arm64.fpk"
-          sha256sum "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" > SHA256SUMS
+          test -s "fonu_${VERSION}_amd64_root.fpk"
+          test -s "fonu_${VERSION}_arm64_root.fpk"
+          sha256sum fonu_${VERSION}_*.fpk > SHA256SUMS
           ls -lh
 
       - name: Publish trial prerelease
@@ -209,8 +214,9 @@ jobs:
           cat > release-notes.md <<NOTES
           Fonu fnOS native packages. Built by [GitHub Actions](${RUN_URL}).
 
-          - fonu_${VERSION}_amd64.fpk: Intel/AMD x86_64
-          - fonu_${VERSION}_arm64.fpk: ARM64
+          - fonu_${VERSION}_amd64.fpk / fonu_${VERSION}_arm64.fpk: 应用用户 fonu，非 root。日常安装用这个，也可以作为飞牛应用中心的包。
+          - fonu_${VERSION}_amd64_root.fpk / fonu_${VERSION}_arm64_root.fpk: 以 root 运行。只在 GitHub Release 提供，不上架飞牛商店。第三方 root 包无法在应用中心发布，请自行决定是否安装。
+          - 两个包的应用名都是 fonu，只装其中一个。后装的会替换已安装的 Fonu，数据仍在 \`/var/apps/fonu\`。
           - SHA256SUMS: file integrity checksums
 
           Bundled nginx is compiled from current stable 1.30.x with fnOS paths
@@ -223,7 +229,7 @@ jobs:
           else
             gh release create "$TRIAL_TAG" -R "$GH_REPO" --title "Fonu FPK ${VERSION}" --prerelease --latest=false --notes-file release-notes.md
           fi
-          gh release upload "$TRIAL_TAG" -R "$GH_REPO" "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
+          gh release upload "$TRIAL_TAG" -R "$GH_REPO" fonu_${VERSION}_*.fpk SHA256SUMS --clobber
 
       - name: Attach FPK to GitHub Release
         shell: bash
@@ -247,4 +253,4 @@ jobs:
             exit 0
           fi
           gh release upload "$ATTACH_TAG" -R "$GH_REPO" \
-            "fonu_${VERSION}_amd64.fpk" "fonu_${VERSION}_arm64.fpk" SHA256SUMS --clobber
+            fonu_${VERSION}_*.fpk SHA256SUMS --clobber

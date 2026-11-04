@@ -17,7 +17,7 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 
 ## 构建
 
-[`scripts/build-fpk.sh`](scripts/build-fpk.sh) 在 Ubuntu 24.04 / 24.04-arm 上原生编译 nginx，再打包 `fonu_<version>_<arch>.fpk`。
+[`scripts/build-fpk.sh`](scripts/build-fpk.sh) 在 Ubuntu 24.04 / 24.04-arm 上原生编译 nginx，再打出两个包：`fonu_<version>_<arch>.fpk`（应用用户）和 `fonu_<version>_<arch>_root.fpk`（root）。只要其中一个时设置 `FPK_VARIANT=package` 或 `FPK_VARIANT=root`。
 
 | 方式 | 说明 |
 |------|------|
@@ -26,6 +26,19 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 | **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.3.0` |
 
 产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
+
+## 普通包和 root 包
+
+两个包的 `appname` 都是 `fonu`，安装目录都是 `/var/apps/fonu`。**只安装其中一个。** 已经装了其中一个再装另一个，会替换应用，已有数据还在 `var/`。
+
+| 文件 | `config/privilege` | 应用中心显示名 | 分发 |
+|------|--------------------|----------------|------|
+| `fonu_<version>_<arch>.fpk` | `run-as: package`，用户和组都是 `fonu` | Fonu | 默认包。可以提交飞牛应用中心。 |
+| `fonu_<version>_<arch>_root.fpk` | `run-as: root`，仍会创建用户 `fonu` | Fonu Root | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只放在 GitHub Release，由用户自行下载安装。 |
+
+普通包下，管理端、Nginx 和 frpc 都以用户 `fonu` 运行。要映射证书或读写其他文件夹，在 **应用设置 → 访问权限** 里授权，不要把目标写成 `/etc` 或飞牛系统证书目录。
+
+root 包下，这些进程以 root 运行，因此可以写普通用户写不进的系统路径，也可以监听 1024 以下的端口。Web 管理端和反代一旦被攻破，影响的是整台 NAS。没有必须写系统目录或占 80/443 的需求时，用普通包。
 
 ## 安装与访问
 

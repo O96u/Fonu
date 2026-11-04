@@ -843,7 +843,7 @@
                   <div class="security-option">
                     <div class="security-option__text">
                       <div class="security-option__label">使用目标 Host 头</div>
-                      <div class="security-option__hint">转发时使用上游地址作为 Host</div>
+                      <div class="security-option__hint">Host 改为上游地址。1Panel、LitePan 这类会校验来源的应用会因此拒绝请求</div>
                     </div>
                     <n-switch v-model:value="form.proxy_host_upstream" size="small" />
                   </div>

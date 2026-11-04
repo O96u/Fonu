@@ -42,19 +42,19 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusBadRequest, "上传文件无效")
 		return
 	}
-	file, header, err := r.FormFile("file")
+	file, _, err := r.FormFile("file")
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, "请选择备份文件")
 		return
 	}
 	defer file.Close()
 
-	tmpPath := filepath.Join(os.TempDir(), header.Filename)
-	out, err := os.Create(tmpPath)
+	out, err := os.CreateTemp("", "fonu-restore-*.tar.gz")
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "保存上传文件失败")
 		return
 	}
+	tmpPath := out.Name()
 	if _, err := io.Copy(out, file); err != nil {
 		out.Close()
 		_ = os.Remove(tmpPath)
@@ -69,5 +69,12 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = os.Remove(tmpPath)
-	writeJSON(w, http.StatusOK, map[string]string{"message": "备份已恢复，建议重启 Fonu"})
+	clearSessionCookie(w)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "备份已恢复，请重新登录。",
+	})
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	h.svc.NotifyRestored()
 }

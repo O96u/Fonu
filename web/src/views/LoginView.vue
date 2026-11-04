@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { api } from '../api/client'
@@ -38,6 +38,12 @@ const message = useMessage()
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
+
+onMounted(() => {
+  if (history.state?.restored) {
+    message.info('备份已恢复，请使用备份中的账号登录')
+  }
+})
 
 async function submit() {
   loading.value = true

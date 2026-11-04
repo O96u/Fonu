@@ -33,24 +33,22 @@
       />
 
       <div v-if="!collapsed" class="sider-footer">
-        <div class="sider-footer__version-row">
-          <div class="sider-footer__title">
-            <span class="sider-footer__brand">Fonu</span>
-            <router-link
-              class="sider-footer__version-chip"
-              :class="{ 'sider-footer__version-chip--update': hasUpdate }"
-              :to="{ name: 'settings', query: { tab: 'version' } }"
-              :title="hasUpdate && latestVersion ? `有新版本 v${latestVersion}，打开版本页` : `当前版本 v${appVersion}`"
-            >
-              <span class="sider-footer__version">v{{ appVersion }}</span>
-              <span v-if="hasUpdate" class="sider-footer__update-dot" aria-label="有新版本" />
-            </router-link>
+        <div class="sider-footer__row">
+          <div class="sider-footer__status">
+            <span class="sider-footer__icon">
+              <n-icon :component="Ellipse" class="sider-footer__status-icon" />
+            </span>
+            <span>运行中</span>
           </div>
-        </div>
-
-        <div class="sider-footer__status">
-          <n-icon :component="Ellipse" class="sider-footer__status-icon" />
-          <span>运行中</span>
+          <router-link
+            class="sider-footer__version-chip"
+            :class="{ 'sider-footer__version-chip--update': hasUpdate }"
+            :to="{ name: 'settings', query: { tab: 'version' } }"
+            :title="hasUpdate && latestVersion ? `有新版本 v${latestVersion}，打开更新日志` : `当前版本 v${appVersion}`"
+          >
+            <span class="sider-footer__version">v{{ appVersion }}</span>
+            <span v-if="hasUpdate" class="sider-footer__update-dot" aria-label="有新版本" />
+          </router-link>
         </div>
 
         <a
@@ -59,7 +57,9 @@
           target="_blank"
           rel="noopener noreferrer"
         >
-          <n-icon :component="LogoGithub" />
+          <span class="sider-footer__icon">
+            <n-icon :component="LogoGithub" />
+          </span>
           <span>{{ GITHUB_REPO }}</span>
         </a>
       </div>
@@ -551,39 +551,33 @@ onUnmounted(() => {
 }
 
 .sider-footer {
-  padding: var(--fonu-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px;
   border-top: 1px solid var(--fonu-border);
 }
 
-.sider-footer__version-row {
-  margin-bottom: var(--fonu-space-4);
-}
-
-.sider-footer__title {
+.sider-footer__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.sider-footer__brand {
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--fonu-text);
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
 }
 
 .sider-footer__version-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  cursor: pointer;
-  padding: 3px 10px;
+  height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--fonu-text-muted) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--fonu-border) 80%, transparent);
   text-decoration: none;
+  flex-shrink: 0;
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -622,14 +616,28 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.sider-footer__status {
+.sider-footer__status,
+.sider-footer__github {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: var(--fonu-space-4);
+  gap: 8px;
+  min-height: 22px;
   font-size: 12px;
+  line-height: 1;
+}
+
+.sider-footer__status {
   color: var(--fonu-success);
   font-weight: 500;
+}
+
+.sider-footer__icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .sider-footer__status-icon {
@@ -638,10 +646,6 @@ onUnmounted(() => {
 }
 
 .sider-footer__github {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
   color: var(--fonu-text-secondary);
   text-decoration: none;
   transition: color 0.15s;
@@ -652,7 +656,7 @@ onUnmounted(() => {
 }
 
 .sider-footer__github :deep(.n-icon) {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .app-main {

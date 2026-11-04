@@ -13,19 +13,19 @@ import (
 func NewRouter(deps Deps) http.Handler {
 	logsHandler := NewLogsHandler(deps.Config, deps.Proxy, deps.IPLocate)
 	r := &Router{
-		authHandler:     NewAuthHandler(deps.Auth, deps.Notify),
-		proxyHandler:    NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
-		nginxHandler:    NewNginxHandler(deps.Proxy),
-		statusHandler:   NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.Analytics, deps.StartedAt, deps.Config.NginxPIDFile),
-		ddnsHandler:     NewDDNSHandler(deps.DDNS),
-		certHandler:     NewCertHandler(deps.ACME, deps.CertExport),
+		authHandler:      NewAuthHandler(deps.Auth, deps.Notify),
+		proxyHandler:     NewProxyHandler(deps.Config, deps.Proxy, logsHandler, deps.Traffic),
+		nginxHandler:     NewNginxHandler(deps.Proxy),
+		statusHandler:    NewStatusHandler(deps.Config, deps.Proxy, deps.DDNS, deps.ACME, deps.Analytics, deps.StartedAt, deps.Config.NginxPIDFile),
+		ddnsHandler:      NewDDNSHandler(deps.DDNS),
+		certHandler:      NewCertHandler(deps.ACME, deps.CertExport),
 		settingsHandler:  NewSettingsHandler(deps.Settings, deps.Proxy, deps.Notify),
 		chinaCIDRHandler: NewChinaCIDRHandler(deps.ChinaCIDR),
 		logsHandler:      logsHandler,
 		backupHandler:    NewBackupHandler(deps.Backup),
 		discoveryHandler: NewDiscoveryHandler(deps.Discovery),
-		authSvc:         deps.Auth,
-		staticFS:        deps.StaticFS,
+		authSvc:          deps.Auth,
+		staticFS:         deps.StaticFS,
 	}
 
 	mux := http.NewServeMux()
@@ -143,19 +143,19 @@ func NewRouter(deps Deps) http.Handler {
 }
 
 type Router struct {
-	authHandler     *AuthHandler
-	proxyHandler    *ProxyHandler
-	nginxHandler    *NginxHandler
-	statusHandler   *StatusHandler
-	ddnsHandler     *DDNSHandler
-	certHandler     *CertHandler
+	authHandler      *AuthHandler
+	proxyHandler     *ProxyHandler
+	nginxHandler     *NginxHandler
+	statusHandler    *StatusHandler
+	ddnsHandler      *DDNSHandler
+	certHandler      *CertHandler
 	settingsHandler  *SettingsHandler
 	chinaCIDRHandler *ChinaCIDRHandler
 	logsHandler      *LogsHandler
 	backupHandler    *BackupHandler
 	discoveryHandler *DiscoveryHandler
 	authSvc          *auth.Service
-	staticFS        fs.FS
+	staticFS         fs.FS
 }
 
 func (r *Router) spaHandler() http.Handler {

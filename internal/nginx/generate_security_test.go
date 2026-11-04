@@ -83,7 +83,9 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 		"error_page 403 /fonu-errors/403.html",
 		"location = /fonu-errors/error.png",
 		"location = /fonu-errors/429.png",
-		"X-Forwarded-Host $host",
+		"X-Forwarded-Host $http_host",
+		"proxy_set_header Origin $http_origin",
+		"proxy_set_header Referer $http_referer",
 		"X-Forwarded-Port $server_port",
 		"X-Real-Proto $scheme",
 	}

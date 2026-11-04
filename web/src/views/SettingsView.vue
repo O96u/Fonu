@@ -105,7 +105,7 @@
             class="data-upload"
             :show-file-list="false"
             accept=".tar.gz,.tgz"
-            @change="onRestoreFile"
+            :custom-request="restoreRequest"
           >
             <div
               class="data-action-card"
@@ -119,7 +119,7 @@
             </div>
           </n-upload>
         </div>
-        <p class="field-hint data-note">恢复配置将覆盖当前数据，操作前请确保已备份。</p>
+        <p class="field-hint data-note">恢复前会先确认。完成后会退出登录，请使用备份中的账号重新登录。</p>
       </FonuCard>
         </div>
       </n-tab-pane>
@@ -706,7 +706,7 @@
         </div>
       </n-tab-pane>
 
-      <n-tab-pane name="version" tab="版本">
+      <n-tab-pane name="version" tab="更新日志">
         <div class="settings-grid settings-grid--single">
           <SettingsVersionCard />
         </div>
@@ -717,16 +717,24 @@
       <n-button type="primary" size="large" :loading="saving" @click="save">保存设置</n-button>
     </div>
   </n-spin>
+
+  <n-modal :show="restoring" :mask-closable="false" :close-on-esc="false" preset="card" :title="restoreTitle" :closable="false" style="width: 420px">
+    <div class="restore-progress">
+      <n-spin size="small" />
+      <p>{{ restoreDetail }}</p>
+    </div>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
   NIcon,
   NInput,
   NInputNumber,
+  NModal,
   NRadio,
   NRadioGroup,
   NSelect,
@@ -735,8 +743,9 @@ import {
   NTabPane,
   NTabs,
   NUpload,
+  useDialog,
   useMessage,
-  type UploadFileInfo,
+  type UploadCustomRequestOptions,
 } from 'naive-ui'
 import {
   CheckmarkCircle,
@@ -786,6 +795,8 @@ import { formatDate, formatRelativeTime } from '../utils/format'
 import type { StatusKind } from '../utils/status'
 
 const message = useMessage()
+const dialog = useDialog()
+const router = useRouter()
 const route = useRoute()
 
 const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced', 'version'])
@@ -802,6 +813,13 @@ const usernameChanged = computed(
 )
 const exporting = ref(false)
 const restoring = ref(false)
+const restorePhase = ref<'upload' | 'check'>('upload')
+const restorePercent = ref(0)
+const restoreTitle = computed(() => (restorePhase.value === 'upload' ? '正在上传备份' : '正在校验数据库'))
+const restoreDetail = computed(() => {
+  if (restorePhase.value === 'upload') return `已上传 ${restorePercent.value}%。`
+  return '正在检查备份是否完整，数据库较大时需要一些时间。'
+})
 
 const form = reactive({
   theme: 'system',
@@ -1580,15 +1598,46 @@ async function exportBackup() {
   }
 }
 
-async function onRestoreFile({ file }: { file: UploadFileInfo }) {
-  if (!file.file) return
+function restoreRequest({ file, onFinish, onError }: UploadCustomRequestOptions) {
+  const raw = file.file
+  if (!raw) {
+    message.error('请选择备份文件')
+    onError()
+    return
+  }
+  dialog.warning({
+    title: '恢复配置',
+    content: '将用这份备份覆盖当前数据库、证书和 Nginx 配置。完成后会退出登录，请使用备份中的账号重新登录。',
+    positiveText: '恢复',
+    negativeText: '取消',
+    onNegativeClick: () => {
+      onError()
+    },
+    onPositiveClick: () => {
+      void runRestore(raw, onFinish, onError)
+    },
+  })
+}
+
+async function runRestore(
+  raw: File,
+  onFinish: () => void,
+  onError: () => void,
+) {
+  restorePhase.value = 'upload'
+  restorePercent.value = 0
   restoring.value = true
   try {
-    const result = await api.restoreBackup(file.file)
-    message.success(result.message)
+    await api.restoreBackup(raw, (percent) => {
+      restorePercent.value = percent
+      if (percent >= 100) restorePhase.value = 'check'
+    })
+    onFinish()
+    restoring.value = false
+    await router.push({ name: 'login', state: { restored: true } })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '恢复失败')
-  } finally {
+    onError()
     restoring.value = false
   }
 }
@@ -2103,6 +2152,18 @@ onMounted(() => {
   font-size: 12px;
   color: var(--fonu-text-muted);
   line-height: 1.45;
+}
+
+.restore-progress {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.restore-progress p {
+  margin: 2px 0 0;
+  line-height: 1.6;
+  color: var(--fonu-text-secondary);
 }
 
 .data-note {

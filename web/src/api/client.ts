@@ -442,24 +442,34 @@ export const api = {
     URL.revokeObjectURL(url)
   },
 
-  async restoreBackup(file: File) {
-    const form = new FormData()
-    form.append('file', file)
-    const response = await fetch('/api/backup/restore', {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    })
-    if (!response.ok) {
-      let message = '恢复备份失败'
-      try {
-        const body = (await response.json()) as ApiError
-        if (body.error) message = body.error
-      } catch {
-        // ignore
+  restoreBackup(file: File, onProgress?: (percent: number) => void) {
+    return new Promise<{ message: string }>((resolve, reject) => {
+      const form = new FormData()
+      form.append('file', file)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/backup/restore')
+      xhr.withCredentials = true
+      xhr.upload.onprogress = (event) => {
+        if (!onProgress || !event.lengthComputable || event.total <= 0) return
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
       }
-      throw new Error(message)
-    }
-    return (await response.json()) as { message: string }
+      xhr.upload.onload = () => onProgress?.(100)
+      xhr.onload = () => {
+        let body: { message?: string; error?: string } = {}
+        try {
+          body = JSON.parse(xhr.responseText) as { message?: string; error?: string }
+        } catch {
+          body = {}
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ message: body.message || '备份已校验。请重启 Fonu，再用备份里的账号登录。' })
+          return
+        }
+        reject(new Error(body.error || '恢复备份失败'))
+      }
+      xhr.onerror = () => reject(new Error('连接已断开'))
+      xhr.onabort = () => reject(new Error('连接已断开'))
+      xhr.send(form)
+    })
   },
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build Fonu native .fpk for fnOS (linux/amd64 or linux/arm64).
 # Usage: ./scripts/build-fpk.sh <amd64|arm64> [version]
+# FPK_VARIANT=package|root|both (default both). Root is a sideload package, not an app-store build.
 # Intended for Linux CI (GitHub Actions). Requires: curl, go, node/npm, gcc, make, python3, fnpack.
 #
 # Bundled nginx is compiled from source (stable 1.30.x) with fnOS native install
@@ -393,25 +394,58 @@ echo "==> Packing with official fnpack"
 resolve_fnpack_bin
 chmod +x "${FNPACK_BIN}" 2>/dev/null || true
 mkdir -p "${DIST_DIR}"
-FPK_NAME="fonu_${VERSION}_${ARCH}.fpk"
-rm -f "${DIST_DIR}/fonu.fpk" "${DIST_DIR}/${FPK_NAME}" "${STAGING}/fonu.fpk"
-(
-  cd "${DIST_DIR}"
-  "${FNPACK_BIN}" build --directory "${STAGING}"
-)
-GENERATED=""
-for candidate in "${DIST_DIR}/fonu.fpk" "${STAGING}/fonu.fpk" ; do
-  if [ -s "${candidate}" ]; then GENERATED="${candidate}"; break; fi
-done
-if [ -z "${GENERATED}" ]; then
-  echo "fnpack completed but fonu.fpk not found; check fnpack output location" >&2
-  exit 1
-fi
-mv "${GENERATED}" "${DIST_DIR}/${FPK_NAME}"
 
-python3 - "${DIST_DIR}/${FPK_NAME}" "${MANIFEST_PLATFORM}" "${VERSION}" <<'PYVERIFY'
-import hashlib, io, pathlib, tarfile, sys
-fpk, platform, version = sys.argv[1:]
+write_privilege() {
+  python3 - "${STAGING}/config/privilege" "$1" <<'PY'
+import json, pathlib, sys
+path, run_as = sys.argv[1:]
+if run_as not in ("package", "root"):
+    raise SystemExit(f"unsupported run-as: {run_as}")
+doc = {
+    "username": "fonu",
+    "groupname": "fonu",
+    "defaults": {"run-as": run_as},
+}
+pathlib.Path(path).write_text(json.dumps(doc, indent=4) + "\n", encoding="utf-8")
+PY
+}
+
+pack_variant() {
+  local variant="$1"
+  local run_as="package"
+  local display_name="Fonu"
+  local suffix=""
+  if [ "${variant}" = "root" ]; then
+    run_as="root"
+    display_name="Fonu Root"
+    suffix="_root"
+  elif [ "${variant}" != "package" ]; then
+    echo "unsupported FPK variant: ${variant}" >&2
+    exit 1
+  fi
+
+  write_privilege "${run_as}"
+  sed_inplace "s/^display_name=.*/display_name=${display_name}/" "${STAGING}/manifest"
+
+  local fpk_name="fonu_${VERSION}_${ARCH}${suffix}.fpk"
+  rm -f "${DIST_DIR}/fonu.fpk" "${DIST_DIR}/${fpk_name}" "${STAGING}/fonu.fpk"
+  (
+    cd "${DIST_DIR}"
+    "${FNPACK_BIN}" build --directory "${STAGING}"
+  )
+  local generated="" candidate
+  for candidate in "${DIST_DIR}/fonu.fpk" "${STAGING}/fonu.fpk"; do
+    if [ -s "${candidate}" ]; then generated="${candidate}"; break; fi
+  done
+  if [ -z "${generated}" ]; then
+    echo "fnpack completed but fonu.fpk not found; check fnpack output location" >&2
+    exit 1
+  fi
+  mv "${generated}" "${DIST_DIR}/${fpk_name}"
+
+  python3 - "${DIST_DIR}/${fpk_name}" "${MANIFEST_PLATFORM}" "${VERSION}" "${run_as}" "${display_name}" <<'PYVERIFY'
+import hashlib, io, json, tarfile, sys
+fpk, platform, version, run_as, display_name = sys.argv[1:]
 with tarfile.open(fpk, 'r:gz') as outer:
     members = {m.name.lstrip('./'): m for m in outer.getmembers()}
     needed = ['manifest','app.tgz','ICON.PNG','ICON_256.PNG',
@@ -423,18 +457,37 @@ with tarfile.open(fpk, 'r:gz') as outer:
     fields = {k.strip():v.strip() for k,v in fields.items()}
     assert fields.get('platform') == platform, fields
     assert fields.get('version') == version, fields
+    assert fields.get('display_name') == display_name, fields
     assert fields.get('desktop_applaunchname') == 'fonu.Application', fields
+    privilege = json.loads(outer.extractfile(members['config/privilege']).read().decode('utf-8'))
+    assert privilege.get('defaults', {}).get('run-as') == run_as, privilege
     app = outer.extractfile(members['app.tgz']).read()
     assert hashlib.md5(app).hexdigest() == fields.get('checksum'), 'app.tgz checksum mismatch'
     assert members['cmd/main'].mode & 0o111, 'cmd/main not executable'
-    with tarfile.open(fileobj=io.BytesIO(app),mode='r:gz') as inner:
+    with tarfile.open(fileobj=io.BytesIO(app), mode='r:gz') as inner:
         names = {m.name.lstrip('./') for m in inner.getmembers()}
         for need in ('fonu', 'Nginx', 'frpc', 'mime.types', 'ui/config'):
             assert need in names, f'{need} missing from app.tgz'
-print('FPK archive, metadata, checksum, executable and payload: OK')
+print(f'FPK {run_as}: archive, metadata, checksum, executable and payload OK')
 PYVERIFY
-if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum "${DIST_DIR}/${FPK_NAME}"
-fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${DIST_DIR}/${fpk_name}"
+  fi
+  echo "==> Done: ${DIST_DIR}/${fpk_name}"
+}
+
+FPK_VARIANT="${FPK_VARIANT:-both}"
+case "${FPK_VARIANT}" in
+  both)
+    pack_variant package
+    pack_variant root
+    ;;
+  package|root)
+    pack_variant "${FPK_VARIANT}"
+    ;;
+  *)
+    echo "unsupported FPK_VARIANT: ${FPK_VARIANT} (package, root, or both)" >&2
+    exit 1
+    ;;
+esac
 rm -rf "${STAGING}"
-echo "==> Done: ${DIST_DIR}/${FPK_NAME}"

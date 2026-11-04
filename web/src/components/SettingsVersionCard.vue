@@ -53,7 +53,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <FonuCard title="版本" subtitle="最近五次更新。更早的到 GitHub 看。" class="version-card">
+  <FonuCard title="更新日志" subtitle="最近五次更新。更早的到 GitHub 看。" class="version-card">
     <div class="version-card__bar">
       <div class="version-card__current">
         <span class="version-card__current-label">当前版本</span>

@@ -35,7 +35,7 @@ type SecurityConfig struct {
 	RateLimit         *RateLimitConfig `json:"rate_limit,omitempty"`
 	ConnLimit         *ConnLimitConfig `json:"conn_limit,omitempty"`
 	ProxySSLVerifyOff bool             `json:"proxy_ssl_verify_off,omitempty"`
-	ProxyHostUpstream bool             `json:"proxy_host_upstream,omitempty"` // use $proxy_host instead of $host
+	ProxyHostUpstream bool             `json:"proxy_host_upstream,omitempty"` // use $proxy_host instead of $http_host
 	TLSMin13Only      bool             `json:"tls_min_13_only,omitempty"`
 	SecurityHeaders   bool             `json:"security_headers,omitempty"`
 }

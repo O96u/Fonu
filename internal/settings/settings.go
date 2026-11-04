@@ -8,44 +8,44 @@ import (
 )
 
 const (
-	KeyTheme                 = "theme"
-	KeyTimezone              = "timezone"
-	KeyLogRetentionDays      = "log_retention_days"
-	KeyDDNSCheckInterval     = "ddns_check_interval_minutes"
-	KeyCertRenewThreshold    = "cert_renew_threshold_days"
-	KeyRootDomain            = "root_domain"
-	KeyACMEEmail             = "acme_email"
-	KeyACMECA                = "acme_ca"
-	KeyZeroSSLAPIKey         = "zerossl_api_key" // deprecated, EAB below
-	KeyZeroSSLEABKid         = "zerossl_eab_kid"
-	KeyZeroSSLEABHmac        = "zerossl_eab_hmac_key"
-	KeyGoogleEABKid          = "google_eab_kid"
-	KeyGoogleEABHmac         = "google_eab_hmac"
-	KeySSLcomEABKid          = "sslcom_eab_kid"
-	KeySSLcomEABHmac         = "sslcom_eab_hmac"
-	KeyFreeSSLEABKid         = "freessl_eab_kid"
-	KeyFreeSSLEABHmac        = "freessl_eab_hmac"
-	KeyFreeSSLDirectoryURL    = "freessl_directory_url"
-	KeyFreeSSLAutomationToken = "freessl_automation_token"
-	KeyACMEDNSPropagationTimeout = "acme_dns_propagation_timeout_sec"
-	KeyACMEDNSDisableAuthNS      = "acme_dns_disable_auth_ns"
-	KeyACMEDNSIgnorePropagation  = "acme_dns_ignore_propagation"
-	KeyACMEDNSRecursiveNS        = "acme_dns_recursive_ns_json"
-	KeyActalisEABKid         = "actalis_eab_kid"
-	KeyActalisEABHmac        = "actalis_eab_hmac"
-	KeyCustomACMEDirectoryURL = "custom_acme_directory_url"
-	KeyCustomACMEEABKid      = "custom_acme_eab_kid"
-	KeyCustomACMEEABHmac     = "custom_acme_eab_hmac"
-	KeyNotifyWebhookURL      = "notify_webhook_url"
-	KeyNotifyType            = "notify_type"
-	KeyNotifyEmailJSON       = "notify_email_json"
-	KeyNotifySMTPPassword    = "notify_smtp_password"
-	KeyNotifyWebhookJSON     = "notify_webhook_json"
-	KeyNotifyWebhookSecret   = "notify_webhook_secret"
-	KeyNotifyTelegramJSON    = "notify_telegram_json"
-	KeyNotifyTelegramToken   = "notify_telegram_token"
-	KeyNotifyOnDDNSError            = "notify_on_ddns_error" // legacy, migrated to KeyNotifyOnDDNSFailure
-	KeyNotifyOnCertError            = "notify_on_cert_error" // legacy, migrated to KeyNotifyOnCertExpiry
+	KeyTheme                        = "theme"
+	KeyTimezone                     = "timezone"
+	KeyLogRetentionDays             = "log_retention_days"
+	KeyDDNSCheckInterval            = "ddns_check_interval_minutes"
+	KeyCertRenewThreshold           = "cert_renew_threshold_days"
+	KeyRootDomain                   = "root_domain"
+	KeyACMEEmail                    = "acme_email"
+	KeyACMECA                       = "acme_ca"
+	KeyZeroSSLAPIKey                = "zerossl_api_key" // deprecated, EAB below
+	KeyZeroSSLEABKid                = "zerossl_eab_kid"
+	KeyZeroSSLEABHmac               = "zerossl_eab_hmac_key"
+	KeyGoogleEABKid                 = "google_eab_kid"
+	KeyGoogleEABHmac                = "google_eab_hmac"
+	KeySSLcomEABKid                 = "sslcom_eab_kid"
+	KeySSLcomEABHmac                = "sslcom_eab_hmac"
+	KeyFreeSSLEABKid                = "freessl_eab_kid"
+	KeyFreeSSLEABHmac               = "freessl_eab_hmac"
+	KeyFreeSSLDirectoryURL          = "freessl_directory_url"
+	KeyFreeSSLAutomationToken       = "freessl_automation_token"
+	KeyACMEDNSPropagationTimeout    = "acme_dns_propagation_timeout_sec"
+	KeyACMEDNSDisableAuthNS         = "acme_dns_disable_auth_ns"
+	KeyACMEDNSIgnorePropagation     = "acme_dns_ignore_propagation"
+	KeyACMEDNSRecursiveNS           = "acme_dns_recursive_ns_json"
+	KeyActalisEABKid                = "actalis_eab_kid"
+	KeyActalisEABHmac               = "actalis_eab_hmac"
+	KeyCustomACMEDirectoryURL       = "custom_acme_directory_url"
+	KeyCustomACMEEABKid             = "custom_acme_eab_kid"
+	KeyCustomACMEEABHmac            = "custom_acme_eab_hmac"
+	KeyNotifyWebhookURL             = "notify_webhook_url"
+	KeyNotifyType                   = "notify_type"
+	KeyNotifyEmailJSON              = "notify_email_json"
+	KeyNotifySMTPPassword           = "notify_smtp_password"
+	KeyNotifyWebhookJSON            = "notify_webhook_json"
+	KeyNotifyWebhookSecret          = "notify_webhook_secret"
+	KeyNotifyTelegramJSON           = "notify_telegram_json"
+	KeyNotifyTelegramToken          = "notify_telegram_token"
+	KeyNotifyOnDDNSError            = "notify_on_ddns_error"  // legacy, migrated to KeyNotifyOnDDNSFailure
+	KeyNotifyOnCertError            = "notify_on_cert_error"  // legacy, migrated to KeyNotifyOnCertExpiry
 	KeyNotifyOnNginxError           = "notify_on_nginx_error" // legacy, ignored
 	KeyNotifyOnDDNSIPChange         = "notify_on_ddns_ip_change"
 	KeyNotifyOnDDNSFailure          = "notify_on_ddns_failure"
@@ -59,35 +59,35 @@ const (
 	KeyNotifyIPFrequentWindowSec    = "notify_ip_frequent_window_sec"
 	KeyNotifyLoginFailureThreshold  = "notify_login_failure_threshold"
 	KeyNotifyLoginFailureWindowSec  = "notify_login_failure_window_sec"
-	KeyTrustedProxy          = "trusted_proxy_json"
-	KeyGlobalIPBlacklist     = "global_ip_blacklist"
-	KeyGlobalIPWhitelist     = "global_ip_whitelist"
-	KeyChinaCIDRUpdateHours  = "china_cidr_update_interval_hours"
-	KeyChinaCIDRSourceV4     = "china_cidr_source_url_v4"
-	KeyChinaCIDRSourceV6     = "china_cidr_source_url_v6"
-	KeyChinaCIDRUpdatedAt    = "china_cidr_updated_at"
-	KeyChinaCIDRCountV4      = "china_cidr_count_v4"
-	KeyChinaCIDRCountV6      = "china_cidr_count_v6"
-	KeyChinaCIDRLastError    = "china_cidr_last_error"
-	KeyFRPEnabled            = "frp_enabled"
-	KeyFRPServerAddr         = "frp_server_addr"
-	KeyFRPServerPort         = "frp_server_port"
-	KeyFRPAuthToken          = "frp_auth_token"
-	KeyFRPTLSEnabled         = "frp_tls_enabled"
-	KeyFRPCustomDomains      = "frp_custom_domains"
-	KeyFRPTCPProxies         = "frp_tcp_proxies"
-	KeyFRPLastError          = "frp_last_error"
-	KeyFRPStartedAt          = "frp_started_at"
-	KeyNginxGlobalMode       = "nginx_global_mode"
-	KeyDNSHEAPIKey           = "dnshe_api_key"
-	KeyDNSHEAPISecret        = "dnshe_api_secret"
-	KeyDNSHEAutoRenew        = "dnshe_auto_renew_enabled"
-	KeyDNSHERenewLastRunAt   = "dnshe_renew_last_run_at"
-	KeyDNSHERenewLastInfo    = "dnshe_renew_last_info"
-	KeyDNSHERenewNextCheckAt = "dnshe_renew_next_check_at"
-	KeyDNSHEDomainAutoRenew  = "dnshe_domain_auto_renew" // JSON: {full_domain: bool}，缺省为开启
-	KeyDNSHEAccounts         = "dnshe_accounts"          // JSON: 多账户（凭据加密内嵌）
-	KeyDNSHEDomainOrder      = "dnshe_domain_order"      // JSON: {account_id: [subdomain_id...]}
+	KeyTrustedProxy                 = "trusted_proxy_json"
+	KeyGlobalIPBlacklist            = "global_ip_blacklist"
+	KeyGlobalIPWhitelist            = "global_ip_whitelist"
+	KeyChinaCIDRUpdateHours         = "china_cidr_update_interval_hours"
+	KeyChinaCIDRSourceV4            = "china_cidr_source_url_v4"
+	KeyChinaCIDRSourceV6            = "china_cidr_source_url_v6"
+	KeyChinaCIDRUpdatedAt           = "china_cidr_updated_at"
+	KeyChinaCIDRCountV4             = "china_cidr_count_v4"
+	KeyChinaCIDRCountV6             = "china_cidr_count_v6"
+	KeyChinaCIDRLastError           = "china_cidr_last_error"
+	KeyFRPEnabled                   = "frp_enabled"
+	KeyFRPServerAddr                = "frp_server_addr"
+	KeyFRPServerPort                = "frp_server_port"
+	KeyFRPAuthToken                 = "frp_auth_token"
+	KeyFRPTLSEnabled                = "frp_tls_enabled"
+	KeyFRPCustomDomains             = "frp_custom_domains"
+	KeyFRPTCPProxies                = "frp_tcp_proxies"
+	KeyFRPLastError                 = "frp_last_error"
+	KeyFRPStartedAt                 = "frp_started_at"
+	KeyNginxGlobalMode              = "nginx_global_mode"
+	KeyDNSHEAPIKey                  = "dnshe_api_key"
+	KeyDNSHEAPISecret               = "dnshe_api_secret"
+	KeyDNSHEAutoRenew               = "dnshe_auto_renew_enabled"
+	KeyDNSHERenewLastRunAt          = "dnshe_renew_last_run_at"
+	KeyDNSHERenewLastInfo           = "dnshe_renew_last_info"
+	KeyDNSHERenewNextCheckAt        = "dnshe_renew_next_check_at"
+	KeyDNSHEDomainAutoRenew         = "dnshe_domain_auto_renew" // JSON: {full_domain: bool}，缺省为开启
+	KeyDNSHEAccounts                = "dnshe_accounts"          // JSON: 多账户（凭据加密内嵌）
+	KeyDNSHEDomainOrder             = "dnshe_domain_order"      // JSON: {account_id: [subdomain_id...]}
 	KeyAnalyticsRetentionDays       = "analytics_retention_days"
 	KeyAnalyticsExcludePrivateIPs   = "analytics_exclude_private_ips"
 	KeyAnalyticsGeoRemoteEnabled    = "analytics_geo_remote_enabled"
@@ -98,18 +98,18 @@ const (
 const DefaultTimezone = "Asia/Shanghai"
 
 var Defaults = map[string]string{
-	KeyTheme:              "system",
-	KeyTimezone:           "Asia/Shanghai",
-	KeyLogRetentionDays:   "30",
-	KeyDDNSCheckInterval:  "5",
-	KeyCertRenewThreshold: "30",
-	KeyACMECA:                    "letsencrypt",
-	KeyChinaCIDRUpdateHours:      "24",
-	KeyNginxGlobalMode:           "auto",
-	KeyAnalyticsRetentionDays:    "30",
-	KeyAnalyticsExcludePrivateIPs:  "true",
-	KeyAnalyticsGeoRemoteEnabled:   "false",
-	KeyAnalyticsGeoRemoteURL:       "http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN",
+	KeyTheme:                        "system",
+	KeyTimezone:                     "Asia/Shanghai",
+	KeyLogRetentionDays:             "30",
+	KeyDDNSCheckInterval:            "5",
+	KeyCertRenewThreshold:           "30",
+	KeyACMECA:                       "letsencrypt",
+	KeyChinaCIDRUpdateHours:         "24",
+	KeyNginxGlobalMode:              "auto",
+	KeyAnalyticsRetentionDays:       "30",
+	KeyAnalyticsExcludePrivateIPs:   "true",
+	KeyAnalyticsGeoRemoteEnabled:    "false",
+	KeyAnalyticsGeoRemoteURL:        "http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN",
 	KeyAnalyticsSkipHistoryBackfill: "false",
 }
 

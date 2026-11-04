@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -170,6 +171,12 @@ func (s *Service) queryAnomalyURLs(ctx context.Context, curStart, curEnd, prevSt
 	if len(cur) == 0 {
 		return []AnomalyURL{}, nil
 	}
+	paths := make([]any, len(cur))
+	holders := make([]string, len(cur))
+	for i, row := range cur {
+		paths[i] = row.path
+		holders[i] = "?"
+	}
 	prev, err := scanAnomalyURLs(ctx, s.db, `
 		SELECT `+pathExpr+` AS p,
 		       COUNT(*) AS requests,
@@ -178,8 +185,9 @@ func (s *Service) queryAnomalyURLs(ctx context.Context, curStart, curEnd, prevSt
 		       AVG(request_ms) AS avg_ms
 		FROM access_facts
 		WHERE ts >= ? AND ts < ? AND path != '' AND `+anomalyLatencyWhere+ipFilter+`
+		  AND `+pathExpr+` IN (`+strings.Join(holders, ",")+`)
 		GROUP BY p
-	`, anomalySlowMS, prevStart.UTC().Format(time.RFC3339), prevEnd.UTC().Format(time.RFC3339))
+	`, append([]any{anomalySlowMS, prevStart.UTC().Format(time.RFC3339), prevEnd.UTC().Format(time.RFC3339)}, paths...)...)
 	if err != nil {
 		return nil, err
 	}
