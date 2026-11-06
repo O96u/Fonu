@@ -2,6 +2,13 @@ package acme
 
 import "testing"
 
+func TestFormatApplyDomains(t *testing.T) {
+	got := formatApplyDomains([]string{"example.cn", "*.example.cn"})
+	if got != "example.cn，泛域名 *.example.cn" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestNormalizeCertDomains(t *testing.T) {
 	domains, err := NormalizeCertDomains([]string{"example.com", "*.example.com", "nas.example.com"})
 	if err != nil {

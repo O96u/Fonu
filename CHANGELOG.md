@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.7] - 2026-11-06
+
+### 修复
+
+- 根域名与泛域名同时申请时，DNS-01 在同一 `_acme-challenge` 上保留两条 TXT，不再被后一次写入覆盖（腾讯云、DNSPod、阿里云、Cloudflare、火山引擎）
+- 反代详情里的实时流量图和最近访问不再撑出卡片；停用规则的操作列改为不透明背景
+- 内网穿透连接设置中，服务器地址与端口同一行；状态区改为两行、每行两张卡片
+
 ## [v1.3.6] - 2026-11-06
 
 ### 修复

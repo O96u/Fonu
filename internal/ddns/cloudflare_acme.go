@@ -16,7 +16,34 @@ func (c *Cloudflare) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn
 	if err != nil {
 		return err
 	}
-	return c.UpdateRecord(ctx, cred, zone, host, "TXT", value)
+	zoneID, err := c.zoneID(ctx, cred.Token, zone)
+	if err != nil {
+		return err
+	}
+	recordFQDN := fqdnForRecord(zone, host)
+	body, err := c.request(ctx, cred.Token, http.MethodGet, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?type=TXT&name=%s", zoneID, recordFQDN), nil)
+	if err != nil {
+		return err
+	}
+	var resp cfRecordsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return err
+	}
+	var existing []string
+	for _, rec := range resp.Result {
+		existing = append(existing, rec.Content)
+	}
+	if txtValuePresent(existing, value) {
+		return nil
+	}
+	_, err = c.request(ctx, cred.Token, http.MethodPost, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", zoneID), map[string]any{
+		"type":    "TXT",
+		"name":    recordFQDN,
+		"content": strings.TrimSpace(value),
+		"ttl":     120,
+		"proxied": false,
+	})
+	return err
 }
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).

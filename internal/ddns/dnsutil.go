@@ -23,3 +23,18 @@ func subDomainForRecord(recordName string) string {
 	}
 	return recordName
 }
+
+// txtValuePresent reports whether an ACME DNS-01 token is already published.
+// Apex and wildcard share one TXT name and must keep both values.
+func txtValuePresent(existing []string, want string) bool {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		return false
+	}
+	for _, value := range existing {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
+}

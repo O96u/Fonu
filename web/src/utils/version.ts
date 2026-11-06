@@ -28,6 +28,18 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.7',
+    date: '2026-11-06',
+    url: `${GITHUB_RELEASES}/tag/v1.3.7`,
+    markdown: [
+      '### 修复',
+      '',
+      '- 根域名与泛域名同时申请时，同一 `_acme-challenge` 保留两条 TXT，不再互相覆盖',
+      '- 反代详情流量图与最近访问留在卡片内；停用规则操作列不再透出底色',
+      '- 内网穿透地址与端口同一行；状态区改为两行各两张卡片',
+    ].join('\n'),
+  },
+  {
     version: '1.3.6',
     date: '2026-11-06',
     url: `${GITHUB_RELEASES}/tag/v1.3.6`,

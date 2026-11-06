@@ -37,6 +37,18 @@ func NormalizeCertDomains(raw []string) ([]string, error) {
 	return out, nil
 }
 
+func formatApplyDomains(domains []string) string {
+	parts := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		if strings.HasPrefix(domain, "*.") {
+			parts = append(parts, "泛域名 "+domain)
+			continue
+		}
+		parts = append(parts, domain)
+	}
+	return strings.Join(parts, "，")
+}
+
 func splitDomainInput(input string) []string {
 	input = strings.ReplaceAll(input, "\r\n", "\n")
 	input = strings.ReplaceAll(input, ",", "\n")

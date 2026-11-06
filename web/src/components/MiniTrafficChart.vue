@@ -35,6 +35,8 @@ function axisRate(value: number): string {
 const option = computed(() => {
   const textColor = isDark.value ? '#94a3b8' : '#9ca3af'
   const splitColor = isDark.value ? '#334155' : '#e5e7eb'
+  const peak = Math.max(0, ...props.upload, ...props.download)
+  const idle = peak <= 1
 
   return {
     grid: { left: 4, right: 8, top: props.compact ? 4 : 8, bottom: props.compact ? 0 : 4, containLabel: true },
@@ -60,7 +62,9 @@ const option = computed(() => {
     yAxis: {
       type: 'value',
       min: 0,
-      splitNumber: 3,
+      max: idle ? 1024 : undefined,
+      interval: idle ? 512 : undefined,
+      splitNumber: 2,
       splitLine: { lineStyle: { color: splitColor, type: 'dashed' } },
       axisLabel: {
         color: textColor,
@@ -119,10 +123,10 @@ const option = computed(() => {
 <style scoped>
 .chart {
   width: 100%;
-  height: 160px;
+  height: 100%;
 }
 
 .chart--compact {
-  height: 128px;
+  min-height: 128px;
 }
 </style>

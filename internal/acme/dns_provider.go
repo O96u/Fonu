@@ -49,8 +49,9 @@ func wrapDNSProvider(inner challenge.Provider, job *Job) challenge.Provider {
 }
 
 func (p *loggingDNSProvider) Present(domain, token, keyAuth string) error {
-	record := strings.TrimSuffix(domain, ".")
-	p.job.Info(fmt.Sprintf("添加 DNS TXT 记录: _acme-challenge.%s", record))
+	ident := strings.TrimSuffix(domain, ".")
+	name := strings.TrimPrefix(ident, "*.")
+	p.job.Info(fmt.Sprintf("为 %s 添加 TXT _acme-challenge.%s（同名多条并存，不覆盖）", ident, name))
 	if err := p.inner.Present(domain, token, keyAuth); err != nil {
 		p.job.Error(fmt.Sprintf("添加 DNS TXT 记录失败: %v", err))
 		return err

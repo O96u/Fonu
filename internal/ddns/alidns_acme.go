@@ -14,7 +14,40 @@ func (a *AliDNS) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 	if err != nil {
 		return err
 	}
-	return a.UpdateRecord(ctx, cred, zone, host, "TXT", value)
+	subDomain := aliRR(host)
+	body, err := a.request(ctx, cred, map[string]string{
+		"Action":     "DescribeDomainRecords",
+		"DomainName": zone,
+		"RRKeyWord":  subDomain,
+		"Type":       "TXT",
+		"PageNumber": "1",
+		"PageSize":   "50",
+	})
+	if err != nil {
+		return err
+	}
+	var resp alidnsRecordsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return err
+	}
+	var existing []string
+	for _, rec := range resp.DomainRecords.Record {
+		if strings.EqualFold(rec.Type, "TXT") && rec.RR == subDomain {
+			existing = append(existing, rec.Value)
+		}
+	}
+	if txtValuePresent(existing, value) {
+		return nil
+	}
+	_, err = a.request(ctx, cred, map[string]string{
+		"Action":     "AddDomainRecord",
+		"DomainName": zone,
+		"RR":         subDomain,
+		"Type":       "TXT",
+		"Value":      strings.TrimSpace(value),
+		"TTL":        "120",
+	})
+	return err
 }
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).

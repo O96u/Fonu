@@ -3,6 +3,8 @@ package ddns
 import (
 	"context"
 	"strings"
+
+	"github.com/nrdcg/dnspod-go"
 )
 
 // UpsertTXTRecord creates or updates a TXT record for ACME DNS-01.
@@ -13,11 +15,37 @@ func (d *DNSPod) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 	if err != nil {
 		return err
 	}
-	// DNSPod 同主机名下可有多条 TXT（多线路或历史残留）；只改第一条会导致权威 NS 仍返回旧 token。
-	if err := d.removeTXTRecords(ctx, cred, zone, host, ""); err != nil {
+	return d.ensureTXTRecord(ctx, cred, zone, host, value)
+}
+
+func (d *DNSPod) ensureTXTRecord(ctx context.Context, cred Credentials, zone, host, value string) error {
+	client := d.apiClient(cred)
+	domainID, err := d.domainID(client, zone)
+	if err != nil {
 		return err
 	}
-	return d.UpdateRecord(ctx, cred, zone, host, "TXT", value)
+	subDomain := subDomainForRecord(host)
+	records, _, err := client.Records.List(domainID, subDomain)
+	if err != nil {
+		return err
+	}
+	var existing []string
+	for _, rec := range records {
+		if strings.EqualFold(rec.Type, "TXT") {
+			existing = append(existing, dnspodTXTValue(rec.Value))
+		}
+	}
+	if txtValuePresent(existing, value) {
+		return nil
+	}
+	_, _, err = client.Records.Create(domainID, dnspod.Record{
+		Type:  "TXT",
+		Name:  subDomain,
+		Value: strings.TrimSpace(value),
+		Line:  "默认",
+		TTL:   "120",
+	})
+	return err
 }
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).

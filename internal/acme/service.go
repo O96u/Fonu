@@ -262,7 +262,7 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 	ctx := context.Background()
 	job.Info("开始申请证书…")
 	job.Info(fmt.Sprintf("主域名: %s", primary))
-	job.Info(fmt.Sprintf("覆盖域名: %s", strings.Join(domains, ", ")))
+	job.Info(fmt.Sprintf("覆盖域名: %s", formatApplyDomains(domains)))
 	job.Info(fmt.Sprintf("DNS 凭证: %s (%s)", dnsZone, provider))
 
 	rec, err := s.obtain(ctx, job, ca, email, provider, cred, primary, domains)

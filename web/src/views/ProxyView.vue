@@ -3786,7 +3786,7 @@ onUnmounted(() => {
 }
 
 .proxy-table--nested :deep(.n-data-table-th) {
-  background: transparent;
+  background: var(--fonu-bg, #f8fafc);
   font-size: 12px;
   color: var(--fonu-text-secondary);
 }
@@ -3882,15 +3882,31 @@ onUnmounted(() => {
 .proxy-table { width: 100%; }
 
 .proxy-table :deep(.proxy-row--active td) {
-  background: rgba(16, 185, 129, 0.06);
+  background: color-mix(in srgb, #10b981 8%, var(--fonu-surface, #fff));
 }
 
 .proxy-table :deep(.proxy-row--disabled td) {
-  opacity: 0.72;
+  background: var(--fonu-surface, #fff);
 }
 
-.proxy-table :deep(.proxy-row--disabled.proxy-row--active td) {
-  opacity: 1;
+.proxy-table :deep(.n-data-table-td--fixed-right),
+.proxy-table :deep(.n-data-table-td--fixed-left) {
+  background: var(--fonu-surface, #fff);
+}
+
+.proxy-table :deep(.n-data-table-th--fixed-right),
+.proxy-table :deep(.n-data-table-th--fixed-left) {
+  background: var(--fonu-bg, #f8fafc);
+}
+
+.proxy-table :deep(.n-data-table-tr:hover .n-data-table-td--fixed-right),
+.proxy-table :deep(.n-data-table-tr:hover .n-data-table-td--fixed-left) {
+  background: var(--fonu-bg, #f8fafc);
+}
+
+.proxy-table :deep(.proxy-row--active .n-data-table-td--fixed-right),
+.proxy-table :deep(.proxy-row--active .n-data-table-td--fixed-left) {
+  background: color-mix(in srgb, #10b981 8%, var(--fonu-surface, #fff));
 }
 
 .proxy-enable-cell {
@@ -4218,8 +4234,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
   gap: var(--fonu-space-4);
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 0 0 auto;
   align-items: stretch;
 }
 
@@ -4227,7 +4242,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 0;
+  min-width: 0;
+  min-height: 100%;
 }
 
 .overview-card {
@@ -4261,12 +4277,13 @@ onUnmounted(() => {
 .overview-card--chart {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  overflow: hidden;
 }
 
 .overview-chart {
-  flex: 1;
-  min-height: 180px;
+  flex: none;
+  height: 200px;
+  overflow: hidden;
 }
 
 .overview-metrics {
@@ -4301,17 +4318,18 @@ onUnmounted(() => {
 }
 
 .overview-card--clients {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 112px;
   display: flex;
   flex-direction: column;
   margin: 0;
   padding-bottom: 12px;
+  overflow: hidden;
 }
 
 .overview-client-list {
-  flex: 1 1 0;
-  min-height: 72px;
+  flex: 1 1 auto;
+  min-height: 48px;
   overflow-y: auto;
   margin: 0 -2px;
   padding: 0 2px;
@@ -4362,8 +4380,8 @@ onUnmounted(() => {
 
 .overview-empty {
   margin: 0;
-  height: 100%;
-  min-height: 72px;
+  flex: 1;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;

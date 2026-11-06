@@ -69,9 +69,17 @@
             <div class="status-metrics">
               <div class="status-metric status-metric--endpoint">
                 <div class="status-metric__label">服务器地址</div>
-                <code class="status-metric__value" :title="displayServerEndpoint">{{
-                  displayServerEndpoint
-                }}</code>
+                <code
+                  class="status-metric__value"
+                  :title="displayServerEndpoint"
+                  >{{ displayServerEndpoint }}</code
+                >
+              </div>
+              <div class="status-metric">
+                <div class="status-metric__label">frpc 版本</div>
+                <div class="status-metric__value">
+                  {{ frpStatus.client_version || "—" }}
+                </div>
               </div>
               <div class="status-metric">
                 <div class="status-metric__label">连接时间</div>
@@ -80,12 +88,6 @@
               <div class="status-metric">
                 <div class="status-metric__label">运行时长</div>
                 <div class="status-metric__value">{{ uptimeLabel }}</div>
-              </div>
-              <div class="status-metric">
-                <div class="status-metric__label">frpc 版本</div>
-                <div class="status-metric__value">
-                  {{ frpStatus.client_version || "—" }}
-                </div>
               </div>
             </div>
 
@@ -157,13 +159,13 @@
                   class="status-tag"
                   :class="{ 'status-tag--on': frpForm.enabled }"
                 >
-                  {{ frpForm.enabled ? "✓ 穿透已启用" : "穿透未启用" }}
+                  {{ frpForm.enabled ? "穿透已启用" : "穿透未启用" }}
                 </span>
                 <span
                   class="status-tag"
                   :class="{ 'status-tag--on': frpForm.tls_enabled }"
                 >
-                  {{ frpForm.tls_enabled ? "🛡️ TLS 已开启" : "TLS 未开启" }}
+                  {{ frpForm.tls_enabled ? "TLS 已开启" : "TLS 未开启" }}
                 </span>
               </div>
               <n-button
@@ -385,8 +387,9 @@
             <div class="routes-panel">
               <div class="routes-panel__head">
                 <p class="section-desc">
-                  将 VPS 上的远程端口转发到内网服务。可选 TCP（如 SSH、数据库）或
-                  UDP（如 DNS、游戏/VoIP）。需在 VPS 防火墙对对应远程端口放行 TCP 与/或 UDP。
+                  将 VPS 上的远程端口转发到内网服务。可选 TCP（如
+                  SSH、数据库）或 UDP（如 DNS、游戏/VoIP）。需在 VPS
+                  防火墙对对应远程端口放行 TCP 与/或 UDP。
                 </p>
                 <n-button
                   size="small"
@@ -456,7 +459,8 @@
                     nginxHttpsPort
                   }}<template v-if="tcpRemotePorts.length">
                     ，以及隧道远程端口
-                    {{ tcpRemotePorts.join("、") }}（TCP/UDP 均需放行）</template
+                    {{ tcpRemotePorts.join("、") }}（TCP/UDP
+                    均需放行）</template
                   >。
                 </p>
                 <div class="frps-config-actions">
@@ -670,7 +674,8 @@
           :disabled="!frpForm.enabled"
         />
         <p class="field-hint field-hint--inline">
-          填 0 表示自动分配未占用的随机端口（1024–65535），或手动指定 1–65535 的固定端口
+          填 0 表示自动分配未占用的随机端口（1024–65535），或手动指定 1–65535
+          的固定端口
         </p>
       </div>
       <div class="form-switch-row">
@@ -1837,10 +1842,6 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.status-metric--endpoint {
-  grid-column: 1 / -1;
-}
-
 .status-metric__label {
   font-size: 12px;
   color: var(--fonu-text-muted);
@@ -2003,8 +2004,12 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.settings-field--grow :deep(.n-input) {
+  width: 100%;
+}
+
 .settings-field--port {
-  width: 112px;
+  width: 148px;
   flex-shrink: 0;
 }
 
@@ -2302,9 +2307,12 @@ onUnmounted(() => {
   .gateway-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 640px) {
   .settings-field-row {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .settings-field--port {

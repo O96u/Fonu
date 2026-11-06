@@ -16,7 +16,37 @@ func (v *Volcengine) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn
 	if err != nil {
 		return err
 	}
-	return v.UpdateRecord(ctx, cred, zone, host, "TXT", value)
+	client, err := v.client(cred)
+	if err != nil {
+		return err
+	}
+	zid, err := v.zoneID(ctx, client, zone)
+	if err != nil {
+		return err
+	}
+	hostName := volcengineHost(host)
+	records, err := v.listRecords(ctx, client, zid, hostName, "TXT")
+	if err != nil {
+		return err
+	}
+	var existing []string
+	for _, rec := range records {
+		if rec.Value != nil {
+			existing = append(existing, *rec.Value)
+		}
+	}
+	if txtValuePresent(existing, value) {
+		return nil
+	}
+	_, err = client.CreateRecordWithContext(ctx, &dns.CreateRecordInput{
+		ZID:   volcengine.Int64(zid),
+		Host:  volcengine.String(hostName),
+		Type:  volcengine.String("TXT"),
+		Value: volcengine.String(strings.TrimSpace(value)),
+		Line:  volcengine.String("default"),
+		TTL:   volcengine.Int32(120),
+	})
+	return wrapVolcengineErr(err)
 }
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).
