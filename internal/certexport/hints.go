@@ -10,6 +10,7 @@ import (
 type PathHints struct {
 	CertsDir               string   `json:"certs_dir"`
 	DeployKind             string   `json:"deploy_kind"`
+	RunAsRoot              bool     `json:"run_as_root"`
 	DataSharePaths         []string `json:"data_share_paths"`
 	AccessiblePaths        []string `json:"accessible_paths"`
 	SuggestedExportTargets []string `json:"suggested_export_targets"`
@@ -23,6 +24,7 @@ func PathHintsFor(cfg config.Config) PathHints {
 	return PathHints{
 		CertsDir:               cfg.CertsDir(),
 		DeployKind:             detectDeployKind(),
+		RunAsRoot:              os.Getuid() == 0,
 		DataSharePaths:         shares,
 		AccessiblePaths:        accessible,
 		SuggestedExportTargets: suggested,

@@ -710,6 +710,7 @@ const certExportHints = ref<CertExportPathHints | null>(null)
 
 const certExportFieldProps = computed(() => ({
   deployKind: certExportHints.value?.deploy_kind ?? 'generic',
+  runAsRoot: certExportHints.value?.run_as_root ?? false,
   suggestedExportTargets: certExportHints.value?.suggested_export_targets ?? [],
 }))
 

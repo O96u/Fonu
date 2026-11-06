@@ -262,24 +262,29 @@ const props = withDefaults(
     sourceDir?: string
     showSyncStatus?: boolean
     deployKind?: string
+    runAsRoot?: boolean
     suggestedExportTargets?: string[]
   }>(),
   {
     sourceDir: '',
     showSyncStatus: false,
     deployKind: 'generic',
+    runAsRoot: false,
     suggestedExportTargets: () => [],
   },
 )
 
 const exportTip = computed(() => {
   if (props.deployKind === 'fnos') {
-    return '目标必须是 fonu 应用用户可写的绝对路径。可在「应用设置 → 访问权限」添加文件夹；优先使用下方建议的「应用文件 / fonu/certs」路径。无法写入飞牛系统证书目录（/usr/trim/...）或整盘根目录。'
+    if (props.runAsRoot) {
+      return '飞牛 Root 包：填写本进程可写的绝对路径。'
+    }
+    return '飞牛普通包：只能写到「访问权限」授权的路径（见下方建议）。系统目录请换 Root 包，或用下方 SSH。'
   }
   if (props.deployKind === 'docker') {
-    return '填写 Fonu 进程能访问的绝对路径。Docker 部署时请把宿主机目录挂载到该路径，否则证书只会写在容器内。'
+    return 'Docker：请先把宿主机目录挂载到下方填写的路径。'
   }
-  return '填写 Fonu 进程能写的绝对路径；仅用于复制 PEM，不会自动导入系统证书库。'
+  return '填写 Fonu 可写的绝对路径，仅复制 PEM，不会写入系统证书库。'
 })
 
 const targetPlaceholder = computed(

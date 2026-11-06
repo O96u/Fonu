@@ -429,17 +429,47 @@ export const api = {
   },
 
   async exportBackup() {
-    const response = await fetch('/api/backup/export', { credentials: 'include' })
+    const filename = `fonu-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`
+    const url = `/api/backup/export?t=${Date.now()}`
+    if (!window.isSecureContext) {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      return
+    }
+    const response = await fetch(url, { credentials: 'include' })
     if (!response.ok) {
-      throw new Error('导出备份失败')
+      let message = '导出备份失败'
+      try {
+        const body = (await response.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // ignore
+      }
+      throw new Error(message)
     }
     const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
+    if (blob.type.includes('json') || blob.size < 512) {
+      try {
+        const text = await blob.text()
+        const body = JSON.parse(text) as { error?: string }
+        if (body.error) throw new Error(body.error)
+      } catch (e) {
+        if (e instanceof Error && e.message !== '导出备份失败') throw e
+      }
+      throw new Error('导出备份失败')
+    }
+    const objectUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = url
-    link.download = `fonu-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`
+    link.href = objectUrl
+    link.download = filename
+    document.body.appendChild(link)
     link.click()
-    URL.revokeObjectURL(url)
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
   },
 
   restoreBackup(file: File, onProgress?: (percent: number) => void) {

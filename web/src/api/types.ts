@@ -404,6 +404,7 @@ export interface CertificateRecord {
 export interface CertExportPathHints {
   certs_dir: string
   deploy_kind: 'fnos' | 'docker' | 'generic' | string
+  run_as_root?: boolean
   data_share_paths: string[]
   accessible_paths: string[]
   suggested_export_targets: string[]

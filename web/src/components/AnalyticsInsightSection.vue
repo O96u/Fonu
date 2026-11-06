@@ -281,10 +281,10 @@ watch(regionVisitorsAll, () => {
 
 .insight-panel__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 220px);
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
   gap: var(--fonu-space-4);
   align-items: stretch;
-  --insight-geo-stack-h: 520px;
+  --insight-geo-stack-h: clamp(360px, 50vh, 540px);
 }
 
 .insight-panel__block--map,
@@ -388,13 +388,19 @@ watch(regionVisitorsAll, () => {
 @media (max-width: 960px) {
   .insight-panel__grid {
     grid-template-columns: 1fr;
+    --insight-geo-stack-h: clamp(300px, 42vw, 400px);
   }
 
-  .insight-panel__geo-stack,
+  .insight-panel__block--map .insight-panel__geo-stack {
+    height: var(--insight-geo-stack-h);
+    min-height: 300px;
+  }
+
+  .insight-panel__block--side .insight-panel__geo-stack,
   .insight-region-fill {
     height: auto;
-    min-height: 320px;
-    max-height: none;
+    min-height: 220px;
+    max-height: min(360px, 40vh);
   }
 }
 </style>

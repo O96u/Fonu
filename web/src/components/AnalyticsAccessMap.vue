@@ -28,6 +28,7 @@ type MapMetric = 'requests' | 'intercept'
 const mapReady = ref(true)
 const mapStageRef = ref<HTMLElement | null>(null)
 const layoutSizePercent = ref(100)
+const chartInitOptions = { devicePixelRatio: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2) }
 const scope = defineModel<MapScope>('scope', { default: 'world' })
 const metric = defineModel<MapMetric>('metric', { default: 'requests' })
 const { isDark } = useTheme()
@@ -64,10 +65,10 @@ const LAYOUT_PROFILE: Record<MapScope, LayoutProfile> = {
   },
   world: {
     mapAspect: 1.72,
-    minPct: 112,
-    maxPct: 168,
-    gain: 1.06,
-    center: ['50%', '50%'],
+    minPct: 108,
+    maxPct: 182,
+    gain: 1.08,
+    center: ['50%', '52%'],
     aspectScale: 0.74,
   },
 }
@@ -265,7 +266,8 @@ const option = computed(() => {
     },
     geo: {
       map: isChina ? 'china' : 'world',
-      roam: false,
+      roam: true,
+      scaleLimit: { min: 0.85, max: 4 },
       label: { show: false },
       ...geoLayout,
       itemStyle: {
@@ -410,10 +412,11 @@ watch(scope, () => {
         <span class="access-map__legend-item access-map__legend-item--access"><i /> 访问</span>
         <span class="access-map__legend-item access-map__legend-item--block"><i /> 拦截</span>
         <span class="access-map__legend-item access-map__legend-item--hub"><i /> 本机</span>
+        <span class="access-map__legend-hint">滚轮缩放 · 拖动平移</span>
       </div>
     </div>
     <div v-if="mapReady && hasMapData" ref="mapStageRef" class="access-map__stage">
-      <VChart class="access-map__chart" :option="option" autoresize />
+      <VChart :key="scope" class="access-map__chart" :option="option" :init-options="chartInitOptions" autoresize />
       <div class="access-map__density" aria-hidden="true">
         <span>高</span>
         <span
@@ -528,10 +531,26 @@ watch(scope, () => {
   background: linear-gradient(180deg, #991b1b, #ef4444, #fecaca);
 }
 
+.access-map__legend-hint {
+  font-size: 11px;
+  color: var(--fonu-text-muted);
+  opacity: 0.85;
+}
+
 @media (max-width: 720px) {
   .access-map__legend {
     margin-left: 0;
     width: 100%;
+  }
+
+  .access-map__legend-hint {
+    width: 100%;
+  }
+}
+
+@media (min-width: 721px) {
+  .access-map__legend-hint {
+    margin-left: 4px;
   }
 }
 

@@ -66,10 +66,10 @@
               </div>
             </div>
 
-            <div class="status-metrics status-metrics--row">
-              <div class="status-metric">
+            <div class="status-metrics">
+              <div class="status-metric status-metric--endpoint">
                 <div class="status-metric__label">服务器地址</div>
-                <code class="status-metric__value">{{
+                <code class="status-metric__value" :title="displayServerEndpoint">{{
                   displayServerEndpoint
                 }}</code>
               </div>
@@ -1753,7 +1753,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 10px;
 }
 
 .status-flow__step {
@@ -1761,13 +1761,15 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  min-width: 76px;
+  min-width: 64px;
+  max-width: 100%;
   padding: 8px 10px;
   border-radius: 10px;
   background: var(--fonu-surface);
   border: 1px solid var(--fonu-border);
   font-size: 12px;
   color: var(--fonu-text-secondary);
+  white-space: nowrap;
 }
 
 .status-flow__step .n-icon {
@@ -1824,11 +1826,7 @@ onUnmounted(() => {
 .status-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.status-metrics--row {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .status-metric {
@@ -1836,6 +1834,11 @@ onUnmounted(() => {
   border-radius: 10px;
   border: 1px solid var(--fonu-border);
   background: var(--fonu-bg);
+  min-width: 0;
+}
+
+.status-metric--endpoint {
+  grid-column: 1 / -1;
 }
 
 .status-metric__label {
@@ -1848,7 +1851,19 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: var(--fonu-text);
-  word-break: break-all;
+  line-height: 1.35;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.status-metric--endpoint .status-metric__value {
+  display: block;
+  font-family: var(--fonu-mono);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-overview {
@@ -2277,14 +2292,15 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-@media (max-width: 1080px) {
-  .top-grid,
-  .gateway-grid {
+@media (max-width: 1280px) {
+  .top-grid {
     grid-template-columns: 1fr;
   }
+}
 
-  .status-metrics--row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1080px) {
+  .gateway-grid {
+    grid-template-columns: 1fr;
   }
 
   .settings-field-row {

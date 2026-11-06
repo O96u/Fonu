@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.5] - 2026-11-06
+
+### 变更
+
+- 证书映射说明按 Docker / 飞牛 Root 包 / 普通包区分；API 返回 `run_as_root` 供前端展示
+- 仪表盘去掉实时流量块，趋势图区域略放大
+- 访问地图支持滚轮缩放与拖动，切换全球/国内时重置视图；窄屏下地图与来源分析纵向排列
+- 异常访问、FRP 页在较窄视口下改为纵向布局，避免 iframe 内横向挤压
+
+### 修复
+
+- HTTP 下导出备份改为直接打开下载链接，避免 blob 在非 HTTPS 环境失败
+
 ## [v1.3.4] - 2026-11-06
 
 ### 变更

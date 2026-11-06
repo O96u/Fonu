@@ -83,6 +83,11 @@ const option = computed(() => {
   const text = isDark.value ? '#94a3b8' : '#9ca3af'
   const split = isDark.value ? '#334155' : '#f3f4f6'
   const trend = anomaly.value.trend ?? []
+  const barPeak = Math.max(
+    1,
+    ...trend.flatMap((p) => [p.status_4xx ?? 0, p.status_5xx ?? 0]),
+  )
+  const msPeak = Math.max(1, ...trend.map((p) => Math.round(p.avg_request_ms ?? 0)))
   return {
     grid: { left: 8, right: 12, top: 28, bottom: 28, containLabel: true },
     legend: {
@@ -92,7 +97,11 @@ const option = computed(() => {
       textStyle: { color: text, fontSize: 11 },
       data: ['4xx 请求数', '5xx 请求数', '平均请求耗时'],
     },
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: { type: 'shadow' },
+    },
     xAxis: {
       type: 'category',
       data: trend.map((p) => p.label),
@@ -103,12 +112,16 @@ const option = computed(() => {
     yAxis: [
       {
         type: 'value',
+        min: 0,
+        max: Math.ceil(barPeak * 1.12),
         minInterval: 1,
         axisLabel: { color: text, fontSize: 11 },
         splitLine: { lineStyle: { color: split } },
       },
       {
         type: 'value',
+        min: 0,
+        max: Math.ceil(msPeak * 1.15),
         axisLabel: { color: text, fontSize: 11, formatter: '{value} ms' },
         splitLine: { show: false },
       },
@@ -188,7 +201,7 @@ function deltaText(n: number, unit: string): string {
         </div>
         <div v-if="topURLs.length" class="anomaly-table">
           <div class="anomaly-table__head">
-            <span>访问</span>
+            <span class="anomaly-table__col-path">路径</span>
             <span>5xx</span>
             <span>平均耗时</span>
             <span>慢请求</span>
@@ -202,10 +215,10 @@ function deltaText(n: number, unit: string): string {
                 查看 URL 日志
               </RouterLink>
             </div>
-            <span>{{ row.errors_5xx.toLocaleString() }}</span>
-            <span>{{ ms(row.avg_request_ms) }}</span>
-            <span>{{ row.slow.toLocaleString() }}</span>
-            <span class="anomaly-table__delta">
+            <span class="anomaly-table__cell" data-label="5xx">{{ row.errors_5xx.toLocaleString() }}</span>
+            <span class="anomaly-table__cell" data-label="平均耗时">{{ ms(row.avg_request_ms) }}</span>
+            <span class="anomaly-table__cell" data-label="慢请求">{{ row.slow.toLocaleString() }}</span>
+            <span class="anomaly-table__delta anomaly-table__cell" data-label="对比昨日">
               5xx {{ deltaText(row.errors_5xx_delta, '') }} / 耗时 {{ deltaText(row.avg_request_delta_ms, 'ms') }}
             </span>
           </div>
@@ -259,7 +272,7 @@ function deltaText(n: number, unit: string): string {
 
 .anomaly__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: var(--fonu-space-4);
 }
 
@@ -288,12 +301,18 @@ function deltaText(n: number, unit: string): string {
   height: 280px;
 }
 
+.anomaly-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+
 .anomaly-table__head,
 .anomaly-table__row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 52px 72px 64px minmax(120px, 1fr);
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: minmax(120px, 1.6fr) 48px 76px 56px minmax(108px, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 480px;
 }
 
 .anomaly-table__head {
@@ -313,7 +332,8 @@ function deltaText(n: number, unit: string): string {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  align-items: flex-start;
 }
 
 .anomaly-table__path .mono {
@@ -321,6 +341,7 @@ function deltaText(n: number, unit: string): string {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+  max-width: 100%;
 }
 
 .anomaly-table__path small,
@@ -333,22 +354,30 @@ function deltaText(n: number, unit: string): string {
   color: var(--fonu-brand);
   font-size: 12px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .anomaly-table__link:hover {
   text-decoration: underline;
 }
 
-@media (max-width: 1100px) {
-  .anomaly__cards,
+.anomaly-table__delta {
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+@media (max-width: 1180px) {
+  .anomaly__cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .anomaly__grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .anomaly__cards,
-  .anomaly__grid {
+  .anomaly__cards {
     grid-template-columns: 1fr;
   }
 
@@ -356,8 +385,41 @@ function deltaText(n: number, unit: string): string {
     display: none;
   }
 
+  .anomaly-table__head,
   .anomaly-table__row {
-    grid-template-columns: 1fr 1fr;
+    min-width: 0;
+  }
+
+  .anomaly-table__row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px 0;
+  }
+
+  .anomaly-table__cell {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .anomaly-table__cell::before {
+    content: attr(data-label);
+    color: var(--fonu-text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .anomaly-table__delta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .anomaly-table__delta::before {
+    content: attr(data-label);
+    color: var(--fonu-text-muted);
+    font-size: 12px;
   }
 }
 </style>

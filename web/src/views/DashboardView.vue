@@ -47,7 +47,7 @@
         <div class="awareness-header">
           <div>
             <h2 class="awareness-title">趋势与记录</h2>
-            <p class="awareness-subtitle">曲线跟着上面的时间范围。右侧是最近 5 分钟的上下行。</p>
+            <p class="awareness-subtitle">曲线跟着上面的时间范围。</p>
           </div>
           <span v-if="analyticsOverview" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
         </div>
@@ -78,31 +78,6 @@
                 :current-bucket="analyticsOverview.series.current_bucket"
               />
               <EmptyState v-else title="正在读取" description="访问趋势马上出来。" />
-            </div>
-          </div>
-          <div class="awareness-charts-panel__divider" aria-hidden="true" />
-          <div class="awareness-charts-panel__block awareness-charts-panel__block--traffic">
-            <div class="awareness-traffic-panel__head">
-              <div class="panel-title">
-                <n-icon :component="SwapVerticalOutline" class="panel-title__icon panel-title__icon--teal" />
-                <span>实时流量</span>
-                <n-tag size="small" :bordered="false" class="range-tag">最近 5 分钟</n-tag>
-              </div>
-              <div class="traffic-rates traffic-rates--compact">
-                <div class="traffic-rate traffic-rate--up">
-                  <span class="traffic-rate__dot" />
-                  <span class="traffic-rate__label">上传</span>
-                  <span class="traffic-rate__value">{{ formatRate(trafficTotals.uploadRate) }}</span>
-                </div>
-                <div class="traffic-rate traffic-rate--down">
-                  <span class="traffic-rate__dot" />
-                  <span class="traffic-rate__label">下载</span>
-                  <span class="traffic-rate__value">{{ formatRate(trafficTotals.downloadRate) }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="awareness-traffic-panel__chart">
-              <MiniTrafficChart compact :labels="trafficChart.labels" :upload="trafficChart.upload" :download="trafficChart.download" />
             </div>
           </div>
         </FonuCard>
@@ -182,7 +157,6 @@ import {
   GitNetworkOutline,
   GlobeOutline,
   ShieldCheckmarkOutline,
-  SwapVerticalOutline,
   WifiOutline,
 } from '@vicons/ionicons5'
 import { RouterLink } from 'vue-router'
@@ -196,7 +170,6 @@ import type {
   CertificateRecord,
   DashboardStatus,
   DDNSConfig,
-  ProxyTraffic,
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import AnalyticsInsightSection from '../components/AnalyticsInsightSection.vue'
@@ -204,11 +177,10 @@ import AnalyticsAnomalySection from '../components/AnalyticsAnomalySection.vue'
 import AwarenessTrendChart from '../components/AwarenessTrendChart.vue'
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
-import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import StatCard from '../components/StatCard.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAppTimezone } from '../composables/useAppTimezone'
-import { formatLogTime, formatRate, formatRelativeTime } from '../utils/format'
+import { formatLogTime, formatRelativeTime } from '../utils/format'
 import { displayGeoLabel } from '../utils/geoDisplay'
 import { httpStatusKind } from '../utils/status'
 
@@ -223,11 +195,6 @@ const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
 const loading = ref(false)
 const loadError = ref('')
-const trafficByRule = ref<Record<number, ProxyTraffic>>({})
-type RatePoint = { at: number; upload: number; download: number }
-const rateHistory = ref<RatePoint[]>([])
-const RATE_HISTORY_MS = 5 * 60 * 1000
-let trafficTimer: ReturnType<typeof setInterval> | null = null
 let awarenessTimer: ReturnType<typeof setInterval> | null = null
 const AWARENESS_POLL_MS = 5000
 const awarenessTableScrollHeight = 360
@@ -294,37 +261,6 @@ const certCountLabel = computed(() => {
   const count = status.value?.certificate_count ?? certificates.value.length
   if (count === 0) return '未申请'
   return `${count} 个`
-})
-
-const trafficTotals = computed(() => {
-  let uploadRate = 0
-  let downloadRate = 0
-  for (const stats of Object.values(trafficByRule.value)) {
-    uploadRate += stats.upload_rate
-    downloadRate += stats.download_rate
-  }
-  return { uploadRate, downloadRate }
-})
-
-const trafficChart = computed(() => {
-  const now = Date.now()
-  const labels: string[] = []
-  const upload: number[] = []
-  const download: number[] = []
-  for (let i = 5; i >= 0; i--) {
-    const bucketEnd = now - i * 60 * 1000
-    const bucketStart = bucketEnd - 60 * 1000
-    const points = rateHistory.value.filter((p) => p.at > bucketStart && p.at <= bucketEnd)
-    const avg = (key: 'upload' | 'download') =>
-      points.length ? points.reduce((sum, p) => sum + p[key], 0) / points.length : 0
-    upload.push(avg('upload'))
-    download.push(avg('download'))
-    const d = new Date(bucketEnd)
-    labels.push(
-      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-    )
-  }
-  return { labels, upload, download }
 })
 
 const awarenessUpdatedLabel = computed(() => {
@@ -500,17 +436,6 @@ const awarenessServiceColumns: DataTableColumns<AwarenessServiceRow> = [
   },
 ]
 
-function recordRateSample() {
-  const now = Date.now()
-  rateHistory.value.push({
-    at: now,
-    upload: trafficTotals.value.uploadRate,
-    download: trafficTotals.value.downloadRate,
-  })
-  const cutoff = now - RATE_HISTORY_MS
-  rateHistory.value = rateHistory.value.filter((p) => p.at >= cutoff)
-}
-
 async function refreshAwareness() {
   const range = awarenessRange.value
   try {
@@ -530,32 +455,6 @@ function stopAwarenessPoll() {
   if (awarenessTimer) {
     clearInterval(awarenessTimer)
     awarenessTimer = null
-  }
-}
-
-async function refreshTraffic() {
-  try {
-    const rows = asList(await api.getProxyTraffic())
-    const next: Record<number, ProxyTraffic> = {}
-    for (const row of rows) {
-      next[row.rule_id] = row
-    }
-    trafficByRule.value = next
-    recordRateSample()
-  } catch {
-    // ignore polling errors
-  }
-}
-
-function startTrafficPoll() {
-  stopTrafficPoll()
-  trafficTimer = setInterval(refreshTraffic, 2000)
-}
-
-function stopTrafficPoll() {
-  if (trafficTimer) {
-    clearInterval(trafficTimer)
-    trafficTimer = null
   }
 }
 
@@ -593,20 +492,16 @@ async function loadDashboardExtras() {
 function resumeDashboard() {
   void load()
   void refreshAwareness()
-  void refreshTraffic()
-  startTrafficPoll()
   startAwarenessPoll()
 }
 
 onActivated(resumeDashboard)
 
 onDeactivated(() => {
-  stopTrafficPoll()
   stopAwarenessPoll()
 })
 
 onUnmounted(() => {
-  stopTrafficPoll()
   stopAwarenessPoll()
 })
 </script>
@@ -792,46 +687,8 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.awareness-charts-panel__divider {
-  height: 1px;
-  margin: 0 var(--fonu-space-5);
-  background: var(--fonu-border);
-}
-
-.awareness-charts-panel__trend {
-  min-height: 0;
-  padding-bottom: var(--fonu-space-2);
-}
-
 .awareness-charts-panel__trend :deep(.chart) {
-  height: 220px;
-}
-
-.awareness-charts-panel__block--traffic {
-  padding-bottom: var(--fonu-space-2);
-}
-
-.awareness-traffic-panel__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fonu-space-4);
-  flex-wrap: wrap;
-  padding: var(--fonu-space-4) var(--fonu-space-5) var(--fonu-space-2);
-}
-
-.awareness-traffic-panel__head .panel-title {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.traffic-rates--compact {
-  margin-bottom: 0;
-  flex-shrink: 0;
-}
-
-.awareness-traffic-panel__chart {
-  padding: 0 var(--fonu-space-5) var(--fonu-space-5);
+  height: 260px;
 }
 
 .tabular-nums {
@@ -1228,9 +1085,5 @@ a.ip-geo-cell__ip:hover {
 
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: 1fr; }
-  .awareness-traffic-panel__head {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 </style>
