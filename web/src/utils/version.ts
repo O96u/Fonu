@@ -28,6 +28,20 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.4',
+    date: '2026-11-06',
+    url: `${GITHUB_RELEASES}/tag/v1.3.4`,
+    markdown: [
+      '### 修复',
+      '',
+      '- 证书 DNS-01 修复根域名与独立子域 zone（Cloudflare、腾讯云、DNSPod、阿里云）',
+      '',
+      '### 变更',
+      '',
+      '- GitHub Issue 固定反馈表单',
+    ].join('\n'),
+  },
+  {
     version: '1.3.3',
     date: '2026-11-04',
     url: `${GITHUB_RELEASES}/tag/v1.3.3`,
@@ -81,12 +95,6 @@ export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-02',
     url: `${GITHUB_RELEASES}/tag/v1.3.0`,
     markdown: ['### 新增', '', '- 首页动态感知、拦截记录，以及离线 IP 归属地', '- 侧栏版本号；检测到 GitHub 新版本时显示更新提示', '', '### 变更', '', '- 访问日志增加 User-Agent；构建工具链升级到 Go 1.27.3'].join('\n'),
-  },
-  {
-    version: '1.2.2',
-    date: '2026-10-29',
-    url: `${GITHUB_RELEASES}/tag/v1.2.2`,
-    markdown: '- 飞牛证书映射路径与安装向导保留数据目录\n- FPK 的 nginx pid 与 mime.types 修正',
   },
 ]
 

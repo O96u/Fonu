@@ -6,10 +6,6 @@ import (
 	"time"
 
 	"github.com/go-acme/lego/v4/challenge"
-	"github.com/go-acme/lego/v4/providers/dns/alidns"
-	"github.com/go-acme/lego/v4/providers/dns/cloudflare"
-	"github.com/go-acme/lego/v4/providers/dns/dnspod"
-	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
 
 	"github.com/fonu/fonu/internal/ddns"
 )
@@ -17,27 +13,17 @@ import (
 func newDNS01Provider(provider string, cred ddns.Credentials) (challenge.Provider, error) {
 	switch provider {
 	case "dnspod":
-		cfg := dnspod.NewDefaultConfig()
-		cfg.LoginToken = cred.LoginToken()
-		return dnspod.NewDNSProviderConfig(cfg)
+		return newDNSPodDNSProvider(cred)
 	case "alidns":
-		cfg := alidns.NewDefaultConfig()
-		cfg.APIKey = cred.Token
-		cfg.SecretKey = cred.Secret
-		return alidns.NewDNSProviderConfig(cfg)
+		return newAliDNSDNSProvider(cred)
 	case "tencentcloud":
-		cfg := tencentcloud.NewDefaultConfig()
-		cfg.SecretID = cred.Token
-		cfg.SecretKey = cred.Secret
-		return tencentcloud.NewDNSProviderConfig(cfg)
+		return newTencentCloudDNSProvider(cred)
 	case "volcengine":
 		return newVolcengineDNSProvider(cred)
 	case "dnshe":
 		return newDNSHEDNSProvider(cred)
 	default:
-		cfg := cloudflare.NewDefaultConfig()
-		cfg.AuthToken = cred.Token
-		return cloudflare.NewDNSProviderConfig(cfg)
+		return newCloudflareDNSProvider(cred)
 	}
 }
 

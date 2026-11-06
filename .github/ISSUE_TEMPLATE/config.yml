@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 发版说明与下载
+    url: https://github.com/O96u/Fonu/releases
+    about: 查看当前版本与更新内容
+  - name: 文档（README）
+    url: https://github.com/O96u/Fonu#readme
+    about: 部署方式、FPK、Docker 说明

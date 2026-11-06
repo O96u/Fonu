@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.4] - 2026-11-06
+
+### 变更
+
+- GitHub 新建 Issue 使用固定表单（版本、运行环境、问题描述、错误日志等）
+
+### 修复
+
+- 证书 DNS-01 不再使用 lego 自带 DNS 插件；Cloudflare、腾讯云、DNSPod、阿里云与 DDNS 一致，按最长后缀匹配 zone，修复根域名（如 `A.cn`）与独立子域 zone（如 `example.eu.org`）申请失败
+
 ## [v1.3.3] - 2026-11-04
 
 ### 变更

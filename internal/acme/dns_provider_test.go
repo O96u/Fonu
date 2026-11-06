@@ -23,6 +23,46 @@ func TestNewDNSHEDNSProvider(t *testing.T) {
 	}
 }
 
+func TestNewDNSPodDNSProvider(t *testing.T) {
+	p, err := newDNSPodDNSProvider(ddns.Credentials{TokenID: "id", Token: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil {
+		t.Fatal("expected provider")
+	}
+}
+
+func TestNewAliDNSDNSProvider(t *testing.T) {
+	p, err := newAliDNSDNSProvider(ddns.Credentials{Token: "ak", Secret: "sk"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil {
+		t.Fatal("expected provider")
+	}
+}
+
+func TestNewTencentCloudDNSProvider(t *testing.T) {
+	p, err := newTencentCloudDNSProvider(ddns.Credentials{Token: "id", Secret: "key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil {
+		t.Fatal("expected provider")
+	}
+}
+
+func TestNewCloudflareDNSProvider(t *testing.T) {
+	p, err := newCloudflareDNSProvider(ddns.Credentials{Token: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil {
+		t.Fatal("expected provider")
+	}
+}
+
 func TestNewVolcengineDNSProvider(t *testing.T) {
 	p, err := newVolcengineDNSProvider(ddns.Credentials{Token: "ak", Secret: "sk"})
 	if err != nil {

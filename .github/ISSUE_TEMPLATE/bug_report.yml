@@ -1,0 +1,68 @@
+name: Bug 反馈
+description: 功能异常、报错、无法使用
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请尽量填写完整，便于复现。若涉及证书 / DNS，请附上**脱敏后**的域名与服务商名称，勿粘贴 API Token、密码或完整 Cookie。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 侧栏或「设置 → 更新日志」中的版本号；本地 `go run` 可填 `dev`
+      placeholder: "例如 1.3.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 你实际部署 Fonu 的方式
+      options:
+        - 飞牛 fnOS FPK（应用用户）
+        - 飞牛 fnOS FPK（Root 包）
+        - Docker
+        - 本地 go run / 自编译
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: environment_detail
+    attributes:
+      label: 环境补充（可选）
+      description: 例如 fnOS 版本、Docker 镜像 tag、amd64/arm64
+      placeholder: "例如 fnOS 0.9.x，arm64"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 (Description)
+      description: 做了什么、期望什么、实际发生了什么
+      placeholder: |
+        1. 操作步骤…
+        2. 期望…
+        3. 实际…
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志 (Error Logs)
+      description: 证书申请进度、设置页 toast、`.data/logs` 或容器日志中的相关片段
+      render: shell
+      placeholder: |
+        证书申请失败：error: …
+        或粘贴 nginx / fonu 日志片段
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他信息（可选）
+      description: 截图链接、是否刚升级/恢复备份、相关域名类型（根域名 / 通配符 / 子域 zone）等

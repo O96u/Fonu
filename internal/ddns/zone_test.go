@@ -36,6 +36,36 @@ func TestResolveZoneForFQDNPrefersLongestZone(t *testing.T) {
 	}
 }
 
+func TestResolveZoneForFQDNApexACMEFQDN(t *testing.T) {
+	zones := map[string]bool{
+		"a.cn": true,
+	}
+	zone, host, err := ResolveZoneForFQDN(context.Background(), func(candidate string) (bool, error) {
+		return zones[candidate], nil
+	}, "_acme-challenge.a.cn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zone != "a.cn" || host != "_acme-challenge" {
+		t.Fatalf("unexpected zone=%s host=%s", zone, host)
+	}
+}
+
+func TestResolveZoneForFQDNDelegatedACMEFQDN(t *testing.T) {
+	zones := map[string]bool{
+		"example.eu.org": true,
+	}
+	zone, host, err := ResolveZoneForFQDN(context.Background(), func(candidate string) (bool, error) {
+		return zones[candidate], nil
+	}, "_acme-challenge.example.eu.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zone != "example.eu.org" || host != "_acme-challenge" {
+		t.Fatalf("unexpected zone=%s host=%s", zone, host)
+	}
+}
+
 func TestResolveZoneForFQDNClassicSubdomain(t *testing.T) {
 	zones := map[string]bool{
 		"example.com": true,
