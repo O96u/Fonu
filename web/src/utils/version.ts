@@ -28,6 +28,16 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.6',
+    date: '2026-11-06',
+    url: `${GITHUB_RELEASES}/tag/v1.3.6`,
+    markdown: [
+      '### 修复',
+      '',
+      '- DNSPod ACME：写入验证 TXT 前先清除同主机名下旧记录，修复传播超时',
+    ].join('\n'),
+  },
+  {
     version: '1.3.5',
     date: '2026-11-06',
     url: `${GITHUB_RELEASES}/tag/v1.3.5`,

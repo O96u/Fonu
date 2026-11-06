@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.6] - 2026-11-06
+
+### 修复
+
+- DNSPod ACME：写入 `_acme-challenge` TXT 前先清除同主机名下全部 TXT，避免多线路或历史残留导致权威 NS 仍返回旧 token、DNS-01 传播超时
+
 ## [v1.3.5] - 2026-11-06
 
 ### 变更

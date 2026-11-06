@@ -84,13 +84,48 @@ func (d *DNSPod) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 	return err
 }
 
+// removeTXTRecords deletes TXT records at host. If matchValue is non-empty, only that value is removed.
+func (d *DNSPod) removeTXTRecords(ctx context.Context, cred Credentials, zone, host, matchValue string) error {
+	client := d.apiClient(cred)
+	domainID, err := d.domainID(client, zone)
+	if err != nil {
+		return err
+	}
+	subDomain := subDomainForRecord(host)
+	records, _, err := client.Records.List(domainID, subDomain)
+	if err != nil {
+		return err
+	}
+	want := strings.TrimSpace(matchValue)
+	for _, rec := range records {
+		if !strings.EqualFold(rec.Type, "TXT") {
+			continue
+		}
+		if want != "" && dnspodTXTValue(rec.Value) != want {
+			continue
+		}
+		if _, err := client.Records.Delete(domainID, rec.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func dnspodTXTValue(raw string) string {
+	s := strings.TrimSpace(raw)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
 func (d *DNSPod) domainID(client *dnspod.Client, rootDomain string) (string, error) {
 	domains, _, err := client.Domains.List()
 	if err != nil {
 		return "", err
 	}
 	for _, domain := range domains {
-		if domain.Name == rootDomain {
+		if strings.EqualFold(domain.Name, rootDomain) {
 			return domain.ID.String(), nil
 		}
 	}
