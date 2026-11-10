@@ -28,6 +28,20 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.8',
+    date: '2026-11-10',
+    url: `${GITHUB_RELEASES}/tag/v1.3.8`,
+    markdown: [
+      '### 变更',
+      '',
+      '- DDNS 与证书申请新增华为云 DNS',
+      '',
+      '### 修复',
+      '',
+      '- 腾讯云、DNSPod 申请证书时 TXT 的 TTL 改为 600 秒',
+    ].join('\n'),
+  },
+  {
     version: '1.3.7',
     date: '2026-11-06',
     url: `${GITHUB_RELEASES}/tag/v1.3.7`,

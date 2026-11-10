@@ -51,7 +51,7 @@
     </div>
 
     <div
-      v-if="form.provider === 'dnshe' || form.provider === 'alidns' || form.provider === 'tencentcloud' || form.provider === 'volcengine'"
+      v-if="form.provider === 'dnshe' || form.provider === 'alidns' || form.provider === 'tencentcloud' || form.provider === 'volcengine' || form.provider === 'huaweicloud'"
       class="provider-form__field"
     >
       <label class="provider-form__label provider-secret-label">
@@ -107,6 +107,7 @@ import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
+import huaweicloudIcon from '../assets/brand/dns/huaweicloud.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import type { DDNSConfig } from '../api/types'
 
@@ -141,6 +142,7 @@ const providerOptions = [
   { label: '阿里云 DNS', value: 'alidns' },
   { label: '腾讯云 DNS', value: 'tencentcloud' },
   { label: '火山引擎 DNS', value: 'volcengine' },
+  { label: '华为云 DNS', value: 'huaweicloud' },
   { label: 'DNSHE', value: 'dnshe' },
 ]
 
@@ -150,11 +152,13 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
   volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
+  huaweicloud: { label: '华为云 DNS', icon: huaweicloudIcon },
   dnshe: { label: 'DNSHE', icon: dnsheIcon },
 }
 
 const credentialLabel = computed(() => {
   if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
+  if (props.form.provider === 'huaweicloud') return 'Access Key ID'
   if (props.form.provider === 'tencentcloud') return 'SecretId'
   if (props.form.provider === 'dnspod') return 'Token'
   if (props.form.provider === 'dnshe') return 'API Key'
@@ -164,18 +168,21 @@ const credentialLabel = computed(() => {
 const secretLabel = computed(() => {
   if (props.form.provider === 'dnshe') return 'API Secret'
   if (props.form.provider === 'tencentcloud') return 'SecretKey'
+  if (props.form.provider === 'huaweicloud') return 'Secret Access Key'
   return 'AccessKey Secret'
 })
 
 const secretPlaceholder = computed(() => {
   if (props.form.provider === 'dnshe') return 'DNSHE API Secret'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretKey'
+  if (props.form.provider === 'huaweicloud') return 'Secret Access Key'
   return 'AccessKey Secret'
 })
 
 const credentialPlaceholder = computed(() => {
   if (props.editing?.has_token) return CONFIGURED_SECRET_PLACEHOLDER
   if (props.form.provider === 'alidns' || props.form.provider === 'volcengine') return 'AccessKey ID'
+  if (props.form.provider === 'huaweicloud') return 'Access Key ID'
   if (props.form.provider === 'tencentcloud') return '腾讯云 SecretId'
   if (props.form.provider === 'dnspod') return 'DNSPod Token'
   if (props.form.provider === 'dnshe') return '在 DNSHE 控制台 API 管理创建'

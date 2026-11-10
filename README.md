@@ -35,7 +35,7 @@
 | 模块           | 说明                                                                                           |
 | -------------- | ---------------------------------------------------------------------------------------------- |
 | **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP                    |
-| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎 DNS；单任务多根域名，自动同步公网 IP         |
+| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎、华为云 DNS；单任务多根域名，自动同步公网 IP         |
 | **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；按证书配置本机目录映射或 SSH（SFTP）上传与重载命令；申请进度实时日志 |
 | **仪表盘**     | 公网 IP、域名、证书、服务状态；**访问统计**（SQLite：请求、独立 IP、拦截、访问地图）；**异常**（5xx / 4xx、耗时、慢请求）；趋势与最近 30 条访问 |
 | **日志中心**   | 系统日志、Nginx 访问日志（含 **拦截筛选**、来源 IP **归属地**）、Nginx 错误日志；分页筛选与自动刷新 |
@@ -125,14 +125,14 @@
 | **后端**     | Go 1.27、标准库 HTTP、SQLite（modernc.org/sqlite）                     |
 | **反向代理** | 内置 Nginx（动态生成配置、热重载）                                     |
 | **证书**     | go-acme/lego（Let's Encrypt）                                          |
-| **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 DNS API               |
+| **DDNS**     | Cloudflare / DNSPod / 阿里云 / 腾讯云 / 火山引擎 / 华为云 DNS API               |
 | **内网穿透** | 内置 frpc（v0.71.x）；Web 网关穿透 Fonu Nginx，另支持 TCP/UDP 远程端口映射 |
 | **前端**     | Vue 3、TypeScript、Vite、Naive UI、ECharts                             |
 | **部署**     | Docker 多架构镜像（amd64 / arm64）、飞牛原生 FPK、GitHub Actions CI    |
 
 ## 部署
 
-当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.7** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.8** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
@@ -142,8 +142,8 @@ Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fon
 
 | 包 | 权限 | 怎么选 |
 | ---- | ---- | ---- |
-| `fonu_1.3.7_amd64.fpk`、`fonu_1.3.7_arm64.fpk` | 应用用户 `fonu`（`run-as: package`） | 默认。证书映射和其他目录在应用设置「访问权限」里授权。这个包可以提交飞牛应用中心。 |
-| `fonu_1.3.7_amd64_root.fpk`、`fonu_1.3.7_arm64_root.fpk` | `root`（`run-as: root`） | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只在 GitHub Release 提供。进程以 root 运行，能写系统目录、监听特权端口，风险也更大，请自行决定要不要装。 |
+| `fonu_1.3.8_amd64.fpk`、`fonu_1.3.8_arm64.fpk` | 应用用户 `fonu`（`run-as: package`） | 默认。证书映射和其他目录在应用设置「访问权限」里授权。这个包可以提交飞牛应用中心。 |
+| `fonu_1.3.8_amd64_root.fpk`、`fonu_1.3.8_arm64_root.fpk` | `root`（`run-as: root`） | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只在 GitHub Release 提供。进程以 root 运行，能写系统目录、监听特权端口，风险也更大，请自行决定要不要装。 |
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
@@ -251,7 +251,7 @@ vhostHTTPSPort = 443
 #### 3. DNS 与证书
 
 - **DDNS**：启用 FRP 后，Web 域名应解析到 **VPS 公网 IP**，而非 NAS IP（DDNS 页会有提示）
-- **HTTPS 证书**：Web 网关推荐继续使用 **DNS-01** 验证（Cloudflare、阿里云、腾讯云、DNSPod、火山引擎等已支持）；证书仍在 NAS 侧 Nginx 终结
+- **HTTPS 证书**：Web 网关推荐继续使用 **DNS-01** 验证（Cloudflare、阿里云、腾讯云、DNSPod、火山引擎、华为云等已支持）；证书仍在 NAS 侧 Nginx 终结
 - **纯端口穿透**：无需为 TCP/UDP 隧道单独配置域名证书
 
 ## 环境变量
@@ -292,7 +292,7 @@ go test ./...
 cd web && npm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.7**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.8**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 

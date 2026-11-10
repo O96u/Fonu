@@ -50,7 +50,7 @@ func (t *TencentCloud) ensureTXTRecord(ctx context.Context, cred Credentials, zo
 	req.RecordType = common.StringPtr("TXT")
 	req.RecordLine = common.StringPtr("默认")
 	req.Value = common.StringPtr(want)
-	req.TTL = common.Uint64Ptr(120)
+	req.TTL = common.Uint64Ptr(600)
 	_, err = client.CreateRecord(req)
 	return wrapTencentErr(err)
 }

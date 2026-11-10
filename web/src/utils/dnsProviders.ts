@@ -4,6 +4,7 @@ const DDNS_PROVIDER_LABELS: Record<string, string> = {
   alidns: '阿里云 DNS',
   tencentcloud: '腾讯云 DNS',
   volcengine: '火山引擎 DNS',
+  huaweicloud: '华为云 DNS',
   dnshe: 'DNSHE',
 }
 

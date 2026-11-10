@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.8] - 2026-11-10
+
+### 变更
+
+- DDNS 与证书 DNS-01 新增华为云 DNS，使用 Access Key ID 和 Secret Access Key
+
+### 修复
+
+- 腾讯云、DNSPod 申请证书时 TXT 的 TTL 改为 600 秒，避免低于服务商下限导致「记录的 TTL 值超出了限制」
+
 ## [v1.3.7] - 2026-11-06
 
 ### 修复

@@ -618,6 +618,7 @@ import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
 import dnspodIcon from '../assets/brand/dns/dnspod.png'
 import tencentcloudIcon from '../assets/brand/dns/tencentcloud.png'
 import volcengineIcon from '../assets/brand/dns/volcengine.png'
+import huaweicloudIcon from '../assets/brand/dns/huaweicloud.png'
 import dnsheIcon from '../assets/brand/dns/dnshe.png'
 import { api, asList } from '../api/client'
 import type { DDNSConfig, DDNSDomainRecord, DNSHEAccount } from '../api/types'
@@ -673,6 +674,7 @@ const providerMap: Record<string, { label: string; icon: string }> = {
   alidns: { label: '阿里云 DNS', icon: aliyunIcon },
   tencentcloud: { label: '腾讯云 DNS', icon: tencentcloudIcon },
   volcengine: { label: '火山引擎 DNS', icon: volcengineIcon },
+  huaweicloud: { label: '华为云 DNS', icon: huaweicloudIcon },
   dnshe: { label: 'DNSHE', icon: dnsheIcon },
 }
 

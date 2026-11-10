@@ -43,7 +43,7 @@ func (d *DNSPod) ensureTXTRecord(ctx context.Context, cred Credentials, zone, ho
 		Name:  subDomain,
 		Value: strings.TrimSpace(value),
 		Line:  "默认",
-		TTL:   "120",
+		TTL:   "600",
 	})
 	return err
 }
