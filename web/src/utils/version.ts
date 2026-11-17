@@ -32,13 +32,8 @@ export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-17',
     url: `${GITHUB_RELEASES}/tag/v1.3.10`,
     markdown: [
-      '### 新增',
-      '',
-      '- 登录页检测到飞牛时显示「使用 NAS 登录」，账户菜单可解绑飞牛账号',
-      '',
       '### 修复',
       '',
-      '- 「使用 NAS 登录」先进入飞牛网关，确认当前账号后再进入或绑定',
       '- 飞牛窗口里页面高度跟应用窗口一致，收起侧栏的图标回到正中，展开时不再顿一下',
     ].join('\n'),
   },
