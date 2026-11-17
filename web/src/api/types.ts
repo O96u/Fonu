@@ -141,6 +141,31 @@ export interface AuthStatus {
   username?: string
 }
 
+export interface FnosLoginStatus {
+  available: boolean
+  enabled: boolean
+  gateway: boolean
+  bound: boolean
+  login_method: 'gateway' | 'redirect' | 'none' | string
+  redirect_url?: string
+}
+
+export interface FnosBinding {
+  nas_uid: string
+  nas_username: string
+  created_at: string
+}
+
+export interface FnosAuthSettings {
+  enabled: boolean
+  gateway: boolean
+  gateway_url: string
+  suggested_url?: string
+  bindings: FnosBinding[]
+  current_uid?: string
+  current_username?: string
+}
+
 export interface AppVersion {
   version: string
   nginx_http_port: number

@@ -25,16 +25,18 @@
       </n-form>
 
       <p class="auth-hint">首次使用请自定义管理员用户名和密码。创建后可在右上角账户菜单中修改。</p>
+      <p v-if="fnosReady" class="auth-hint">创建完成后，回到登录页点「使用 NAS 登录」，填写刚创建的账号即可绑定。</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { api } from '../api/client'
 import logoImg from '../assets/brand/logo.png'
+import { appBasePath } from '../utils/appBase'
 
 const router = useRouter()
 const message = useMessage()
@@ -42,6 +44,21 @@ const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const loading = ref(false)
+const fnosReady = ref(false)
+
+onMounted(() => {
+  void loadFnosHint()
+})
+
+async function loadFnosHint() {
+  if (!appBasePath()) return
+  try {
+    const status = await api.fnosStatus()
+    fnosReady.value = status.gateway
+  } catch {
+    fnosReady.value = false
+  }
+}
 
 async function submit() {
   if (!username.value.trim()) {

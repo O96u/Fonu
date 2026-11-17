@@ -147,7 +147,7 @@ Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fon
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
-| 管理后台 | `http://<NAS-IP>:6893` |
+| 管理后台 | 飞牛桌面（管理员一键登录），或 `http://<NAS-IP>:6893` |
 | HTTP 反代 | `http://<NAS-IP>:18080` |
 | HTTPS 反代 | `https://<NAS-IP>:9443` |
 

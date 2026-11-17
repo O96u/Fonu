@@ -192,6 +192,50 @@
         </template>
       </n-modal>
 
+      <n-modal
+        v-model:show="unbindModalOpen"
+        preset="card"
+        title="解绑飞牛账号"
+        class="user-account-modal"
+        :style="{ width: 'min(420px, calc(100vw - 32px))' }"
+        :mask-closable="!unbindingFnos"
+      >
+        <p v-if="!fnosBindings.length" class="unbind-hint">还没有绑定飞牛账号。</p>
+        <n-form
+          v-else
+          label-placement="top"
+          :show-feedback="false"
+          class="user-account-form"
+        >
+          <n-form-item v-if="fnosBindings.length > 1" label="飞牛账号">
+            <n-select v-model:value="unbindUID" :options="fnosBindingOptions" />
+          </n-form-item>
+          <p v-else class="unbind-hint">将解除「{{ fnosBindings[0].nas_username || fnosBindings[0].nas_uid }}」与 Fonu 的绑定。之后该飞牛账号需要重新绑定才能使用 NAS 登录。</p>
+          <n-form-item label="当前密码">
+            <n-input
+              v-model:value="unbindPassword"
+              type="password"
+              show-password-on="click"
+              autocomplete="current-password"
+              placeholder="验证身份"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button :disabled="unbindingFnos" @click="unbindModalOpen = false">取消</n-button>
+            <n-button
+              v-if="fnosBindings.length"
+              type="primary"
+              :loading="unbindingFnos"
+              @click="submitUnbind"
+            >
+              解绑
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
       <n-layout-content class="content">
         <div class="page-shell page-body">
           <router-view v-slot="{ Component }">
@@ -220,6 +264,7 @@ import {
   NLayoutSider,
   NMenu,
   NModal,
+  NSelect,
   NSpace,
   useMessage,
   type DropdownOption,
@@ -241,6 +286,8 @@ import {
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
 import { api } from "../api/client";
+import type { FnosBinding } from "../api/types";
+import { setSkipFnosAutoLogin } from "../utils/fnosLogin";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
 import { useTheme } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
@@ -265,8 +312,13 @@ const appVersion = ref(__APP_VERSION__);
 const adminUsername = ref("");
 const usernameModalOpen = ref(false);
 const passwordModalOpen = ref(false);
+const unbindModalOpen = ref(false);
 const changingUsername = ref(false);
 const changingPassword = ref(false);
+const unbindingFnos = ref(false);
+const fnosBindings = ref<FnosBinding[]>([]);
+const unbindUID = ref("");
+const unbindPassword = ref("");
 const usernameForm = reactive({ new_username: "", password: "" });
 const passwordForm = reactive({
   old_password: "",
@@ -331,12 +383,20 @@ const usernameChanged = computed(
     usernameForm.new_username.trim() !== adminUsername.value,
 );
 
-const userMenuOptions: DropdownOption[] = [
+const fnosBindingOptions = computed(() =>
+  fnosBindings.value.map((item) => ({
+    label: item.nas_username ? `${item.nas_username}（${item.nas_uid}）` : item.nas_uid,
+    value: item.nas_uid,
+  })),
+);
+
+const userMenuOptions = computed<DropdownOption[]>(() => [
   { label: "修改用户名", key: "username" },
   { label: "修改密码", key: "password" },
+  { label: "解绑飞牛账号", key: "unbind-fnos" },
   { type: "divider", key: "account-divider" },
   { label: "退出登录", key: "logout" },
-];
+]);
 
 function updateClock() {
   const now = new Date();
@@ -366,6 +426,39 @@ async function loadAuthProfile() {
     }
   } catch {
     // ignore
+  }
+  try {
+    fnosBindings.value = (await api.fnosAuthSettings()).bindings ?? [];
+  } catch {
+    fnosBindings.value = [];
+  }
+}
+
+function openUnbindModal() {
+  unbindPassword.value = "";
+  unbindUID.value = fnosBindings.value[0]?.nas_uid ?? "";
+  unbindModalOpen.value = true;
+}
+
+async function submitUnbind() {
+  if (!unbindUID.value) {
+    message.warning("还没有绑定飞牛账号");
+    return;
+  }
+  if (!unbindPassword.value) {
+    message.warning("请填写当前密码");
+    return;
+  }
+  unbindingFnos.value = true;
+  try {
+    fnosBindings.value = (await api.unbindFnos(unbindPassword.value, unbindUID.value)).bindings ?? [];
+    unbindPassword.value = "";
+    unbindModalOpen.value = false;
+    message.success("已解除飞牛账号绑定");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "解绑失败");
+  } finally {
+    unbindingFnos.value = false;
   }
 }
 
@@ -443,7 +536,12 @@ async function handleUserMenu(key: string) {
     openPasswordModal();
     return;
   }
+  if (key === "unbind-fnos") {
+    openUnbindModal();
+    return;
+  }
   if (key === "logout") {
+    setSkipFnosAutoLogin();
     await api.logout();
     message.success("已退出登录");
     router.push({ name: "login" });
@@ -733,6 +831,13 @@ onUnmounted(() => {
 
 .user-account-form :deep(.n-form-item:last-child) {
   margin-bottom: 0;
+}
+
+.unbind-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fonu-text-muted);
 }
 
 .content {

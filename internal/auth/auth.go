@@ -140,20 +140,46 @@ func (s *Service) Setup(ctx context.Context, username, password string) error {
 	return err
 }
 
+// LoginInstalledAdmin opens a password-source session for the existing
+// administrator. fnOS login does not call this: a NAS user must be bound first.
+func (s *Service) LoginInstalledAdmin(ctx context.Context) (string, error) {
+	initialized, err := s.IsInitialized(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !initialized {
+		return "", ErrNotInitialized
+	}
+	var adminID int
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM admins ORDER BY id LIMIT 1`).Scan(&adminID); err != nil {
+		return "", err
+	}
+	return s.createSession(ctx, adminID)
+}
+
 func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
+	adminID, err := s.Authenticate(ctx, username, password)
+	if err != nil {
+		return "", err
+	}
+	return s.createSession(ctx, adminID)
+}
+
+// Authenticate checks the Fonu administrator password and returns the account id.
+func (s *Service) Authenticate(ctx context.Context, username, password string) (int, error) {
 	var adminID int
 	var hash string
 	err := s.db.QueryRowContext(ctx, `SELECT id, password_hash FROM admins WHERE username = ?`, username).Scan(&adminID, &hash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrUnauthorized
+			return 0, ErrUnauthorized
 		}
-		return "", err
+		return 0, err
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
-		return "", ErrUnauthorized
+		return 0, ErrUnauthorized
 	}
-	return s.createSession(ctx, adminID)
+	return adminID, nil
 }
 
 func (s *Service) AdminIDForSession(ctx context.Context, sessionID string) (int, error) {
@@ -256,12 +282,23 @@ func (s *Service) ValidateSession(ctx context.Context, sessionID string) error {
 }
 
 func (s *Service) createSession(ctx context.Context, adminID int) (string, error) {
+	return s.OpenSession(ctx, adminID, SourcePassword, "")
+}
+
+// OpenSession creates a new session id. Callers never reuse a client-supplied id.
+func (s *Service) OpenSession(ctx context.Context, adminID int, source, nasUID string) (string, error) {
+	if source != SourceFnos {
+		source = SourcePassword
+	}
 	id, err := randomToken(32)
 	if err != nil {
 		return "", err
 	}
 	expires := time.Now().Add(sessionTTL).UTC().Format(time.RFC3339)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(id, admin_id, expires_at) VALUES (?, ?, ?)`, id, adminID, expires)
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO sessions(id, admin_id, expires_at, auth_source, nas_uid)
+		VALUES (?, ?, ?, ?, ?)
+	`, id, adminID, expires, source, strings.TrimSpace(nasUID))
 	if err != nil {
 		return "", err
 	}
@@ -275,4 +312,3 @@ func randomToken(n int) (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
-
