@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/auth"
-	"github.com/fonu/fonu/internal/fnos"
 	"github.com/fonu/fonu/internal/notify"
 )
 
@@ -73,7 +72,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "管理员已创建，请重新登录")
 		return
 	}
-	setSessionCookie(w, r, sessionID)
+	setSessionCookie(w, sessionID)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "管理员已创建"})
 }
 
@@ -95,7 +94,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "登录失败")
 		return
 	}
-	setSessionCookie(w, r, sessionID)
+	setSessionCookie(w, sessionID)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "登录成功"})
 }
 
@@ -147,22 +146,15 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if sessionID := sessionIDFromContext(r.Context()); sessionID != "" {
 		_ = h.auth.Logout(r.Context(), sessionID)
 	}
-	clearSessionCookie(w, r)
+	clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "已退出登录"})
 }
 
-func sessionCookiePath(r *http.Request) string {
-	if prefix := fnos.PrefixFromContext(r.Context()); prefix != "" {
-		return prefix
-	}
-	return "/"
-}
-
-func setSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) {
+func setSessionCookie(w http.ResponseWriter, sessionID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "fonu_session",
 		Value:    sessionID,
-		Path:     sessionCookiePath(r),
+		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int((7 * 24 * time.Hour).Seconds()),
@@ -177,11 +169,11 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+func clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "fonu_session",
 		Value:    "",
-		Path:     sessionCookiePath(r),
+		Path:     "/",
 		HttpOnly: true,
 		MaxAge:   -1,
 	})

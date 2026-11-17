@@ -9,7 +9,6 @@ import (
 
 type ErrorBody struct {
 	Error string `json:"error"`
-	Code  string `json:"code,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -39,11 +38,6 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func writeError(r *http.Request, w http.ResponseWriter, status int, message string, cause ...error) {
 	logAPIError(r, status, message, cause)
 	writeJSON(w, status, ErrorBody{Error: message})
-}
-
-func writeCodedError(r *http.Request, w http.ResponseWriter, status int, code, message string, cause ...error) {
-	logAPIError(r, status, message, cause)
-	writeJSON(w, status, ErrorBody{Error: message, Code: code})
 }
 
 func logAPIError(r *http.Request, status int, message string, cause []error) {

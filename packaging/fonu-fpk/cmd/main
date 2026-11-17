@@ -182,7 +182,6 @@ stop_app() {
   stop_child_pidfile "$NGINX_PID" "nginx"
   stop_child_pidfile "${TRIM_PKGVAR}/nginx/nginx.pid" "nginx"
   stop_child_pidfile "$FRPC_PID" "frpc"
-  rm -f "${TRIM_APPDEST}/app.sock"
 }
 
 case "${1:-}" in

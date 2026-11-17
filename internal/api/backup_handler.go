@@ -69,7 +69,7 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = os.Remove(tmpPath)
-	clearSessionCookie(w, r)
+	clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "备份已恢复，请重新登录。",
 	})

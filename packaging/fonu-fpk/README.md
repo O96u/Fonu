@@ -48,7 +48,7 @@ appcenter-cli install-fpk fonu_1.3.0_amd64.fpk
 
 | 入口 | 默认地址（安装时可改） |
 |------|------|
-| 管理后台 | 飞牛桌面（`/app/fonu`，管理员一键登录），或 `http://<NAS-IP>:6893`（Fonu 账号密码） |
+| 管理后台 | `http://<NAS-IP>:6893` |
 | HTTP 反代 | `http://<NAS-IP>:18080` |
 | HTTPS 反代 | `https://<NAS-IP>:9443` |
 

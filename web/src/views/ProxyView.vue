@@ -1222,7 +1222,7 @@ import {
   TrashOutline,
   WarningOutline,
 } from '@vicons/ionicons5'
-import { api, apiURL, asList } from '../api/client'
+import { api, asList } from '../api/client'
 import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import {
   applyEntryListen,
@@ -2662,7 +2662,7 @@ function stopLogStream() {
 function startLogStream() {
   const rule = selectedRule.value
   if (!rule || logEventSource) return
-  logEventSource = new EventSource(apiURL(`/api/proxies/${rule.id}/logs/stream?tail=100`), {
+  logEventSource = new EventSource(`/api/proxies/${rule.id}/logs/stream?tail=100`, {
     withCredentials: true,
   })
   logEventSource.addEventListener('log', (event) => {
@@ -3355,14 +3355,13 @@ onUnmounted(() => {
   gap: var(--fonu-space-3);
   padding: var(--fonu-space-4);
   border-bottom: 1px solid var(--fonu-border);
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .proxy-toolbar__search {
-  width: auto;
-  flex: 1 1 160px;
-  min-width: 0;
-  max-width: 280px;
+  width: 240px;
+  max-width: 100%;
+  flex-shrink: 0;
 }
 
 .proxy-toolbar__filter {
@@ -5078,8 +5077,6 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .proxy-toolbar { flex-wrap: wrap; }
-  .proxy-toolbar__search { flex-basis: 100%; max-width: none; }
   .proxy-toolbar__filter { width: 100%; }
   .proxy-detail-modal__header {
     flex-direction: column;

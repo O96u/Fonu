@@ -93,8 +93,6 @@ const (
 	KeyAnalyticsGeoRemoteEnabled    = "analytics_geo_remote_enabled"
 	KeyAnalyticsGeoRemoteURL        = "analytics_geo_remote_url"
 	KeyAnalyticsSkipHistoryBackfill = "analytics_skip_history_backfill"
-	KeyFnosAuthEnabled              = "fnos_auth_enabled"
-	KeyFnosGatewayURL               = "fnos_gateway_url"
 )
 
 const DefaultTimezone = "Asia/Shanghai"

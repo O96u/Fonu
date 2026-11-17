@@ -7,14 +7,12 @@
       "control": {
         "accessPerm": "readonly"
       },
-      "protocol": "",
-      "port": "",
-      "gatewayPrefix": "/app/fonu",
-      "gatewaySocket": "app.sock",
+      "protocol": "http",
+      "port": "6893",
       "title": "Fonu",
       "icon": "images/ICON.PNG",
       "type": "iframe",
-      "url": "/app/fonu/"
+      "url": "/"
     }
   }
 }

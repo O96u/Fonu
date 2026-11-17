@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -41,16 +40,14 @@ import (
 )
 
 type App struct {
-	cfg           config.Config
-	logger        *slog.Logger
-	server        *http.Server
-	gateway       *http.Server
-	gatewaySocket string
-	nginx         *nginx.Manager
-	frp           *frp.Manager
-	scheduler     *scheduler.Scheduler
-	shutdownFn    context.CancelFunc
-	db            interface{ Close() error }
+	cfg        config.Config
+	logger     *slog.Logger
+	server     *http.Server
+	nginx      *nginx.Manager
+	frp        *frp.Manager
+	scheduler  *scheduler.Scheduler
+	shutdownFn context.CancelFunc
+	db         interface{ Close() error }
 }
 
 func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) {
@@ -256,7 +253,6 @@ func (a *App) bootstrapNginx(ctx context.Context, proxySvc *service.ProxyService
 }
 
 func (a *App) Run() error {
-	a.serveGateway(a.server.Handler)
 	return a.server.ListenAndServe()
 }
 
@@ -264,16 +260,6 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.logger.Info("application shutting down", "module", "SYSTEM")
 	if a.shutdownFn != nil {
 		a.shutdownFn()
-	}
-	if a.gateway != nil {
-		if err := a.gateway.Shutdown(ctx); err != nil {
-			a.logger.Error("fnos gateway shutdown failed", "module", "FNOS", "error", err.Error())
-		}
-	}
-	if a.gatewaySocket != "" {
-		if err := os.Remove(a.gatewaySocket); err != nil && !errors.Is(err, os.ErrNotExist) {
-			a.logger.Warn("remove fnos gateway socket", "module", "FNOS", "path", a.gatewaySocket, "error", err.Error())
-		}
 	}
 	if err := a.server.Shutdown(ctx); err != nil {
 		return err
