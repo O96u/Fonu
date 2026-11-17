@@ -273,15 +273,17 @@ func (s *Service) firstByteAfter(maxTS time.Time) (int64, bool) {
 func (s *Service) dispatch(rows []FactRow) {
 	for _, row := range rows {
 		entry := logstore.AccessEntry{
-			Time:         row.TS.UTC().Format(time.RFC3339),
-			Domain:       row.Host,
-			Method:       row.Method,
-			Path:         row.Path,
-			Status:       row.Status,
-			ResponseTime: row.RequestMS / 1000,
-			ClientIP:     row.ClientIP,
-			BytesSent:    row.BytesSent,
-			UserAgent:    row.UserAgent,
+			Time:          row.TS.UTC().Format(time.RFC3339),
+			Domain:        row.Host,
+			ServerPort:    row.ServerPort,
+			Method:        row.Method,
+			Path:          row.Path,
+			Status:        row.Status,
+			ResponseTime:  row.RequestMS / 1000,
+			ClientIP:      row.ClientIP,
+			RequestLength: row.RequestLength,
+			BytesSent:     row.BytesSent,
+			UserAgent:     row.UserAgent,
 		}
 		p := ParsedLine{Entry: entry, At: row.TS}
 		s.mu.RLock()
@@ -309,22 +311,24 @@ func (s *Service) parseLine(line string, bindings proxy.BindingIndex) (FactRow, 
 	geo := s.resolveGeo(entry.ClientIP)
 	reqMS := entry.ResponseTime * 1000
 	return FactRow{
-		TS:          at,
-		ClientIP:    entry.ClientIP,
-		Host:        entry.Domain,
-		Service:     service,
-		Method:      entry.Method,
-		Path:        entry.Path,
-		Status:      entry.Status,
-		BytesSent:   entry.BytesSent,
-		RequestMS:   reqMS,
-		UserAgent:   entry.UserAgent,
-		Kind:        kind,
-		GeoCountry:  geo.GeoCountry,
-		GeoProvince: geo.GeoProvince,
-		GeoCity:     geo.GeoCity,
-		GeoLabel:    geo.GeoLabel,
-		GeoPending:  geo.GeoPending,
+		TS:            at,
+		ClientIP:      entry.ClientIP,
+		Host:          entry.Domain,
+		ServerPort:    entry.ServerPort,
+		Service:       service,
+		Method:        entry.Method,
+		Path:          entry.Path,
+		Status:        entry.Status,
+		RequestLength: entry.RequestLength,
+		BytesSent:     entry.BytesSent,
+		RequestMS:     reqMS,
+		UserAgent:     entry.UserAgent,
+		Kind:          kind,
+		GeoCountry:    geo.GeoCountry,
+		GeoProvince:   geo.GeoProvince,
+		GeoCity:       geo.GeoCity,
+		GeoLabel:      geo.GeoLabel,
+		GeoPending:    geo.GeoPending,
 	}, true
 }
 

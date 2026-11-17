@@ -169,7 +169,7 @@ func summarizeCertificates(records []certstore.Record) (status string, days int,
 		case rec.Status == "error" || rec.DaysLeft <= 0:
 			status = "error"
 		case rec.DaysLeft <= 30 && status != "error":
-			status = "warning"
+			status = "expiring"
 		}
 	}
 	if count == 1 {

@@ -248,7 +248,16 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { isDark, toggleTheme } = useTheme();
-const collapsed = ref(false);
+
+function isFpkEmbed(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+const collapsed = ref(isFpkEmbed());
 const datetime = ref("");
 const appVersion = ref(__APP_VERSION__);
 const adminUsername = ref("");
@@ -528,6 +537,9 @@ onUnmounted(() => {
 
 .app-menu :deep(.n-menu-item-content) {
   border-radius: var(--fonu-radius-sm) !important;
+}
+
+.app-menu:not(.n-menu--collapsed) :deep(.n-menu-item-content) {
   padding-left: 14px !important;
 }
 

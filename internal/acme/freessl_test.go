@@ -12,9 +12,9 @@ func TestResolveFreeSSLDirectoryURL(t *testing.T) {
 	}{
 		{"", want},
 		{"  ", want},
-		{freesslDirectoryURLObsoletePro, want},
-		{freesslDirectoryURLObsoleteLegacy, want},
-		{freesslDirectoryURLObsoleteLegacy + "/my-token", want},
+		{"https://acmepro.freessl.cn/v2/DV", want},
+		{"https://acme.freessl.cn/v2/DV90/directory", want},
+		{"https://acme.freessl.cn/v2/DV90/directory/my-token", want},
 		{"https://acme.example.com/directory", "https://acme.example.com/directory"},
 	}
 	for _, tc := range cases {

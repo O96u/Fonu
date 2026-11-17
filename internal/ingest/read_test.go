@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/db"
+	"github.com/fonu/fonu/internal/logstore"
 )
 
 func testAccessLine(at time.Time, n int) string {
@@ -157,5 +158,33 @@ func TestRewindSkippedTail(t *testing.T) {
 	}
 	if st.Offset != int64(firstLen) {
 		t.Fatalf("offset=%d want %d", st.Offset, firstLen)
+	}
+}
+
+func TestDispatchKeepsPortAndByteCounts(t *testing.T) {
+	dir := t.TempDir()
+	conn, err := db.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(context.Background(), conn, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(NewStore(conn), "", nil, nil, nil, nil, slog.Default())
+	line := `2026-11-17T09:11:00+08:00 speedtest.muxui.com 8007 GET / 200 0.010 192.168.1.8 192.168.8.3:5666 128 4096 "-"`
+	row, ok := svc.parseLine(line, nil)
+	if !ok {
+		t.Fatal("parseLine rejected access line")
+	}
+	if row.ServerPort != 8007 || row.RequestLength != 128 || row.BytesSent != 4096 {
+		t.Fatalf("parsed row port=%d up=%d down=%d", row.ServerPort, row.RequestLength, row.BytesSent)
+	}
+
+	var got logstore.AccessEntry
+	svc.OnLine(func(p ParsedLine) { got = p.Entry })
+	svc.dispatch([]FactRow{row})
+	if got.Domain != "speedtest.muxui.com" || got.ServerPort != 8007 || got.RequestLength != 128 || got.BytesSent != 4096 || got.ClientIP != "192.168.1.8" {
+		t.Fatalf("dispatched entry = %+v", got)
 	}
 }

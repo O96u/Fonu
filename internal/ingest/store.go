@@ -10,22 +10,24 @@ import (
 )
 
 type FactRow struct {
-	TS          time.Time
-	ClientIP    string
-	Host        string
-	Service     string
-	Method      string
-	Path        string
-	Status      int
-	BytesSent   int64
-	RequestMS   float64
-	UserAgent   string
-	Kind        string
-	GeoCountry  string
-	GeoProvince string
-	GeoCity     string
-	GeoLabel    string
-	GeoPending  bool
+	TS            time.Time
+	ClientIP      string
+	Host          string
+	Service       string
+	Method        string
+	Path          string
+	Status        int
+	ServerPort    int
+	RequestLength int64
+	BytesSent     int64
+	RequestMS     float64
+	UserAgent     string
+	Kind          string
+	GeoCountry    string
+	GeoProvince   string
+	GeoCity       string
+	GeoLabel      string
+	GeoPending    bool
 }
 
 type Store struct {

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.9] - 2026-11-17
+
+### 修复
+
+- 反代详情的实时流量和最近访问按「域名:端口」归到对应规则。访问日志交给统计时不再丢掉监听端口和上传字节，面板不再一直是 0
+- 证书剩余 30 天内到期时状态为「即将过期」，不再和「部分异常」混用
+- 飞牛应用内嵌页面默认收起侧栏；菜单展开时才保留左侧内边距
+
+### 变更
+
+- FreeSSL 已失效的 ACME 目录不再保留为常量。设置里保存的 `acmepro.freessl.cn`、`acme.freessl.cn` 仍会忽略，并改用 `https://acme.litessl.com/acme/v2/directory`
+
 ## [v1.3.8] - 2026-11-10
 
 ### 变更

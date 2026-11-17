@@ -28,6 +28,22 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.9',
+    date: '2026-11-17',
+    url: `${GITHUB_RELEASES}/tag/v1.3.9`,
+    markdown: [
+      '### 修复',
+      '',
+      '- 反代详情的实时流量和最近访问按「域名:端口」统计，不再一直是 0',
+      '- 证书 30 天内到期显示为「即将过期」',
+      '- 飞牛应用内嵌页面默认收起侧栏',
+      '',
+      '### 变更',
+      '',
+      '- 已失效的 FreeSSL ACME 目录不再保留为常量，并改用 LiteSSL 目录',
+    ].join('\n'),
+  },
+  {
     version: '1.3.8',
     date: '2026-11-10',
     url: `${GITHUB_RELEASES}/tag/v1.3.8`,

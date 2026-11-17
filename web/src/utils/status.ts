@@ -3,6 +3,7 @@ export type StatusKind = 'success' | 'warning' | 'error' | 'disabled' | 'unknown
 const LABELS: Record<string, string> = {
   ok: '正常',
   running: '运行中',
+  expiring: '即将过期',
   warning: '部分异常',
   error: '异常',
   disabled: '停用',
@@ -21,6 +22,7 @@ export function statusKind(value?: string): StatusKind {
     case 'ok':
     case 'running':
       return 'success'
+    case 'expiring':
     case 'warning':
       return 'warning'
     case 'error':

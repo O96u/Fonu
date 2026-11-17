@@ -6,17 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
-// FreeSSLDirectoryURLDefault is the current LiteSSL ACME v2 directory (FreeSSL 已迁移 off acmepro.freessl.cn).
+// FreeSSLDirectoryURLDefault is the current LiteSSL ACME v2 directory.
 const FreeSSLDirectoryURLDefault = "https://acme.litessl.com/acme/v2/directory"
-
-const (
-	freesslDirectoryURLObsoletePro    = "https://acmepro.freessl.cn/v2/DV"
-	freesslDirectoryURLObsoleteLegacy = "https://acme.freessl.cn/v2/DV90/directory"
-)
 
 type freeSSLEABResponse struct {
 	EABKid     string `json:"eab_kid"`
@@ -27,15 +23,21 @@ type freeSSLEABResponse struct {
 	Message    string `json:"message"`
 }
 
-func isObsoleteFreeSSLDirectoryURL(url string) bool {
-	u := strings.TrimRight(strings.Trim(strings.TrimSpace(url), "`"), "/")
-	if u == "" {
+func isObsoleteFreeSSLDirectoryURL(raw string) bool {
+	raw = strings.TrimRight(strings.Trim(strings.TrimSpace(raw), "`"), "/")
+	if raw == "" {
 		return false
 	}
-	if u == freesslDirectoryURLObsoletePro || u == freesslDirectoryURLObsoleteLegacy {
-		return true
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return false
 	}
-	return strings.HasPrefix(u, freesslDirectoryURLObsoleteLegacy+"/")
+	switch strings.ToLower(parsed.Hostname()) {
+	case "acmepro.freessl.cn", "acme.freessl.cn":
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveFreeSSLDirectoryURL(customURL, _ string) string {
