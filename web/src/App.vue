@@ -21,11 +21,22 @@ const { naiveTheme, themeOverrides } = useTheme()
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  overflow: hidden;
   font-family: var(--fonu-font);
   background: var(--fonu-bg);
   color: var(--fonu-text);
+}
+
+#app > .n-config-provider {
+  height: 100%;
 }
 
 .mono {

@@ -72,7 +72,7 @@ async function submit() {
 
 <style scoped>
 .auth-page {
-  min-height: 100vh;
+  min-height: 100%;
   display: grid;
   place-items: center;
   padding: var(--fonu-space-5);

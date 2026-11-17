@@ -27,7 +27,9 @@
         class="app-menu"
         :value="activeKey"
         :collapsed="collapsed"
-        :collapsed-width="72"
+        :collapsed-width="48"
+        :collapsed-icon-size="20"
+        :root-indent="14"
         :options="menuOptions"
         @update:value="handleMenu"
       />
@@ -462,8 +464,9 @@ onUnmounted(() => {
 
 <style scoped>
 .app-layout {
-  min-height: 100vh;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--fonu-bg);
 }
 
@@ -474,12 +477,14 @@ onUnmounted(() => {
 .app-sider {
   background: var(--fonu-surface) !important;
   border-right: 1px solid var(--fonu-border) !important;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
 }
 
 .app-sider :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .brand {
@@ -487,6 +492,7 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--fonu-space-3);
   padding: var(--fonu-space-5) var(--fonu-space-4);
+  overflow: hidden;
   border-bottom: 1px solid var(--fonu-border);
   color: inherit;
   text-decoration: none;
@@ -499,8 +505,8 @@ onUnmounted(() => {
 }
 
 .brand--collapsed {
-  justify-content: center;
-  padding: var(--fonu-space-4) 0;
+  justify-content: flex-start;
+  padding: var(--fonu-space-4) 0 var(--fonu-space-4) var(--fonu-space-4);
 }
 
 .brand__logo {
@@ -537,10 +543,6 @@ onUnmounted(() => {
 
 .app-menu :deep(.n-menu-item-content) {
   border-radius: var(--fonu-radius-sm) !important;
-}
-
-.app-menu:not(.n-menu--collapsed) :deep(.n-menu-item-content) {
-  padding-left: 14px !important;
 }
 
 .app-menu :deep(.n-menu-item-content--selected) {
@@ -674,7 +676,9 @@ onUnmounted(() => {
 .app-main {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--fonu-bg);
 }
 
@@ -733,6 +737,7 @@ onUnmounted(() => {
 
 .content {
   flex: 1;
+  min-height: 0;
   padding: var(--fonu-space-5);
   overflow: auto;
 }

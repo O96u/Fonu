@@ -28,6 +28,16 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.10',
+    date: '2026-11-17',
+    url: `${GITHUB_RELEASES}/tag/v1.3.10`,
+    markdown: [
+      '### 修复',
+      '',
+      '- 飞牛窗口里页面高度跟应用窗口一致，收起侧栏的图标回到正中，展开时不再顿一下',
+    ].join('\n'),
+  },
+  {
     version: '1.3.9',
     date: '2026-11-17',
     url: `${GITHUB_RELEASES}/tag/v1.3.9`,

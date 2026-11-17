@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.3.10] - 2026-11-17
+
+### 修复
+
+- 飞牛窗口里页面高度跟应用窗口一致，不再高出一截。收起侧栏的图标回到正中，展开时不再被多余滚动条带着顿一下
+
 ## [v1.3.9] - 2026-11-17
 
 ### 修复
