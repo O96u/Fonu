@@ -23,7 +23,7 @@
 
       <div v-if="showFnos" class="nas-login">
         <div class="nas-login__or"><span>或</span></div>
-        <n-button block size="large" secondary :loading="fnosLoading" :disabled="fnosLoading" @click="loginWithFnos">
+        <n-button block size="large" :loading="fnosLoading" :disabled="fnosLoading" @click="loginWithFnos">
           使用 NAS 登录
         </n-button>
         <p v-if="fnosHint" class="auth-hint auth-hint--tight">{{ fnosHint }}</p>
@@ -36,13 +36,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { api } from '../api/client'
 import type { FnosLoginStatus } from '../api/types'
 import logoImg from '../assets/brand/logo.png'
+import { appBasePath } from '../utils/appBase'
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 const username = ref('')
 const password = ref('')
@@ -50,11 +52,14 @@ const loading = ref(false)
 const fnosLoading = ref(false)
 const showFnos = ref(false)
 const fnos = ref<FnosLoginStatus | null>(null)
+
+/** True only after this click has landed on the fnOS gateway. */
+const returnedFromGateway = computed(() => appBasePath() !== '' && route.query.nas === '1')
+
 const fnosHint = computed(() => {
   const status = fnos.value
-  if (!status?.available || status.bound) return ''
-  if (status.login_method === 'redirect') return '检测到飞牛。点击后打开飞牛里的 Fonu，再用当前账号登录。'
-  return '这个飞牛账号还没绑定。填写上方的 Fonu 账号和密码后，再点一次即可绑定并登录。'
+  if (!status?.available || !returnedFromGateway.value || status.bound) return ''
+  return '飞牛网关已确认当前账号，但还没绑定 Fonu。请填写上方的 Fonu 管理员账号和密码，再点一次。'
 })
 
 onMounted(() => {
@@ -69,6 +74,9 @@ async function loadFnos() {
     const status = await api.fnosStatus()
     fnos.value = status
     showFnos.value = status.available
+    if (status.available && status.gateway && status.bound && returnedFromGateway.value) {
+      await finishFnosLogin(true)
+    }
   } catch {
     showFnos.value = false
   }
@@ -78,28 +86,53 @@ async function loginWithFnos() {
   if (fnosLoading.value) return
   const status = fnos.value
   if (!status?.available) return
-  if (status.login_method === 'redirect') {
-    if (!isGatewayURL(status.redirect_url)) {
-      message.error('无法连接飞牛认证网关，请检查 NAS 地址或网络连接。')
+  if (!returnedFromGateway.value || !status.gateway) {
+    if (returnedFromGateway.value && !status.gateway) {
+      message.error('无法验证当前飞牛用户，请重新登录飞牛 fnOS。')
       return
     }
-    window.location.assign(status.redirect_url)
+    const target = gatewayTarget(status)
+    if (!target) {
+      message.error('无法打开飞牛网关，请从飞牛桌面打开 Fonu。')
+      return
+    }
+    window.location.assign(target)
     return
   }
   if (!status.bound && (!username.value.trim() || !password.value)) {
-    message.warning('这个飞牛账号还没绑定。请先填写上方的 Fonu 账号和密码。')
+    message.info('请填写上方的 Fonu 管理员账号和密码，用来绑定当前飞牛账号。')
     return
   }
+  await finishFnosLogin(status.bound)
+}
+
+async function finishFnosLogin(alreadyBound: boolean) {
   fnosLoading.value = true
   try {
-    await api.fnosLogin(status.bound ? '' : username.value.trim(), status.bound ? '' : password.value)
+    await api.fnosLogin(alreadyBound ? '' : username.value.trim(), alreadyBound ? '' : password.value)
     message.success('登录成功')
-    await router.push({ name: 'dashboard' })
+    await router.replace({ name: 'dashboard' })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '登录失败')
   } finally {
     fnosLoading.value = false
   }
+}
+
+function gatewayTarget(status: FnosLoginStatus) {
+  if (status.redirect_url && isGatewayURL(status.redirect_url)) {
+    const url = new URL(status.redirect_url)
+    url.searchParams.set('nas', '1')
+    return url.toString()
+  }
+  if (appBasePath()) {
+    const url = new URL(window.location.href)
+    url.pathname = `${appBasePath()}/login`
+    url.searchParams.set('nas', '1')
+    url.hash = ''
+    return url.toString()
+  }
+  return ''
 }
 
 function isGatewayURL(value: string | undefined): value is string {

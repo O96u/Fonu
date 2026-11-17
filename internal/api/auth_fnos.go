@@ -84,7 +84,7 @@ func (h *AuthHandler) FnosLogin(w http.ResponseWriter, r *http.Request) {
 	adminID, err := h.auth.BoundAdmin(r.Context(), ident.UID, ident.Username)
 	if errors.Is(err, auth.ErrFnosNotBound) {
 		if strings.TrimSpace(creds.Username) == "" || creds.Password == "" {
-			writeCodedError(r, w, http.StatusForbidden, codeFnosUserNotBound, "这个飞牛账号还没绑定。请填写 Fonu 账号和密码后再点一次。")
+			writeCodedError(r, w, http.StatusForbidden, codeFnosUserNotBound, "请先填写 Fonu 管理员的用户名和密码，再使用 NAS 登录。")
 			return
 		}
 		adminID, err = h.auth.Authenticate(r.Context(), strings.TrimSpace(creds.Username), creds.Password)

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.3.11] - 2026-11-17
+
+### 修复
+
+- 「使用 NAS 登录」先进入飞牛网关。网关确认当前飞牛账号之后，已绑定则直接进入；还没绑定才填写 Fonu 账号密码
+
+### 新增
+
+- 右上角账户菜单增加「解绑飞牛账号」
+
 ## [v1.3.10] - 2026-11-17
 
 ### 新增
