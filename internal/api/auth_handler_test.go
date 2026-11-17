@@ -12,10 +12,11 @@ import (
 
 	"github.com/fonu/fonu/internal/auth"
 	"github.com/fonu/fonu/internal/backup"
+	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/db"
 	"github.com/fonu/fonu/internal/discovery"
-	"github.com/fonu/fonu/internal/certificate"
+	"github.com/fonu/fonu/internal/fnos"
 	"github.com/fonu/fonu/internal/proxy"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
@@ -133,5 +134,77 @@ func TestAuthSetupAndLoginFlow(t *testing.T) {
 	handler.ServeHTTP(proxiesRec, proxiesReq)
 	if proxiesRec.Code != http.StatusOK {
 		t.Fatalf("proxies status: %d", proxiesRec.Code)
+	}
+}
+
+func TestFnosLoginOnlyTrustsGateway(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "fonu.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(context.Background(), conn, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	authSvc := auth.New(conn)
+	if err := authSvc.Setup(context.Background(), "admin", "password123"); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	handler := NewRouter(Deps{Auth: authSvc})
+	gateway := fnos.Handler("/app/fonu", handler)
+
+	spoof := httptest.NewRequest(http.MethodGet, "/api/auth/fnos", nil)
+	spoof.Header.Set("X-Trim-Userid", "1000")
+	spoof.Header.Set("X-Trim-Username", "admin")
+	spoof.Header.Set("X-Trim-Isadmin", "true")
+	spoofRec := httptest.NewRecorder()
+	handler.ServeHTTP(spoofRec, spoof)
+	if spoofRec.Code != http.StatusOK || !bytes.Contains(spoofRec.Body.Bytes(), []byte(`"available":false`)) {
+		t.Fatalf("tcp spoof status=%d body=%s", spoofRec.Code, spoofRec.Body.String())
+	}
+
+	spoofLogin := httptest.NewRequest(http.MethodPost, "/api/auth/fnos-login", nil)
+	spoofLogin.Header.Set("X-Trim-Userid", "1000")
+	spoofLogin.Header.Set("X-Trim-Username", "admin")
+	spoofLogin.Header.Set("X-Trim-Isadmin", "true")
+	spoofLoginRec := httptest.NewRecorder()
+	handler.ServeHTTP(spoofLoginRec, spoofLogin)
+	if spoofLoginRec.Code != http.StatusForbidden {
+		t.Fatalf("tcp spoof login status=%d body=%s", spoofLoginRec.Code, spoofLoginRec.Body.String())
+	}
+
+	member := httptest.NewRequest(http.MethodPost, "/app/fonu/api/auth/fnos-login", nil)
+	member.Header.Set("X-Trim-Userid", "1001")
+	member.Header.Set("X-Trim-Username", "family")
+	member.Header.Set("X-Trim-Isadmin", "false")
+	memberRec := httptest.NewRecorder()
+	gateway.ServeHTTP(memberRec, member)
+	if memberRec.Code != http.StatusForbidden {
+		t.Fatalf("member login status=%d body=%s", memberRec.Code, memberRec.Body.String())
+	}
+
+	login := httptest.NewRequest(http.MethodPost, "/app/fonu/api/auth/fnos/login", nil)
+	login.Header.Set("X-Trim-Userid", "1000")
+	login.Header.Set("X-Trim-Username", "nas-admin")
+	login.Header.Set("X-Trim-Isadmin", "true")
+	loginRec := httptest.NewRecorder()
+	gateway.ServeHTTP(loginRec, login)
+	if loginRec.Code != http.StatusForbidden || !bytes.Contains(loginRec.Body.Bytes(), []byte(`FNOS_USER_NOT_BOUND`)) {
+		t.Fatalf("unbound admin login status=%d body=%s", loginRec.Code, loginRec.Body.String())
+	}
+
+	bindBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "password123"})
+	bind := httptest.NewRequest(http.MethodPost, "/app/fonu/api/auth/fnos/login", bytes.NewReader(bindBody))
+	bind.Header.Set("X-Trim-Userid", "1000")
+	bind.Header.Set("X-Trim-Username", "nas-admin")
+	bind.Header.Set("X-Trim-Isadmin", "true")
+	bindRec := httptest.NewRecorder()
+	gateway.ServeHTTP(bindRec, bind)
+	if bindRec.Code != http.StatusOK {
+		t.Fatalf("bind on login status=%d body=%s", bindRec.Code, bindRec.Body.String())
+	}
+	cookie := bindRec.Result().Cookies()[0]
+	if cookie.Name != "fonu_session" || cookie.Path != "/app/fonu" || cookie.Value == "" {
+		t.Fatalf("cookie %+v", cookie)
 	}
 }

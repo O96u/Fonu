@@ -27,7 +27,9 @@
         class="app-menu"
         :value="activeKey"
         :collapsed="collapsed"
-        :collapsed-width="72"
+        :collapsed-width="48"
+        :collapsed-icon-size="20"
+        :root-indent="14"
         :options="menuOptions"
         @update:value="handleMenu"
       />
@@ -239,6 +241,7 @@ import {
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
 import { api } from "../api/client";
+import { setSkipFnosAutoLogin } from "../utils/fnosLogin";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
 import { useTheme } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
@@ -442,6 +445,7 @@ async function handleUserMenu(key: string) {
     return;
   }
   if (key === "logout") {
+    setSkipFnosAutoLogin();
     await api.logout();
     message.success("已退出登录");
     router.push({ name: "login" });
@@ -462,8 +466,9 @@ onUnmounted(() => {
 
 <style scoped>
 .app-layout {
-  min-height: 100vh;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--fonu-bg);
 }
 
@@ -474,12 +479,14 @@ onUnmounted(() => {
 .app-sider {
   background: var(--fonu-surface) !important;
   border-right: 1px solid var(--fonu-border) !important;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
 }
 
 .app-sider :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .brand {
@@ -537,10 +544,6 @@ onUnmounted(() => {
 
 .app-menu :deep(.n-menu-item-content) {
   border-radius: var(--fonu-radius-sm) !important;
-}
-
-.app-menu:not(.n-menu--collapsed) :deep(.n-menu-item-content) {
-  padding-left: 14px !important;
 }
 
 .app-menu :deep(.n-menu-item-content--selected) {
@@ -674,7 +677,9 @@ onUnmounted(() => {
 .app-main {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--fonu-bg);
 }
 
@@ -733,6 +738,7 @@ onUnmounted(() => {
 
 .content {
   flex: 1;
+  min-height: 0;
   padding: var(--fonu-space-5);
   overflow: auto;
 }

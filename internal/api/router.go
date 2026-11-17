@@ -34,12 +34,20 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/status", r.authHandler.Status)
 	mux.HandleFunc("POST /api/auth/setup", r.authHandler.Setup)
 	mux.HandleFunc("POST /api/auth/login", r.authHandler.Login)
+	mux.HandleFunc("GET /api/auth/fnos/status", r.authHandler.FnosStatus)
+	mux.HandleFunc("POST /api/auth/fnos/login", r.authHandler.FnosLogin)
+	mux.HandleFunc("GET /api/auth/fnos", r.authHandler.FnosStatus)
+	mux.HandleFunc("POST /api/auth/fnos-login", r.authHandler.FnosLogin)
 	mux.HandleFunc("POST /api/auth/logout", r.authHandler.Logout)
 
 	protect := func(pattern string, handler http.HandlerFunc) {
 		mux.Handle(pattern, SessionMiddleware(deps.Auth)(RequireAuth(deps.Auth)(http.HandlerFunc(handler))))
 	}
 
+	protect("GET /api/settings/fnos-auth", r.authHandler.FnosSettings)
+	protect("PUT /api/settings/fnos-auth", r.authHandler.FnosSaveSettings)
+	protect("POST /api/auth/fnos/bind", r.authHandler.FnosBind)
+	protect("DELETE /api/auth/fnos/bind", r.authHandler.FnosUnbind)
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
 	protect("POST /api/auth/username", r.authHandler.ChangeUsername)
 	protect("GET /api/status", r.statusHandler.Get)

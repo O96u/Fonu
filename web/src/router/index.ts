@@ -3,9 +3,10 @@ import { api } from '../api/client'
 import AppLayout from '../layouts/AppLayout.vue'
 import LoginView from '../views/LoginView.vue'
 import SetupView from '../views/SetupView.vue'
+import { appBasePath } from '../utils/appBase'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(appBasePath() || '/'),
   routes: [
     { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
@@ -74,8 +75,9 @@ router.beforeEach(async (to) => {
   if (status.initialized && to.name === 'setup') {
     return { name: 'login' }
   }
-  if (to.meta.requiresAuth && !status.authenticated) return { name: 'login' }
-  if ((to.name === 'login' || to.name === 'setup') && status.authenticated) {
+  const authenticated = status.authenticated
+  if (to.meta.requiresAuth && !authenticated) return { name: 'login' }
+  if ((to.name === 'login' || to.name === 'setup') && authenticated) {
     return { name: 'dashboard' }
   }
   return true

@@ -1,8 +1,11 @@
+import { appBasePath } from '../utils/appBase'
 import type {
   AccessLogEntry,
   ApiError,
   AppVersion,
   AuthStatus,
+  FnosAuthSettings,
+  FnosLoginStatus,
   AwarenessLiveSnapshot,
   AnalyticsOverview,
   AwarenessRange,
@@ -47,6 +50,14 @@ export function asList<T>(value: T[] | null | undefined): T[] {
 const REQUEST_TIMEOUT_MS = 30_000
 const CERT_REQUEST_TIMEOUT_MS = 10 * 60_000
 
+export function apiURL(path: string): string {
+  const base = appBasePath()
+  if (!base || !path.startsWith('/') || path === base || path.startsWith(`${base}/`)) {
+    return path
+  }
+  return `${base}${path}`
+}
+
 async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -67,7 +78,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_
 }
 
 async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(apiURL(path), {
     credentials: 'include',
     signal,
     headers: {
@@ -108,6 +119,28 @@ export const api = {
     request<{ message: string }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    }),
+  fnosStatus: () => request<FnosLoginStatus>('/api/auth/fnos/status'),
+  fnosLogin: (username = '', password = '') =>
+    request<{ message: string }>('/api/auth/fnos/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  fnosAuthSettings: () => request<FnosAuthSettings>('/api/settings/fnos-auth'),
+  saveFnosAuth: (payload: { enabled?: boolean; gateway_url?: string; password: string }) =>
+    request<FnosAuthSettings>('/api/settings/fnos-auth', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  bindFnos: (password: string) =>
+    request<FnosAuthSettings>('/api/auth/fnos/bind', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  unbindFnos: (password: string, nas_uid: string) =>
+    request<FnosAuthSettings>('/api/auth/fnos/bind', {
+      method: 'DELETE',
+      body: JSON.stringify({ password, nas_uid }),
     }),
   logout: () => request<{ message: string }>('/api/auth/logout', { method: 'POST' }),
   changePassword: (old_password: string, new_password: string) =>
@@ -285,7 +318,8 @@ export const api = {
         name: payload.name ?? '',
       }),
     }),
-  certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,
+  certificateApplyStreamURL: (jobId: string) =>
+    apiURL(`/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`),
   updateCertificate: (
     domain: string,
     payload: {
@@ -317,7 +351,7 @@ export const api = {
     }),
   async downloadCertificate(domain: string, part: 'zip' | 'cert' | 'key' = 'zip') {
     const response = await fetch(
-      `/api/certificates/${encodeURIComponent(domain)}/download?part=${part}`,
+      apiURL(`/api/certificates/${encodeURIComponent(domain)}/download?part=${part}`),
       { credentials: 'include' },
     )
     if (!response.ok) {
@@ -430,7 +464,7 @@ export const api = {
 
   async exportBackup() {
     const filename = `fonu-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`
-    const url = `/api/backup/export?t=${Date.now()}`
+    const url = apiURL(`/api/backup/export?t=${Date.now()}`)
     if (!window.isSecureContext) {
       const link = document.createElement('a')
       link.href = url
@@ -477,7 +511,7 @@ export const api = {
       const form = new FormData()
       form.append('file', file)
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/backup/restore')
+      xhr.open('POST', apiURL('/api/backup/restore'))
       xhr.withCredentials = true
       xhr.upload.onprogress = (event) => {
         if (!onProgress || !event.lengthComputable || event.total <= 0) return
