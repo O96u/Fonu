@@ -28,13 +28,37 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: '1.3.10',
+    version: '1.3.12',
     date: '2026-11-17',
-    url: `${GITHUB_RELEASES}/tag/v1.3.10`,
+    url: `${GITHUB_RELEASES}/tag/v1.3.12`,
     markdown: [
       '### 修复',
       '',
       '- 飞牛窗口里页面高度跟应用窗口一致，收起侧栏的图标回到正中，展开时不再顿一下',
+    ].join('\n'),
+  },
+  {
+    version: '1.3.11',
+    date: '2026-11-17',
+    url: `${GITHUB_RELEASES}/tag/v1.3.11`,
+    markdown: [
+      '### 修复',
+      '',
+      '- 「使用 NAS 登录」先进入飞牛网关，确认当前飞牛账号后再进入或绑定',
+      '',
+      '### 新增',
+      '',
+      '- 右上角账户菜单增加「解绑飞牛账号」',
+    ].join('\n'),
+  },
+  {
+    version: '1.3.10',
+    date: '2026-11-17',
+    url: `${GITHUB_RELEASES}/tag/v1.3.10`,
+    markdown: [
+      '### 新增',
+      '',
+      '- 登录页检测到飞牛时显示「使用 NAS 登录」',
     ].join('\n'),
   },
   {
