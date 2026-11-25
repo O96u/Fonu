@@ -2,7 +2,8 @@
   <n-alert v-if="status && status.state !== 'unknown'" :type="kind" :title="title" style="margin-bottom: 16px">
     <div v-if="status.last_error">{{ status.last_error }}</div>
     <div v-if="status.desired_revision">目标版本：{{ status.desired_revision.slice(0, 12) }}</div>
-    <div v-if="status.last_requested_revision">最近提交重载版本：{{ status.last_requested_revision.slice(0, 12) }}</div>
+    <div v-if="status.confirmed_revision">已确认 worker 版本：{{ status.confirmed_revision.slice(0, 12) }}</div>
+    <div v-else-if="status.last_requested_revision">最近提交重载版本：{{ status.last_requested_revision.slice(0, 12) }}</div>
   </n-alert>
 </template>
 
@@ -19,8 +20,9 @@ const title = computed(() => ({
   failed: 'Nginx 配置应用失败',
   saved: '配置已保存，未重载',
   reload_requested: '已请求 Nginx 重载',
+  confirmed: 'Nginx 新 worker 已就绪',
 }[status.value?.state ?? 'unknown']))
-const kind = computed(() => status.value?.state === 'failed' ? 'error' : status.value?.state === 'saved' ? 'warning' : 'info')
+const kind = computed(() => status.value?.state === 'failed' ? 'error' : status.value?.state === 'saved' ? 'warning' : status.value?.state === 'confirmed' ? 'success' : 'info')
 let timer: ReturnType<typeof setInterval> | undefined
 let pending = false
 async function refresh() {

@@ -3,8 +3,7 @@ package nginx
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"errors"
+		"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -33,10 +32,14 @@ type Manager struct {
 	optsMu sync.RWMutex
 	statusMu sync.RWMutex
 	status ApplyStatus
+	confirmedMaster int
+	confirmedWorkers map[string]bool
 }
 
 type ApplyResult struct {
 	Reloaded bool
+	Confirmed bool
+	Unchanged bool
 	Message  string
 }
 
@@ -110,9 +113,22 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	m.statusMu.Unlock()
 	defer func() {
 		m.statusMu.Lock()
-		defer m.statusMu.Unlock()
 		m.status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-		if applyErr != nil { m.status.State = "failed"; m.status.LastError = applyErr.Error() } else if result.Reloaded { m.status.State = "reload_requested"; m.status.Applied = m.status.Desired } else { m.status.State = "saved" }
+		if applyErr != nil {
+			m.status.State = "failed"; m.status.LastError = applyErr.Error()
+			m.confirmedMaster = 0
+			m.confirmedWorkers = nil
+			m.status.Confirmed = ""
+		} else if result.Confirmed {
+			m.status.State = "confirmed"; m.status.Applied = m.status.Desired; m.status.Confirmed = m.status.Desired
+		} else if result.Reloaded {
+			m.status.State = "reload_requested"; m.status.Applied = m.status.Desired; m.status.Confirmed = ""
+		} else { m.status.State = "saved"; m.status.Confirmed = "" }
+		status := m.status
+		m.statusMu.Unlock()
+		if err := m.appendApplyHistory(status, result.Unchanged); err != nil {
+			m.logger.Warn("persist nginx apply history", "error",err)
+		}
 	}()
 	if err := ctx.Err(); err != nil { return ApplyResult{}, err }
 	if err := m.EnsureDirs(); err != nil {
@@ -154,9 +170,17 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 		return ApplyResult{}, err
 	}
 
+	revision, skippable := configRevision(m.cfg, content, rules, certs, opts)
 	m.statusMu.Lock()
-	m.status.Desired = fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
+	m.status.Desired = revision
+	confirmed := m.status.Confirmed
 	m.statusMu.Unlock()
+	if skippable && confirmed == revision && m.confirmedMaster != 0 && m.ownsMaster(m.confirmedMaster) {
+		if disk, err := os.ReadFile(m.cfg.NginxConfigPath()); err == nil && string(disk) == content &&
+			workersOverlap(m.confirmedWorkers, activeWorkers(m.confirmedMaster)) {
+			return ApplyResult{Confirmed:true,Unchanged:true,Message:"配置未变化，无需重载"},nil
+		}
+	}
 	tmpPath, err := writeTemporaryConfig(m.cfg.NginxDir(), content)
 	if err != nil { return ApplyResult{}, err }
 	defer os.Remove(tmpPath)
@@ -199,6 +223,7 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 		if err := restoreAuth(); err != nil {
 			applyErr = errors.Join(applyErr, fmt.Errorf("restore htpasswd: %w", err))
 		}
+		if !hadPrevious && m.available() { m.terminateMaster() }
 		if hadPrevious && m.available() {
 			rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
@@ -214,18 +239,22 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 		return ApplyResult{}, err
 	}
 
-	if !running {
-		if err := m.start(ctx); err != nil {
+	var previous map[string]bool
+	if running {
+		pid, _ := readPIDFile(m.cfg.NginxPIDFile)
+		previous = activeWorkers(pid)
+		if err := m.reload(ctx); err != nil {
+			m.logger.Warn("nginx reload failed; restoring previous config", "error", err)
 			return ApplyResult{}, err
 		}
-		return ApplyResult{Reloaded: true, Message: "Nginx 已启动"}, nil
+	} else if err := m.start(ctx); err != nil { return ApplyResult{}, err }
+	if workerConfirmationSupported() {
+		pid, workers, err := m.waitForWorkers(ctx,previous)
+		if err != nil { return ApplyResult{},err }
+		m.confirmedMaster, m.confirmedWorkers = pid,workers
+		return ApplyResult{Reloaded:true,Confirmed:true,Message:"Nginx 新 worker 已就绪"},nil
 	}
-
-	if err := m.reload(ctx); err != nil {
-		m.logger.Warn("nginx reload failed; restoring previous config", "error", err)
-		return ApplyResult{}, err
-	}
-	return ApplyResult{Reloaded: true, Message: "Nginx 已重载"}, nil
+	return ApplyResult{Reloaded:true,Message:"已请求 Nginx 重载，尚未确认 worker"},nil
 }
 
 func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []CertSource) error {
@@ -357,6 +386,12 @@ func (m *Manager) Stop(ctx context.Context) error {
 	if !m.isRunningQuick() {
 		return nil
 	}
+	m.confirmedMaster = 0
+	m.confirmedWorkers = nil
+	m.statusMu.Lock()
+	m.status.Confirmed = ""
+	m.status.State = "saved"
+	m.statusMu.Unlock()
 	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "quit"}, "Nginx 停止失败"); err != nil {
 		return err
 	}
@@ -509,6 +544,8 @@ type ApplyStatus struct {
 	Applied string `json:"last_requested_revision,omitempty"`
 	LastError string `json:"last_error,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+	Confirmed string `json:"confirmed_revision,omitempty"`
+	History []ApplyHistoryEntry `json:"history,omitempty"`
 }
 
 func (m *Manager) ApplyStatus() ApplyStatus {
@@ -516,6 +553,7 @@ func (m *Manager) ApplyStatus() ApplyStatus {
 	defer m.statusMu.RUnlock()
 	status := m.status
 	if status.State == "" { status.State = "unknown" }
+	status.History = m.readApplyHistory()
 	return status
 }
 
