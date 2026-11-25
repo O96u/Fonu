@@ -41,7 +41,7 @@
 
     <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" />
 
-    <AnalyticsAnomalySection :data="analyticsOverview" />
+    <AnalyticsAnomalySection v-if="analyticsOverview" :data="analyticsOverview" />
 
       <section class="awareness-section">
         <div class="awareness-header">
@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
   ChevronForwardOutline,
@@ -172,9 +172,9 @@ import type {
   DDNSConfig,
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
-import AnalyticsInsightSection from '../components/AnalyticsInsightSection.vue'
-import AnalyticsAnomalySection from '../components/AnalyticsAnomalySection.vue'
-import AwarenessTrendChart from '../components/AwarenessTrendChart.vue'
+const AnalyticsInsightSection = defineAsyncComponent(() => import('../components/AnalyticsInsightSection.vue'))
+const AnalyticsAnomalySection = defineAsyncComponent(() => import('../components/AnalyticsAnomalySection.vue'))
+const AwarenessTrendChart = defineAsyncComponent(() => import('../components/AwarenessTrendChart.vue'))
 import FonuCard from '../components/FonuCard.vue'
 import LoadError from '../components/LoadError.vue'
 import StatCard from '../components/StatCard.vue'

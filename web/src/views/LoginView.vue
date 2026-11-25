@@ -31,6 +31,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { api } from '../api/client'
+import { invalidateRouteAuth } from '../router'
 import logoImg from '../assets/brand/logo.png'
 
 const router = useRouter()
@@ -49,6 +50,7 @@ async function submit() {
   loading.value = true
   try {
     await api.login(username.value, password.value)
+    invalidateRouteAuth()
     message.success('登录成功')
     await router.push({ name: 'dashboard' })
   } catch (error) {

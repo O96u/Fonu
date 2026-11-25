@@ -241,6 +241,7 @@ import {
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
 import { api } from "../api/client";
+import { routeAuthStatus, invalidateRouteAuth } from "../router";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
 import { useTheme } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
@@ -359,7 +360,7 @@ function handleMenu(key: string) {
 
 async function loadAuthProfile() {
   try {
-    const status = await api.authStatus();
+    const status = await routeAuthStatus();
     if (status.username) {
       adminUsername.value = status.username;
       usernameForm.new_username = status.username;
@@ -426,6 +427,7 @@ async function submitPassword() {
     passwordForm.new_password = "";
     passwordForm.confirm_password = "";
     passwordModalOpen.value = false;
+    invalidateRouteAuth();
     message.success("密码已更新");
   } catch (error) {
     message.error(error instanceof Error ? error.message : "更新密码失败");
@@ -445,6 +447,7 @@ async function handleUserMenu(key: string) {
   }
   if (key === "logout") {
     await api.logout();
+    invalidateRouteAuth();
     message.success("已退出登录");
     router.push({ name: "login" });
   }

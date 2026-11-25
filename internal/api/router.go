@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -160,6 +162,8 @@ type Router struct {
 	staticFS         fs.FS
 }
 
+var hashedAsset = regexp.MustCompile(`-[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9]+$`)
+
 func (r *Router) spaHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(r.staticFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -169,13 +173,23 @@ func (r *Router) spaHandler() http.Handler {
 		}
 
 		path := strings.TrimPrefix(req.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
+		if path == "" { path = "index.html" }
+		if _,err:=fs.Stat(r.staticFS,path);err!=nil {
+			if strings.HasPrefix(path,"assets/")||filepath.Ext(path)!="" {
+				http.NotFound(w,req)
+				return
+			}
+			w.Header().Set("Cache-Control","no-cache")
+			content,err:=fs.ReadFile(r.staticFS,"index.html")
+			if err!=nil {http.NotFound(w,req);return}
+			w.Header().Set("Content-Type","text/html; charset=utf-8")
+			http.ServeContent(w,req,"index.html",time.Time{},strings.NewReader(string(content)))
+			return
 		}
-		if _, err := fs.Stat(r.staticFS, path); err != nil {
-			// SPA fallback: unknown routes serve index.html
-			req.URL.Path = "/index.html"
-		}
+		if strings.HasPrefix(path,"assets/")&&hashedAsset.MatchString(path) {
+			w.Header().Set("Cache-Control","public, max-age=31536000, immutable")
+		} else {w.Header().Set("Cache-Control","no-cache")}
+
 		fileServer.ServeHTTP(w, req)
 	})
 }

@@ -60,8 +60,21 @@ const router = createRouter({
   ],
 })
 
+// Reuse the same verified result during redirect chains and initial layout mount.
+let lastStatus: Awaited<ReturnType<typeof api.authStatus>> | undefined
+let statusAt = 0
+let pending: ReturnType<typeof api.authStatus> | undefined
+export function invalidateRouteAuth() { lastStatus = undefined; statusAt = 0 }
+export function routeAuthStatus() {
+  if (lastStatus && Date.now() - statusAt < 1500) return Promise.resolve(lastStatus)
+  if (!pending) pending = api.authStatus().then(status => {
+    lastStatus = status; statusAt = Date.now(); return status
+  }).finally(() => { pending = undefined })
+  return pending
+}
+
 router.beforeEach(async (to) => {
-  const status = await api.authStatus()
+  const status = await routeAuthStatus()
   if (!status.initialized && to.name !== 'setup') {
     return { name: 'setup' }
   }

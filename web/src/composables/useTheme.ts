@@ -2,10 +2,16 @@ import { computed, ref, watch } from 'vue'
 import { darkTheme, type GlobalThemeOverrides } from 'naive-ui'
 
 const themeKey = 'fonu-theme'
-const themeMode = ref(localStorage.getItem(themeKey) ?? 'system')
+function readThemeMode() {
+  try { return localStorage.getItem(themeKey) ?? 'system' } catch { return 'system' }
+}
+const themeMode = ref(readThemeMode())
+const media = window.matchMedia('(prefers-color-scheme: dark)')
+const systemIsDark = ref(media.matches)
+media.addEventListener('change', (event) => { systemIsDark.value = event.matches })
 
 function systemDark() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+  return systemIsDark.value
 }
 
 const shared = {
@@ -99,37 +105,19 @@ function applyDocumentTheme(dark: boolean) {
   document.documentElement.classList.toggle('dark', dark)
 }
 
+const isDark = computed(() => resolveDark(themeMode.value))
+const naiveTheme = computed(() => (isDark.value ? darkTheme : null))
+const themeOverrides = computed<GlobalThemeOverrides>(() => isDark.value ? darkOverrides : lightOverrides)
+watch(themeMode, (mode) => { try { localStorage.setItem(themeKey, mode) } catch { /* storage unavailable */ } })
+watch(isDark, applyDocumentTheme, { immediate: true })
+
 export function useTheme() {
-  const isDark = computed(() => resolveDark(themeMode.value))
-
-  const naiveTheme = computed(() => (isDark.value ? darkTheme : null))
-  const themeOverrides = computed<GlobalThemeOverrides>(() =>
-    isDark.value ? darkOverrides : lightOverrides,
-  )
-
   function setThemeMode(mode: string) {
     themeMode.value = mode
   }
 
   function toggleTheme() {
     themeMode.value = isDark.value ? 'light' : 'dark'
-  }
-
-  watch(
-    themeMode,
-    (value) => {
-      localStorage.setItem(themeKey, value)
-      applyDocumentTheme(resolveDark(value))
-    },
-    { immediate: true },
-  )
-
-  if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (themeMode.value === 'system') {
-        applyDocumentTheme(systemDark())
-      }
-    })
   }
 
   return { themeMode, naiveTheme, themeOverrides, isDark, toggleTheme, setThemeMode }

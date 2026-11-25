@@ -5,10 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Fonu</title>
+    <script>
+      (function () {
+        var mode = 'system';
+        try { mode = localStorage.getItem('fonu-theme') || 'system'; } catch (_) {}
+        var dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.classList.toggle('dark', dark);
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <style>
+      html { background:#f8fafc; color:#64748b; }
+      html[data-theme="dark"] { background:#0f172a; color:#94a3b8; }
+      body { margin:0; }
+      #fonu-boot { min-height:100vh; display:grid; place-content:center; justify-items:center; gap:16px; font:14px system-ui,sans-serif; text-align:center; }
+      #fonu-boot button { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:8px; padding:8px 16px; cursor:pointer; }
+      .boot-spinner { width:32px;height:32px;border:3px solid #10b98133;border-top-color:#10b981;border-radius:50%;animation:boot-spin .8s linear infinite; }
+      @keyframes boot-spin { to { transform:rotate(360deg); } }
+      @media(prefers-reduced-motion:reduce) { .boot-spinner { animation:none; } }
+    </style>
   </head>
   <body>
     <div id="app">
-      <div style="min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;color:#64748b;background:#f8fafc;">正在加载 Fonu…</div>
+      <div id="fonu-boot" role="status"><div class="boot-spinner" aria-hidden="true"></div><span id="fonu-boot-text">正在加载 Fonu…</span><button id="fonu-boot-retry" hidden>重新加载</button></div>
+      <script>
+        (function () {
+          var showError = function () {
+            var text = document.getElementById('fonu-boot-text');
+            var retry = document.getElementById('fonu-boot-retry');
+            if (text && retry) { text.textContent = '加载时间较长，请检查 Fonu 服务或重新加载。'; retry.hidden = false; }
+          };
+          document.getElementById('fonu-boot-retry').onclick = function () { location.reload(); };
+          window.addEventListener('vite:preloadError', showError);
+          window.addEventListener('error', function(e) { if(e.target && e.target.tagName === 'SCRIPT') showError(); }, true);
+          setTimeout(showError, 8000);
+        })();
+      </script>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
