@@ -22,8 +22,8 @@
             <div class="listen-col__label">监听协议</div>
             <div class="listen-col__control">
               <div class="listen-types">
-                <n-checkbox :checked="entryForm.listen_ipv4" @update:checked="emit('patch', { listen_ipv4: $event })">IPv4</n-checkbox>
-                <n-checkbox :checked="entryForm.listen_ipv6" @update:checked="emit('patch', { listen_ipv6: $event })">IPv6</n-checkbox>
+                <n-checkbox :checked="entryForm.listen_ipv4" @update:checked="emit('patch', { listen_ipv4: Boolean($event) })">IPv4</n-checkbox>
+                <n-checkbox :checked="entryForm.listen_ipv6" @update:checked="emit('patch', { listen_ipv6: Boolean($event) })">IPv6</n-checkbox>
               </div>
             </div>
           </div>
@@ -33,13 +33,13 @@
             <div class="form-switch-row__text">
               <div class="form-switch-row__label">启用 HTTPS</div>
             </div>
-            <n-switch :value="entryForm.https_enabled" @update:value="emit('patch', { https_enabled: $event })" />
+            <n-switch :value="entryForm.https_enabled" @update:value="emit('patch', { https_enabled: Boolean($event) })" />
           </div>
           <div class="form-switch-row">
             <div class="form-switch-row__text">
               <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
             </div>
-            <n-switch :value="entryForm.http_redirect" @update:value="emit('patch', { http_redirect: $event })" :disabled="!entryForm.https_enabled" />
+            <n-switch :value="entryForm.http_redirect" @update:value="emit('patch', { http_redirect: Boolean($event) })" :disabled="!entryForm.https_enabled" />
           </div>
         </div>
         <p v-if="cloningSourceId" class="field-hint">
@@ -180,15 +180,41 @@ const emit = defineEmits<{
   margin-top: var(--fonu-space-2);
 }
 
-  .listen-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--fonu-space-4);
-  }
+.proxy-entry-edit-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--fonu-space-4);
+}
 
-  .listen-col--port {
-    width: 100%;
-  }
+.proxy-entry-edit-modal__body {
+  margin-bottom: var(--fonu-space-4);
+}
+
+.listen-col__label {
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--fonu-text);
+}
+
+.listen-col__control {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.form-switch-row__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fonu-text);
+}
+
+.form-switch-row__hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fonu-text-muted);
+  line-height: 1.5;
+}
 @media(max-width:640px) {
   .listen-row { flex-direction:column; align-items:stretch; gap:var(--fonu-space-4); }
   .listen-col--port { width:100%; }
