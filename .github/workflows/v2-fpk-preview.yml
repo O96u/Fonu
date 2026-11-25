@@ -6,6 +6,14 @@ on:
     paths:
       - '.github/workflows/v2-fpk-preview.yml'
       - 'web/src/**'
+      - 'web/index.html'
+      - 'web/package.json'
+      - 'web/pnpm-lock.yaml'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'packaging/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 permissions:

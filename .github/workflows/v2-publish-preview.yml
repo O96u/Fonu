@@ -4,12 +4,22 @@ on:
     branches: [v2]
     paths:
       - '.github/workflows/v2-publish-preview.yml'
+      - '.github/workflows/v2-fpk-preview.yml'
+      - 'web/src/**'
+      - 'web/index.html'
+      - 'web/package.json'
+      - 'web/pnpm-lock.yaml'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'packaging/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
     inputs:
       run_id:
-        description: Successful V2 FPK preview run ID
-        required: true
-        default: '45577167926'
+        description: V2 FPK preview run ID (optional; defaults to this commit)
+        required: false
+        default: ''
 permissions:
   contents: write
   actions: read
@@ -20,69 +30,104 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/v2'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_ID: ${{ inputs.run_id || '45577167926' }}
+      INPUT_RUN_ID: ${{ inputs.run_id }}
+      BEFORE_SHA: ${{ github.event.before }}
     steps:
-      - name: Verify source build and CI
+      - name: Resolve and wait for matching build and CI
         id: verify
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
-          jq -e '.head_branch == "v2" and .conclusion == "success" and .path == ".github/workflows/v2-fpk-preview.yml"' <<< "$run"
-          sha="$(jq -r .head_sha <<< "$run")"
-          test "$sha" = 5240a5eee1d6f5f1af8b08f07834742bdfc01e76
+          repo="$GITHUB_REPOSITORY"
+          run_id="$INPUT_RUN_ID"
+          sha="$GITHUB_SHA"
+          # One-time migration: publish the already-started Beta 5 build.
+          if [ -z "$run_id" ] && [ "$BEFORE_SHA" = 82bc6b4616eac29a0f9f39345fc01131e29c4550 ]; then
+            run_id=45579336896
+          fi
+          if [ -n "$run_id" ]; then
+            [[ "$run_id" =~ ^[0-9]+$ ]]
+            run="$(gh api "repos/$repo/actions/runs/$run_id")"
+            jq -e '.head_branch == "v2" and .path == ".github/workflows/v2-fpk-preview.yml" and .event != "pull_request"' <<< "$run"
+            sha="$(jq -r .head_sha <<< "$run")"
+          fi
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&branch=v2" | jq -e '.workflow_runs | any(.name == "CI" and .conclusion == "success")'
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - name: Download verified packages
+          for i in $(seq 1 120); do
+            if [ -z "$run_id" ]; then
+              run_id="$(gh api "repos/$repo/actions/workflows/v2-fpk-preview.yml/runs?head_sha=$sha&branch=v2&per_page=20" --jq '.workflow_runs[0].id // empty')"
+            fi
+            ci="$(gh api "repos/$repo/actions/workflows/ci.yml/runs?head_sha=$sha&branch=v2&per_page=20" --jq '.workflow_runs | map(select(.event == "push")) | .[0].conclusion // empty')"
+            build=""
+            if [ -n "$run_id" ]; then
+              build="$(gh api "repos/$repo/actions/runs/$run_id" --jq '.conclusion // empty')"
+            fi
+            if [ "$build" = success ] && [ "$ci" = success ]; then
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if { [ -n "$build" ] && [ "$build" != success ]; } || { [ -n "$ci" ] && [ "$ci" != success ]; }; then
+              echo "::error::Build or CI failed: build=$build CI=$ci"
+              exit 1
+            fi
+            echo "Waiting for build and CI on $sha ($i/120)"
+            sleep 15
+          done
+          echo "::error::Timed out waiting for matching CI/build"
+          exit 1
+      - name: Download and validate packages
+        id: packages
+        env:
+          RUN_ID: ${{ steps.verify.outputs.run_id }}
         run: |
           set -euo pipefail
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'fonu-fpk-*' --dir packages
+          shopt -s nullglob
+          candidates=(packages/fonu-fpk-amd64/fonu_*_amd64.fpk)
+          test "${#candidates[@]}" -eq 1
+          name="$(basename "${candidates[0]}")"
+          version="${name#fonu_}"
+          version="${version%_amd64.fpk}"
+          [[ "$version" =~ ^2\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
           mkdir assets
           for arch in amd64 arm64; do
             for suffix in "" _root; do
-              name="fonu_2.0.0-beta.4_${arch}${suffix}.fpk"
+              name="fonu_${version}_${arch}${suffix}.fpk"
               test -s "packages/fonu-fpk-$arch/$name"
               cp "packages/fonu-fpk-$arch/$name" assets/
             done
           done
           (cd assets && sha256sum *.fpk > SHA256SUMS.txt)
-      - name: Create or verify source tag
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - name: Publish verified prerelease
         env:
           GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN || github.token }}
           SOURCE_SHA: ${{ steps.verify.outputs.sha }}
+          RUN_ID: ${{ steps.verify.outputs.run_id }}
+          TAG: ${{ steps.packages.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="v2.0.0-beta.4"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > tag.json 2>/dev/null; then
+          repo="$GITHUB_REPOSITORY"
+          stable="$(gh api "repos/$repo/releases/latest" --jq .tag_name)"
+          [[ "$stable" != *-* ]]
+          # Refuse sources with legacy tag workflows that may overwrite Latest.
+          for file in github-release.yml docker-release.yml fpk-build.yml; do
+            gh api "repos/$repo/contents/.github/workflows/$file?ref=$SOURCE_SHA" --jq .content | base64 -d | grep -Fq "'!v*-*'" || { echo "::error::Missing beta exclusion in $file"; exit 1; }
+          done
+          if gh api "repos/$repo/git/ref/tags/$TAG" > tag.json 2>/dev/null; then
             jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha' tag.json
           else
-            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"; then
-              echo "::error::Cannot create $tag at $SOURCE_SHA. Configure V2_RELEASE_TOKEN with repository Contents and Workflows write access, or create this exact tag manually and retry."
-              exit 1
-            fi
+            gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
           fi
-      - name: Publish prerelease without changing Latest
-        env:
-          GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN || github.token }}
-          SOURCE_SHA: ${{ steps.verify.outputs.sha }}
-        run: |
-          set -euo pipefail
-          tag="v2.0.0-beta.4"
-          notes="V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation; application ID is unchanged."
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --title "Fonu 2.0 Beta 4" --notes "$notes"
-            gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          notes="V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation."
+          if gh release view "$TAG" --repo "$repo" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$repo" --prerelease --latest=false --notes "$notes"
+            gh release upload "$TAG" --repo "$repo" assets/* --clobber
           else
-            gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Fonu 2.0 Beta 4" --notes "$notes"
+            gh release create "$TAG" assets/* --repo "$repo" --verify-tag --prerelease --latest=false --title "Fonu ${TAG#v}" --notes "$notes"
           fi
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease' | grep -qx true
-          stable="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.3.10")"
-          jq -e '.prerelease == false and .draft == false' <<< "$stable"
-          if [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$tag" ]; then
-            gh release edit v1.3.10 --repo "$GITHUB_REPOSITORY" --latest
-          fi
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" != "$tag"
+          gh release view "$TAG" --repo "$repo" --json isPrerelease,assets --jq '.isPrerelease and (.assets | length >= 5)' | grep -qx true
+          test "$(gh api "repos/$repo/releases/latest" --jq .tag_name)" = "$stable"
