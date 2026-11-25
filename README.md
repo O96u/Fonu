@@ -312,15 +312,16 @@ vhostHTTPSPort = 443
 
 ```bash
 # 前端热更新
-cd web && npm ci && npm run dev
+corepack enable
+cd web && bash scripts/install-deps.sh && ppnpm run dev
 
 # 后端（需先把 web/dist 复制到 cmd/fonu/web/dist）
-cd web && npm run build
+cd web && pnpm run build
 go run ./cmd/fonu
 
 # 测试
 go test ./...
-cd web && npm run typecheck
+cd web && pnpm run typecheck
 ```
 
 发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.10**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。

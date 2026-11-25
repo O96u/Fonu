@@ -2,7 +2,7 @@
 # Build Fonu native .fpk for fnOS (linux/amd64 or linux/arm64).
 # Usage: ./scripts/build-fpk.sh <amd64|arm64> [version]
 # FPK_VARIANT=package|root|both (default both). Root is a sideload package, not an app-store build.
-# Intended for Linux CI (GitHub Actions). Requires: curl, go, node/npm, gcc, make, python3, fnpack.
+# Intended for Linux CI (GitHub Actions). Requires: curl, go, node/pnpm, gcc, make, python3, fnpack.
 #
 # Bundled nginx is compiled from source (stable 1.30.x) with fnOS native install
 # paths, matching /var/apps/<appname>/{target,var,shares} used by official Nginx FPK.
@@ -257,8 +257,8 @@ if [ "$MODE" != package ]; then
 echo "==> Building web (Vite)"
 (
   cd "${REPO_ROOT}/web"
-  npm ci
-  VITE_APP_VERSION="${VERSION}" npm run build
+  bash scripts/install-deps.sh
+  VITE_APP_VERSION="${VERSION}" pnpm run build
 )
 
 echo "==> Building fonu (GOOS=linux GOARCH=${GOARCH})"

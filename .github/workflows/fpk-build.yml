@@ -120,12 +120,14 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+          run_install: false
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: Install build dependencies and fnpack
         shell: bash

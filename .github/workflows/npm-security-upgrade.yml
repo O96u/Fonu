@@ -1,8 +1,8 @@
-name: Verify npm security upgrade
+name: Verify pnpm security upgrade
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/npm-security-upgrade.yml', 'web/src/components/MiniTrafficChart.vue', 'web/package.json', 'web/package-lock.json']
+    paths: ['.github/workflows/npm-security-upgrade.yml', 'web/src/components/MiniTrafficChart.vue', 'web/package.json', 'web/pnpm-lock.yaml', 'web/package-lock.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,26 +15,30 @@ jobs:
         vue-tsc: ['3.2']
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Resolve security updates
         working-directory: web
         run: |
-          npm ci
-          npm install --save-dev --save-exact 'vue-tsc@${{ matrix.vue-tsc }}'
-          npm audit fix --package-lock-only || true
-          npm ci
-          npm run build
+          bash scripts/install-deps.sh
+          pnpm add -D -E 'vue-tsc@${{ matrix.vue-tsc }}'
+          pnpm audit --fix || true
+          bash scripts/install-deps.sh
+          pnpm run build
       - name: Audit candidate
         working-directory: web
-        run: npm audit --audit-level=moderate
+        run: pnpm audit --audit-level=moderate
       - name: Upload candidate dependency files
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: npm-security-candidate-${{ matrix.vue-tsc }}
+          name: pnpm-security-candidate-${{ matrix.vue-tsc }}
           path: |
             web/package.json
-            web/package-lock.json
+            web/pnpm-lock.yaml
           if-no-files-found: error

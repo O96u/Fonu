@@ -3,11 +3,13 @@ ARG VERSION=dev
 FROM --platform=$BUILDPLATFORM node:22-alpine AS web-builder
 ARG VERSION
 WORKDIR /src/web
-COPY web/package.json web/package-lock.json* ./
-RUN npm ci
+RUN corepack enable
+COPY web/package.json web/*lock* ./
+COPY web/scripts/install-deps.sh ./scripts/install-deps.sh
+RUN bash scripts/install-deps.sh
 COPY web/ ./
 ENV VITE_APP_VERSION=$VERSION
-RUN npm run build
+RUN pnpm run build
 
 FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-builder
 ARG VERSION

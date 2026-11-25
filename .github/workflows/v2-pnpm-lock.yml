@@ -1,0 +1,48 @@
+name: V2 pnpm lock migration
+on:
+  push:
+    branches: [v2]
+    paths:
+      - '.github/workflows/v2-pnpm-lock.yml'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'web/scripts/install-deps.sh'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: v2-pnpm-lock
+  cancel-in-progress: false
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/v2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Import and verify lock
+        working-directory: web
+        run: |
+          bash scripts/install-deps.sh
+          pnpm run build
+          pnpm audit --audit-level=high
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-pnpm-lock
+          path: web/pnpm-lock.yaml
+          if-no-files-found: error
+      - name: Commit verified lock to v2 only
+        run: |
+          set -euo pipefail
+          git add web/pnpm-lock.yaml
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: commit verified pnpm lockfile'
+          git push origin HEAD:refs/heads/v2
