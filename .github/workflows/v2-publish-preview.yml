@@ -1,0 +1,58 @@
+name: Publish V2 FPK prerelease
+on:
+  push:
+    branches: [v2]
+    paths:
+      - '.github/workflows/v2-publish-preview.yml'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful V2 FPK preview run ID
+        required: true
+        default: '45562897228'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: v2-prerelease
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/v2'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id || '45562897228' }}
+    steps:
+      - name: Verify source build and CI
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+          jq -e '.head_branch == "v2" and .conclusion == "success" and .path == ".github/workflows/v2-fpk-preview.yml"' <<< "$run"
+          sha="$(jq -r .head_sha <<< "$run")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&branch=v2" | jq -e '.workflow_runs | any(.name == "CI" and .conclusion == "success")'
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Download verified packages
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'fonu-fpk-*' --dir packages
+          mkdir assets
+          for arch in amd64 arm64; do
+            for suffix in "" _root; do
+              name="fonu_2.0.0_${arch}${suffix}.fpk"
+              test -s "packages/fonu-fpk-$arch/$name"
+              cp "packages/fonu-fpk-$arch/$name" assets/
+            done
+          done
+          (cd assets && sha256sum *.fpk > SHA256SUMS.txt)
+      - name: Publish prerelease without changing Latest
+        env:
+          SOURCE_SHA: ${{ steps.verify.outputs.sha }}
+        run: |
+          set -euo pipefail
+          tag="v2.0.0-beta.1"
+          gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease --latest=false --title "Fonu 2.0 Beta 1" --notes "V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation; application ID is unchanged."
