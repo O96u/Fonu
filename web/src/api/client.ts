@@ -148,6 +148,8 @@ export const api = {
     request<ProxyEntry>(`/api/proxy-entries/${id}/clone`, { method: 'POST', body: JSON.stringify(payload) }),
   reorderProxyEntries: (ids: number[]) =>
     request<void>('/api/proxy-entries/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
+  saveProxyBatch: (payload: { update_id?: number; update?: Partial<ProxySavePayload>; create: ProxySavePayload[] }) =>
+    request<ProxyRule[]>('/api/proxies/batch', { method: 'POST', body: JSON.stringify(payload) }),
   createProxy: (payload: ProxySavePayload) =>
     request<ProxyRule>('/api/proxies', { method: 'POST', body: JSON.stringify(payload) }),
   updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>

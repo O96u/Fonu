@@ -316,3 +316,27 @@ func writeCIDRTemp(dir string, body []byte) (string, error) {
 	if err != nil { os.Remove(f.Name()); return "", err }
 	return f.Name(), nil
 }
+
+// SaveBatch applies the entire edit/create set in one SQLite transaction
+// and one Nginx publication. No partial success is returned.
+func (s *ProxyService) SaveBatch(ctx context.Context, id int64, update *proxy.UpdateInput, creates []proxy.CreateInput)([]proxy.Rule,error){
+	count:=len(creates)
+	if update!=nil{count++}
+	if count<1||count>100{return nil,fmt.Errorf("单次批量操作支持 1–100 条规则")}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx,s,func(store *proxy.Store)([]proxy.Rule,error){
+		out:=make([]proxy.Rule,0,count)
+		if update!=nil{
+			r,err:=store.Update(ctx,id,*update)
+			if err!=nil{return nil,err}
+			out=append(out,r)
+		}
+		for _,in:=range creates{
+			r,err:=store.Create(ctx,in)
+			if err!=nil{return nil,err}
+			out=append(out,r)
+		}
+		return out,nil
+	})
+}

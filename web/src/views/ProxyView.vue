@@ -1798,7 +1798,7 @@ async function submitDiscovery() {
   discoveryAdding.value = true
   try {
     const group = discoveryTarget.value
-    for (const row of selected) {
+    const create = selected.map(row => {
       const payload: ProxySavePayload = {
         upstream: row.service.upstream,
         hosts: [row.hostname.trim()],
@@ -1814,8 +1814,9 @@ async function submitDiscovery() {
         payload.https_enabled = group.listen.https_enabled
         payload.http_redirect = group.listen.http_redirect
       }
-      await api.createProxy(payload)
-    }
+      return payload
+    })
+    await api.saveProxyBatch({ create })
     message.success(`已添加 ${selected.length} 条规则`)
     showDiscoveryModal.value = false
     await load()
@@ -3148,15 +3149,14 @@ async function save() {
     }
 
     if (editing.value) {
-      await api.updateProxy(editing.value.id, payloadForSingleHost(basePayload, hosts[0]))
-      for (let i = 1; i < hosts.length; i++) {
-        await api.createProxy(payloadForSingleHost(basePayload, hosts[i]))
-      }
+      await api.saveProxyBatch({
+        update_id: editing.value.id,
+        update: payloadForSingleHost(basePayload, hosts[0]),
+        create: hosts.slice(1).map(host => payloadForSingleHost(basePayload, host)),
+      })
       message.success(hosts.length > 1 ? `已保存 1 条并新增 ${hosts.length - 1} 条规则` : '规则已保存')
     } else {
-      for (const host of hosts) {
-        await api.createProxy(payloadForSingleHost(basePayload, host))
-      }
+      await api.saveProxyBatch({ create: hosts.map(host => payloadForSingleHost(basePayload, host)) })
       message.success(hosts.length > 1 ? `已创建 ${hosts.length} 条规则` : '规则已创建')
     }
     showModal.value = false
