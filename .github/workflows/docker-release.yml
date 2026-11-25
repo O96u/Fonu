@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+      - '!v*-*'
   workflow_dispatch:
     inputs:
       tag:
@@ -13,6 +14,7 @@ on:
 
 jobs:
   build-and-push:
+    if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

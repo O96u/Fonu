@@ -72,4 +72,17 @@ jobs:
         run: |
           set -euo pipefail
           tag="v2.0.0-beta.3"
-          gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Fonu 2.0 Beta 3" --notes "V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation; application ID is unchanged."
+          notes="V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation; application ID is unchanged."
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --title "Fonu 2.0 Beta 3" --notes "$notes"
+            gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Fonu 2.0 Beta 3" --notes "$notes"
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease' | grep -qx true
+          stable="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.3.10")"
+          jq -e '.prerelease == false and .draft == false' <<< "$stable"
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$tag" ]; then
+            gh release edit v1.3.10 --repo "$GITHUB_REPOSITORY" --latest
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" != "$tag"
