@@ -6,7 +6,7 @@
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 
-  <FonuCard v-else flush class="logs-card">
+  <FonuCard v-else flush class="logs-card" title="运行记录">
     <n-tabs v-model:value="tab" type="line" animated class="logs-tabs">
       <n-tab-pane name="system" tab="系统日志">
         <LogToolbar
@@ -1010,4 +1010,9 @@ onUnmounted(() => {
 @media (max-width: 760px) {
   .logs-card { min-width: 0; }
 }
+.logs-card :deep(.fonu-card__header) { padding-bottom:10px; }
+.logs-card :deep(.n-tabs-nav) { background:var(--fonu-bg-muted); padding:8px 12px 0; }
+.logs-card :deep(.log-table .n-data-table-td) { padding-top:7px; padding-bottom:7px; font-size:12px; }
+.logs-card :deep(.log-table .n-data-table-tr.log-row--error .n-data-table-td) { background:color-mix(in srgb,var(--fonu-error) 7%,transparent); }
+.logs-card :deep(.log-table .n-data-table-tr.log-row--warn .n-data-table-td) { background:color-mix(in srgb,var(--fonu-warning) 7%,transparent); }
 </style>

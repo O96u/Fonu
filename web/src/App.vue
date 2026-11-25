@@ -88,4 +88,11 @@ body {
 .page-body .n-tabs-nav { min-width: 0; }
 .page-body .n-button:focus-visible { outline: 2px solid var(--fonu-brand); outline-offset: 2px; }
 @media (max-width: 760px) { .page-body .toolbar { gap: 8px; } }
+.n-modal.n-card { max-width:calc(100vw - 24px); }
+.n-dialog { max-width:calc(100vw - 24px); }
+.n-modal .n-card-header { border-bottom:1px solid var(--fonu-border); }
+.n-modal .n-card__footer { border-top:1px solid var(--fonu-border); }
+.n-form-item-label { font-weight:500; }
+@media(max-width:760px) { .n-modal .n-card-header,.n-modal .n-card__content,.n-modal .n-card__footer { padding-inline:14px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; } }
 </style>

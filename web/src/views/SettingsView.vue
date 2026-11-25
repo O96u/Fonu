@@ -4,7 +4,7 @@
   <LoadError v-if="pageError" :message="pageError" @retry="load" />
 
   <n-spin v-else :show="loading">
-    <n-tabs v-model:value="settingsTab" type="line" animated class="settings-tabs">
+    <n-tabs v-model:value="settingsTab" type="line" animated class="settings-tabs workspace-settings">
       <n-tab-pane name="general" tab="常规">
         <div class="settings-grid">
       <FonuCard title="外观" subtitle="界面主题与时区">
@@ -2234,4 +2234,13 @@ onMounted(() => {
 @media (max-width: 760px) {
   .settings-grid { min-width: 0; }
 }
+.settings-grid { gap:12px; align-items:start; }
+.settings-grid :deep(.fonu-card) { height:auto; }
+.settings-grid :deep(.fonu-card__header) { padding-bottom:12px; border-bottom:1px solid var(--fonu-border); }
+.theme-card { min-height:64px; border-radius:var(--fonu-radius-sm); color:var(--fonu-text); }
+.theme-card:hover { border-color:var(--fonu-brand-hover); }
+.theme-card--active { border-color:var(--fonu-brand); background:var(--fonu-brand-soft); }
+.theme-card--active .theme-card__icon,.theme-card__check { color:var(--fonu-brand); }
+.workspace-settings :deep(.n-tabs-nav) { border-bottom:1px solid var(--fonu-border); }
+@media(max-width:960px) { .settings-grid { grid-template-columns:minmax(0,1fr); } }
 </style>

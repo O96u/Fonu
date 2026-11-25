@@ -92,4 +92,10 @@ defineProps<{ totalCount: number; enabledCount: number; disabledCount: number; t
 }
 @media (max-width: 1200px) { .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stats-row { gap:1px; border:1px solid var(--fonu-border); background:var(--fonu-border); border-radius:var(--fonu-radius); overflow:hidden; }
+.stat-card { border:0; border-radius:0; box-shadow:none; min-height:100px; min-width:0; padding:12px; }
+.stat-card__icon--blue,.stat-card__icon--purple { color:var(--fonu-brand); }
+.stat-card__icon--green { color:var(--fonu-success); }
+.stat-card__icon--amber { color:var(--fonu-warning); }
+.stat-card__value { font-size:24px; overflow-wrap:anywhere; }
 </style>

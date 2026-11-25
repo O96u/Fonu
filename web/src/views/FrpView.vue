@@ -16,7 +16,7 @@
   <n-spin v-else :show="loading">
     <div class="frp-page">
       <div class="top-grid">
-        <FonuCard class="status-card" flush>
+        <FonuCard class="status-card" title="连接状态" flush>
           <div class="status-card__body">
             <div class="status-hero" :class="statusHeroClass">
               <div class="status-hero__main">
@@ -2322,4 +2322,17 @@ onUnmounted(() => {
 @media (max-width: 760px) {
   .frp-page { min-width: 0; }
 }
+.top-grid { gap:12px; align-items:start; }
+.top-grid > .settings-card { height:auto; }
+.status-card :deep(.fonu-card__header) { padding-bottom:12px; }
+.status-hero { border-radius:var(--fonu-radius); flex-wrap:wrap; }
+.status-hero--on { border-color:color-mix(in srgb,var(--fonu-success) 35%,var(--fonu-border)); background:color-mix(in srgb,var(--fonu-success) 6%,var(--fonu-bg)); }
+.status-hero--on .status-hero__icon-wrap,.status-hero__badge--on { color:var(--fonu-success); }
+.status-hero__badge--on { background:color-mix(in srgb,var(--fonu-success) 10%,var(--fonu-surface)); }
+.status-hero__badge--on .status-hero__badge-dot { background:var(--fonu-success); box-shadow:none; }
+.status-flow-panel { background:var(--fonu-bg-muted); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); }
+.status-metrics { gap:1px; background:var(--fonu-border); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); overflow:hidden; }
+.status-metric { border:0; border-radius:0; background:var(--fonu-surface); min-width:0; }
+@media(max-width:1000px) { .top-grid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:640px) { .status-hero__aside { align-items:flex-start; } .status-flow { flex-wrap:wrap; } }
 </style>

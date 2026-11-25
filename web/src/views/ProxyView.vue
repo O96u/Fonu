@@ -18,7 +18,7 @@
     <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" />
 
     <div class="proxy-layout">
-      <FonuCard flush class="proxy-panel">
+      <FonuCard flush class="proxy-panel" title="代理入口与规则">
         <div class="proxy-toolbar">
           <n-input
             v-model:value="search"
@@ -5042,4 +5042,17 @@ onUnmounted(() => {
 @media (max-width: 760px) {
   .proxy-toolbar { min-width: 0; }
 }
+.proxy-panel :deep(.fonu-card__header) { padding-bottom:12px; }
+.proxy-toolbar { background:var(--fonu-bg-muted); padding:10px 12px; gap:8px; }
+.proxy-toolbar__search { flex:1 1 220px; width:auto; min-width:0; }
+.proxy-toolbar__filter { flex:0 1 132px; min-width:100px; }
+.proxy-toolbar__spacer { display:none; }
+.proxy-entry-card { border-radius:var(--fonu-radius); }
+.proxy-entry-card__head { background:var(--fonu-bg-muted); padding:10px 12px; }
+.proxy-entry-card__running { color:var(--fonu-success); }
+.proxy-entry-card__warn { color:var(--fonu-warning); }
+.proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible { outline-color:var(--fonu-brand); }
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent) { color:var(--fonu-brand); }
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) { color:var(--fonu-brand-hover); background:var(--fonu-brand-soft); }
+@media(max-width:760px) { .proxy-toolbar__search { flex-basis:100%; } .proxy-toolbar__filter { flex:1 1 100px; } .proxy-entry-card__head { flex-wrap:wrap; } .proxy-entry-card__intro { flex:1 1 150px; } .proxy-entry-card__actions { max-width:100%; } }
 </style>

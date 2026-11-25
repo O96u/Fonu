@@ -45,7 +45,7 @@
       </div>
     </div>
 
-    <FonuCard flush class="cert-panel">
+    <FonuCard flush class="cert-panel" title="证书列表" :subtitle="`显示 ${filteredRecords.length} / ${records.length} 张证书`">
       <div class="cert-toolbar">
         <n-input
           v-model:value="searchQuery"
@@ -2504,4 +2504,17 @@ html.dark .apply-log-box {
 }
 .stats-row { gap: 1px; background: var(--fonu-border); border: 1px solid var(--fonu-border); border-radius: var(--fonu-radius); overflow: hidden; }
 .stats-row > .stat-card { border: 0; border-radius: 0; box-shadow: none; min-width: 0; background: var(--fonu-surface); }
+.cert-toolbar { background:var(--fonu-bg-muted); padding:10px 12px; gap:8px; }
+.cert-toolbar__search { flex:1 1 220px; width:auto; min-width:0; }
+.cert-toolbar__filter { flex:0 1 132px; min-width:100px; }
+.cert-toolbar__spacer { display:none; }
+.cert-panel :deep(.fonu-card__header) { padding-bottom:12px; }
+.stats-row > .stat-card { padding:12px 14px; min-height:104px; }
+.stat-card__icon--blue { color:var(--fonu-brand); }
+.stat-card__icon--green,.stat-card__value--green { color:var(--fonu-success); }
+.stat-card__icon--amber,.stat-card__value--amber { color:var(--fonu-warning); }
+.stat-card__icon--red,.stat-card__value--red { color:var(--fonu-error); }
+.ca-card { border-radius:var(--fonu-radius); }
+.ca-card--active { border-color:var(--fonu-brand); background:var(--fonu-brand-soft); }
+@media(max-width:760px) { .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .stat-card__value { font-size:24px; } .cert-toolbar__search { flex-basis:100%; } .cert-toolbar__filter { flex:1 1 120px; } }
 </style>
