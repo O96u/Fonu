@@ -18,21 +18,21 @@ const props = defineProps<{
   labels?: string[]
 }>()
 
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 const option = computed(() => {
   const labels = props.labels ?? ['00', '04', '08', '12', '16', '20']
-  const textColor = isDark.value ? '#94a3b8' : '#6b7280'
-  const splitColor = isDark.value ? '#334155' : '#e5e7eb'
+  const textColor = palette.value.secondary
+  const splitColor = palette.value.border
 
   return {
     grid: { left: 8, right: 8, top: 12, bottom: 28, containLabel: true },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
-      backgroundColor: isDark.value ? '#1e293b' : '#fff',
-      borderColor: isDark.value ? '#334155' : '#e5e7eb',
-      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      backgroundColor: palette.value.surface,
+      borderColor: palette.value.border,
+      textStyle: { color: palette.value.text, fontSize: 12 },
       formatter: (params: { name: string; value: number }[]) => {
         const p = params[0]
         if (!p) return ''
@@ -73,8 +73,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#6ee7b7' },
-              { offset: 1, color: '#10b981' },
+              { offset: 0, color: palette.value.hover },
+              { offset: 1, color: palette.value.brand },
             ],
           },
         },
@@ -87,8 +87,8 @@ const option = computed(() => {
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: '#a7f3d0' },
-                { offset: 1, color: '#059669' },
+                { offset: 0, color: palette.value.hover },
+                { offset: 1, color: palette.value.pressed },
               ],
             },
           },

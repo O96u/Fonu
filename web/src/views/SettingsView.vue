@@ -16,13 +16,13 @@
               :key="item.value"
               type="button"
               class="theme-card"
-              :class="{ 'theme-card--active': form.theme === item.value }"
+              :class="{ 'theme-card--active': themeMode === item.value }"
               @click="selectTheme(item.value)"
             >
               <n-icon :component="item.icon" class="theme-card__icon" />
               <span class="theme-card__text">{{ item.label }}</span>
               <n-icon
-                v-if="form.theme === item.value"
+                v-if="themeMode === item.value"
                 :component="CheckmarkCircle"
                 class="theme-card__check"
               />
@@ -31,6 +31,20 @@
           <p class="field-hint">切换后立即预览，保存后写入配置</p>
         </div>
 
+        <div class="settings-block settings-block--spaced">
+          <div class="settings-block__label">主题颜色</div>
+          <div class="accent-options">
+            <button v-for="preset in themePresets" :key="preset.value" type="button"
+              class="accent-option" :aria-pressed="themeAccent === preset.value"
+              @click="setThemeAccent(preset.value)">
+              <span class="accent-swatch" :style="{ background: isDark ? preset.dark : preset.light }">
+                <span v-if="themeAccent === preset.value" :style="{ color: isDark ? '#171c1a' : '#fff' }">✓</span>
+              </span>
+              <span>{{ preset.label }}</span>
+            </button>
+          </div>
+          <p class="field-hint">立即应用并保存在当前浏览器，不影响其他设备。</p>
+        </div>
         <div class="settings-block settings-block--spaced">
           <div class="settings-block__label">时区</div>
           <n-select v-model:value="form.timezone" :options="timezoneOptions" />
@@ -789,7 +803,7 @@ import {
   WEBHOOK_PROVIDER_OPTIONS,
 } from '../constants/notifyProviders'
 import { invalidateAppTimezoneCache } from '../composables/useAppTimezone'
-import { useTheme } from '../composables/useTheme'
+import { useTheme, themePresets } from '../composables/useTheme'
 import { isValidAcmeEmail, validateAcmeEmailMessage } from '../utils/acmeEmail'
 import { formatDate, formatRelativeTime } from '../utils/format'
 import type { StatusKind } from '../utils/status'
@@ -800,7 +814,7 @@ const router = useRouter()
 const route = useRoute()
 
 const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced', 'version'])
-const { setThemeMode } = useTheme()
+const { setThemeMode, themeMode, themeAccent, setThemeAccent, isDark } = useTheme()
 const saving = ref(false)
 const loading = ref(false)
 const pageError = ref('')
@@ -986,7 +1000,7 @@ function selectTheme(mode: string) {
 
 function applySettingsToForm(settings: Record<string, string>) {
   Object.assign(form, {
-    theme: settings.theme ?? 'system',
+    theme: themeMode.value,
     timezone: settings.timezone ?? 'Asia/Shanghai',
   })
   applyNotifySettings(settings)
@@ -1395,7 +1409,7 @@ async function testNotify() {
 
 function buildSavePayload() {
   const payload: Record<string, string> = {
-    theme: form.theme,
+    theme: themeMode.value,
     timezone: form.timezone,
     notify_type: notifyType.value,
     notify_email_json: buildNotifyEmailJSON(),
@@ -2211,4 +2225,9 @@ onMounted(() => {
     width: 100%;
   }
 }
+.accent-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.accent-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; min-width: 60px; border: 1px solid transparent; border-radius: var(--fonu-radius-sm); background: transparent; color: var(--fonu-text-secondary); cursor: pointer; font: inherit; font-size: 12px; }
+.accent-option[aria-pressed="true"] { border-color: var(--fonu-brand); background: var(--fonu-brand-soft); color: var(--fonu-text); }
+.accent-option:focus-visible { outline: 2px solid var(--fonu-brand); outline-offset: 2px; }
+.accent-swatch { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
 </style>

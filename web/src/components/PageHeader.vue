@@ -29,8 +29,8 @@ defineProps<{
 
 .page-header__title {
   margin: 0;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 650;
   line-height: 1.3;
   color: var(--fonu-text);
   letter-spacing: -0.02em;

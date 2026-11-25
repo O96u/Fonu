@@ -31,7 +31,7 @@ const layoutSizePercent = ref(100)
 const chartInitOptions = { devicePixelRatio: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2) }
 const scope = defineModel<MapScope>('scope', { default: 'world' })
 const metric = defineModel<MapMetric>('metric', { default: 'requests' })
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 /** 国内 / 全球各自独立的布局比例（勿共用同一组参数） */
 type LayoutProfile = {
@@ -183,8 +183,8 @@ function fmtCount(n: unknown): number {
 
 const option = computed(() => {
   if (!mapReady.value || !props.data) return {}
-  const border = isDark.value ? '#334155' : '#e5e7eb'
-  const area = isDark.value ? '#1e293b' : '#f1f5f9'
+  const border = palette.value.border
+  const area = palette.value.muted
   const isChina = scope.value === 'china'
   const showAccessLines = metric.value === 'requests'
 
@@ -225,7 +225,7 @@ const option = computed(() => {
   const maxVal = Math.max(...mapData.value.map((d) => d.value), 1)
 
   const colorRange =
-    metric.value === 'intercept' ? ['#fecaca', '#ef4444', '#991b1b'] : ['#d1fae5', '#10b981', '#047857']
+    metric.value === 'intercept' ? ['#fecaca', '#ef4444', '#991b1b'] : [palette.value.muted, palette.value.brand, palette.value.pressed]
 
   const layoutCfg = LAYOUT_PROFILE[scope.value]
 
@@ -239,9 +239,9 @@ const option = computed(() => {
     animation: false,
     tooltip: {
       trigger: 'item',
-      backgroundColor: isDark.value ? '#1e293b' : '#fff',
+      backgroundColor: palette.value.surface,
       borderColor: border,
-      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      textStyle: { color: palette.value.text, fontSize: 12 },
       formatter: (p: { name?: string; value?: unknown; seriesName?: string }) => {
         const place = p.name ? mapFeatureDisplayName(p.name) : ''
         if (p.seriesName === '访问飞线') return `${place}<br/>正常访问 ${fmtCount(p.value)}`
@@ -277,7 +277,7 @@ const option = computed(() => {
         borderWidth: isChina ? 0.8 : 0.5,
       },
       emphasis: {
-        itemStyle: { areaColor: isDark.value ? '#334155' : '#e2e8f0' },
+        itemStyle: { areaColor: palette.value.border },
         label: { show: false },
       },
     },
@@ -301,10 +301,10 @@ const option = computed(() => {
           trailLength: 0.15,
           symbol: 'arrow',
           symbolSize: 5,
-          color: '#10b981',
+          color: palette.value.brand,
         },
         lineStyle: {
-          color: '#34d399',
+          color: palette.value.hover,
           width: 1,
           opacity: 0.9,
           curveness: isChina ? 0.2 : 0.25,
@@ -352,7 +352,7 @@ const option = computed(() => {
         z: 5,
         rippleEffect: { brushType: 'stroke', scale: 3 },
         symbolSize: isChina ? 10 : 8,
-        itemStyle: { color: '#3b82f6', shadowBlur: 8, shadowColor: 'rgba(59,130,246,0.5)' },
+        itemStyle: { color: palette.value.chartSecondary, shadowBlur: 8, shadowColor: 'rgba(59,130,246,0.5)' },
         data: hub ? [{ name: hubLabel, value: [...hub, 1] }] : [],
       },
     ],
@@ -525,7 +525,7 @@ watch(scope, () => {
 }
 
 .access-map__density-bar--requests {
-  background: linear-gradient(180deg, #047857, #10b981, #d1fae5);
+  background: linear-gradient(180deg, var(--fonu-brand-hover), var(--fonu-brand), var(--fonu-bg-muted));
 }
 
 .access-map__density-bar--intercept {
@@ -569,7 +569,7 @@ watch(scope, () => {
 }
 
 .access-map__legend-item--access i {
-  background: #10b981;
+  background: var(--fonu-brand);
 }
 
 .access-map__legend-item--block i {
@@ -581,6 +581,6 @@ watch(scope, () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: var(--fonu-chart-secondary);
 }
 </style>

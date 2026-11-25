@@ -24,7 +24,7 @@ const props = withDefaults(
   { compact: false },
 )
 
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 function axisRate(value: number): string {
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(0)} MB/s`
@@ -33,8 +33,8 @@ function axisRate(value: number): string {
 }
 
 const option = computed(() => {
-  const textColor = isDark.value ? '#94a3b8' : '#9ca3af'
-  const splitColor = isDark.value ? '#334155' : '#e5e7eb'
+  const textColor = palette.value.secondary
+  const splitColor = palette.value.border
   const peak = Math.max(0, ...props.upload, ...props.download)
   const idle = peak <= 1
 
@@ -42,9 +42,9 @@ const option = computed(() => {
     grid: { left: 4, right: 8, top: props.compact ? 4 : 8, bottom: props.compact ? 0 : 4, containLabel: true },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: isDark.value ? '#1e293b' : '#fff',
-      borderColor: isDark.value ? '#334155' : '#e5e7eb',
-      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      backgroundColor: palette.value.surface,
+      borderColor: palette.value.border,
+      textStyle: { color: palette.value.text, fontSize: 12 },
       formatter: (params: { seriesName: string; value: number; axisValue: string }[]) => {
         const time = params[0]?.axisValue ?? ''
         const lines = params.map((p) => `${p.seriesName} ${formatRate(p.value)}`)
@@ -79,7 +79,7 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: props.upload,
-        lineStyle: { width: 2, color: '#10b981' },
+        lineStyle: { width: 2, color: palette.value.brand },
         areaStyle: {
           color: {
             type: 'linear',
@@ -88,8 +88,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(16, 185, 129, 0.25)' },
-              { offset: 1, color: 'rgba(16, 185, 129, 0.02)' },
+              { offset: 0, color: palette.value.brand + '40' },
+              { offset: 1, color: palette.value.brand + '05' },
             ],
           },
         },
@@ -100,7 +100,7 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: props.download,
-        lineStyle: { width: 2, color: '#3b82f6' },
+        lineStyle: { width: 2, color: palette.value.chartSecondary },
         areaStyle: {
           color: {
             type: 'linear',
@@ -109,8 +109,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(59, 130, 246, 0.25)' },
-              { offset: 1, color: 'rgba(59, 130, 246, 0.02)' },
+              { offset: 0, color: palette.value.chartSecondary + '40' },
+              { offset: 1, color: palette.value.chartSecondary + '05' },
             ],
           },
         },

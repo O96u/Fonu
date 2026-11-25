@@ -17,11 +17,11 @@ const props = defineProps<{
   segments: { label: string; value: number; color: string }[]
 }>()
 
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 const option = computed(() => {
-  const textColor = isDark.value ? '#94a3b8' : '#6b7280'
-  const titleColor = isDark.value ? '#f1f5f9' : '#111827'
+  const textColor = palette.value.secondary
+  const titleColor = palette.value.text
   const total = props.segments.reduce((sum, s) => sum + s.value, 0)
 
   return {
@@ -43,9 +43,9 @@ const option = computed(() => {
     ],
     tooltip: {
       trigger: 'item',
-      backgroundColor: isDark.value ? '#1e293b' : '#fff',
-      borderColor: isDark.value ? '#334155' : '#e5e7eb',
-      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      backgroundColor: palette.value.surface,
+      borderColor: palette.value.border,
+      textStyle: { color: palette.value.text, fontSize: 12 },
       formatter: '{b}: {c} ({d}%)',
     },
     legend: {

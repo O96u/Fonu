@@ -39,8 +39,8 @@ withDefaults(
   border: 1px solid var(--fonu-border);
   border-radius: var(--fonu-radius);
   box-shadow: var(--fonu-shadow);
-  padding: var(--fonu-space-5);
-  min-height: 140px;
+  padding: var(--fonu-space-4);
+  min-height: 112px;
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -65,9 +65,9 @@ withDefaults(
 }
 
 .stat-card__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -20,11 +20,11 @@ const props = defineProps<{
   currentBucket: number
 }>()
 
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 const option = computed(() => {
-  const textColor = isDark.value ? '#94a3b8' : '#9ca3af'
-  const splitColor = isDark.value ? '#334155' : '#e5e7eb'
+  const textColor = palette.value.secondary
+  const splitColor = palette.value.border
   const end = Math.min(props.currentBucket + 1, props.labels.length)
   const labels = props.labels.slice(0, end)
   const requests = props.requests.slice(0, end)
@@ -39,9 +39,9 @@ const option = computed(() => {
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: isDark.value ? '#1e293b' : '#fff',
-      borderColor: isDark.value ? '#334155' : '#e5e7eb',
-      textStyle: { color: isDark.value ? '#f1f5f9' : '#111827', fontSize: 12 },
+      backgroundColor: palette.value.surface,
+      borderColor: palette.value.border,
+      textStyle: { color: palette.value.text, fontSize: 12 },
     },
     xAxis: {
       type: 'category',
@@ -65,7 +65,7 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: requests,
-        lineStyle: { width: 2, color: '#3b82f6' },
+        lineStyle: { width: 2, color: palette.value.chartSecondary },
         areaStyle: {
           color: {
             type: 'linear',
@@ -74,8 +74,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(59, 130, 246, 0.22)' },
-              { offset: 1, color: 'rgba(59, 130, 246, 0.02)' },
+              { offset: 0, color: palette.value.chartSecondary + '38' },
+              { offset: 1, color: palette.value.chartSecondary + '05' },
             ],
           },
         },
@@ -86,8 +86,8 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: uniqueIPs,
-        color: '#10b981',
-        lineStyle: { width: 2, color: '#10b981' },
+        color: palette.value.brand,
+        lineStyle: { width: 2, color: palette.value.brand },
       },
     ],
   }

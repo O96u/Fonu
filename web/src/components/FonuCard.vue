@@ -40,7 +40,7 @@ defineProps<{
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--fonu-space-4);
-  padding: var(--fonu-space-5) var(--fonu-space-5) 0;
+  padding: var(--fonu-space-4) var(--fonu-space-4) 0;
 }
 
 .fonu-card__title {
@@ -63,7 +63,7 @@ defineProps<{
 }
 
 .fonu-card__body {
-  padding: var(--fonu-space-5);
+  padding: var(--fonu-space-4);
 }
 
 .fonu-card--flush .fonu-card__body {

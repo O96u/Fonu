@@ -1,17 +1,18 @@
 <template>
-  <n-layout has-sider class="app-layout">
+  <n-layout has-sider class="app-layout" :class="{ 'app-layout--compact': collapsed }">
     <n-layout-sider
       class="app-sider"
       bordered
       collapse-mode="width"
-      :collapsed-width="72"
-      :width="240"
+      :collapsed-width="56"
+      :width="208"
       :collapsed="collapsed"
-      show-trigger="bar"
-      @collapse="collapsed = true"
-      @expand="collapsed = false"
+       :show-trigger="compactViewport ? false : 'bar'"
+      @collapse="manualCollapsed = true"
+      @expand="manualCollapsed = false"
     >
       <router-link
+        v-if="!collapsed"
         class="brand"
         :class="{ 'brand--collapsed': collapsed }"
         :to="{ name: 'dashboard' }"
@@ -27,7 +28,7 @@
         class="app-menu"
         :value="activeKey"
         :collapsed="collapsed"
-        :collapsed-width="48"
+        :collapsed-width="56"
         :collapsed-icon-size="20"
         :root-indent="14"
         :options="menuOptions"
@@ -69,9 +70,9 @@
 
     <n-layout class="app-main">
       <header class="topbar">
-        <span class="topbar__datetime">{{ datetime }}</span>
+        <div class="topbar__context"><span class="topbar__workspace">工作空间</span><span class="topbar__separator">/</span><span class="topbar__page">{{ route.meta.title || "概览" }}</span></div>
         <div class="topbar__right">
-          <n-button quaternary circle @click="toggleTheme">
+          <n-button quaternary circle aria-label="切换深浅色主题" @click="toggleTheme">
             <template #icon>
               <n-icon :component="isDark ? MoonOutline : SunnyOutline" />
             </template>
@@ -260,8 +261,13 @@ function isFpkEmbed(): boolean {
   }
 }
 
-const collapsed = ref(isFpkEmbed());
-const datetime = ref("");
+const embedded = isFpkEmbed();
+const viewportWidth = ref(window.innerWidth);
+const compactViewport = computed(() => viewportWidth.value < (embedded ? 960 : 760));
+const manualCollapsed = ref(false);
+const collapsed = computed(() => compactViewport.value || manualCollapsed.value);
+function updateViewport() { viewportWidth.value = window.innerWidth; }
+
 const appVersion = ref(__APP_VERSION__);
 const adminUsername = ref("");
 const usernameModalOpen = ref(false);
@@ -276,7 +282,7 @@ const passwordForm = reactive({
 });
 const latestVersion = ref("");
 const hasUpdate = ref(false);
-let clockTimer: number | undefined;
+
 
 async function checkForUpdate() {
   const release = await fetchLatestRelease();
@@ -338,21 +344,6 @@ const userMenuOptions: DropdownOption[] = [
   { type: "divider", key: "account-divider" },
   { label: "退出登录", key: "logout" },
 ];
-
-function updateClock() {
-  const now = new Date();
-  const date = now.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const time = now.toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const weekday = now.toLocaleDateString("zh-CN", { weekday: "long" });
-  datetime.value = `${date} ${time} · ${weekday}`;
-}
 
 function handleMenu(key: string) {
   router.push({ name: key });
@@ -456,12 +447,11 @@ async function handleUserMenu(key: string) {
 onMounted(() => {
   loadVersion();
   loadAuthProfile();
-  updateClock();
-  clockTimer = window.setInterval(updateClock, 30_000);
+  window.addEventListener("resize", updateViewport, { passive: true });
 });
 
 onUnmounted(() => {
-  if (clockTimer) clearInterval(clockTimer);
+  window.removeEventListener("resize", updateViewport);
 });
 </script>
 
@@ -478,7 +468,7 @@ onUnmounted(() => {
 }
 
 .app-sider {
-  background: var(--fonu-surface) !important;
+  background: var(--fonu-bg-muted) !important;
   border-right: 1px solid var(--fonu-border) !important;
   height: 100%;
   min-height: 0;
@@ -513,12 +503,12 @@ onUnmounted(() => {
 }
 
 .brand__logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  box-shadow: none;
 }
 
 .brand__name {
@@ -602,13 +592,13 @@ onUnmounted(() => {
 
 .sider-footer__version-chip--update {
   cursor: pointer;
-  border-color: color-mix(in srgb, #ef4444 35%, var(--fonu-border));
-  background: color-mix(in srgb, #ef4444 8%, transparent);
+  border-color: color-mix(in srgb, var(--fonu-error) 35%, var(--fonu-border));
+  background: color-mix(in srgb, var(--fonu-error) 8%, transparent);
 }
 
 .sider-footer__version-chip--update:hover {
-  background: color-mix(in srgb, #ef4444 14%, transparent);
-  border-color: color-mix(in srgb, #ef4444 45%, var(--fonu-border));
+  background: color-mix(in srgb, var(--fonu-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--fonu-error) 45%, var(--fonu-border));
 }
 
 .sider-footer__version {
@@ -628,8 +618,8 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 28%, transparent);
+  background: var(--fonu-error);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fonu-error) 28%, transparent);
   flex-shrink: 0;
 }
 
@@ -756,8 +746,17 @@ onUnmounted(() => {
   }
 
   .user-name,
-  .topbar__datetime {
+  .topbar__workspace,
+  .topbar__separator {
     display: none;
   }
 }
+.topbar__context { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.topbar__workspace, .topbar__separator { color: var(--fonu-text-muted); }
+.topbar__page { color: var(--fonu-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-main { min-width: 0; }
+.app-layout--compact .app-menu { padding: 8px 0; }
+.app-layout--compact .content { padding: 16px; }
+.app-layout--compact .topbar { padding-inline: 16px; }
+@media (prefers-reduced-motion: reduce) { .app-layout :deep(*) { scroll-behavior: auto; } }
 </style>
