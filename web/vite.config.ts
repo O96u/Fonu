@@ -29,5 +29,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const path = id.replace(/\\/g, '/')
+          if (!path.includes('/node_modules/')) return
+          if (/\/node_modules\/(echarts|zrender|vue-echarts)\//.test(path)) return 'charts'
+          if (/\/node_modules\/(@codemirror\/|@lezer\/|codemirror\/|vue-codemirror\/)/.test(path)) return 'editor'
+        },
+      },
+    },
   },
 })

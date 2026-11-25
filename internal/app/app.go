@@ -55,13 +55,10 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, appLogWriter), &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	for _, dir := range []string{cfg.DataDir, cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir(), cfg.FrpDir()} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, err
-		}
-	}
-	if err := backup.ApplyPending(cfg.DataDir); err != nil {
-		return nil, err
+	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil { return nil, err }
+	if err := backup.ApplyPending(cfg.DataDir); err != nil { return nil, err }
+	for _, dir := range []string{cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir(), cfg.FrpDir()} {
+		if err := os.MkdirAll(dir, 0755); err != nil { return nil, err }
 	}
 
 	key, err := secret.ResolveKey(cfg.DataDir, cfg.SessionSecret)

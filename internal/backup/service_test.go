@@ -226,3 +226,24 @@ func TestRestoreRollsBackAllMoves(t *testing.T) {
 		got, err = os.ReadFile(filepath.Join(pending, name)); if err != nil || string(got) != "new-"+name { t.Fatalf("staged %s: %q %v", name, got, err) }
 	}
 }
+
+func TestRecoverInterruptedRestore(t *testing.T) {
+	dir := t.TempDir()
+	pending := filepath.Join(dir, pendingDirName)
+	rollback := filepath.Join(dir, restoreRollbackName)
+	for _, p := range []string{pending, rollback} { if err := os.Mkdir(p,0700); err != nil { t.Fatal(err) } }
+	live := filepath.Join(dir, "fonu.db")
+	staged := filepath.Join(pending, "fonu.db")
+	old := filepath.Join(rollback, "fonu.db")
+	if err := os.WriteFile(live, []byte("old"),0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(staged, []byte("new"),0600); err != nil { t.Fatal(err) }
+	j := restoreJournal{Moves: []restoreMove{{From: live, To: old},{From: staged,To:live}}}
+	if err := saveRestoreJournal(dir,j); err != nil { t.Fatal(err) }
+	if err := os.Rename(live,old); err != nil { t.Fatal(err) }
+	if err := os.Rename(staged,live); err != nil { t.Fatal(err) }
+	if err := recoverRestore(dir); err != nil { t.Fatal(err) }
+	for p,want := range map[string]string{live:"old",staged:"new"} {
+		got,err := os.ReadFile(p); if err != nil || string(got)!=want { t.Fatalf("%s: %q %v",p,got,err) }
+	}
+	if err := recoverRestore(dir); err != nil { t.Fatal(err) }
+}

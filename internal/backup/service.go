@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -176,6 +175,8 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 			}
 		}
 	}
+	// Consume the gzip footer to verify its checksum, even after tar EOF.
+	if _, err := io.Copy(io.Discard, io.LimitReader(gr, 1<<20)); err != nil { return err }
 	if !wroteDB {
 		_ = os.RemoveAll(stage)
 		return fmt.Errorf("备份里没有数据库")
@@ -226,6 +227,7 @@ func safeJoin(root, name string) (string, error) {
 }
 
 func ApplyPending(dataDir string) error {
+	if err := recoverRestore(dataDir); err != nil { return err }
 	pending := filepath.Join(dataDir, pendingDirName)
 	staged := filepath.Join(pending, "fonu.db")
 	if _, err := os.Stat(staged); err != nil {
@@ -240,48 +242,6 @@ func ApplyPending(dataDir string) error {
 	}
 
 	return swapRestoreFiles(dataDir, pending, os.Rename)
-}
-
-// Keep all displaced files until every replacement succeeds. On a normal I/O
-// failure, undo renames in reverse order and leave the staged archive retryable.
-func swapRestoreFiles(dataDir, pending string, rename func(string, string) error) (err error) {
-	rollbackDir, err := os.MkdirTemp(dataDir, ".restore-rollback-*")
-	if err != nil { return err }
-	type move struct { from, to string }
-	var moves []move
-	moveFile := func(from, to string) error {
-		if err := rename(from, to); err != nil { return err }
-		moves = append(moves, move{from, to})
-		return nil
-	}
-	defer func() {
-		if err != nil {
-			var rollbackErr error
-			for i := len(moves)-1; i >= 0; i-- {
-				m := moves[i]
-				if e := rename(m.to, m.from); e != nil { rollbackErr = errors.Join(rollbackErr, e) }
-			}
-			if rollbackErr != nil { err = errors.Join(err, fmt.Errorf("rollback failed; recovery files: %s: %w", rollbackDir, rollbackErr)); return }
-		}
-		_ = os.RemoveAll(rollbackDir)
-	}()
-	for _, name := range []string{"fonu.db-wal", "fonu.db-shm", "fonu.db", "certs", "nginx", secret.KeyFileName} {
-		staged := filepath.Join(pending, name)
-		live := filepath.Join(dataDir, name)
-		_, stageErr := os.Lstat(staged)
-		sidecar := name == "fonu.db-wal" || name == "fonu.db-shm"
-		if stageErr != nil && !os.IsNotExist(stageErr) { return stageErr }
-		if !sidecar && os.IsNotExist(stageErr) { continue }
-		if _, liveErr := os.Lstat(live); liveErr == nil {
-			if err := moveFile(live, filepath.Join(rollbackDir, name)); err != nil { return err }
-		} else if !os.IsNotExist(liveErr) { return liveErr }
-		if !sidecar && stageErr == nil {
-			if err := moveFile(staged, live); err != nil { return err }
-		}
-	}
-	// All replacements are committed. A cleanup failure must not undo a successful restore.
-	_ = os.RemoveAll(pending)
-	return nil
 }
 
 func addDatabaseSnapshot(ctx context.Context, tw *tar.Writer, dataDir string) error {
