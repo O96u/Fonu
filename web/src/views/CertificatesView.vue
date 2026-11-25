@@ -16,33 +16,10 @@
 
   <template v-else>
     <div class="stats-row">
-      <div class="stat-card">
-        <n-icon :component="FolderOpenOutline" class="stat-card__icon stat-card__icon--blue" />
-        <div class="stat-card__value">{{ records.length }}</div>
-        <div class="stat-card__label">证书总数</div>
-        <div class="stat-card__sub">当前已配置的证书</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="CheckmarkCircleOutline" class="stat-card__icon stat-card__icon--green" />
-        <div class="stat-card__value stat-card__value--green">{{ normalCount }}</div>
-        <div class="stat-card__label">正常证书</div>
-        <div class="stat-card__sub">运行正常</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="AlertCircleOutline" class="stat-card__icon stat-card__icon--amber" />
-        <div class="stat-card__value stat-card__value--amber">{{ expiringCount }}</div>
-        <div class="stat-card__label">即将过期</div>
-        <div class="stat-card__sub">30 天内到期</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="CloseCircleOutline" class="stat-card__icon stat-card__icon--red" />
-        <div class="stat-card__value stat-card__value--red">{{ expiredCount }}</div>
-        <div class="stat-card__label">已过期</div>
-        <div class="stat-card__sub">需要处理</div>
-      </div>
+      <button v-for="stat in certificateStats" :key="stat.key" type="button" class="stat-card stat-filter" :aria-pressed="statusFilter === stat.key" @click="statusFilter = statusFilter === stat.key ? 'all' : stat.key">
+        <span class="stat-filter__label"><n-icon :component="stat.icon" :class="'stat-card__icon stat-card__icon--' + stat.tone" />{{ stat.label }}</span>
+        <strong :class="'stat-card__value stat-card__value--' + stat.tone">{{ stat.count }}</strong>
+      </button>
     </div>
 
     <FonuCard flush class="cert-panel" title="证书列表" :subtitle="`显示 ${filteredRecords.length} / ${records.length} 张证书`">
@@ -78,14 +55,23 @@
       </div>
 
       <div v-else-if="filteredRecords.length > 0" class="cert-table-wrap">
-        <n-data-table
+        <div class="cert-wide"><n-data-table
           class="cert-table"
           :columns="columns"
           :data="paginatedRecords"
           :bordered="false"
           size="small"
-          :scroll-x="1100"
-        />
+          :scroll-x="1180"
+        /></div>
+        <div class="cert-narrow">
+          <article v-for="row in paginatedRecords" :key="row.id" class="cert-mobile-card">
+            <div class="cert-mobile-head"><strong>{{ row.name?.trim() || certDisplayName(row.domain) }}</strong><n-tag size="small" round :bordered="false" :type="certLifeTagType(certLifeStatus(row))">{{ certLifeLabel(certLifeStatus(row)) }}</n-tag></div>
+            <div class="cert-mobile-domains">{{ (row.domains?.length ? row.domains : [row.domain]).join(' · ') }}</div>
+            <div class="cert-mobile-grid"><div><small>颁发机构</small>{{ caLabel(row.acme_ca) }}</div><div><small>有效期</small>{{ row.expires_at ? formatDate(row.expires_at) : '-' }}</div><div><small>续签策略</small>{{ row.acme_ca === 'imported' ? '手动更换' : '全局自动续签' }}</div><div><small>部署状态</small>{{ deploymentLabel(row) }}</div></div>
+            <div v-if="row.last_error" class="cert-mobile-error">{{ row.last_error }}</div>
+            <div class="cert-mobile-actions"><n-button size="small" quaternary @click="editCert(row)">编辑</n-button><n-button v-if="row.acme_ca !== 'imported'" size="small" quaternary @click="confirmRenew(row)">续签</n-button><n-button v-if="row.expires_at" size="small" quaternary @click="downloadCert(row, 'zip')">下载</n-button><n-button size="small" quaternary type="error" @click="confirmDelete(row)">删除</n-button></div>
+          </article>
+        </div>
         <div v-if="filteredRecords.length > pageSize" class="cert-pagination">
           <n-pagination
             v-model:page="page"
@@ -119,13 +105,6 @@
       />
     </FonuCard>
 
-    <div class="tip-box">
-      <n-icon :component="InformationCircleOutline" class="tip-box__icon" />
-      <div>
-        <strong>使用提示：</strong>
-        证书属于域名本身；DNS 服务商仅作为申请/续签时的 DNS-01 验证通道，不会在证书上长期绑定。一张证书可包含多个域名和通配符，续签时系统会自动选用可用的 DNS 凭证完成验证。
-      </div>
-    </div>
   </template>
 
   <!-- 申请（三步向导） -->
@@ -133,9 +112,9 @@
     v-model:show="showApply"
     preset="card"
     class="apply-cert-modal"
-    :mask-closable="applyStep === 3 && applyFinished"
-    :close-on-esc="applyStep !== 3 || applyFinished"
-    :style="{ width: applyModalWidth }"
+    :mask-closable="applyStep === 4 && applyFinished"
+    :close-on-esc="applyStep !== 4 || applyFinished"
+    :style="{ width: applyModalWidth, maxHeight: 'calc(100dvh - 32px)', display: 'flex', flexDirection: 'column' }"
     :segmented="{ content: true, footer: 'soft' }"
     :content-style="applyModalContentStyle"
     @after-leave="resetApplyWizard"
@@ -159,9 +138,11 @@
         <span class="apply-step__label">DNS 验证</span>
       </div>
       <div class="apply-step__line" :class="{ 'apply-step__line--done': applyStep > 2 }" />
-      <div class="apply-step" :class="{ 'apply-step--active': applyStep === 3, 'apply-step--done': applyFinished && applyResult?.ok }">
-        <span class="apply-step__dot">3</span>
-        <span class="apply-step__label">申请完成</span>
+      <div class="apply-step" :class="{ 'apply-step--active': applyStep === 3, 'apply-step--done': applyStep > 3 }"><span class="apply-step__dot">3</span><span class="apply-step__label">部署配置</span></div>
+      <div class="apply-step__line" :class="{ 'apply-step__line--done': applyStep > 3 }" />
+      <div class="apply-step" :class="{ 'apply-step--active': applyStep === 4, 'apply-step--done': applyFinished && applyResult?.ok }">
+        <span class="apply-step__dot">4</span>
+        <span class="apply-step__label">申请结果</span>
       </div>
     </div>
 
@@ -273,16 +254,6 @@
         </div>
       </n-form-item>
 
-      <div class="apply-auto-renew">
-        <div>
-          <div class="apply-auto-renew__title">自动续期</div>
-          <div class="apply-auto-renew__sub">在证书到期前自动续期</div>
-        </div>
-        <n-switch v-model:value="applyAutoRenew" />
-      </div>
-
-      <CertExportFields v-model:form="applyExportForm" v-bind="certExportFieldProps" />
-
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </n-form>
 
@@ -367,6 +338,11 @@
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </div>
 
+    <div v-else-if="applyStep === 3" class="deployment-step">
+      <div class="apply-auto-renew"><div><div class="apply-auto-renew__title">自动续签</div><div class="apply-auto-renew__sub">按系统全局续签策略执行；此版本不支持单证书开关。</div></div><router-link :to="{ name: 'settings', query: { tab: 'acme' } }">续签设置</router-link></div>
+      <CertExportFields v-model:form="applyExportForm" v-bind="certExportFieldProps" />
+      <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
+    </div>
     <div v-else class="apply-done-step">
       <p v-if="!applyFinished" class="apply-done-step__hint">
         DNS 验证与证书签发可能需要 1～3 分钟，请保持窗口打开
@@ -415,11 +391,13 @@
       </n-space>
       <n-space v-else-if="applyStep === 2" :key="2" justify="end">
         <n-button @click="goApplyStep1">上一步</n-button>
-        <n-button type="primary" :loading="applying" :disabled="!canSubmitApply" @click="submitApply">
-          开始申请
-        </n-button>
+        <n-button type="primary" :disabled="!canSubmitApply" @click="applyStep = 3; applyError = ''">下一步</n-button>
       </n-space>
       <n-space v-else-if="applyStep === 3" :key="3" justify="end">
+        <n-button @click="applyStep = 2; applyError = ''">上一步</n-button>
+        <n-button type="primary" :loading="applying" :disabled="!canSubmitApply" @click="submitApply">开始申请</n-button>
+      </n-space>
+      <n-space v-else-if="applyStep === 4" :key="4" justify="end">
         <n-button v-if="!applyFinished" :loading="true" disabled>申请进行中…</n-button>
         <n-button v-else type="primary" @click="showApply = false">完成</n-button>
       </n-space>
@@ -430,9 +408,9 @@
   <n-modal
     v-model:show="showImport"
     preset="card"
-    :style="{ width: 'min(560px, 92vw)' }"
+    :style="{ width: 'min(640px, 92vw)', maxHeight: 'calc(100dvh - 32px)', display: 'flex', flexDirection: 'column' }"
     :segmented="{ content: true, footer: 'soft' }"
-    :content-style="{ paddingTop: '8px' }"
+    :content-style="{ paddingTop: '8px', minHeight: '0', overflowY: 'auto' }"
   >
     <template #header>
       <div class="modal-header">
@@ -515,7 +493,8 @@
     v-model:show="showCertEdit"
     preset="card"
     title="编辑证书"
-    :style="{ width: 'min(560px, 92vw)' }"
+    :content-style="{ minHeight: '0', overflowY: 'auto' }"
+    :style="{ width: 'min(640px, 92vw)', maxHeight: 'calc(100dvh - 32px)', display: 'flex', flexDirection: 'column' }"
     :segmented="{ content: true, footer: 'soft' }"
   >
     <n-form label-placement="top">
@@ -624,7 +603,6 @@ import {
   NSelect,
   NSpace,
   NSpin,
-  NSwitch,
   NTag,
   useDialog,
   useMessage,
@@ -637,7 +615,6 @@ import {
   CloseCircleOutline,
   CloudUploadOutline,
   FolderOpenOutline,
-  InformationCircleOutline,
   SearchOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
@@ -719,15 +696,17 @@ const certExportFieldProps = computed(() => ({
 }))
 
 const applyModalWidth = computed(() => {
-  if (applyStep.value === 3) return 'min(720px, 96vw)'
-  if (applyStep.value === 1) return 'min(880px, 96vw)'
+  if (applyStep.value === 4) return 'min(720px, 96vw)'
+  if (applyStep.value === 1 || applyStep.value === 3) return 'min(820px, 94vw)'
   return 'min(640px, 92vw)'
 })
 
 const applyModalContentStyle = computed(() => ({
   paddingTop: '4px',
   paddingBottom: '4px',
-  maxHeight: applyStep.value === 1 ? 'min(78vh, 720px)' : 'min(70vh, 640px)',
+  minHeight: '0',
+  flex: '1 1 auto',
+  maxHeight: 'calc(100dvh - 180px)',
   overflowY: 'auto' as const,
 }))
 const caOptions = ref<CertificateCAOption[]>([])
@@ -760,8 +739,7 @@ const applyEmail = ref('')
 const savedAcmeEmail = ref('')
 const applyCertName = ref('')
 const applyDomainsText = ref('')
-const applyAutoRenew = ref(true)
-const applyStep = ref<1 | 2 | 3>(1)
+const applyStep = ref<1 | 2 | 3 | 4>(1)
 const applyDdnsConfigId = ref<number | null>(null)
 const applyDnsMode = ref<'inline' | 'saved'>('inline')
 const applyInlineProvider = ref('cloudflare')
@@ -960,6 +938,7 @@ function certLifeStatus(row: CertificateRecord): CertLifeStatus {
   if (row.expires_at && row.days_left <= 0) return 'expired'
   if (row.expires_at && row.days_left <= 30) return 'expiring'
   if (row.status === 'error') return 'error'
+  if (!row.expires_at) return 'error'
   return 'ok'
 }
 
@@ -1005,13 +984,25 @@ const issuerFilterOptions = computed(() => issuerFilterOptionsComputed())
 const normalCount = computed(() => records.value.filter((r) => certLifeStatus(r) === 'ok').length)
 const expiringCount = computed(() => records.value.filter((r) => certLifeStatus(r) === 'expiring').length)
 const expiredCount = computed(() => records.value.filter((r) => certLifeStatus(r) === 'expired').length)
+const certificateStats = computed(() => [
+  { key: 'all', label: '证书总数', count: records.value.length, icon: FolderOpenOutline, tone: 'blue' },
+  { key: 'ok', label: '正常', count: normalCount.value, icon: CheckmarkCircleOutline, tone: 'green' },
+  { key: 'expiring', label: '即将到期', count: expiringCount.value, icon: AlertCircleOutline, tone: 'amber' },
+  { key: 'expired', label: '已过期', count: expiredCount.value, icon: CloseCircleOutline, tone: 'red' },
+  { key: 'error', label: '异常', count: records.value.filter(r => certLifeStatus(r) === 'error').length, icon: AlertCircleOutline, tone: 'red' },
+])
+function deploymentLabel(row: CertificateRecord) {
+  const local = row.export?.enabled ? (row.export.last_error ? '本地失败' : row.export.last_sync_at ? '本地已同步' : '本地待同步') : ''
+  const ssh = row.export?.ssh?.enabled ? (row.export.ssh.last_error ? 'SSH 失败' : row.export.ssh.last_sync_at ? 'SSH 已同步' : 'SSH 待同步') : ''
+  return [local, ssh].filter(Boolean).join(' · ') || '未配置'
+}
 
 const filteredRecords = computed(() => {
   let list = records.value
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
     list = list.filter((row) => {
-      const hay = [row.domain, certDisplayName(row.domain), certSubtitle(row), ...(row.domains ?? []), caLabel(row.acme_ca)]
+      const hay = [row.domain, row.name || '', certDisplayName(row.domain), certSubtitle(row), ...(row.domains ?? []), caLabel(row.acme_ca)]
         .join(' ')
         .toLowerCase()
       return hay.includes(q)
@@ -1148,10 +1139,6 @@ function validateApplyCA(domains: string[]) {
   return ''
 }
 
-function autoRenewEnabled(row: CertificateRecord) {
-  return row.acme_ca !== 'imported' && row.status !== 'error'
-}
-
 const columns: DataTableColumns<CertificateRecord> = [
   {
     title: '证书名称',
@@ -1202,15 +1189,16 @@ const columns: DataTableColumns<CertificateRecord> = [
     },
   },
   {
-    title: '自动续期',
+    title: '续签策略',
     key: 'auto_renew',
-    width: 88,
-    render: (row) =>
-      h(NSwitch, {
-        value: autoRenewEnabled(row),
-        size: 'small',
-        disabled: true,
-      }),
+    width: 112,
+    render: (row) => row.acme_ca === 'imported' ? '手动更换' : '全局策略',
+  },
+  {
+    title: '部署状态',
+    key: 'deployment',
+    minWidth: 150,
+    render: (row) => deploymentLabel(row),
   },
   {
     title: '操作',
@@ -1398,7 +1386,6 @@ function resetApplyWizard() {
   applyInlineSecret.value = ''
   applySaveDnsProfile.value = false
   applyDnsProfileRemark.value = ''
-  applyAutoRenew.value = true
   Object.assign(applyExportForm, emptyExportForm())
   applyCA.value = 'letsencrypt'
   applyEmail.value = ''
@@ -1623,12 +1610,12 @@ async function submitApply() {
             export: exportPayload(applyExportForm),
           }
     const { job_id } = await api.applyCertificate(payload)
-    applyStep.value = 3
+    applyStep.value = 4
     resetApplyProgress()
     startApplyStream(job_id)
   } catch (error) {
     const text = error instanceof Error ? error.message : '申请失败'
-    applyStep.value = 3
+    applyStep.value = 4
     resetApplyProgress()
     applyFinished.value = true
     applyResult.value = {
@@ -2518,4 +2505,21 @@ html.dark .apply-log-box {
 .ca-card { border-radius:var(--fonu-radius); }
 .ca-card--active { border-color:var(--fonu-brand); background:var(--fonu-brand-soft); }
 @media(max-width:760px) { .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .stat-card__value { font-size:24px; } .cert-toolbar__search { flex-basis:100%; } .cert-toolbar__filter { flex:1 1 120px; } }
+
+.stats-row { grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; border:0; background:transparent; overflow:visible; }
+.stats-row > .stat-filter { display:grid; gap:8px; text-align:left; min-height:0; padding:12px 14px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); cursor:pointer; color:var(--fonu-text); }
+.stat-filter[aria-pressed="true"] { border-color:var(--fonu-brand); background:var(--fonu-brand-soft); }
+.stat-filter__label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--fonu-text-secondary); }
+.stat-filter .stat-card__value { font-size:24px; margin:0; }
+.cert-narrow { display:none; }
+.cert-mobile-card { border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); padding:12px; display:grid; gap:8px; }
+.cert-mobile-head,.cert-mobile-actions { display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap; }
+.cert-mobile-domains { font-size:12px; color:var(--fonu-text-secondary); overflow-wrap:anywhere; }
+.cert-mobile-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; font-size:13px; }
+.cert-mobile-grid small { display:block; color:var(--fonu-text-muted); }
+.cert-mobile-error { color:var(--fonu-error); font-size:12px; overflow-wrap:anywhere; }
+.cert-mobile-actions { border-top:1px solid var(--fonu-border); padding-top:6px; justify-content:flex-end; }
+.deployment-step { display:grid; gap:12px; }
+@media(max-width:1000px) { .cert-wide { display:none; } .cert-narrow { display:grid; gap:10px; } }
+@media(max-width:700px) { .stats-row { grid-template-columns:repeat(3,minmax(0,1fr)); } .apply-step__label { font-size:11px; } }
 </style>

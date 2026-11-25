@@ -279,7 +279,7 @@ const exportTip = computed(() => {
     if (props.runAsRoot) {
       return '飞牛 Root 包：填写本进程可写的绝对路径。'
     }
-    return '飞牛普通包：只能写到「访问权限」授权的路径（见下方建议）。系统目录请换 Root 包，或用下方 SSH。'
+    return '飞牛普通包仅支持已授权的可写目录。系统目录可使用 Root 包或 SSH。'
   }
   if (props.deployKind === 'docker') {
     return 'Docker：请先把宿主机目录挂载到下方填写的路径。'
@@ -502,4 +502,7 @@ async function onSSHKeyPasteFile(event: Event) {
   display: none;
 }
 
+
+.cert-export-panel__head { align-items:center; }
+.cert-export-panel__head :deep(.n-switch) { flex-shrink:0; align-self:center; }
 </style>

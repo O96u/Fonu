@@ -848,14 +848,14 @@ function ensureSelection() {
 watch(configs, ensureSelection)
 
 function selectTask(id: number) {
-  if (selectedKey.value === String(id) && !recordEditing.value && taskEditMode.value === null) { detailCollapsed.value = !detailCollapsed.value; return }
+  if (selectedKey.value === String(id) && !recordEditing.value) { detailCollapsed.value = !detailCollapsed.value; return }
   detailCollapsed.value = false
   selectedKey.value = String(id)
   cancelRecordEdit()
 }
 
 function selectDnsheAccount(id: string) {
-  if (selectedKey.value === dnsheAccountKey(id) && !recordEditing.value && taskEditMode.value === null) { detailCollapsed.value = !detailCollapsed.value; return }
+  if (selectedKey.value === dnsheAccountKey(id) && !recordEditing.value) { detailCollapsed.value = !detailCollapsed.value; return }
   detailCollapsed.value = false
   dnsheTab.value = 'domains'
   selectedKey.value = dnsheAccountKey(id)
@@ -921,7 +921,7 @@ function selectDraft() {
 const createTaskPanelRef = ref<HTMLElement | null>(null)
 
 function startCreateTask() {
-  detailCollapsed.value = false
+  detailCollapsed.value = true
   resetTaskForm()
   taskEditMode.value = 'create'
   cancelRecordEdit()
@@ -2210,4 +2210,8 @@ onMounted(init)
 .task-card .record-table td:last-child { width:84px; }
 .task-card .detail-section :deep(.fonu-card__body) { padding:0; }
 @media(max-width:600px) { .ddns-summary { grid-template-columns:repeat(3,minmax(0,1fr)); } .task-card__header { flex-wrap:wrap; } }
+
+.task-chevron { display:inline-flex; align-items:center; justify-content:center; padding:0; height:30px; }
+.task-chevron :deep(.n-button__content) { display:flex; align-items:center; justify-content:center; line-height:1; }
+.task-item--editing { max-width:760px; width:100%; margin-inline:auto; box-sizing:border-box; }
 </style>
