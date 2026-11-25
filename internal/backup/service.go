@@ -242,6 +242,7 @@ func ApplyPending(dataDir string) error {
 		}
 		return err
 	}
+	if secret.HasPendingRotation(dataDir) { return fmt.Errorf("cannot restore while encryption key rotation is pending") }
 	if err := db.PrepareRestore(staged); err != nil {
 		_ = os.RemoveAll(pending)
 		return fmt.Errorf("待恢复的数据库不可用")

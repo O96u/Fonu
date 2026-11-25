@@ -30,3 +30,17 @@ export wizard_http_port="$wizard_admin_port"
 if bash "$cmd/install_callback"; then echo "duplicate port accepted" >&2; exit 1; fi
 test "$before" = "$(sha256sum "$TRIM_PKGVAR/fonu.db" "$TRIM_PKGETC/session_secret" "$TRIM_PKGETC/fonu.env" "$TRIM_PKGVAR/certs/test.crt")"
 echo "FPK install and upgrade callback checks passed"
+
+# A stale PID must never cause a foreign process to be stopped.
+sleep 60 &
+foreign=$!
+trap 'kill "$foreign" 2>/dev/null || true; rm -rf "$root"' EXIT
+printf '%s\n' "$foreign" > "$TRIM_PKGVAR/fonu.pid"
+printf '%s\n' "$foreign" > "$TRIM_PKGVAR/nginx/nginx.pid"
+printf '%s\n' "$foreign" > "$TRIM_PKGVAR/frp/frpc.pid"
+if bash "$cmd/main" status; then echo "foreign PID accepted" >&2; exit 1; fi
+bash "$cmd/main" stop
+kill -0 "$foreign"
+kill "$foreign"
+wait "$foreign" || true
+echo "FPK stale PID checks passed"

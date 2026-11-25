@@ -61,7 +61,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		if err := os.MkdirAll(dir, 0755); err != nil { return nil, err }
 	}
 
-	key, err := secret.ResolveKey(cfg.DataDir, cfg.SessionSecret)
+	key, err := secret.ResolveFPKKey(cfg.DataDir, cfg.SessionSecret, os.Getenv("FONU_LEGACY_FPK_KEY_FILE"))
 	if err != nil {
 		return nil, fmt.Errorf("resolve encryption key: %w", err)
 	}

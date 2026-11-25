@@ -34,6 +34,7 @@ func RotateLegacyKey(ctx context.Context, db *sql.DB, dir, current string) (stri
 	next := string(raw)
 	if next == LegacyDefaultKey { return "", fmt.Errorf("invalid rotation key") }
 	if err := ValidateStoredKey(next); err != nil { return "", err }
+	if current != LegacyDefaultKey && current != next { return "", fmt.Errorf("pending key rotation conflicts with configured key") }
 	oldBox, err := NewBox(LegacyDefaultKey)
 	if err != nil { return "", err }
 	newBox, err := NewBox(next)

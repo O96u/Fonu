@@ -19,3 +19,17 @@ func TestResolveKey(t *testing.T) {
 	old, err := ResolveKey(legacy, "")
 	if err != nil || old != LegacyDefaultKey { t.Fatal("legacy key not preserved") }
 }
+
+func TestFPKKeyMigrationPrefersRestoredKey(t *testing.T) {
+	dir:=t.TempDir()
+	legacy:=filepath.Join(t.TempDir(),"session_secret")
+	old:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err:=os.WriteFile(legacy,[]byte(old),0600);err!=nil {t.Fatal(err)}
+	key,err:=ResolveFPKKey(dir,"",legacy)
+	if err!=nil||key!=old {t.Fatalf("legacy key migration failed: %v",err)}
+	restored,err:=ResolveKey(t.TempDir(),"")
+	if err!=nil {t.Fatal(err)}
+	if err:=SaveStoredKey(dir,restored);err!=nil {t.Fatal(err)}
+	key,err=ResolveFPKKey(dir,"",legacy)
+	if err!=nil||key!=restored {t.Fatalf("restored key ignored: %v",err)}
+}

@@ -3,6 +3,7 @@ package secret
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ func ResolveKey(dir, explicit string) (string, error) {
 
 func ValidateStoredKey(key string) error {
 	if key == LegacyDefaultKey { return nil }
+	if raw,err:=hex.DecodeString(key);err==nil && len(raw)==32 {return nil}
 	raw, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil || len(raw) != 32 { return fmt.Errorf("invalid stored encryption key") }
 	return nil
@@ -52,4 +54,20 @@ func writeKeyFile(dir, name, key string) error {
 	if err == nil { err = closeErr }
 	if err != nil { return err }
 	return os.Rename(f.Name(), filepath.Join(dir, name))
+}
+
+ // ResolveFPKKey imports the historical FPK key only when no data-directory
+// key exists. The original key material is preserved byte for byte.
+func ResolveFPKKey(dir, explicit, legacyFile string) (string,error) {
+	if explicit != "" && explicit != LegacyDefaultKey { return ResolveKey(dir,explicit) }
+	if _,err:=os.Stat(filepath.Join(dir,KeyFileName));err==nil {return ResolveKey(dir,explicit)} else if !os.IsNotExist(err) {return "",err}
+	if legacyFile!="" {
+		raw,err:=os.ReadFile(legacyFile)
+		if err!=nil {return "",err}
+		key:=strings.TrimRight(string(raw),"\n")
+		if err:=ValidateStoredKey(key);err!=nil {return "",err}
+		if err:=SaveStoredKey(dir,key);err!=nil {return "",err}
+		return key,nil
+	}
+	return ResolveKey(dir,explicit)
 }
