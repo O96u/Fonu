@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/v2
-          echo "version=2.0.0-beta.18" >> "$GITHUB_OUTPUT"
+          echo "version=2.0.0-beta.19" >> "$GITHUB_OUTPUT"
           echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           echo "attach_tag=" >> "$GITHUB_OUTPUT"
           echo "trial_tag=" >> "$GITHUB_OUTPUT"

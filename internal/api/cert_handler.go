@@ -133,6 +133,25 @@ func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, redactCertRecord(record))
 }
 
+func (h *CertHandler) SetDNSConfig(w http.ResponseWriter,r *http.Request) {
+	var req struct { ID *int64 `json:"dns_config_id"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == nil { writeError(r,w,http.StatusBadRequest,"请选择 DNS 凭证"); return }
+	rec,err := h.svc.SetDNSConfig(r.Context(),r.PathValue("domain"),*req.ID)
+	if err != nil { writeError(r,w,http.StatusBadRequest,err.Error()); return }
+	writeJSON(w,http.StatusOK,redactCertRecord(rec))
+}
+func (h *CertHandler) TestSSH(w http.ResponseWriter,r *http.Request) {
+	var req struct { Domain string `json:"domain"`; SSH certstore.SSHExportConfig `json:"ssh"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil { writeError(r,w,http.StatusBadRequest,"请求格式无效"); return }
+	if err := h.export.TestSSH(r.Context(),req.Domain,req.SSH); err != nil { writeError(r,w,http.StatusBadRequest,err.Error()); return }
+	writeJSON(w,http.StatusOK,map[string]bool{"ok":true})
+}
+func (h *CertHandler) DeploymentHistory(w http.ResponseWriter,r *http.Request) {
+	rows,err := h.export.DeploymentHistory(r.Context(),r.PathValue("domain"))
+	if err != nil { writeError(r,w,http.StatusInternalServerError,"读取部署历史失败"); return }
+	writeJSON(w,http.StatusOK,rows)
+}
+
 func (h *CertHandler) SetAutoRenew(w http.ResponseWriter, r *http.Request) {
 	var req struct { AutoRenew *bool `json:"auto_renew"` }
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AutoRenew == nil { writeError(r,w,http.StatusBadRequest,"请选择自动续签状态"); return }

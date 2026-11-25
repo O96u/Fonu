@@ -228,6 +228,7 @@
             />
           </n-form-item>
 
+          <n-button size="small" :loading="testingSSH" @click="testSSH">测试 SSH 连接</n-button>
           <div
             v-if="showSyncStatus && (form.ssh.last_sync_at || form.ssh.last_error)"
             class="cert-export-panel__status"
@@ -254,16 +255,21 @@ import {
   NRadioButton,
   NRadioGroup,
   NSwitch,
+  useMessage,
 } from 'naive-ui'
 import DirectoryPathInput from './DirectoryPathInput.vue'
 import { formatDate } from '../utils/format'
-import type { CertExportFormModel } from '../utils/certExportForm'
+import { exportPayload, type CertExportFormModel } from '../utils/certExportForm'
+import { api } from '../api/client'
 
 const form = defineModel<CertExportFormModel>('form', { required: true })
 const sshKeyPasteInput = ref<HTMLInputElement | null>(null)
+const message = useMessage()
+const testingSSH = ref(false)
 
 const props = withDefaults(
   defineProps<{
+    certificateDomain?: string
     sourceDir?: string
     showSyncStatus?: boolean
     deployKind?: string
@@ -303,6 +309,12 @@ const sshKeyPlaceholder = computed(() => {
   return '-----BEGIN OPENSSH PRIVATE KEY-----'
 })
 
+async function testSSH() {
+  testingSSH.value = true
+  try { await api.testCertificateSSH(props.certificateDomain ?? '', exportPayload(form.value).ssh!); message.success('SSH 身份、认证及目录访问验证通过（未测试写权限）') }
+  catch(error) { message.error(error instanceof Error ? error.message : 'SSH 连接测试失败') }
+  finally { testingSSH.value = false }
+}
 function addTarget() {
   form.value.targets.push('')
 }

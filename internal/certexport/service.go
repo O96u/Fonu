@@ -102,6 +102,7 @@ func (s *Service) syncRecord(ctx context.Context, rec certstore.Record, remove b
 	if cfg.Enabled && len(cfg.Targets) > 0 {
 		err := s.syncStorages(ctx, cfg, names, display, remove)
 		s.recordLocalSyncResult(ctx, rec.Domain, err)
+		s.recordDeployment(ctx, rec.Domain, "local", remove, err)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -110,6 +111,7 @@ func (s *Service) syncRecord(ctx context.Context, rec certstore.Record, remove b
 	if cfg.SSH.Enabled {
 		err := syncSSHUpload(ctx, cfg.SSH, s.cfg.CertsDir(), names, display, remove)
 		s.recordSSHSyncResult(ctx, rec.Domain, err)
+		s.recordDeployment(ctx, rec.Domain, "ssh", remove, err)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -184,4 +186,17 @@ func (s *Service) recordSSHSyncResult(ctx context.Context, domain string, err er
 		cfg.SSH.LastError = ""
 	}
 	_ = s.certs.SetExport(ctx, domain, cfg)
+}
+
+func (s *Service) recordDeployment(ctx context.Context, domain, channel string, remove bool, err error) {
+	op := "sync"; if remove { op = "remove" }
+	if e := s.certs.AddDeploymentEvent(ctx, domain, channel, op, err == nil); e != nil { s.logger.Warn("save deployment history failed", "error", e.Error()) }
+}
+func (s *Service) DeploymentHistory(ctx context.Context, domain string) ([]certstore.DeploymentEvent,error) { return s.certs.DeploymentHistory(ctx,domain) }
+func (s *Service) TestSSH(ctx context.Context, domain string, cfg certstore.SSHExportConfig) error {
+	if domain != "" { old, err := s.certs.GetByDomain(ctx,domain); if err != nil { return err }; cfg = certstore.MergeExportSecrets(certstore.ExportConfig{SSH:cfg},old.Export).SSH }
+	cfg.Enabled = true
+	cfg = cfg.Normalize()
+	if err := cfg.Validate(); err != nil { return err }
+	return testSSH(ctx,cfg)
 }

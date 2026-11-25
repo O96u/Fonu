@@ -556,12 +556,15 @@
         </n-form-item>
       </template>
 
+      <div v-if="!editCertImported" class="apply-auto-renew"><div><strong>续签 DNS 凭证</strong><n-select v-model:value="editDNSConfig" :options="[{label:'自动匹配',value:0}, ...applyDdnsConfigs.map(c => ({label: (c.remark || providerLabel(c.provider)) + ' · ' + c.root_domain,value:c.id}))]" /></div><n-button size="small" :loading="dnsSaving" @click="saveDNSConfig">保存关联</n-button></div>
       <CertExportFields
+        :certificate-domain="editCertDomain"
         v-model:form="editExportForm"
         :source-dir="editCertSourceHint"
         show-sync-status
         v-bind="certExportFieldProps"
       />
+      <div class="deployment-history"><strong>部署历史（最近 100 条）</strong><n-button size="small" quaternary @click="refreshDeploymentHistory(editCertDomain)">刷新</n-button><p v-if="historyError">{{ historyError }}</p><p v-else-if="!deploymentHistory.length">暂无部署记录</p><div v-for="event in deploymentHistory" :key="event.id" class="deployment-history-row"><span>{{ formatDate(event.created_at) }}</span><span>{{ event.channel === 'ssh' ? 'SSH' : '本地' }} · {{ event.operation === 'remove' ? '移除' : '同步' }}</span><n-tag size="small" :type="event.ok ? 'success' : 'error'">{{ event.ok ? '成功' : '失败' }}</n-tag></div></div>
     </n-form>
     <template #footer>
       <div class="cert-edit-footer">
@@ -669,6 +672,10 @@ const downloadingDomain = ref('')
 const loadError = ref('')
 const showCertEdit = ref(false)
 const editCertDomain = ref('')
+const editDNSConfig = ref(0)
+const dnsSaving = ref(false)
+const deploymentHistory = ref<{id:number;channel:string;operation:string;ok:boolean;created_at:string}[]>([])
+const historyError = ref('')
 const editCertName = ref('')
 const editCertSourceHint = ref('')
 const editCertImported = ref(false)
@@ -1286,6 +1293,10 @@ function confirmRenew(row: CertificateRecord) {
 
 function editCert(row: CertificateRecord) {
   editCertDomain.value = row.domain
+  editDNSConfig.value = row.dns_config_id ?? 0
+  deploymentHistory.value = []
+  historyError.value = ''
+  void refreshDeploymentHistory(row.domain)
   editCertName.value = row.name?.trim() || certDisplayName(row.domain)
   editCertImported.value = row.acme_ca === 'imported'
   editCertDomainsText.value = row.domains?.length ? row.domains.join('\n') : row.domain
@@ -1306,6 +1317,17 @@ async function onEditKeyFile(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   editImportKey.value = await file.text()
+}
+
+async function refreshDeploymentHistory(domain: string) {
+  try { const rows = await api.listCertificateDeployments(domain); if (editCertDomain.value === domain) { deploymentHistory.value = rows; historyError.value = '' } }
+  catch (error) { if (editCertDomain.value === domain) historyError.value = error instanceof Error ? error.message : '读取失败' }
+}
+async function saveDNSConfig() {
+  dnsSaving.value = true
+  try { const updated = await api.setCertificateDNSConfig(editCertDomain.value, editDNSConfig.value); records.value = records.value.map(r => r.id === updated.id ? updated : r); message.success('DNS 凭证关联已保存') }
+  catch(error) { message.error(error instanceof Error ? error.message : '保存失败') }
+  finally { dnsSaving.value = false }
 }
 
 async function saveCertEdit() {
@@ -1344,6 +1366,7 @@ async function syncEditCertExport() {
     records.value = records.value.map((r) => (r.id === updated.id ? updated : r))
     Object.assign(editExportForm, loadExportFormFromSettings(updated.export))
     message.success('已同步到目标目录')
+    void refreshDeploymentHistory(editCertDomain.value)
   } catch (error) {
     message.error(error instanceof Error ? error.message : '同步失败')
   } finally {
@@ -2541,4 +2564,7 @@ html.dark .apply-log-box {
 .apply-modal-scroll { min-height:0; overflow:visible; }
 .apply-cert-modal :deep(.n-card__content) { flex:1 1 auto; min-height:0; overscroll-behavior:contain; }
 .apply-cert-modal :deep(.n-card-header), .apply-cert-modal :deep(.n-card__footer) { flex-shrink:0; }
+
+.deployment-history { display:grid; gap:8px; margin-top:12px; }
+.deployment-history-row { display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; border-bottom:1px solid var(--fonu-border); padding:6px 0; }
 </style>

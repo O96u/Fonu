@@ -12,6 +12,7 @@ import (
 
 type Record struct {
 	AutoRenew bool `json:"auto_renew"`
+	DNSConfigID int64 `json:"dns_config_id"`
 	ID          int64      `json:"id"`
 	Domain      string     `json:"domain"`
 	Name        string     `json:"name"`
@@ -39,7 +40,7 @@ func NewStore(db *sql.DB) *Store {
 func (s *Store) List(ctx context.Context) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew, dns_config_id
 		FROM certificates ORDER BY id ASC
 	`)
 	if err != nil {
@@ -78,6 +79,33 @@ func (s *Store) Upsert(ctx context.Context, domain string, wildcard bool, domain
 		return Record{}, err
 	}
 	return s.GetByDomain(ctx, domain)
+}
+
+func (s *Store) SetDNSConfig(ctx context.Context, domain string, id int64) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE certificates SET dns_config_id = ? WHERE domain = ?", id, domain)
+	return err
+}
+
+type DeploymentEvent struct {
+	ID int64 `json:"id"`
+	Domain string `json:"domain"`
+	Channel string `json:"channel"`
+	Operation string `json:"operation"`
+	OK bool `json:"ok"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (s *Store) AddDeploymentEvent(ctx context.Context, domain, channel, operation string, ok bool) error {
+	_, err := s.db.ExecContext(ctx, "INSERT INTO cert_deployment_history(domain, channel, operation, ok) VALUES (?, ?, ?, ?)", domain, channel, operation, boolInt(ok))
+	return err
+}
+
+func (s *Store) DeploymentHistory(ctx context.Context, domain string) ([]DeploymentEvent, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, domain, channel, operation, ok, created_at FROM cert_deployment_history WHERE domain = ? ORDER BY id DESC LIMIT 100", domain)
+	if err != nil { return nil, err }; defer rows.Close()
+	out := []DeploymentEvent{}
+	for rows.Next() { var e DeploymentEvent; if err := rows.Scan(&e.ID,&e.Domain,&e.Channel,&e.Operation,&e.OK,&e.CreatedAt); err != nil { return nil,err }; out = append(out,e) }
+	return out, rows.Err()
 }
 
 func (s *Store) SetAutoRenew(ctx context.Context, domain string, enabled bool) error {
@@ -141,7 +169,7 @@ func (s *Store) Delete(ctx context.Context, domain string) error {
 func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew, dns_config_id
 		FROM certificates WHERE domain = ?
 	`, domain)
 	rec, err := scanRecord(row)
@@ -157,7 +185,7 @@ func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var domainsJSON string
 	var expiresAt, lastRenewAt sql.NullString
 	var exportJSON string
-	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON, &autoRenew); err != nil {
+	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON, &autoRenew, &rec.DNSConfigID); err != nil {
 		return Record{}, err
 	}
 	exportCfg, err := ParseExportConfig(exportJSON)

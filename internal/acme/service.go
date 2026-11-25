@@ -81,12 +81,16 @@ type ApplyOptions struct {
 }
 
 func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, opts ApplyOptions, name string) (string, error) {
+	if opts.AutoRenew != nil && *opts.AutoRenew && opts.InlineDNS.HasValues() && opts.DDNSConfigID <= 0 { opts.SaveDNSProfile = true }
 	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, domains, ca, email, opts)
 	if err != nil {
 		return "", err
 	}
+	if opts.DDNSConfigID <= 0 && !opts.InlineDNS.HasValues() {
+		if cfg, _, _, err := s.ddnsSvc.CredentialsForCertDomains(ctx, domains); err == nil { opts.DDNSConfigID = cfg.ID }
+	}
 	job := s.jobs.Create()
-	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name, opts.Export, opts.AutoRenew)
+	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name, opts.Export, opts.AutoRenew, opts.DDNSConfigID)
 	return job.ID(), nil
 }
 
@@ -260,7 +264,7 @@ func (s *Service) prepareApplyByZone(ctx context.Context, dnsZone string, domain
 	return domains, ca, email, primary, dnsZone, provider, cred, nil
 }
 
-func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string, export certstore.ExportConfig, autoRenew *bool) {
+func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string, export certstore.ExportConfig, autoRenew *bool, dnsConfigID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	if !s.operationMu.TryLock() {
@@ -289,10 +293,12 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 			return
 		}
 	}
+	if dnsConfigID > 0 { if err := s.store.SetDNSConfig(ctx, primary, dnsConfigID); err != nil { job.Warn("保存 DNS 凭证关联失败：" + err.Error()) } }
 	s.saveCertExport(ctx, primary, export)
 	if err := s.settings.Set(ctx, settings.KeyACMECA, ca); err != nil {
 		job.Warn("保存 ACME 颁发机构设置失败: " + err.Error())
 	}
+	if updated, err := s.store.GetByDomain(ctx, primary); err == nil { rec = updated }
 	s.syncCertExport(ctx, rec)
 	if err := s.proxySvc.ReloadAll(ctx); err != nil {
 		job.Warn("Nginx 重载失败: " + err.Error())
@@ -327,6 +333,8 @@ func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, c
 }
 
 func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile string, export certstore.ExportConfig) (certstore.Record, error) {
+	if !s.operationMu.TryLock() { return certstore.Record{}, fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
 	certBytes, err := certstore.ResolvePEMSource(certPEM, certFile)
 	if err != nil {
 		return certstore.Record{}, fmt.Errorf("证书：%w", err)
@@ -341,10 +349,11 @@ func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile
 		return certstore.Record{}, err
 	}
 
-	certPath, keyPath, err := writeCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
+	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
 	if err != nil {
 		return certstore.Record{}, err
 	}
+	defer finishFiles(false)
 
 	status := "ok"
 	if time.Now().After(info.ExpiresAt) {
@@ -357,6 +366,7 @@ func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile
 		return certstore.Record{}, err
 	}
 
+	if err := finishFiles(true); err != nil { return certstore.Record{}, err }
 	s.saveCertExport(ctx, info.Primary, export)
 	rec, err := s.store.GetByDomain(ctx, info.Primary)
 	if err != nil {
@@ -371,6 +381,8 @@ func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile
 }
 
 func (s *Service) Delete(ctx context.Context, domain string) error {
+	if !s.operationMu.TryLock() { return fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	if domain == "" {
 		return fmt.Errorf("域名不能为空")
@@ -423,14 +435,19 @@ func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstor
 	if len(domains) == 0 {
 		domains = LegacyCertDomains(existing.Domain, existing.Wildcard)
 	}
-	dnsZone, err := s.resolveDNSZone(ctx, domains)
-	if err != nil {
-		return certstore.Record{}, err
+	var provider string
+	var cred ddns.Credentials
+	if existing.DNSConfigID > 0 {
+		cfg, p, c, e := s.ddnsSvc.CredentialsForConfigID(ctx, existing.DNSConfigID)
+		if e != nil { return certstore.Record{}, fmt.Errorf("已关联 DNS 凭证不可用：%w", e) }
+		if e = DomainsUnderZones(domains, cfg.ManagedDNSZones()); e != nil { return certstore.Record{}, e }
+		provider, cred = p, c
+	} else {
+		_, p, c, e := s.ddnsSvc.CredentialsForCertDomains(ctx, domains)
+		if e != nil { return certstore.Record{}, e }
+		provider, cred = p, c
 	}
-	provider, cred, err := s.dnsCredentialsForDomain(ctx, dnsZone)
-	if err != nil {
-		return certstore.Record{}, err
-	}
+	if err := validateDNSCredentials(provider, cred); err != nil { return certstore.Record{}, err }
 	rec, err := s.obtain(ctx, nil, ca, email, provider, cred, existing.Domain, domains)
 	if err != nil {
 		s.markCertError(ctx, rootDomain, domains, ca, err)
@@ -482,6 +499,8 @@ func (s *Service) removeCertExport(ctx context.Context, rec certstore.Record) {
 }
 
 func (s *Service) Update(ctx context.Context, domain, name string, export certstore.ExportConfig, certPEM, keyPEM string) (certstore.Record, error) {
+	if !s.operationMu.TryLock() { return certstore.Record{}, fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
 	certPEM = strings.TrimSpace(certPEM)
 	keyPEM = strings.TrimSpace(keyPEM)
 	if certPEM == "" && keyPEM == "" {
@@ -516,10 +535,11 @@ func (s *Service) Update(ctx context.Context, domain, name string, export certst
 	}
 
 	oldNames := certstore.RecordStorageNames(existing)
-	certPath, keyPath, err := writeCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
+	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
 	if err != nil {
 		return certstore.Record{}, err
 	}
+	defer finishFiles(false)
 
 	status := "ok"
 	if time.Now().After(info.ExpiresAt) {
@@ -530,6 +550,7 @@ func (s *Service) Update(ctx context.Context, domain, name string, export certst
 		return certstore.Record{}, err
 	}
 
+	if err := finishFiles(true); err != nil { return certstore.Record{}, err }
 	rec, err := s.store.GetByDomain(ctx, existing.Domain)
 	if err != nil {
 		return certstore.Record{}, err
@@ -601,6 +622,23 @@ func (s *Service) UpdateMeta(ctx context.Context, domain, name string, export ce
 		s.syncCertExport(ctx, rec)
 	}
 	return rec, nil
+}
+
+func (s *Service) SetDNSConfig(ctx context.Context, domain string, id int64) (certstore.Record, error) {
+	if !s.operationMu.TryLock() { return certstore.Record{}, fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
+	rec, err := s.store.GetByDomain(ctx, domain)
+	if err != nil { return rec, err }
+	if rec.ACMECA == "imported" { return rec, fmt.Errorf("导入证书不需要 DNS 凭证") }
+	if id < 0 { return rec, fmt.Errorf("无效的 DNS 凭证") }
+	if id > 0 {
+		cfg, provider, cred, e := s.ddnsSvc.CredentialsForConfigID(ctx, id)
+		if e != nil { return rec, e }
+		if e = DomainsUnderZones(rec.Domains, cfg.ManagedDNSZones()); e != nil { return rec, e }
+		if e = validateDNSCredentials(provider, cred); e != nil { return rec, e }
+	}
+	if err = s.store.SetDNSConfig(ctx, domain, id); err != nil { return rec, err }
+	return s.store.GetByDomain(ctx, domain)
 }
 
 func (s *Service) SetAutoRenew(ctx context.Context, domain string, enabled bool) (certstore.Record, error) {
@@ -686,6 +724,10 @@ func (s *Service) markCertError(ctx context.Context, primary string, domains []s
 	}
 	errMsg := err.Error()
 	s.logger.Error("certificate operation failed", "domain", primary, "error", errMsg)
+	if old, e := s.store.GetByDomain(ctx, primary); e == nil && old.CertPath != "" {
+		_ = s.store.UpdateStatus(ctx, primary, "error", errMsg)
+		return
+	}
 	_, upsertErr := s.store.Upsert(ctx, primary, HasWildcardDomain(domains), EncodeCertDomains(domains), ca, "", "", time.Time{}, "error", errMsg)
 	if upsertErr != nil {
 		s.logger.Error("save cert error status failed", "domain", primary, "error", upsertErr.Error())
@@ -865,22 +907,24 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 		return certstore.Record{}, fmt.Errorf("证书申请失败：%w", err)
 	}
 
-	certPath, keyPath, err := writeCertFiles(s.cfg.CertsDir(), domains, cert.Certificate, cert.PrivateKey)
+	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), domains, cert.Certificate, cert.PrivateKey)
 	if err != nil {
 		return certstore.Record{}, err
 	}
+	defer finishFiles(false)
 	logStep(fmt.Sprintf("证书已保存: %s", certPath))
 	logStep(fmt.Sprintf("私钥已保存: %s", keyPath))
 
 	expiresAt, err := parseCertExpiry(cert.Certificate)
 	if err != nil {
-		expiresAt = time.Now().Add(90 * 24 * time.Hour)
+		return certstore.Record{}, err
 	}
 	logStep(fmt.Sprintf("到期时间: %s", expiresAt.Local().Format("2006-01-02 15:04:ss")))
 	rec, err := s.store.Upsert(ctx, rootDomain, HasWildcardDomain(domains), EncodeCertDomains(domains), ca, certPath, keyPath, expiresAt, "ok", "")
 	if err != nil {
 		return certstore.Record{}, err
 	}
+	if err := finishFiles(true); err != nil { return certstore.Record{}, err }
 	s.logger.Info("certificate obtained", "domain", rootDomain, "ca", ca, "expires_at", expiresAt.Format(time.RFC3339))
 	return rec, nil
 }
@@ -930,30 +974,6 @@ func (s *Service) dnsCredentialsForDomain(ctx context.Context, rootDomain string
 		return "", ddns.Credentials{}, err
 	}
 	return provider, cred, nil
-}
-
-func writeCertFiles(certsDir string, domains []string, certPEM, keyPEM []byte) (string, string, error) {
-	names := certstore.StorageNames(domains)
-	if len(names) == 0 {
-		return "", "", fmt.Errorf("证书域名不能为空")
-	}
-	var certPath, keyPath string
-	for _, name := range names {
-		dir := filepath.Join(certsDir, name)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return "", "", err
-		}
-		cp := filepath.Join(dir, "fullchain.pem")
-		kp := filepath.Join(dir, "privatekey.pem")
-		if err := os.WriteFile(cp, certPEM, 0o600); err != nil {
-			return "", "", err
-		}
-		if err := os.WriteFile(kp, keyPEM, 0o600); err != nil {
-			return "", "", err
-		}
-		certPath, keyPath = cp, kp
-	}
-	return certPath, keyPath, nil
 }
 
 func removeCertFiles(certsDir string, record certstore.Record) error {

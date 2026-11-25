@@ -262,6 +262,9 @@ export const api = {
   getCertificateExportPaths: () => request<CertExportPathHints>('/api/certificates/export-paths'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
   setCertificateAutoRenew: (domain: string, enabled: boolean) => request<CertificateRecord>(`/api/certificates/${encodeURIComponent(domain)}/auto-renew`, { method: 'PUT', body: JSON.stringify({ auto_renew: enabled }) }),
+  testCertificateSSH: (domain: string, ssh: NonNullable<CertExportSettings['ssh']>) => request<{ok:boolean}>('/api/certificates/ssh-test', {method:'POST',body:JSON.stringify({domain,ssh})}),
+  setCertificateDNSConfig: (domain: string, id: number) => request<CertificateRecord>(`/api/certificates/${encodeURIComponent(domain)}/dns-config`, {method:'PUT',body:JSON.stringify({dns_config_id:id})}),
+  listCertificateDeployments: (domain: string) => request<{id:number;domain:string;channel:string;operation:string;ok:boolean;created_at:string}[]>(`/api/certificates/${encodeURIComponent(domain)}/deployment-history`),
   applyCertificate: (payload: {
     auto_renew?: boolean
     dns_zone?: string

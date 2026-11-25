@@ -174,3 +174,14 @@ func runSSHCommand(client *ssh.Client, script string, meta sshCertMeta) error {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
+
+// testSSH verifies host identity, authentication and read access without writing files.
+func testSSH(ctx context.Context, cfg certstore.SSHExportConfig) error {
+	ctx,cancel := context.WithTimeout(ctx,30*time.Second); defer cancel()
+	client,err := sshClientConn(cfg); if err != nil { return err }; defer client.Close()
+	stop := context.AfterFunc(ctx,func(){ _ = client.Close() }); defer stop()
+	sftpClient,err := sftp.NewClient(client); if err != nil { return err }; defer sftpClient.Close()
+	info,err := sftpClient.Stat(cfg.RemoteDir); if err != nil { return fmt.Errorf("无法访问远程目录：%w",err) }
+	if !info.IsDir() { return fmt.Errorf("远程路径不是目录") }
+	return nil
+}
