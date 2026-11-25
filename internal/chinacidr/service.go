@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,6 +37,7 @@ type Service struct {
 	proxyStore *proxy.Store
 	logger     *slog.Logger
 	updating   atomic.Bool
+	applyCIDR func(context.Context, string) error
 }
 
 type Status struct {
@@ -52,6 +52,9 @@ type Status struct {
 func New(cfg config.Config, settingsStore *settings.Store, nginxMgr *nginx.Manager, proxyStore *proxy.Store, logger *slog.Logger) *Service {
 	return &Service{cfg: cfg, settings: settingsStore, nginxMgr: nginxMgr, proxyStore: proxyStore, logger: logger}
 }
+
+// SetApplyCIDR is configured before the service is started.
+func (s *Service) SetApplyCIDR(fn func(context.Context, string) error) { s.applyCIDR = fn }
 
 func (s *Service) Tick(ctx context.Context) {
 	if err := s.Update(ctx); err != nil {
@@ -95,32 +98,8 @@ func (s *Service) Update(ctx context.Context) error {
 		return err
 	}
 
-	tmpPath := s.cfg.ChinaCIDRTempPath()
-	if err := os.WriteFile(tmpPath, []byte(body), 0o644); err != nil {
-		return err
-	}
-
-	rules, err := s.proxyStore.ListEnabled(ctx)
-	if err != nil {
-		return err
-	}
-	opts := s.loadGenerateOptions(ctx)
-	validateOpts := opts
-	validateOpts.ChinaCIDRPathOverride = tmpPath
-	validateOpts.ChinaCIDRAvailable = true
-	if err := s.nginxMgr.ValidateOnlyWithOptions(ctx, rules, nil, validateOpts); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("nginx 校验失败: %w", err)
-	}
-
-	finalPath := s.cfg.ChinaCIDRPath()
-	if err := os.Rename(tmpPath, finalPath); err != nil {
-		return err
-	}
-
-	if _, err := s.nginxMgr.Apply(ctx, rules, nil); err != nil {
-		return fmt.Errorf("nginx 重载失败: %w", err)
-	}
+	if s.applyCIDR == nil { return fmt.Errorf("CIDR apply service not configured") }
+	if err := s.applyCIDR(ctx, body); err != nil { return err }
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_ = s.settings.Set(ctx, settings.KeyChinaCIDRUpdatedAt, now)
@@ -232,10 +211,11 @@ func downloadLines(ctx context.Context, url string) ([]string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (10<<20)+1))
 	if err != nil {
 		return nil, err
 	}
+	if len(data) > 10<<20 { return nil, fmt.Errorf("CIDR source exceeds size limit") }
 	var lines []string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)

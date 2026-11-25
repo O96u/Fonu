@@ -8,80 +8,39 @@ import (
 	"github.com/fonu/fonu/internal/awareness"
 )
 
+// Bucket boundaries are generated in the configured application timezone,
+// not SQLite's host-local timezone. Range scans preserve the ts index.
 func (s *Service) querySeries(ctx context.Context, period awareness.Period, ipFilter string) (SeriesBlock, int, error) {
 	out := SeriesBlock{Granularity: period.BucketKind}
+	loc := period.Start.Location()
+	type bucket struct { start, end time.Time; label string }
+	var buckets []bucket
 	if period.BucketKind == "two_hour" {
-		out.Labels = make([]string, 12)
-		out.Requests = make([]int, 12)
-		out.UniqueIPs = make([]int, 12)
-		out.Bytes = make([]int64, 12)
+		y, m, d := period.Start.Date()
 		for i := 0; i < 12; i++ {
-			out.Labels[i] = fmt.Sprintf("%02d:00", i*2)
+			buckets = append(buckets, bucket{time.Date(y,m,d,i*2,0,0,0,loc),time.Date(y,m,d,(i+1)*2,0,0,0,loc),fmt.Sprintf("%02d:00",i*2)})
 		}
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT CAST(strftime('%H', ts, 'localtime') AS INTEGER) / 2 AS bucket,
-			       COUNT(*), COUNT(DISTINCT client_ip), COALESCE(SUM(bytes_sent),0)
-			FROM access_facts
-			WHERE ts >= ? AND ts <= ?`+ipFilter+`
-			GROUP BY bucket
-		`, period.Start.UTC().Format(time.RFC3339), period.End.UTC().Format(time.RFC3339))
-		if err != nil {
-			return out, 0, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var bucket, reqs, ips int
-			var bytes int64
-			if err := rows.Scan(&bucket, &reqs, &ips, &bytes); err != nil {
-				return out, 0, err
-			}
-			if bucket >= 0 && bucket < 12 {
-				out.Requests[bucket] = reqs
-				out.UniqueIPs[bucket] = ips
-				out.Bytes[bucket] = bytes
-			}
-		}
-		cur := period.End.Hour() / 2
-		if cur >= 12 {
-			cur = 11
-		}
-		return out, cur, rows.Err()
-	}
-
-	out.Labels = make([]string, 0, period.MaxBuckets)
-	out.Requests = make([]int, 0, period.MaxBuckets)
-	out.UniqueIPs = make([]int, 0, period.MaxBuckets)
-	labelIndex := map[string]int{}
-	for d := period.Start; !d.After(period.End) && len(out.Labels) < period.MaxBuckets; d = d.AddDate(0, 0, 1) {
-		label := d.Format("01-02")
-		labelIndex[d.Format("2006-01-02")] = len(out.Labels)
-		out.Labels = append(out.Labels, label)
-		out.Requests = append(out.Requests, 0)
-		out.UniqueIPs = append(out.UniqueIPs, 0)
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT date(ts, 'localtime') AS day, COUNT(*), COUNT(DISTINCT client_ip)
-		FROM access_facts
-		WHERE ts >= ? AND ts <= ?`+ipFilter+`
-		GROUP BY day
-	`, period.Start.UTC().Format(time.RFC3339), period.End.UTC().Format(time.RFC3339))
-	if err != nil {
-		return out, 0, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var day string
-		var reqs, ips int
-		if err := rows.Scan(&day, &reqs, &ips); err != nil {
-			return out, 0, err
-		}
-		if idx, ok := labelIndex[day]; ok {
-			out.Requests[idx] = reqs
-			out.UniqueIPs[idx] = ips
+	} else {
+		out.Granularity = "daily"
+		for d := period.Start; !d.After(period.End) && len(buckets)<period.MaxBuckets; d=d.AddDate(0,0,1) {
+			buckets=append(buckets,bucket{d,d.AddDate(0,0,1),d.Format("01-02")})
 		}
 	}
-	out.Granularity = "daily"
-	return out, len(out.Labels) - 1, rows.Err()
+	current := -1
+	for i, b := range buckets {
+		out.Labels=append(out.Labels,b.label)
+		out.Requests=append(out.Requests,0)
+		out.UniqueIPs=append(out.UniqueIPs,0)
+		out.Bytes=append(out.Bytes,0)
+		if b.start.After(period.End) { continue }
+		current=i
+		end := b.end
+		if cap := period.End.Add(time.Second); cap.Before(end) { end=cap }
+		if !end.After(b.start) { continue }
+		err:=s.db.QueryRowContext(ctx,`SELECT COUNT(*), COUNT(DISTINCT client_ip), COALESCE(SUM(bytes_sent),0) FROM access_facts WHERE ts >= ? AND ts < ?`+ipFilter,b.start.UTC().Format(time.RFC3339),end.UTC().Format(time.RFC3339)).Scan(&out.Requests[i],&out.UniqueIPs[i],&out.Bytes[i])
+		if err != nil { return out, current, err }
+	}
+	return out,current,nil
 }
 
 func (s *Service) queryProvinces(ctx context.Context, start, end, ipFilter string) ([]ProvinceRow, error) {

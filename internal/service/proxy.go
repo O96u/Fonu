@@ -3,6 +3,10 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"time"
 	"fmt"
 	"strconv"
 	"strings"
@@ -196,6 +200,10 @@ func (s *ProxyService) ReloadAll(ctx context.Context) error {
 func (s *ProxyService) applyNginx(ctx context.Context) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	return s.applyNginxLocked(ctx)
+}
+
+func (s *ProxyService) applyNginxLocked(ctx context.Context) error {
 	rules, err := s.store.ListEnabled(ctx)
 	if err != nil {
 		return err
@@ -294,4 +302,50 @@ func (s *ProxyService) loadCertSources(ctx context.Context) ([]nginx.CertSource,
 func (s *ProxyService) NginxApplyStatus() nginx.ApplyStatus {
 	if s.nginx == nil { return nginx.ApplyStatus{State: "unknown"} }
 	return s.nginx.ApplyStatus()
+}
+
+ // ApplyChinaCIDR serializes CIDR publication with the regular full configuration flow.
+func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	rules, err := s.store.ListEnabled(ctx)
+	if err != nil { return err }
+	certs, err := s.loadCertSources(ctx)
+	if err != nil { return err }
+	final := s.cfg.ChinaCIDRPath()
+	old, err := os.ReadFile(final)
+	hadOld := err == nil
+	if err != nil && !os.IsNotExist(err) { return err }
+	tmp, err := writeCIDRTemp(filepath.Dir(final), []byte(body))
+	if err != nil { return err }
+	defer os.Remove(tmp)
+	opts := s.loadGenerateOptions(ctx)
+	opts.ChinaCIDRPathOverride = tmp
+	opts.ChinaCIDRAvailable = true
+	if err := s.nginx.ValidateOnlyWithOptions(ctx, rules, certs, opts); err != nil { return err }
+	if err := os.Rename(tmp, final); err != nil { return err }
+	if err := s.applyNginxLocked(ctx); err != nil {
+		var rollbackErr error
+		if hadOld {
+			var staged string
+			staged, rollbackErr = writeCIDRTemp(filepath.Dir(final), old)
+			if rollbackErr == nil { defer os.Remove(staged); rollbackErr = os.Rename(staged, final) }
+		} else { rollbackErr = os.Remove(final) }
+		if rollbackErr != nil { return errors.Join(err, fmt.Errorf("CIDR rollback: %w", rollbackErr)) }
+		rollbackCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if _, reloadErr := s.nginx.ApplyWithOptions(rollbackCtx, rules, certs, s.loadGenerateOptions(rollbackCtx)); reloadErr != nil { return errors.Join(err, reloadErr) }
+		return err
+	}
+	return nil
+}
+
+func writeCIDRTemp(dir string, body []byte) (string, error) {
+	f, err := os.CreateTemp(dir, "cidr-*.conf")
+	if err != nil { return "", err }
+	if err = f.Chmod(0644); err == nil { _, err = f.Write(body) }
+	closeErr := f.Close()
+	if err == nil { err = closeErr }
+	if err != nil { os.Remove(f.Name()); return "", err }
+	return f.Name(), nil
 }

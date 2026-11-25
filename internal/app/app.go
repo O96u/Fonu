@@ -108,6 +108,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 
 	proxySvc := service.NewProxyService(cfg, conn, proxyStore, certStore, settingsStore, nginxMgr)
 	chinaCIDRSvc := chinacidr.New(cfg, settingsStore, nginxMgr, proxyStore, logger.With("module", "CHINA_CIDR"))
+	chinaCIDRSvc.SetApplyCIDR(proxySvc.ApplyChinaCIDR)
 	notifySvc := notify.New(settingsStore, secretBox, logger)
 	proxySvc.SetNotify(notifySvc)
 	ddnsSvc := ddns.NewService(ddnsStore, settingsStore, secretBox, logger, notifySvc)

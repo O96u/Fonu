@@ -14,6 +14,9 @@ type Job struct {
 	IntervalOf func(ctx context.Context) time.Duration
 	Timeout time.Duration
 	Run func(ctx context.Context)
+	RunErr func(ctx context.Context) error
+	RetryMin time.Duration
+	RetryMax time.Duration
 }
 
 type Scheduler struct {
@@ -48,11 +51,14 @@ func (s *Scheduler) Wait(ctx context.Context) error {
 }
 
 func (s *Scheduler) runJob(ctx context.Context, job Job) {
+	var failures int
 	for ctx.Err() == nil {
+		failed := false
 		interval := job.Interval
 		func() {
 			defer func() {
 				if p := recover(); p != nil {
+					failed = true
 					slog.Error("scheduled job panicked", "job", job.Name, "panic", p, "stack", string(debug.Stack()))
 				}
 			}()
@@ -60,8 +66,11 @@ func (s *Scheduler) runJob(ctx context.Context, job Job) {
 			cancel := func() {}
 			if job.Timeout > 0 { runCtx, cancel = context.WithTimeout(ctx, job.Timeout) }
 			defer cancel()
-			if job.Run != nil { job.Run(runCtx) }
+			if job.RunErr != nil {
+				if err := job.RunErr(runCtx); err != nil { failed = true; slog.Warn("scheduled job failed", "job", job.Name, "error", err) }
+			} else if job.Run != nil { job.Run(runCtx) }
 			if runCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+				failed = true
 				slog.Warn("scheduled job deadline exceeded", "job", job.Name)
 			}
 			if ctx.Err() == nil && job.IntervalOf != nil {
@@ -70,10 +79,21 @@ func (s *Scheduler) runJob(ctx context.Context, job Job) {
 		}()
 		if ctx.Err() != nil { return }
 		if interval <= 0 { interval = time.Minute }
+		if failed { failures++; if job.RetryMin > 0 { interval = retryDelay(job.RetryMin, job.RetryMax, failures) } } else { failures = 0 }
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done(): timer.Stop(); return
 		case <-timer.C:
 		}
 	}
+}
+
+func retryDelay(min, max time.Duration, failures int) time.Duration {
+	if max < min { max = min }
+	d := min
+	for i := 1; i < failures && d < max; i++ {
+		if d > max/2 { return max }
+		d *= 2
+	}
+	return d
 }
