@@ -99,6 +99,9 @@ const option = computed(() => {
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: palette.value.surface,
+      borderColor: palette.value.border,
+      textStyle: { color: palette.value.text },
       confine: true,
       axisPointer: { type: 'shadow' },
     },

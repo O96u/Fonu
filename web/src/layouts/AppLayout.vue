@@ -66,8 +66,8 @@
         <div class="topbar__right">
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
-            <div class="appearance-panel"><strong>主题颜色</strong><p>即时预览 · 自动保存</p>
-              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': isDark ? preset.dark : preset.light }">
+            <div class="appearance-panel"><strong>全局主题</strong><p>背景、卡片与强调色同步 · 自动保存</p>
+              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': previewTheme(preset.value, isDark).brandText, '--preview-bg': previewTheme(preset.value, isDark).bg, '--preview-chrome': previewTheme(preset.value, isDark).chrome, '--preview-surface': previewTheme(preset.value, isDark).surface, '--preview-border': previewTheme(preset.value, isDark).border }">
                 <span class="appearance-preview"><i/><span><b/><em/><em/></span></span>
                 <span class="appearance-label"><i/>{{ preset.label }}<span v-if="themeAccent === preset.value" class="appearance-check">✓</span></span>
               </button></div>
@@ -244,7 +244,7 @@ import {
 import { api, asList } from "../api/client";
 import { routeAuthStatus, invalidateRouteAuth } from "../router";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
-import { useTheme, themePresets } from "../composables/useTheme";
+import { useTheme, themePresets, previewTheme } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
 import logoImg from "../assets/brand/logo.png";
 
@@ -787,7 +787,7 @@ onUnmounted(() => {
 .app-main > :deep(.n-layout-scroll-container) { display:flex; flex-direction:column; height:100%; overflow:hidden; }
 .content > :deep(.n-layout-scroll-container) { min-height:0; }
 .app-layout--compact .content { padding:12px; }
-.app-sider { background:var(--fonu-surface)!important; }
+.app-sider { background:var(--fonu-chrome)!important; }
 .app-layout--compact .app-menu { padding:12px 4px; }
 .app-menu :deep(.n-menu-item-content) { border-radius:10px!important; }
 .topbar__right { gap:6px; }
@@ -837,4 +837,10 @@ onUnmounted(() => {
 .nav-edge:hover :deep(.n-icon),.nav-edge:focus-visible :deep(.n-icon) { display:block; }
 .nav-edge:focus-visible { outline:2px solid var(--fonu-brand); outline-offset:2px; }
 @media (hover:none) { .nav-edge__bar{display:none} .nav-edge :deep(.n-icon){display:block} .nav-edge{background:var(--fonu-bg-muted)} }
+.topbar { background:var(--fonu-chrome); }
+.app-sider :deep(.n-layout-sider-scroll-container) { background:var(--fonu-chrome); }
+.appearance-preview { background:var(--preview-bg); border:1px solid var(--preview-border); }
+.appearance-preview > i { background:var(--preview-chrome); border:1px solid var(--preview-border); border-left:3px solid var(--preview-accent); opacity:1; }
+.appearance-preview b { background:var(--preview-accent); }
+.appearance-preview em { background:var(--preview-surface); border-color:var(--preview-border); }
 </style>

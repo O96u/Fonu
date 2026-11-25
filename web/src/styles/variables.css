@@ -1,9 +1,9 @@
 :root {
   --fonu-brand: #10b981;
-  --fonu-brand-hover: #305ab0;
-  --fonu-brand-soft: #3869c91c;
-  --fonu-brand-text: #3869c9;
-  --fonu-brand-sidebar: #3869c9;
+  --fonu-brand-hover: #059669;
+  --fonu-brand-soft: #10b9811f;
+  --fonu-brand-text: #047857;
+  --fonu-brand-sidebar: #10b981;
 
   --fonu-success: #16835a;
   --fonu-warning: #f59e0b;
@@ -12,12 +12,13 @@
   --fonu-info: #3b82f6;
   --fonu-info-soft: rgba(59, 130, 246, 0.1);
 
-  --fonu-bg: #f5f6f8;
-  --fonu-bg-muted: #eef0f3;
+  --fonu-bg: #edf5f1;
+  --fonu-bg-muted: #e4efe9;
   --fonu-banner-bg: var(--fonu-brand-soft);
   --fonu-banner-border: var(--fonu-brand-soft);
-  --fonu-surface: #ffffff;
-  --fonu-border: #dfe3e8;
+  --fonu-surface: #fcfefd;
+  --fonu-chrome: #f5faf7;
+  --fonu-border: #d5e5dd;
   --fonu-text: #20242c;
   --fonu-text-secondary: #555e6b;
   --fonu-text-muted: #687383;
@@ -46,14 +47,15 @@ html.dark,
 [data-theme='dark'] {
   --fonu-brand: #10b981;
   --fonu-success: #65c69b;
-  --fonu-brand-soft: #8cb4ff33;
-  --fonu-brand-text: #8cb4ff;
+  --fonu-brand-soft: #10b9812e;
+  --fonu-brand-text: #6ee7b7;
   --fonu-info-soft: rgba(59, 130, 246, 0.16);
 
-  --fonu-bg: #171a1f;
-  --fonu-bg-muted: #1d2128;
-  --fonu-surface: #22262e;
-  --fonu-border: #343b45;
+  --fonu-bg: #101e19;
+  --fonu-bg-muted: #172b23;
+  --fonu-surface: #1c3028;
+  --fonu-chrome: #14251e;
+  --fonu-border: #304a3e;
   --fonu-text: #e8ecf2;
   --fonu-text-secondary: #b4bdca;
   --fonu-text-muted: #9da9b9;

@@ -15,6 +15,20 @@ export const surfaces = {
   light: { bg: '#f5f6f8', muted: '#eef0f3', surface: '#ffffff', border: '#dfe3e8', text: '#20242c', secondary: '#555e6b', subtle: '#687383' },
   dark: { bg: '#171a1f', muted: '#1d2128', surface: '#22262e', border: '#343b45', text: '#e8ecf2', secondary: '#b4bdca', subtle: '#9da9b9' },
 }
+// Complete theme surfaces. Keep semantic status colors independent of accent.
+export const themeSurfaces = {
+  brand: { light: { bg: '#edf5f1', muted: '#e4efe9', surface: '#fcfefd', chrome: '#f5faf7', border: '#d5e5dd', brandText: '#047857', chartSecondary: '#7558c6' }, dark: { bg: '#101e19', muted: '#172b23', surface: '#1c3028', chrome: '#14251e', border: '#304a3e', brandText: '#6ee7b7', chartSecondary: '#b49af5' } },
+  ice: { light: { bg: '#eaf0f8', muted: '#e0e9f5', surface: '#fcfdff', chrome: '#f3f7fc', border: '#d4e0ef', brandText: '#3869c9', chartSecondary: '#128579' }, dark: { bg: '#111e30', muted: '#192a40', surface: '#203149', chrome: '#162439', border: '#344966', brandText: '#8cb4ff', chartSecondary: '#5cc7b7' } },
+  teal: { light: { bg: '#e7f3f2', muted: '#daecea', surface: '#fcfefe', chrome: '#f2f9f8', border: '#cfe4e1', brandText: '#0e7469', chartSecondary: '#3869c9' }, dark: { bg: '#102624', muted: '#173430', surface: '#1b3935', chrome: '#142e2b', border: '#34534e', brandText: '#5cc7b7', chartSecondary: '#8cb4ff' } },
+  forest: { light: { bg: '#eaf1e9', muted: '#e0ebdf', surface: '#fcfefc', chrome: '#f3f8f2', border: '#d5e3d2', brandText: '#237d60', chartSecondary: '#a95218' }, dark: { bg: '#17241b', muted: '#203127', surface: '#27392e', chrome: '#1c2c21', border: '#3b5040', brandText: '#77c6a5', chartSecondary: '#ecad72' } },
+  blue: { light: { bg: '#e9eefb', muted: '#dee6fa', surface: '#fcfdff', chrome: '#f3f5fe', border: '#d5dff5', brandText: '#2563eb', chartSecondary: '#128579' }, dark: { bg: '#101a34', muted: '#192646', surface: '#202e50', chrome: '#15213d', border: '#35466d', brandText: '#82aaff', chartSecondary: '#5cc7b7' } },
+  purple: { light: { bg: '#f0ecf8', muted: '#e8e0f3', surface: '#fefcff', chrome: '#f8f5fc', border: '#e2d9ef', brandText: '#7549be', chartSecondary: '#087eaa' }, dark: { bg: '#21182e', muted: '#30233f', surface: '#382a49', chrome: '#291e36', border: '#514062', brandText: '#b49af5', chartSecondary: '#55c9ef' } },
+  orange: { light: { bg: '#f7eee5', muted: '#f0e3d5', surface: '#fffdf9', chrome: '#fcf8f3', border: '#eadbcc', brandText: '#a95218', chartSecondary: '#128579' }, dark: { bg: '#2b211b', muted: '#3b2e24', surface: '#43352a', chrome: '#34271f', border: '#584638', brandText: '#ecad72', chartSecondary: '#5cc7b7' } },
+  graphite: { light: { bg: '#e9ebee', muted: '#e0e3e7', surface: '#fcfcfd', chrome: '#f3f4f5', border: '#d7dade', brandText: '#626971', chartSecondary: '#3869c9' }, dark: { bg: '#191c21', muted: '#24282e', surface: '#2b3037', chrome: '#20242a', border: '#434a54', brandText: '#b5bcc5', chartSecondary: '#8cb4ff' } },
+} as const
+export function previewTheme(accent: keyof typeof themeSurfaces, dark: boolean) {
+  return themeSurfaces[accent][dark ? 'dark' : 'light']
+}
 function read(key: string, fallback: string) {
   try { return localStorage.getItem(key) || fallback } catch { return fallback }
 }
@@ -38,9 +52,10 @@ const palette = computed(() => {
   const dark = isDark.value
   const brand = dark ? preset.dark : preset.light
   const classic = preset.value === 'brand'
-  const brandText = classic ? (dark ? '#6ee7b7' : '#047857') : brand
-  const action = classic ? '#047857' : preset.light
-  return { ...surfaces[dark ? 'dark' : 'light'], brand, brandText, action, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: '#ffffff', chartSecondary: themeAccent.value === 'purple' ? (dark ? '#55c9ef' : '#087eaa') : (dark ? '#b49af5' : '#7558c6') }
+  const theme = previewTheme(preset.value, dark)
+  const brandText = theme.brandText
+  const action = classic ? '#047857' : themeSurfaces[preset.value].light.brandText
+  return { ...surfaces[dark ? 'dark' : 'light'], ...theme, brand, brandText, action, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: '#ffffff', chartSecondary: theme.chartSecondary }
 })
 function mix(hex: string, other: string, amount: number) {
   return '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount) + parseInt(other.slice(i, i + 2), 16) * amount).toString(16).padStart(2, '0')).join('')
@@ -54,7 +69,7 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
     Input: { borderRadius: '6px', color: p.surface },
     DataTable: { borderRadius: '8px', thColor: p.muted, tdColor: p.surface, borderColor: p.border },
     Tabs: { tabGapMediumLine: '24px', tabPaddingMediumLine: '12px 4px' },
-    Layout: { color: p.bg, siderColor: p.muted },
+    Layout: { color: p.bg, siderColor: p.chrome, headerColor: p.chrome },
     Menu: { itemColorActive: p.soft, itemTextColorActive: p.brandText, itemIconColorActive: p.brand, itemColorActiveHover: p.soft },
     Radio: { buttonBorderColorActive: p.brand, buttonTextColorActive: p.brandText, buttonColorActive: p.soft, buttonBoxShadowHover: 'none', buttonBoxShadowFocus: 'none' },
   }
@@ -65,8 +80,10 @@ watch([isDark, palette], ([dark, p]) => {
   const root = document.documentElement
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.theme = dark ? 'dark' : 'light'
+  root.dataset.accent = themeAccent.value
   root.classList.toggle('dark', dark)
-  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brandText, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, action: p.action, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
+  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brandText, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, action: p.action, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, chrome: p.chrome, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
+  root.style.setProperty('--boot-bg', p.bg)
   for (const [key, value] of Object.entries(tokens)) root.style.setProperty('--fonu-' + key, value)
 }, { immediate: true, flush: 'sync' })
 

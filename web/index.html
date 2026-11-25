@@ -16,12 +16,16 @@
         var accent = 'brand';
         try { accent = localStorage.getItem('fonu-accent') || 'brand'; } catch (_) {}
         var colors = { brand: ['#10b981','#10b981'], ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
+        var backgrounds = {"brand":["#edf5f1","#101e19"],"ice":["#eaf0f8","#111e30"],"teal":["#e7f3f2","#102624"],"forest":["#eaf1e9","#17241b"],"blue":["#e9eefb","#101a34"],"purple":["#f0ecf8","#21182e"],"orange":["#f7eee5","#2b211b"],"graphite":["#e9ebee","#191c21"]};
+        var selected = Object.prototype.hasOwnProperty.call(backgrounds, accent) ? accent : 'brand';
+        document.documentElement.dataset.accent = selected;
+        document.documentElement.style.setProperty('--boot-bg', backgrounds[selected][dark ? 1 : 0]);
         document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.brand)[dark ? 1 : 0]);
       })();
     </script>
     <style>
-      html { background:#f5f6f8; color:#555e6b; }
-      html[data-theme="dark"] { background:#171a1f; color:#b4bdca; }
+      html { background:var(--boot-bg,#edf5f1); color:#555e6b; }
+      html[data-theme="dark"] { background:var(--boot-bg,#101e19); color:#b4bdca; }
       body { margin:0; }
       #fonu-boot { min-height:100vh; display:grid; place-content:center; justify-items:center; gap:16px; font:14px system-ui,sans-serif; text-align:center; }
       #fonu-boot button { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:8px; padding:8px 16px; cursor:pointer; }
