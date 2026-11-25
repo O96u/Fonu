@@ -163,6 +163,7 @@ func (s *ProxyService) ReloadAll(ctx context.Context) error {
 func (s *ProxyService) applyNginx(ctx context.Context) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	if err := s.recoverPendingLocked(ctx); err != nil { return err }
 	return s.applyNginxLocked(ctx)
 }
 
@@ -273,6 +274,7 @@ func (s *ProxyService) NginxApplyStatus() nginx.ApplyStatus {
 func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	if err := s.recoverPendingLocked(ctx); err != nil { return err }
 	rules, err := s.store.ListEnabled(ctx)
 	if err != nil { return err }
 	certs, err := s.loadCertSources(ctx)

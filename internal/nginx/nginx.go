@@ -243,6 +243,9 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	if running {
 		pid, _ := readPIDFile(m.cfg.NginxPIDFile)
 		previous = activeWorkers(pid)
+		if workerConfirmationSupported() && len(previous)==0 {
+			return ApplyResult{},fmt.Errorf("无法识别当前 Nginx worker，拒绝未确认的重载")
+		}
 		if err := m.reload(ctx); err != nil {
 			m.logger.Warn("nginx reload failed; restoring previous config", "error", err)
 			return ApplyResult{}, err
