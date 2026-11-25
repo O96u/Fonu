@@ -66,6 +66,8 @@ func PrepareRestore(path string) error {
 	if !indexOnly || count == 0 {
 		return fmt.Errorf("sqlite integrity check failed")
 	}
+	// Release the only connection before running REINDEX.
+	if err := rows.Close(); err != nil { return err }
 	// 旧版导出是直接复制正在写入的库，索引计数会和表对不上。数据页还在，重建索引即可。
 	if _, err := conn.Exec("REINDEX"); err != nil {
 		return err

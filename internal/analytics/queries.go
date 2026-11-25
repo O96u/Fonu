@@ -12,6 +12,10 @@ import (
 // not SQLite's host-local timezone. Range scans preserve the ts index.
 func (s *Service) querySeries(ctx context.Context, period awareness.Period, ipFilter string) (SeriesBlock, int, error) {
 	out := SeriesBlock{Granularity: period.BucketKind}
+	// Use persisted UTC-minute rollups for complete minutes; raw facts remain
+	// authoritative for partial boundary minutes and exact distinct visitors.
+	var rollupExists int
+	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'access_minute_ip'").Scan(&rollupExists)
 	loc := period.Start.Location()
 	type bucket struct { start, end time.Time; label string }
 	var buckets []bucket
@@ -37,7 +41,12 @@ func (s *Service) querySeries(ctx context.Context, period awareness.Period, ipFi
 		end := b.end
 		if cap := period.End.Add(time.Second); cap.Before(end) { end=cap }
 		if !end.After(b.start) { continue }
-		err:=s.db.QueryRowContext(ctx,`SELECT COUNT(*), COUNT(DISTINCT client_ip), COALESCE(SUM(bytes_sent),0) FROM access_facts WHERE ts >= ? AND ts < ?`+ipFilter,b.start.UTC().Format(time.RFC3339),end.UTC().Format(time.RFC3339)).Scan(&out.Requests[i],&out.UniqueIPs[i],&out.Bytes[i])
+		var err error
+		if rollupExists > 0 {
+			err = s.querySeriesBucket(ctx,b.start,end,ipFilter,&out.Requests[i],&out.UniqueIPs[i],&out.Bytes[i])
+		} else {
+			err = s.db.QueryRowContext(ctx,`SELECT COUNT(*), COUNT(DISTINCT client_ip), COALESCE(SUM(bytes_sent),0) FROM access_facts WHERE ts >= ? AND ts < ?`+ipFilter,b.start.UTC().Format(time.RFC3339),end.UTC().Format(time.RFC3339)).Scan(&out.Requests[i],&out.UniqueIPs[i],&out.Bytes[i])
+		}
 		if err != nil { return out, current, err }
 	}
 	return out,current,nil
@@ -280,4 +289,20 @@ func eventSummary(kind awareness.EventKind, status int, path string) string {
 		}
 		return "正常访问"
 	}
+}
+
+func (s *Service) querySeriesBucket(ctx context.Context, start,end time.Time, ipFilter string, requests,ips *int, bytes *int64) error {
+	// All facts are stored at whole-second precision.
+	start,end=start.UTC().Truncate(time.Second),end.UTC().Truncate(time.Second)
+	first:=start.Truncate(time.Minute)
+	if first.Before(start) { first=first.Add(time.Minute) }
+	last:=end.Truncate(time.Minute)
+	if !first.Before(last) {
+		return s.db.QueryRowContext(ctx,`SELECT COUNT(*),COUNT(DISTINCT client_ip),COALESCE(SUM(bytes_sent),0) FROM access_facts WHERE ts>=? AND ts<?`+ipFilter,start.Format(time.RFC3339),end.Format(time.RFC3339)).Scan(requests,ips,bytes)
+	}
+	q:=`SELECT COALESCE(SUM(requests),0),COUNT(DISTINCT client_ip),COALESCE(SUM(bytes),0) FROM (
+		SELECT client_ip,requests,bytes FROM access_minute_ip WHERE minute>=? AND minute<?`+ipFilter+`
+		UNION ALL SELECT client_ip,1,bytes_sent FROM access_facts WHERE ts>=? AND ts<?`+ipFilter+`
+		UNION ALL SELECT client_ip,1,bytes_sent FROM access_facts WHERE ts>=? AND ts<?`+ipFilter+`)`
+	return s.db.QueryRowContext(ctx,q,first.Format(time.RFC3339),last.Format(time.RFC3339),start.Format(time.RFC3339),first.Format(time.RFC3339),last.Format(time.RFC3339),end.Format(time.RFC3339)).Scan(requests,ips,bytes)
 }
