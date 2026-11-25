@@ -277,10 +277,12 @@ func (s *ProxyService) validateHTTPSInput(ctx context.Context, hosts []string, h
 		}
 		parsedHosts = append(parsedHosts, hostname)
 	}
-	if nginx.HasCertificateForHosts(s.cfg.CertsDir(), parsedHosts, certs) {
-		return nil
+	for _, hostname := range parsedHosts {
+		if !nginx.HasCertificateForHosts(s.cfg.CertsDir(), []string{hostname}, certs) {
+			return nginx.HTTPSCoverageError(hostname, certs)
+		}
 	}
-	return nginx.HTTPSCoverageError(parsedHosts[0], certs)
+	return nil
 }
 
 func (s *ProxyService) loadCertSources(ctx context.Context) ([]nginx.CertSource, error) {

@@ -27,9 +27,10 @@ func HasCertificateForHosts(certsDir string, hostnames []string, certs []CertSou
 }
 
 func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSource) *certFiles {
+	if len(hostnames) == 0 { return nil }
 	for _, hostname := range hostnames {
 		for _, source := range certs {
-			if !hostCoveredByCert(hostname, source.Domains) {
+			if !allHostsCovered(hostnames, source.Domains) {
 				continue
 			}
 			if cert := certFromSource(source); cert != nil {
@@ -41,8 +42,10 @@ func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSo
 				}
 			}
 		}
+		if len(hostnames) == 1 {
 		if cert := findCertificate(certsDir, hostname); cert != nil && certUsable(cert) {
 			return cert
+		}
 		}
 	}
 	return scanCertDirectories(certsDir, hostnames)
@@ -79,7 +82,7 @@ func hostCoveredByCert(hostname string, domains []string) bool {
 		}
 		if strings.HasPrefix(domain, "*.") {
 			suffix := strings.TrimPrefix(domain, "*.")
-			if hostname == suffix || strings.HasSuffix(hostname, "."+suffix) {
+			if strings.HasSuffix(hostname, "."+suffix) && !strings.Contains(strings.TrimSuffix(hostname, "."+suffix), ".") {
 				return true
 			}
 		}
@@ -97,8 +100,8 @@ func scanCertDirectories(certsDir string, hostnames []string) *certFiles {
 			continue
 		}
 		pattern := dirNameToPattern(entry.Name())
-		for _, hostname := range hostnames {
-			if !hostCoveredByCert(hostname, []string{pattern, entry.Name()}) {
+		{
+			if !allHostsCovered(hostnames, []string{pattern}) {
 				continue
 			}
 			if cert := certAt(certsDir, pattern); cert != nil && certUsable(cert) {
@@ -150,15 +153,23 @@ func ValidateHTTPSRules(rules []proxy.Rule, certs []CertSource, certsDir string)
 			continue
 		}
 		for _, group := range rule.PortGroups() {
-			cert := findCertificateForHosts(certsDir, group.Hostnames, certs)
-			if certUsable(cert) {
-				continue
-			}
 			if len(group.Hostnames) == 0 {
 				return fmt.Errorf("启用 HTTPS 的规则缺少前端域名")
 			}
-			return HTTPSCoverageError(group.Hostnames[0], certs)
+			for _, hostname := range group.Hostnames {
+				if !HasCertificateForHosts(certsDir, []string{hostname}, certs) {
+					return HTTPSCoverageError(hostname, certs)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+func allHostsCovered(hosts, domains []string) bool {
+	if len(hosts) == 0 { return false }
+	for _, host := range hosts {
+		if !hostCoveredByCert(host, domains) { return false }
+	}
+	return true
 }

@@ -11,3 +11,11 @@ func TestHostCoveredByCert(t *testing.T) {
 		t.Fatal("expected typo domain to be rejected")
 	}
 }
+
+func TestWildcardSingleLabelOnly(t *testing.T) {
+	for _, host := range []string{"example.com", "a.b.example.com", "notexample.com"} {
+		if hostCoveredByCert(host, []string{"*.example.com"}) {
+			t.Fatalf("wildcard must not cover %s", host)
+		}
+	}
+}

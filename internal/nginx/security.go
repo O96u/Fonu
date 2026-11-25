@@ -216,12 +216,21 @@ func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rul
 	sec := rule.Security.Normalize()
 	writeLocationSecurityComments(b, rule, opts)
 
+	// Location-level access rules replace inherited http-level rules.
+	for _, cidr := range opts.GlobalIPBlacklist {
+		b.WriteString(fmt.Sprintf("        deny %s;\n", cidr))
+	}
 	for _, cidr := range sec.IPBlacklist {
 		b.WriteString(fmt.Sprintf("        deny %s;\n", cidr))
 	}
 
 	writeChinaOnlyCheck(b, rule, opts)
 
+	if !sec.WhitelistEnabled() {
+		for _, cidr := range proxy.ChinaBypassCIDRs(opts.GlobalIPWhitelist) {
+			b.WriteString(fmt.Sprintf("        allow %s;\n", cidr))
+		}
+	}
 	if sec.WhitelistEnabled() {
 		for _, cidr := range sec.IPWhitelist {
 			b.WriteString(fmt.Sprintf("        allow %s;\n", cidr))

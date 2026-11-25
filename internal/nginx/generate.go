@@ -134,13 +134,13 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			continue
 		}
 		serverNames := strings.Join(group.Hostnames, " ")
-		cert := findCertificateForHosts(cfg.CertsDir(), group.Hostnames, certs)
-		useHTTPS := rule.HTTPSEnabled && certUsable(cert)
-
 		wroteBlock := false
-		if useHTTPS {
-			if !appendSSLServerBlock(b, cfg, group.Port, serverNames, cert, rule, opts) {
-				return fmt.Errorf("HTTPS 证书文件不可用，请重新导入证书或关闭 HTTPS")
+		if rule.HTTPSEnabled {
+			for _, hostname := range group.Hostnames {
+				cert := findCertificateForHosts(cfg.CertsDir(), []string{hostname}, certs)
+				if !appendSSLServerBlock(b, cfg, group.Port, hostname, cert, rule, opts) {
+					return HTTPSCoverageError(hostname, certs)
+				}
 			}
 			wroteBlock = true
 		}
@@ -255,7 +255,7 @@ type certFiles struct {
 
 func findCertificate(certsDir, domain string) *certFiles {
 	parts := strings.Split(domain, ".")
-	for i := 0; i < len(parts)-1; i++ {
+	for i := 1; i < len(parts)-1 && i == 1; i++ {
 		wildcard := "*." + strings.Join(parts[i:], ".")
 		if c := certAt(certsDir, wildcard); c != nil {
 			return c

@@ -29,8 +29,8 @@ func collectListenEndpoints(rules []proxy.Rule, certsDir string, certs []CertSou
 			if len(group.Hostnames) == 0 {
 				continue
 			}
-			cert := findCertificateForHosts(certsDir, group.Hostnames, certs)
-			useHTTPS := rule.HTTPSEnabled && certUsable(cert)
+			cert := findCertificateForHosts(certsDir, group.Hostnames[:1], certs)
+			useHTTPS := rule.HTTPSEnabled
 
 			key := listenEndpointKey(group.Port, useHTTPS, rule.ListenIPv4, rule.ListenIPv6)
 			ep := merged[key]

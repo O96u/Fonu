@@ -1185,6 +1185,7 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
+import { createProxyPoll } from '../composables/proxy/useProxyPoll'
 import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import {
   applyEntryListen,
@@ -1350,8 +1351,8 @@ const clientsLoading = ref(false)
 type RatePoint = { at: number; upload: number; download: number }
 const rateHistory = ref<RatePoint[]>([])
 const RATE_HISTORY_MS = 5 * 60 * 1000
-let trafficTimer: ReturnType<typeof setInterval> | null = null
-let clientsTimer: ReturnType<typeof setInterval> | null = null
+const trafficPoll = createProxyPoll(refreshTraffic, 2000)
+const clientsPoll = createProxyPoll(loadClients, 5000)
 
 const nginxHttpPort = ref(80)
 const nginxHttpsPort = ref(443)
@@ -2703,23 +2704,22 @@ async function refreshAll() {
 }
 
 function startTrafficPoll() {
-  stopTrafficPoll()
-  trafficTimer = setInterval(refreshTraffic, 2000)
+  trafficPoll.start()
 }
 
 function stopTrafficPoll() {
-  if (trafficTimer) {
-    clearInterval(trafficTimer)
-    trafficTimer = null
-  }
+  trafficPoll.stop()
 }
 
 async function loadClients() {
   const rule = selectedRule.value
-  if (!rule) return
+  if (!rule || document.hidden) return
   clientsLoading.value = true
   try {
-    clientRows.value = asList(await api.getProxyClients(rule.id))
+    const rows = asList(await api.getProxyClients(rule.id))
+    if (selectedRuleId.value === rule.id && showDetailPanel.value && detailTab.value === 'overview') {
+      clientRows.value = rows
+    }
   } catch (error) {
     message.error(error instanceof Error ? error.message : '读取连接失败')
   } finally {
@@ -2728,16 +2728,11 @@ async function loadClients() {
 }
 
 function startClientsPoll() {
-  stopClientsPoll()
-  void loadClients()
-  clientsTimer = setInterval(loadClients, 5000)
+  clientsPoll.start(true)
 }
 
 function stopClientsPoll() {
-  if (clientsTimer) {
-    clearInterval(clientsTimer)
-    clientsTimer = null
-  }
+  clientsPoll.stop()
 }
 
 watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab]) => {
