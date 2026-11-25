@@ -362,7 +362,7 @@ func (m *Manager) runNginx(ctx context.Context, args []string, prefix string) er
 func (m *Manager) runNginxStart(ctx context.Context, args []string, prefix string) error {
 	fullArgs := append(m.nginxGlobalArgs(), args...)
 	cmd := exec.Command(m.cfg.NginxBin, fullArgs...)
-	var stderr bytes.Buffer
+	var stderr lockedBuffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("%s：%s", prefix, err.Error())
@@ -499,3 +499,8 @@ func restoreConfig(current, backup string, hadPrevious bool) error {
 	defer os.Remove(tmp)
 	return os.Rename(tmp, current)
 }
+
+// exec.Cmd may still be copying stderr while startup is being polled.
+type lockedBuffer struct { mu sync.Mutex; buf bytes.Buffer }
+func (b *lockedBuffer) Write(p []byte) (int, error) { b.mu.Lock(); defer b.mu.Unlock(); return b.buf.Write(p) }
+func (b *lockedBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.buf.String() }

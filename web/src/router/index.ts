@@ -1,17 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { api } from '../api/client'
-import AppLayout from '../layouts/AppLayout.vue'
-import LoginView from '../views/LoginView.vue'
-import SetupView from '../views/SetupView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
-    { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
+    { path: '/setup', name: 'setup', component: () => import('../views/SetupView.vue'), meta: { public: true } },
+    { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
     {
       path: '/',
-      component: AppLayout,
+      component: () => import('../layouts/AppLayout.vue'),
       meta: { requiresAuth: true },
       children: [
         { path: '', redirect: '/dashboard' },
@@ -64,9 +61,6 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.name === 'dashboard') {
-    void import('../components/AnalyticsAccessMap.vue')
-  }
   const status = await api.authStatus()
   if (!status.initialized && to.name !== 'setup') {
     return { name: 'setup' }

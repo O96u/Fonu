@@ -18,6 +18,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Validate FPK lifecycle shell scripts
+        run: |
+          bash -n packaging/fonu-fpk/scripts/build-fpk.sh
+          for f in packaging/fonu-fpk/cmd/*; do bash -n "$f"; done
       - run: npm ci
         working-directory: web
       - run: npm run build

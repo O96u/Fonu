@@ -24,6 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 FROM debian:bookworm-slim
 ARG TARGETARCH
 ARG FRP_VERSION=0.71.0
+ARG FRP_SHA256
 RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx ca-certificates curl \
     && case "${TARGETARCH}" in \
@@ -31,8 +32,14 @@ RUN apt-get update \
          arm64) FRP_ARCH=arm64 ;; \
          *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
        esac \
-    && curl -fsSL "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz" \
-         | tar -xz -C /tmp \
+    && if [ -z "${FRP_SHA256:-}" ]; then case "${FRP_VERSION}:${FRP_ARCH}" in \
+         0.71.0:amd64) FRP_SHA256=84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716 ;; \
+         0.71.0:arm64) FRP_SHA256=f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266 ;; \
+         *) echo "Set FRP_SHA256 for custom FRP version" >&2; exit 1 ;; esac; fi \
+    && curl -fsSL --retry 3 "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz" -o /tmp/frp.tar.gz \
+    && printf '%s  /tmp/frp.tar.gz\n' "${FRP_SHA256}" | sha256sum -c - \
+    && tar -xzf /tmp/frp.tar.gz -C /tmp "frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" \
+    && rm -f /tmp/frp.tar.gz \
     && install -m 755 "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" /usr/local/bin/frpc \
     && rm -rf "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}" \
     && rm -rf /var/lib/apt/lists/*

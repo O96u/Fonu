@@ -10,6 +10,7 @@
       </n-button>
     </template>
   </PageHeader>
+  <NginxApplyBanner />
 
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
@@ -1170,7 +1171,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Component, type VNode } from 'vue'
+import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Component, type VNode } from 'vue'
 import Sortable from 'sortablejs'
 import {
   NAlert,
@@ -1235,10 +1236,11 @@ import {
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
 import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
-import NginxCodeEditor from '../components/NginxCodeEditor.vue'
+
 import LoadError from '../components/LoadError.vue'
 import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
+import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
@@ -2712,7 +2714,10 @@ watch(logFullscreen, (open) => {
   document.body.style.overflow = ''
 })
 
+let trafficPending = false
 async function refreshTraffic() {
+  if (document.hidden || trafficPending) return
+  trafficPending = true
   try {
     const rows = asList(await api.getProxyTraffic())
     const next: Record<number, ProxyTraffic> = {}
@@ -2725,6 +2730,8 @@ async function refreshTraffic() {
     }
   } catch {
     // ignore polling errors
+  } finally {
+    trafficPending = false
   }
 }
 
@@ -2787,6 +2794,8 @@ async function loadDefaults() {
     // keep local fallbacks
   }
 }
+
+const NginxCodeEditor = defineAsyncComponent(() => import('../components/NginxCodeEditor.vue'))
 
 async function load() {
   loading.value = true

@@ -709,3 +709,11 @@ export interface GlobalNginxView {
   content: string
   backups: NginxBackupEntry[]
 }
+
+export interface NginxApplyStatus {
+  state: 'unknown' | 'applying' | 'failed' | 'saved' | 'reload_requested'
+  desired_revision?: string
+  last_requested_revision?: string
+  last_error?: string
+  updated_at?: string
+}

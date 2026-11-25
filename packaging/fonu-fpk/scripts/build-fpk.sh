@@ -275,21 +275,25 @@ echo "==> Building fonu (GOOS=linux GOARCH=${GOARCH})"
 )
 
 echo "==> Downloading frpc v${FRP_VERSION} (${FRP_ARCH})"
-FRP_TMP="${TMPDIR:-/tmp}"
-FRP_TGZ="${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz"
-FRP_CACHE="${CACHE_DIR}/frpc-${FRP_VERSION}-linux-${FRP_ARCH}"
-if [ -f "${FRP_CACHE}" ]; then
-  echo "==> Using cached frpc: ${FRP_CACHE}"
-  install -m 755 "${FRP_CACHE}" "${STAGING}/app/frpc"
-else
-  curl -fsSL --retry 3 "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz" \
-    -o "${FRP_TGZ}"
-  tar -xzf "${FRP_TGZ}" -C "${FRP_TMP}"
-  install -m 755 "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" "${STAGING}/app/frpc"
-  mkdir -p "${CACHE_DIR}"
-  install -m 755 "${STAGING}/app/frpc" "${FRP_CACHE}"
-  rm -rf "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}" "${FRP_TGZ}"
+# Pin official release asset digests; custom releases require an explicit digest.
+FRP_SHA256="${FRP_SHA256:-}"
+if [ -z "$FRP_SHA256" ]; then
+  case "${FRP_VERSION}:${FRP_ARCH}" in
+    0.71.0:amd64) FRP_SHA256=84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716 ;;
+    0.71.0:arm64) FRP_SHA256=f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266 ;;
+    *) echo "Set FRP_SHA256 for custom FRP version" >&2; exit 1 ;;
+  esac
 fi
+[[ "$FRP_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Invalid FRP_SHA256" >&2; exit 1; }
+(
+  FRP_TMP="$(mktemp -d)"
+  trap 'rm -rf "$FRP_TMP"' EXIT
+  FRP_TGZ="${FRP_TMP}/frp.tar.gz"
+  curl -fsSL --retry 3 "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz" -o "$FRP_TGZ"
+  printf '%s  %s\n' "$FRP_SHA256" "$FRP_TGZ" | sha256sum -c -
+  tar -xzf "$FRP_TGZ" -C "$FRP_TMP" "frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc"
+  install -m 755 "${FRP_TMP}/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" "${STAGING}/app/frpc"
+)
 
 bundle_ip2region
 

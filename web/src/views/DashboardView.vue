@@ -436,13 +436,18 @@ const awarenessServiceColumns: DataTableColumns<AwarenessServiceRow> = [
   },
 ]
 
+const awarenessPending = new Set<string>()
 async function refreshAwareness() {
   const range = awarenessRange.value
+  if (document.hidden || awarenessPending.has(range)) return
+  awarenessPending.add(range)
   try {
     const overview = await api.getAnalyticsOverview(range)
     if (awarenessRange.value === range) analyticsOverview.value = overview
   } catch {
     // 轮询失败时保留上一份数据
+  } finally {
+    awarenessPending.delete(range)
   }
 }
 

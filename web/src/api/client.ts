@@ -123,6 +123,7 @@ export const api = {
     }),
 
   getStatus: () => request<DashboardStatus>('/api/status'),
+  getNginxApplyStatus: () => request<import('./types').NginxApplyStatus>('/api/nginx/apply-status'),
   getAwarenessLive: (range: AwarenessRange = 'today') => {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
     return request<AwarenessLiveSnapshot>(`/api/awareness/live${q}`)
