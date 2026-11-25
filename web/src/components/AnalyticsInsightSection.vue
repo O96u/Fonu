@@ -13,6 +13,8 @@ const AnalyticsAccessMap = defineAsyncComponent(() => import('./AnalyticsAccessM
 const props = defineProps<{
   data: AnalyticsOverview | null
   showMap?: boolean
+  compact?: boolean
+  mapOnly?: boolean
   showKpis?: boolean
   sectionTitle?: string
   loading?: boolean
@@ -94,8 +96,8 @@ watch(regionVisitorsAll, () => {
 </script>
 
 <template>
-  <section class="insight-section">
-    <div class="insight-section__head">
+  <section class="insight-section" :class="{ 'insight-section--compact': compact }">
+    <div v-if="!mapOnly" class="insight-section__head">
       <div>
         <h2 class="insight-section__title">{{ sectionTitle || "访问概览" }}</h2>
         <p class="insight-section__sub">{{ loading ? "正在统计所选时间范围，图表暂保留" + displayedLabel + "数据。" : "当前展示：" + displayedLabel + " · 数字、地图及访问趋势使用同一统计范围。" }}</p>
@@ -119,11 +121,11 @@ watch(regionVisitorsAll, () => {
       </div>
     </div>
 
-    <div v-if="data && !loading && (error || displayedRange !== range)" class="insight-notice" role="status">
+    <div v-if="!mapOnly && data && !loading && (error || displayedRange !== range)" class="insight-notice" role="status">
       {{ error ? `更新失败：${error}。仍展示${displayedLabel}数据。` : `正在等待新统计，暂保留${displayedLabel}数据。` }}
       <n-button v-if="error" size="tiny" @click="emit('retry')">重试</n-button>
     </div>
-    <div v-if="showKpis !== false" class="insight-kpi-row">
+    <div v-if="!mapOnly && showKpis !== false" class="insight-kpi-row">
       <MetricStat
         :loading="loading"
         label="请求"
@@ -199,7 +201,7 @@ watch(regionVisitorsAll, () => {
         </div>
       </div>
     </FonuCard>
-    <FonuCard v-else-if="!data && (!loading || showKpis === false)" flush class="insight-panel">
+    <FonuCard v-else-if="!mapOnly && !data && (!loading || showKpis === false)" flush class="insight-panel">
       <div class="insight-wait" role="status">
         <n-spin v-if="loading" size="small" />
         <p>{{ error || '正在统计访问，地图随后加载。' }}</p>
@@ -267,7 +269,7 @@ watch(regionVisitorsAll, () => {
 }
 
 .insight-range__btn--active {
-  background: var(--fonu-brand);
+  background: var(--fonu-action, var(--fonu-brand));
   color: var(--fonu-on-brand, #fff);
   font-weight: 600;
 }
@@ -441,4 +443,14 @@ watch(regionVisitorsAll, () => {
 .insight-kpi-row :deep(.metric:first-child) { background:linear-gradient(135deg,var(--fonu-brand-soft),var(--fonu-surface) 75%); border-color:color-mix(in srgb,var(--fonu-brand) 24%,var(--fonu-border)); }
 .insight-kpi-row :deep(.metric:first-child .metric__value) { font-size:30px; }
 .insight-panel__grid { --insight-geo-stack-h:clamp(280px,38vh,400px); }
+.insight-section--compact .insight-section__title { font-size:16px; }
+.insight-section--compact .insight-section__sub { font-size:11px; }
+.insight-section--compact .insight-kpi-row { gap:0; border-bottom:1px solid var(--fonu-border); padding-bottom:12px; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.insight-section--compact .insight-kpi-row :deep(.metric) { min-height:76px; padding:6px 10px; background:transparent; border:0; border-radius:0; border-right:1px solid var(--fonu-border); box-shadow:none; }
+.insight-section--compact .insight-kpi-row :deep(.metric:last-child) { border-right:0; }
+.insight-section--compact .insight-kpi-row :deep(.metric__value) { font-size:22px; }
+.insight-section--compact .insight-kpi-row :deep(.metric__prev) { display:none; }
+.insight-section--compact .insight-kpi-row :deep(.metric__foot) { font-size:11px; }
+.insight-section--compact { container-type:inline-size; margin-bottom:12px; }
+@container (max-width:470px) { .insight-section--compact .insight-kpi-row {grid-template-columns:repeat(2,minmax(0,1fr));} .insight-section--compact .insight-kpi-row :deep(.metric:nth-child(2)) {border-right:0;} }
 </style>

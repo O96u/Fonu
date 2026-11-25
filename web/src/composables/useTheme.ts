@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { darkTheme, type GlobalThemeOverrides } from 'naive-ui'
 
 export const themePresets = [
-  { value: 'brand', label: '经典品牌绿（V1）', light: '#10b981', dark: '#10b981' },
+  { value: 'brand', label: '经典品牌绿', light: '#10b981', dark: '#10b981' },
   { value: 'ice', label: '冰川蓝', light: '#3869c9', dark: '#8cb4ff' },
   { value: 'teal', label: '青蓝绿', light: '#128579', dark: '#5cc7b7' },
   { value: 'forest', label: '经典翠绿', light: '#237d60', dark: '#77c6a5' },
@@ -39,7 +39,8 @@ const palette = computed(() => {
   const brand = dark ? preset.dark : preset.light
   const classic = preset.value === 'brand'
   const brandText = classic ? (dark ? '#6ee7b7' : '#047857') : brand
-  return { ...surfaces[dark ? 'dark' : 'light'], brand, brandText, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: classic || dark ? '#10251e' : '#ffffff', chartSecondary: themeAccent.value === 'purple' ? (dark ? '#55c9ef' : '#087eaa') : (dark ? '#b49af5' : '#7558c6') }
+  const action = classic ? '#047857' : preset.light
+  return { ...surfaces[dark ? 'dark' : 'light'], brand, brandText, action, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: '#ffffff', chartSecondary: themeAccent.value === 'purple' ? (dark ? '#55c9ef' : '#087eaa') : (dark ? '#b49af5' : '#7558c6') }
 })
 function mix(hex: string, other: string, amount: number) {
   return '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount) + parseInt(other.slice(i, i + 2), 16) * amount).toString(16).padStart(2, '0')).join('')
@@ -47,7 +48,7 @@ function mix(hex: string, other: string, amount: number) {
 const themeOverrides = computed<GlobalThemeOverrides>(() => {
   const p = palette.value
   return {
-    common: { primaryColor: p.brand, primaryColorHover: p.hover, primaryColorPressed: p.pressed, primaryColorSuppl: p.hover, borderRadius: '6px', fontFamily: 'var(--fonu-font)', bodyColor: p.bg, cardColor: p.surface, modalColor: p.surface, popoverColor: p.surface, borderColor: p.border, dividerColor: p.border, textColor1: p.text, textColor2: p.secondary, textColor3: p.subtle, hoverColor: p.soft },
+    common: { primaryColor: p.action, primaryColorHover: mix(p.action, '#000000', .08), primaryColorPressed: mix(p.action, '#000000', .16), primaryColorSuppl: p.action, borderRadius: '6px', fontFamily: 'var(--fonu-font)', bodyColor: p.bg, cardColor: p.surface, modalColor: p.surface, popoverColor: p.surface, borderColor: p.border, dividerColor: p.border, textColor1: p.text, textColor2: p.secondary, textColor3: p.subtle, hoverColor: p.soft },
     Card: { borderRadius: '12px', color: p.surface, borderColor: p.border },
     Button: { borderRadiusMedium: '6px', heightMedium: '36px', textColorPrimary: p.onBrand, textColorHoverPrimary: p.onBrand, textColorPressedPrimary: p.onBrand, textColorFocusPrimary: p.onBrand },
     Input: { borderRadius: '6px', color: p.surface },
@@ -65,7 +66,7 @@ watch([isDark, palette], ([dark, p]) => {
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.theme = dark ? 'dark' : 'light'
   root.classList.toggle('dark', dark)
-  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brandText, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
+  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brandText, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, action: p.action, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
   for (const [key, value] of Object.entries(tokens)) root.style.setProperty('--fonu-' + key, value)
 }, { immediate: true, flush: 'sync' })
 

@@ -11,6 +11,7 @@
       @collapse="setNavigation(true)"
       @expand="setNavigation(false)"
     >
+      <button v-if="collapsed" class="rail-toggle" type="button" title="展开导航" aria-label="展开导航" @click="setNavigation(false)"><n-icon :component="MenuOutline" /></button>
       <router-link
         v-if="!collapsed"
         class="brand"
@@ -70,10 +71,10 @@
 
     <n-layout class="app-main">
       <header class="topbar">
-        <div class="topbar__context"><n-button quaternary size="small" aria-label="折叠或展开导航" @click="setNavigation(!collapsed)" :aria-expanded="!collapsed"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
+        <div class="topbar__context"><n-button v-if="!collapsed" quaternary size="small" title="收起导航" aria-label="收起导航" @click="setNavigation(!collapsed)" :aria-expanded="!collapsed"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
         <div class="topbar__right">
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
-            <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
+            <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
             <div class="appearance-panel"><strong>主题颜色</strong><p>即时预览 · 自动保存</p>
               <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': isDark ? preset.dark : preset.light }">
                 <span class="appearance-preview"><i/><span><b/><em/><em/></span></span>
@@ -811,4 +812,13 @@ onUnmounted(() => {
 .appearance-label i { width:9px;height:9px;border-radius:50%;background:var(--preview-accent); }
 .appearance-check { margin-left:auto; color:var(--preview-accent);font-weight:bold; }
 @media(max-width:600px) { .app-layout:not(.app-layout--compact) .app-sider { position:absolute; z-index:20; box-shadow:var(--fonu-shadow-md); } .app-layout:not(.app-layout--compact) .app-main { margin-left:56px; } }
+.rail-toggle { flex-shrink:0; display:grid; place-items:center; width:40px; height:40px; margin:4px auto 0; border:0; border-radius:9px; background:transparent; color:var(--fonu-text-secondary); font-size:20px; cursor:pointer; }
+.rail-toggle:hover { background:var(--fonu-brand-soft); color:var(--fonu-brand-text); }
+.app-layout--compact .app-menu { padding:4px 0; }
+.app-layout--compact .app-menu :deep(.n-menu-item) { margin:4px 0; }
+.app-layout--compact .app-menu :deep(.n-menu-item-content) { width:44px; height:42px; box-sizing:border-box; margin-inline:auto; padding:0!important; justify-content:center; }
+.app-layout--compact .app-menu :deep(.n-menu-item-content__icon) { margin:0!important; width:20px!important; min-width:20px; flex:0 0 20px; }
+.app-layout--compact .app-menu :deep(.n-menu-item-content-header) { display:none; }
+.app-layout--compact .app-menu :deep(.n-menu-item-content::before) { inset:0; }
+.rail-toggle:focus-visible { outline:2px solid var(--fonu-brand); outline-offset:2px; }
 </style>
