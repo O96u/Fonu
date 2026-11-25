@@ -81,8 +81,8 @@ type ApplyOptions struct {
 }
 
 func (s *Service) StartApply(ctx context.Context, domains []string, ca, email string, opts ApplyOptions, name string) (string, error) {
-	if opts.AutoRenew != nil && *opts.AutoRenew && opts.InlineDNS.HasValues() && opts.DDNSConfigID <= 0 { opts.SaveDNSProfile = true }
-	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, domains, ca, email, opts)
+	if opts.AutoRenew != nil && *opts.AutoRenew && opts.InlineDNS.HasValues() && opts.DDNSConfigID <= 0 && !opts.SaveDNSProfile { return "", fmt.Errorf("自动续签需要保存 DNS 凭证，请勾选保存 DNS 凭证") }
+	domains, ca, email, primary, dnsZone, provider, cred, err := s.prepareApply(ctx, domains, ca, email, &opts)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func (s *Service) StartApply(ctx context.Context, domains []string, ca, email st
 	return job.ID(), nil
 }
 
-func (s *Service) prepareApply(ctx context.Context, domains []string, ca, email string, opts ApplyOptions) ([]string, string, string, string, string, string, ddns.Credentials, error) {
+func (s *Service) prepareApply(ctx context.Context, domains []string, ca, email string, opts *ApplyOptions) ([]string, string, string, string, string, string, ddns.Credentials, error) {
 	normalized, normErr := NormalizeCertDomains(domains)
 	if normErr != nil && opts.DDNSConfigID <= 0 && !opts.InlineDNS.HasValues() {
 		return nil, "", "", "", "", "", ddns.Credentials{}, normErr
@@ -111,28 +111,29 @@ func (s *Service) prepareApply(ctx context.Context, domains []string, ca, email 
 			return nil, "", "", "", "", "", ddns.Credentials{}, err
 		}
 		if opts.SaveDNSProfile {
-			if err := s.saveACMEDNSProfile(ctx, domains, opts.InlineDNS, opts.DNSProfileName); err != nil {
-				return nil, "", "", "", "", "", ddns.Credentials{}, err
-			}
+			id, err := s.saveACMEDNSProfile(ctx, domains, opts.InlineDNS, opts.DNSProfileName)
+			if err != nil { return nil, "", "", "", "", "", ddns.Credentials{}, err }
+			opts.DDNSConfigID = id
 		}
 		return domains, ca, email, primary, dnsZone, provider, cred, nil
 	}
 	if cfg, _, _, err := s.ddnsSvc.CredentialsForCertDomains(ctx, domains); err == nil {
+		opts.DDNSConfigID = cfg.ID
 		return s.prepareApplyWithConfig(ctx, domains, ca, email, cfg.ID)
 	}
 	return nil, "", "", "", "", "", ddns.Credentials{}, fmt.Errorf("请选择已保存的 DNS 凭证，或填写 DNS 服务商 Token")
 }
 
-func (s *Service) saveACMEDNSProfile(ctx context.Context, domains []string, inline InlineDNS, remark string) error {
+func (s *Service) saveACMEDNSProfile(ctx context.Context, domains []string, inline InlineDNS, remark string) (int64,error) {
 	zones := InferDNSZonesFromDomains(domains)
 	if len(zones) == 0 {
-		return fmt.Errorf("无法从域名推断 DNS 区域")
+		return 0,fmt.Errorf("无法从域名推断 DNS 区域")
 	}
 	domainLines := make([]string, 0, len(zones))
 	for _, zone := range zones {
 		domainLines = append(domainLines, zone)
 	}
-	_, err := s.ddnsSvc.CreateACMECredential(ctx, ddns.SaveInput{
+	cfg, err := s.ddnsSvc.CreateACMECredential(ctx, ddns.SaveInput{
 		Provider:   inline.Provider,
 		Remark:     strings.TrimSpace(remark),
 		Domains:    domainLines,
@@ -140,7 +141,7 @@ func (s *Service) saveACMEDNSProfile(ctx context.Context, domains []string, inli
 		APITokenID: inline.APITokenID,
 		APISecret:  inline.APISecret,
 	})
-	return err
+	return cfg.ID,err
 }
 
 func (s *Service) prepareApplyWithInline(ctx context.Context, domains []string, ca, email string, inline InlineDNS) ([]string, string, string, string, string, string, ddns.Credentials, error) {

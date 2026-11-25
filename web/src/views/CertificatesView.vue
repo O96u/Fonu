@@ -1591,6 +1591,7 @@ function resetApplyProgress() {
 
 async function submitApply() {
   applyError.value = ''
+  if (applyAutoRenew.value && applyDnsMode.value === 'inline' && !applySaveDnsProfile.value) { applyError.value = '自动续签需要保存 DNS 凭证，请返回 DNS 验证步骤勾选保存，或关闭自动续签。'; return }
   if (applyDnsMode.value === 'saved') {
     const cfg = applyDdnsConfigs.value.find((c) => c.id === applyDdnsConfigId.value)
     if (!cfg) {
