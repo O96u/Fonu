@@ -10,6 +10,7 @@ set -euo pipefail
 
 ARCH="${1:?usage: build-fpk.sh amd64|arm64 [version]}"
 VERSION="${2:-dev}"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ || "$VERSION" = dev ]] || { echo "Invalid package version" >&2; exit 1; }
 FRP_VERSION="${FRP_VERSION:-0.71.0}"
 # Official Nginx FPK tracked 1.28/1.29; those branches are EOL. Fonu bundles
 # current stable 1.30.x. Override with NGINX_VERSION=1.30.6 if GitHub is unreachable.
@@ -256,9 +257,7 @@ if [ "$MODE" != package ]; then
 echo "==> Building web (Vite)"
 (
   cd "${REPO_ROOT}/web"
-  if [ ! -d node_modules ]; then
-    npm ci
-  fi
+  npm ci
   VITE_APP_VERSION="${VERSION}" npm run build
 )
 
@@ -323,7 +322,8 @@ python3 - "${STAGING}/app" "$ARCH" <<'PYELF'
 import pathlib, struct, sys
 root, arch = sys.argv[1:]
 for name in ('fonu', 'Nginx', 'frpc'):
-    header = (pathlib.Path(root) / name).read_bytes()[:20]
+    with (pathlib.Path(root) / name).open('rb') as f:
+        header = f.read(20)
     if header[:6] != b'\x7fELF\x02\x01' or struct.unpack('<H', header[18:20])[0] != {'amd64':62, 'arm64':183}[arch]:
         raise SystemExit(f'{name}: expected Linux ELF64 {arch}')
 print('All payload architectures verified')

@@ -138,10 +138,15 @@ start_app() {
   fi
 
   load_env
+  if ! command -v curl >/dev/null 2>&1; then
+    log_msg "curl is required for Fonu HTTP health checks"
+    return 1
+  fi
   log_msg "Starting Fonu..."
   cd "${TRIM_APPDEST}"
   nohup "$APP_BIN" >>"$LOG_FILE" 2>&1 &
-  echo "$!" >"$PID_FILE"
+  local pid=$!
+  printf '%s\n' "$pid" >"$PID_FILE"
   admin_port="${FONU_LISTEN##*:}"
   ready=0
   count=0
@@ -160,12 +165,14 @@ start_app() {
     count=$((count + 1))
   done
   if [ "$ready" -ne 1 ]; then
-    log_msg "Fonu health check did not pass on :${admin_port}"
+    log_msg "Fonu health check did not pass on :${admin_port}; stopping failed startup"
+    stop_app
     return 1
   fi
 }
 
 stop_app() {
+  mkdir -p "${TRIM_PKGVAR}"
   log_msg "Stopping Fonu..."
   if status_app; then
     local pid

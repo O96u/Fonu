@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fpk-build.yml"
   workflow_dispatch:
     inputs:
       ref:
@@ -17,12 +21,16 @@ on:
         description: "Nginx source version (empty = latest 1.30.x stable)"
         required: false
         default: ""
+      build_only:
+        description: "Build and verify artifacts without publishing a release"
+        type: boolean
+        default: true
       release_tag:
         description: "Optional trial prerelease tag (default: fpk-v<version>)"
         required: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: fpk-build-${{ github.run_id }}
@@ -37,16 +45,27 @@ jobs:
       attach_tag: ${{ steps.out.outputs.attach_tag }}
       trial_tag: ${{ steps.out.outputs.trial_tag }}
     steps:
+      - uses: actions/checkout@v4
       - name: Resolve version and tags
         id: out
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
-            ref="${{ inputs.ref }}"
-            trial_tag="${{ inputs.release_tag }}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+            ref="$INPUT_REF"
+            trial_tag="$INPUT_RELEASE_TAG"
             [ -z "$trial_tag" ] && trial_tag="fpk-v${version}"
+            attach_tag="v${version}"
+          elif [ "$GITHUB_REF_TYPE" = branch ]; then
+            version="$(jq -r .version web/package.json 2>/dev/null || true)"
+            version="${version:-1.3.10}"
+            ref="$GITHUB_SHA"
+            trial_tag=""
             attach_tag="v${version}"
           else
             version="${GITHUB_REF_NAME#v}"
@@ -55,6 +74,8 @@ jobs:
             attach_tag="v${version}"
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "Invalid version: $version"; exit 1; }
+          [[ "$ref" != *$'\n'* && "$ref" != *$'\r'* ]] || exit 1
+          [[ -z "$trial_tag" || "$trial_tag" =~ ^fpk-[A-Za-z0-9._-]+$ ]] || exit 1
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "attach_tag=$attach_tag" >> "$GITHUB_OUTPUT"
@@ -123,10 +144,8 @@ jobs:
             url="$FNPACK_ARM64_URL"
             sha="${FNPACK_ARM64_SHA256:-}"
           fi
-          if curl --fail --location --retry 3 "$url" -o "$RUNNER_TEMP/fnpack-bin/fnpack"; then
-            if [ -n "$sha" ]; then
-              echo "$sha  $RUNNER_TEMP/fnpack-bin/fnpack" | sha256sum -c -
-            fi
+          if [[ "$sha" =~ ^[0-9a-fA-F]{64}$ ]] && curl --fail --location --retry 3 "$url" -o "$RUNNER_TEMP/fnpack-bin/fnpack"; then
+            echo "$sha  $RUNNER_TEMP/fnpack-bin/fnpack" | sha256sum -c -
             chmod 755 "$RUNNER_TEMP/fnpack-bin/fnpack"
           elif [ "$host_arch" != "x86_64" ]; then
             sudo apt-get install -y qemu-user-static
@@ -174,6 +193,9 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_only == false)
+    permissions:
+      contents: write
     needs: [setup, build]
     runs-on: ubuntu-24.04
     env:
