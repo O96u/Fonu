@@ -64,7 +64,7 @@
     <EmptyState
       v-else-if="configs.length === 0 && dnsheAccounts.length === 0 && !providerDraft && taskEditMode !== 'create'"
       title="还没有 DDNS 配置"
-      description="添加 DNS 服务商后，在右侧表格中管理解析记录。"
+      description="添加 DNS 服务商后，在任务卡片中管理解析记录。"
     >
       <template #action>
         <n-button type="primary" @click="startCreateTask">添加任务</n-button>
@@ -97,161 +97,34 @@
           </div>
         </div>
 
-        <div class="task-sidebar__list" :class="{ 'task-sidebar__list--with-create': taskEditMode === 'create' }">
-          <button
-            v-if="providerDraft && showDraftInList"
-            type="button"
-            class="task-item task-item--draft"
-            :class="{ 'task-item--active': selectedKey === DRAFT_KEY }"
-            @click="selectDraft()"
-          >
-            <div class="task-item__top">
-              <div class="task-item__brand">
-                <span class="provider-logo" :class="{ 'provider-logo--dnshe': providerDraft.provider === 'dnshe' }">
-                  <img :src="providerIcon(providerDraft.provider)" :alt="providerLabel(providerDraft.provider)" />
+        <div class="task-sidebar__list">
+          <article v-for="entry in taskEntries" :key="entry.key" class="task-card" :class="{ 'task-card--open': selectedKey === entry.key && !detailCollapsed }">
+            <div v-if="entry.cfg && taskEditMode === entry.cfg.id" class="task-item--editing">
+              <TaskProviderForm :form="taskForm" :editing="entry.cfg" :saving="savingTask" :testing="testing" @save="saveTask" @test="testTask" @cancel="cancelTaskEdit" />
+            </div>
+            <div v-else-if="entry.account && taskEditMode === entry.key" class="task-item--editing">
+              <TaskProviderForm :form="taskForm" :editing="dnsheAccountEditingStub(entry.account)" :saving="savingTask" :testing="testing" @save="saveTask" @test="testTask" @cancel="cancelTaskEdit" />
+            </div>
+            <div v-else class="task-card__header">
+              <button type="button" class="task-card__select" :aria-expanded="selectedKey === entry.key && !detailCollapsed" @click="entry.cfg ? selectTask(entry.cfg.id) : entry.account ? selectDnsheAccount(entry.account.id) : selectDraft()">
+                <span class="provider-logo provider-logo--md" :class="{ 'provider-logo--dnshe': entry.provider === 'dnshe' }"><img :src="providerIcon(entry.provider)" :alt="providerLabel(entry.provider)" /></span>
+                <span class="task-card__identity">
+                  <strong>{{ entry.name }}</strong>
+                  <span>{{ entry.subtitle }}</span>
                 </span>
-                <span class="task-item__name">{{ providerLabel(providerDraft.provider) }}</span>
-              </div>
-              <span class="task-item__draft-tag">待添加记录</span>
-            </div>
-            <div class="task-item__row task-item__muted">保存服务商后，请在右侧添加解析记录</div>
-            <div class="task-item__foot">
-              <n-button size="tiny" quaternary @click.stop="startEditDraft()">编辑凭据</n-button>
-              <n-button size="tiny" quaternary type="error" @click.stop="clearDraft()">取消</n-button>
-            </div>
-          </button>
-
-          <template v-for="cfg in sidebarConfigs" :key="cfg.id">
-            <div v-if="taskEditMode === cfg.id" class="task-item task-item--editing">
-              <TaskProviderForm
-                :form="taskForm"
-                :editing="cfg"
-                :saving="savingTask"
-                :testing="testing"
-                @save="saveTask"
-                @test="testTask"
-                @cancel="cancelTaskEdit"
-              />
-            </div>
-            <button
-              v-else
-              type="button"
-              class="task-item"
-              :class="{ 'task-item--active': selectedKey === String(cfg.id) }"
-              @click="selectTask(cfg.id)"
-            >
-              <div class="task-item__top">
-                <div class="task-item__brand">
-                  <span class="provider-logo" :class="{ 'provider-logo--dnshe': cfg.provider === 'dnshe' }">
-                    <img :src="providerIcon(cfg.provider)" :alt="providerLabel(cfg.provider)" />
-                  </span>
-                  <span class="task-item__name">{{ cfg.remark || providerLabel(cfg.provider) }}</span>
-                  <span v-if="cfg.remark" class="task-item__provider">{{ providerLabel(cfg.provider) }}</span>
-                </div>
-                <StatusBadge :value="taskStatusKind(cfg)" :text="taskStatusText(cfg)" />
-              </div>
-              <div class="task-item__row">
-                <span class="task-item__muted">上次同步</span>
-                <span>{{ formatRelativeTime(cfg.last_updated_at) || '从未' }}</span>
-              </div>
-              <div class="task-item__row">
-                <span class="task-item__muted">（共 {{ domainRecordsOf(cfg).length }} 条记录）</span>
-              </div>
-              <div class="task-item__foot">
-                <span class="task-item__spacer" />
-                <div class="task-item__foot-actions">
-                  <n-button size="tiny" quaternary title="编辑服务商" @click.stop="startEditTask(cfg)">
-                    <template #icon><n-icon :component="CreateOutline" /></template>
-                  </n-button>
-                  <n-switch
-                    :value="cfg.enabled"
-                    size="small"
-                    :loading="togglingId === cfg.id"
-                    @update:value="(v: boolean) => toggleEnabled(cfg, v)"
-                    @click.stop
-                  />
-                </div>
-              </div>
-            </button>
-          </template>
-
-          <template v-for="acc in dnsheAccounts" :key="'dnshe-' + acc.id">
-            <div v-if="taskEditMode === dnsheAccountKey(acc.id)" class="task-item task-item--editing">
-              <TaskProviderForm
-                :form="taskForm"
-                :editing="dnsheAccountEditingStub(acc)"
-                :saving="savingTask"
-                :testing="testing"
-                @save="saveTask"
-                @test="testTask"
-                @cancel="cancelTaskEdit"
-              />
-            </div>
-            <button
-              v-else
-              type="button"
-              class="task-item"
-              :class="{ 'task-item--active': selectedKey === dnsheAccountKey(acc.id) }"
-              @click="selectDnsheAccount(acc.id)"
-            >
-              <div class="task-item__top">
-                <div class="task-item__brand">
-                  <span class="provider-logo provider-logo--dnshe">
-                    <img :src="providerIcon('dnshe')" :alt="providerLabel('dnshe')" />
-                  </span>
-                  <span class="task-item__name">{{ acc.name }}</span>
-                  <span class="task-item__provider">{{ providerLabel('dnshe') }}</span>
-                </div>
-                <StatusBadge :value="dnsheAccountStatusKind(acc)" :text="dnsheAccountStatusText(acc)" />
-              </div>
-              <div class="task-item__row">
-                <span class="task-item__muted">上次同步</span>
-                <span>{{ formatRelativeTime(dnsheAccountLastSync(acc)) || '从未' }}</span>
-              </div>
-              <div class="task-item__row">
-                <span class="task-item__muted">（共 {{ dnsheAccountRecordCount(acc) }} 条记录）</span>
-              </div>
-              <div class="task-item__foot">
-                <span class="task-item__spacer" />
-                <div class="task-item__foot-actions">
-                  <n-button size="tiny" quaternary title="编辑服务商" @click.stop="startEditDnsheAccount(acc)">
-                    <template #icon><n-icon :component="CreateOutline" /></template>
-                  </n-button>
-                  <n-switch
-                    :value="dnsheAccountEnabled(acc)"
-                    size="small"
-                    :loading="togglingDnsheId === acc.id"
-                    @update:value="(v: boolean) => toggleDnsheAccountEnabled(acc, v)"
-                    @click.stop
-                  />
-                </div>
-              </div>
-            </button>
-          </template>
-        </div>
-      </aside>
-
-      <section v-if="detailVisible" v-show="!detailCollapsed" class="task-detail">
-        <div v-if="isDnsheAccountSelected && selectedDnsheAccount" class="task-detail__head">
-          <div class="task-detail__head-top">
-            <div class="task-detail__title-wrap">
-              <span class="provider-logo provider-logo--lg provider-logo--dnshe">
-                <img :src="providerIcon('dnshe')" :alt="providerLabel('dnshe')" />
-              </span>
-              <div>
-                <h3 class="task-detail__title">{{ selectedDnsheAccount.name }}</h3>
-                <div class="task-detail__meta">
-                  <span>{{ providerLabel('dnshe') }}</span>
-                  <span>账户自动续期 {{ selectedDnsheAccount.auto_renew ? '开' : '关' }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="task-detail__actions">
-              <n-button size="small" quaternary type="error" @click="dnsheDetailRef?.confirmDeleteAccount(selectedDnsheAccount)">
-                删除
+              </button>
+              <StatusBadge v-if="entry.cfg" :value="taskStatusKind(entry.cfg)" :text="taskStatusText(entry.cfg)" />
+              <StatusBadge v-else-if="entry.account" :value="dnsheAccountStatusKind(entry.account)" :text="dnsheAccountStatusText(entry.account)" />
+              <span v-else class="task-item__draft-tag">待添加记录</span>
+              <n-switch v-if="entry.cfg" :value="entry.cfg.enabled" size="small" :loading="togglingId === entry.cfg.id" @update:value="(v: boolean) => entry.cfg && toggleEnabled(entry.cfg, v)" />
+              <n-switch v-else-if="entry.account" :value="dnsheAccountEnabled(entry.account)" size="small" :loading="togglingDnsheId === entry.account.id" @update:value="(v: boolean) => entry.account && toggleDnsheAccountEnabled(entry.account, v)" />
+              <n-button v-else size="tiny" quaternary @click="clearDraft">取消</n-button>
+              <n-button size="tiny" quaternary :aria-label="selectedKey === entry.key && !detailCollapsed ? '收起任务' : '展开任务'" @click="entry.cfg ? selectTask(entry.cfg.id) : entry.account ? selectDnsheAccount(entry.account.id) : selectDraft()">
+                {{ selectedKey === entry.key && !detailCollapsed ? '⌃' : '⌄' }}
               </n-button>
             </div>
-          </div>
+      <section v-if="selectedKey === entry.key && detailVisible" v-show="!detailCollapsed" class="task-detail">
+        <div v-if="isDnsheAccountSelected && selectedDnsheAccount" class="task-detail__head">
           <div class="task-detail__toolbar">
             <div class="settings-switches">
               <div class="settings-switch">
@@ -285,44 +158,6 @@
         </div>
 
         <div v-if="!isDnsheAccountSelected && panelTask" class="task-detail__head">
-          <div class="task-detail__head-top">
-          <div class="task-detail__title-wrap">
-            <span
-              class="provider-logo provider-logo--lg"
-              :class="{ 'provider-logo--dnshe': panelTask.provider === 'dnshe' }"
-            >
-              <img :src="providerIcon(panelTask.provider)" :alt="providerLabel(panelTask.provider)" />
-            </span>
-            <div>
-              <h3 class="task-detail__title">{{ panelTask.remark || providerLabel(panelTask.provider) }}</h3>
-              <div class="task-detail__meta">
-                <StatusBadge
-                  v-if="!isDraftSelected"
-                  :value="taskStatusKind(panelTask!)"
-                  :text="taskStatusText(panelTask!)"
-                />
-                <span v-if="isDraftSelected">待添加解析记录</span>
-                <template v-else>
-                  <span>上次同步 {{ formatRelativeTime(panelTask!.last_updated_at) || '从未' }}</span>
-                  <span>（共 {{ domainRecordsOf(panelTask!).length }} 条记录）</span>
-                </template>
-              </div>
-            </div>
-          </div>
-          <div v-if="!isDraftSelected" class="task-detail__actions">
-            <n-button
-              size="small"
-              type="primary"
-              ghost
-              :loading="updatingId === panelTask!.id"
-              @click="updateOne(panelTask!)"
-            >
-              <template #icon><n-icon :component="RefreshOutline" /></template>
-              立即同步
-            </n-button>
-            <n-button size="small" quaternary type="error" @click="confirmDelete(panelTask!)">删除</n-button>
-          </div>
-          </div>
           <div class="task-detail__toolbar">
             <div class="settings-switches">
               <div class="settings-switch">
@@ -361,7 +196,7 @@
         <DdnsDnsheDetail
           v-show="dnsheTab === 'domains'"
           v-if="isDnsheAccountSelected && selectedDnsheAccount"
-          ref="dnsheDetailRef"
+          ref="dnsheDetailRefs"
           :account="selectedDnsheAccount"
           :pushing-domain="pushingDnsheDomain"
           @refresh-accounts="loadDnsheAccounts"
@@ -373,7 +208,7 @@
 
         <FonuCard
           v-if="panelTask || isDnsheAccountSelected"
-          ref="dnsheRecordsRef"
+          ref="dnsheRecordsRefs"
           v-show="!isDnsheAccountSelected || dnsheTab === 'records'"
           flush
           class="detail-section"
@@ -381,6 +216,7 @@
           <div class="records-head">
             <h4 class="detail-section__title">解析记录（{{ mergedDisplayRecords.length }}）</h4>
             <n-space :size="8">
+              <n-button v-if="!isDnsheAccountSelected && !isDraftSelected && panelTask" size="small" :loading="updatingId === panelTask.id" @click="updateOne(panelTask)">立即同步</n-button>
               <n-button
                 v-if="isDnsheAccountSelected && linkedDnsheConfigs.length"
                 size="small"
@@ -408,13 +244,7 @@
             <table class="record-table">
               <thead>
                 <tr>
-                  <th>主机记录</th>
-                  <th>类型</th>
-                  <th>当前解析值</th>
-                  <th>上次结果</th>
-                  <th>上次更新</th>
-                  <th>状态</th>
-                  <th>操作</th>
+                  <th>域名 / 解析值</th><th>类型</th><th>状态</th><th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -433,9 +263,6 @@
                       <n-tag v-if="recordTypeFlags.ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                     </div>
                   </td>
-                  <td class="record-table__muted">-</td>
-                  <td class="record-table__muted">-</td>
-                  <td class="record-table__muted">-</td>
                   <td class="record-table__muted">-</td>
                   <td>
                     <div class="row-actions">
@@ -465,10 +292,7 @@
                         <n-tag v-if="recordTypeFlags.ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                       </div>
                     </td>
-                    <td class="record-table__muted">-</td>
-                    <td class="record-table__muted">-</td>
-                    <td class="record-table__muted">-</td>
-                    <td class="record-table__muted">-</td>
+                  <td class="record-table__muted">-</td>
                     <td>
                       <div class="row-actions">
                         <n-button size="tiny" type="primary" :loading="savingRecord" @click="saveRecord">保存</n-button>
@@ -477,56 +301,34 @@
                     </td>
                   </template>
                   <template v-else>
-                    <td class="record-table__mono">{{ record.domain }}</td>
+                    <td class="record-domain"><span class="record-table__mono">{{ record.domain }}</span><span class="record-ip">{{ recordValue(record) || '-' }}</span></td>
                     <td>
                       <div class="type-tags">
                         <n-tag v-if="recordTypeFlagsFor(record).ipv4" size="tiny" :bordered="false">A</n-tag>
                         <n-tag v-if="recordTypeFlagsFor(record).ipv6" size="tiny" :bordered="false" type="info">AAAA</n-tag>
                       </div>
                     </td>
-                    <td>
-                      <span v-if="recordValue(record)" class="record-table__mono">{{ recordValue(record) }}</span>
-                      <span v-else class="record-table__muted">-</span>
-                    </td>
-                    <td class="record-table__result">{{ record.message || recordResultLabel(record.status) }}</td>
-                    <td>{{ formatRelativeTime(recordTaskOf(record)?.last_updated_at) || '-' }}</td>
-                    <td>
+
+                    <td :title="record.message || recordResultLabel(record.status)">
                       <n-tag size="small" round :bordered="false" :type="recordTagType(record.status)">
                         {{ recordStatusLabel(record.status) }}
                       </n-tag>
                     </td>
                     <td>
-                      <div class="row-actions">
-                        <n-button
-                          size="tiny"
-                          quaternary
-                          title="编辑"
-                          :disabled="recordEditing !== null"
-                          @click="startEditRecord(record)"
-                        >
-                          <template #icon><n-icon :component="CreateOutline" /></template>
-                        </n-button>
-                        <n-button
-                          size="tiny"
-                          quaternary
-                          type="error"
-                          title="删除"
-                          :disabled="recordEditing !== null"
-                          @click="confirmDeleteRecordFor(record)"
-                        >
-                          <template #icon><n-icon :component="TrashOutline" /></template>
-                        </n-button>
-                      </div>
+                      <n-dropdown trigger="click" :options="recordMenu" :disabled="recordEditing !== null" @select="(key: string) => key === 'edit' ? startEditRecord(record) : confirmDeleteRecordFor(record)">
+                        <n-button size="small" quaternary aria-label="记录操作">···</n-button>
+                      </n-dropdown>
                     </td>
                   </template>
                 </tr>
 
                 <tr v-if="mergedDisplayRecords.length === 0 && recordEditing !== '__new__'">
-                  <td colspan="7" class="record-table__empty">暂无解析记录，点击「添加记录」创建</td>
+                  <td colspan="4" class="record-table__empty">暂无解析记录，点击「添加记录」创建</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div v-if="mergedDisplayRecords.length" class="record-feedback">{{ recordFeedback }}</div>
         </FonuCard>
 
         <div v-if="detailError" class="alert alert--error">
@@ -538,6 +340,14 @@
           </div>
         </div>
 
+        <div class="task-footer">
+          <n-button v-if="!isDnsheAccountSelected && panelTask && !isDraftSelected" quaternary size="small" @click="startEditTask(panelTask)">任务配置</n-button>
+          <n-button v-if="isDnsheAccountSelected && selectedDnsheAccount" quaternary size="small" @click="startEditDnsheAccount(selectedDnsheAccount)">账户配置</n-button>
+          <n-button v-if="isDraftSelected" quaternary size="small" @click="startEditDraft">编辑凭据</n-button>
+          <span class="task-item__spacer" />
+          <n-button v-if="!isDnsheAccountSelected && panelTask && !isDraftSelected" quaternary size="small" @click="confirmDelete(panelTask)">删除任务</n-button>
+          <n-button v-if="isDnsheAccountSelected && selectedDnsheAccount" quaternary size="small" @click="dnsheDetailRef?.confirmDeleteAccount(selectedDnsheAccount)">删除账户</n-button>
+        </div>
         <details class="ddns-help">
           <summary>解析记录填写说明</summary>
           <p>请填写完整域名（如 s.example.com、www.sub.example.com）。同一服务商任务可管理多个域名，Fonu 按同步周期自动检测公网 IP 并更新解析记录。</p>
@@ -546,10 +356,13 @@
         <DdnsDnsheGifts
           v-show="dnsheTab === 'gifts'"
           v-if="isDnsheAccountSelected && selectedDnsheAccount"
-          ref="dnsheGiftsRef"
+          ref="dnsheGiftsRefs"
           :account="selectedDnsheAccount"
         />
       </section>
+          </article>
+        </div>
+      </aside>
     </div>
   </template>
 </template>
@@ -559,6 +372,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
+  NDropdown,
   NIcon,
   NInput,
   NInputNumber,
@@ -576,7 +390,6 @@ import {
   CreateOutline,
   GlobeOutline,
   RefreshOutline,
-  TrashOutline,
 } from '@vicons/ionicons5'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
 import cloudflareIcon from '../assets/brand/dns/cloudflare.png'
@@ -627,9 +440,12 @@ const ipCheckedAt = ref('')
 const recordEditing = ref<string | null>(null)
 const recordDraft = reactive({ domain: '', originalDomain: '' })
 const dnsheAccounts = ref<DNSHEAccount[]>([])
-const dnsheDetailRef = ref<InstanceType<typeof DdnsDnsheDetail> | null>(null)
-const dnsheGiftsRef = ref<InstanceType<typeof DdnsDnsheGifts> | null>(null)
-const dnsheRecordsRef = ref<InstanceType<typeof FonuCard> | null>(null)
+const dnsheDetailRefs = ref<InstanceType<typeof DdnsDnsheDetail>[]>([])
+const dnsheDetailRef = computed(() => dnsheDetailRefs.value[0] ?? null)
+const dnsheGiftsRefs = ref<InstanceType<typeof DdnsDnsheGifts>[]>([])
+const dnsheGiftsRef = computed(() => dnsheGiftsRefs.value[0] ?? null)
+const dnsheRecordsRefs = ref<InstanceType<typeof FonuCard>[]>([])
+const dnsheRecordsRef = computed(() => dnsheRecordsRefs.value[0] ?? null)
 const updatingDnsheLinked = ref(false)
 const pushingDnsheDomain = ref('')
 
@@ -756,6 +572,22 @@ const taskStats = computed(() => {
     { label: '暂停', count: buckets.filter(b => b === 'paused').length },
     { label: '待配置 / 同步', count: buckets.filter(b => b === 'pending').length },
   ]
+})
+type TaskEntry = { key: string; provider: string; name: string; subtitle: string; cfg?: DDNSConfig; account?: DNSHEAccount }
+const taskEntries = computed<TaskEntry[]>(() => {
+  const rows: TaskEntry[] = []
+  if (providerDraft.value && showDraftInList.value) rows.push({ key: DRAFT_KEY, provider: providerDraft.value.provider, name: providerLabel(providerDraft.value.provider), subtitle: '请添加首条解析记录' })
+  for (const cfg of sidebarConfigs.value) rows.push({ key: String(cfg.id), provider: cfg.provider, name: cfg.remark || providerLabel(cfg.provider), subtitle: `${domainRecordsOf(cfg).length} 条记录 · ${formatRelativeTime(cfg.last_updated_at) || '从未同步'}`, cfg })
+  for (const account of dnsheAccounts.value) rows.push({ key: dnsheAccountKey(account.id), provider: 'dnshe', name: account.name + ' · DNSHE', subtitle: `${dnsheAccountRecordCount(account)} 条记录 · ${formatRelativeTime(dnsheAccountLastSync(account)) || '从未同步'}`, account })
+  return rows
+})
+const recordMenu = [{ label: '编辑记录', key: 'edit' }, { label: '删除记录', key: 'delete' }]
+const recordFeedback = computed(() => {
+  const rows = mergedDisplayRecords.value
+  if (rows.some(r => r.status === 'error')) return '存在同步异常，请查看记录状态及错误提示'
+  if (rows.every(r => r.status === 'unchanged')) return '上次同步成功 · 记录未变化'
+  if (rows.every(r => r.status === 'ok' || r.status === 'unchanged')) return '上次同步成功'
+  return '部分记录待同步或状态未知'
 })
 const ipCheckedLabel = computed(() => ipCheckedAt.value ? formatRelativeTime(ipCheckedAt.value) || '刚刚' : '尚未检测')
 const detailCollapsed = ref(false)
@@ -1006,10 +838,10 @@ function ensureSelection() {
     selectedKey.value = null
     return
   }
-  if (configs.value.some((c) => String(c.id) === selectedKey.value)) return
+  if (sidebarConfigs.value.some((c) => String(c.id) === selectedKey.value)) return
   if (isDnsheAccountSelected.value && selectedDnsheAccount.value) return
-  if (configs.value.length > 0) {
-    selectedKey.value = String(configs.value[0].id)
+  if (sidebarConfigs.value.length > 0) {
+    selectedKey.value = String(sidebarConfigs.value[0].id)
   } else if (dnsheAccounts.value[0]) {
     selectedKey.value = dnsheAccountKey(dnsheAccounts.value[0].id)
   }
@@ -1082,6 +914,7 @@ async function toggleDnsheAccountEnabled(acc: DNSHEAccount, enabled: boolean) {
 }
 
 function selectDraft() {
+  if (selectedKey.value === DRAFT_KEY && !recordEditing.value) { detailCollapsed.value = !detailCollapsed.value; return }
   detailCollapsed.value = false
   selectedKey.value = DRAFT_KEY
   cancelRecordEdit()
@@ -2302,8 +2135,8 @@ onMounted(init)
 /* Beta 10: main shell owns vertical scrolling. */
 .stats-row { display:flex; flex-direction:column; gap:0; background:var(--fonu-surface); }
 .stats-row > .stat-card { min-height:0; padding:12px 16px; }
-.stat-card--ip .ip-lines { display:flex; flex-wrap:wrap; gap:4px 24px; }
-.stat-card--ip .ip-line { min-width:0; flex:1 1 250px; }
+.stat-card--ip .ip-lines { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:4px 24px; }
+.stat-card--ip .ip-line { min-width:0; flex:none; height:auto; }
 .ddns-summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); border-top:1px solid var(--fonu-border); }
 .ddns-summary__item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; color:var(--fonu-text); }
 .ddns-summary__item + .ddns-summary__item { border-left:1px solid var(--fonu-border); }
@@ -2320,4 +2153,29 @@ onMounted(init)
 .ddns-help summary { cursor:pointer; }
 @media(max-width:1199px) { .ddns-layout { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:480px) { .ddns-summary__item span { font-size:11px; } }
+
+/* Accordion cards: one header, one inline detail, no nested vertical scroll. */
+.ddns-layout { display:block; min-width:0; }
+.task-sidebar { border:0; background:transparent; box-shadow:none; overflow:visible; }
+.task-sidebar__head { background:transparent; padding:0 0 10px; border:0; }
+.task-sidebar__head-row { flex-direction:row; align-items:center; }
+.task-sidebar__list { display:grid; gap:12px; padding:0; }
+.task-card { min-width:0; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-surface); }
+.task-card__header { display:flex; align-items:center; gap:8px; padding:12px 14px; }
+.task-card__select { display:flex; flex:1; align-items:center; gap:10px; min-width:0; border:0; background:transparent; text-align:left; color:var(--fonu-text); cursor:pointer; padding:0; }
+.task-card__identity { display:grid; gap:3px; min-width:0; }
+.task-card__identity strong { font-size:14px; overflow-wrap:anywhere; }
+.task-card__identity > span { font-size:12px; color:var(--fonu-text-secondary); }
+.task-card .task-detail { border-top:1px solid var(--fonu-border); padding:12px 14px; gap:12px; }
+.task-card .task-detail__head { border:0; box-shadow:none; background:transparent; padding:0; }
+.task-card .task-detail__toolbar { margin:0; padding:0; border:0; }
+.task-card .detail-section { border:0; box-shadow:none; padding:0; background:transparent; }
+.task-card .record-table { min-width:0; width:100%; table-layout:auto; }
+.task-card .record-table th,.task-card .record-table td { padding:8px 5px; }
+.record-domain { min-width:0; overflow-wrap:anywhere; }
+.record-domain > span { display:block; white-space:normal; overflow-wrap:anywhere; }
+.record-ip { font-size:12px; color:var(--fonu-text-secondary); }
+.record-feedback { padding:10px 5px; color:var(--fonu-text-secondary); font-size:12px; }
+.task-footer { display:flex; align-items:center; gap:6px; border-top:1px solid var(--fonu-border); padding-top:8px; }
+@media(max-width:480px) { .task-card__header,.task-card .task-detail { padding:10px; } .task-card__header { gap:4px; } }
 </style>
