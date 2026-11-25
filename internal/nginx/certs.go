@@ -1,9 +1,12 @@
 package nginx
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fonu/fonu/internal/proxy"
 )
@@ -28,27 +31,33 @@ func HasCertificateForHosts(certsDir string, hostnames []string, certs []CertSou
 
 func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSource) *certFiles {
 	if len(hostnames) == 0 { return nil }
-	for _, hostname := range hostnames {
-		for _, source := range certs {
-			if !allHostsCovered(hostnames, source.Domains) {
-				continue
-			}
-			if cert := certFromSource(source); cert != nil {
-				return cert
-			}
-			for _, domain := range source.Domains {
-				if cert := certAt(certsDir, storageDirName(domain)); cert != nil && certUsable(cert) {
-					return cert
-				}
-			}
-		}
-		if len(hostnames) == 1 {
-		if cert := findCertificate(certsDir, hostname); cert != nil && certUsable(cert) {
+	// Prefer registered certificates, but trust the actual leaf certificate,
+	// never metadata or directory names alone.
+	for _, source := range certs {
+		if cert := certFromSource(source); certificateCovers(cert, hostnames) {
 			return cert
 		}
+		for _, domain := range source.Domains {
+			if cert := certAt(certsDir, storageDirName(domain)); certificateCovers(cert, hostnames) {
+				return cert
+			}
 		}
 	}
 	return scanCertDirectories(certsDir, hostnames)
+}
+
+func certificateCovers(cert *certFiles, hosts []string) bool {
+	if len(hosts) == 0 || !certUsable(cert) { return false }
+	pair, err := tls.LoadX509KeyPair(cert.CertPath, cert.KeyPath)
+	if err != nil || len(pair.Certificate) == 0 { return false }
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil { return false }
+	now := time.Now()
+	if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) { return false }
+	for _, host := range hosts {
+		if err := leaf.VerifyHostname(host); err != nil { return false }
+	}
+	return true
 }
 
 func storageDirName(domain string) string {
@@ -92,24 +101,11 @@ func hostCoveredByCert(hostname string, domains []string) bool {
 
 func scanCertDirectories(certsDir string, hostnames []string) *certFiles {
 	entries, err := osReadDir(certsDir)
-	if err != nil {
-		return nil
-	}
+	if err != nil { return nil }
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		pattern := dirNameToPattern(entry.Name())
-		{
-			if !allHostsCovered(hostnames, []string{pattern}) {
-				continue
-			}
-			if cert := certAt(certsDir, pattern); cert != nil && certUsable(cert) {
-				return cert
-			}
-			if cert := certAt(certsDir, entry.Name()); cert != nil && certUsable(cert) {
-				return cert
-			}
+		if !entry.IsDir() { continue }
+		if cert := certAt(certsDir, entry.Name()); certificateCovers(cert, hostnames) {
+			return cert
 		}
 	}
 	return nil

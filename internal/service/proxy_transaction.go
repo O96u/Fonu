@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/notify"
 )
 
 // mutateProxy runs while applyMu is held. Load non-transaction stores first:
@@ -27,6 +28,10 @@ func mutateProxy[T any](ctx context.Context, s *ProxyService, mutate func(*proxy
 	rules, err := store.ListEnabled(ctx)
 	if err != nil { return zero, err }
 	if _, err := s.nginx.ApplyWithOptions(ctx, rules, certs, opts); err != nil {
+		_ = tx.Rollback()
+		if s.notify != nil {
+			s.notify.Alert(ctx, notify.EventNginxReloadFailure, "Nginx 重载失败", err.Error())
+		}
 		return zero, fmt.Errorf("配置发布失败，数据库变更已取消：%w", err)
 	}
 	if err := tx.Commit(); err != nil {

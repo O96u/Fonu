@@ -87,9 +87,11 @@ func (s *ProxyService) CloneEntry(ctx context.Context, sourceID int64, in proxy.
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
 	var copied []int64
+	count := 0
 	entry, err := mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Entry, error) {
 		entry, idMap, err := store.CloneEntry(ctx, sourceID, in)
 		if err != nil { return proxy.Entry{}, err }
+		count = len(idMap)
 		for oldID, newID := range idMap {
 			content, err := nginx.ReadRuleCustom(s.cfg, oldID)
 			if err != nil { return proxy.Entry{}, err }
@@ -110,9 +112,7 @@ func (s *ProxyService) CloneEntry(ctx context.Context, sourceID int64, in proxy.
 		for _, id := range copied { _ = nginx.RemoveRuleCustom(s.cfg, id) }
 		return proxy.Entry{}, 0, err
 	}
-	ids, err := s.store.RuleIDsByEntry(ctx, entry.ID)
-	if err != nil { return entry, 0, err }
-	return entry, len(ids), nil
+	return entry, count, nil
 }
 
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {

@@ -19,37 +19,15 @@
 
     <div class="proxy-layout">
       <FonuCard flush class="proxy-panel" title="代理入口与规则">
-        <div class="proxy-toolbar">
-          <n-input
-            v-model:value="search"
-            clearable
-            size="small"
-            placeholder="搜索名称、域名或目标地址..."
-            class="proxy-toolbar__search"
-          >
-            <template #prefix><n-icon :component="SearchOutline" /></template>
-          </n-input>
-          <n-select
-            v-model:value="statusFilter"
-            size="small"
-            :options="statusOptions"
-            clearable
-            placeholder="全部状态"
-            class="proxy-toolbar__filter"
-          />
-          <n-select
-            v-model:value="httpsFilter"
-            size="small"
-            :options="httpsOptions"
-            clearable
-            placeholder="全部协议"
-            class="proxy-toolbar__filter"
-          />
-          <div class="proxy-toolbar__spacer" />
-          <n-button size="small" quaternary :loading="loading" @click="refreshAll">
-            <template #icon><n-icon :component="RefreshOutline" /></template>
-          </n-button>
-        </div>
+        <ProxyToolbar
+          v-model:search="search"
+          v-model:status-filter="statusFilter"
+          v-model:https-filter="httpsFilter"
+          :status-options="statusOptions"
+          :https-options="httpsOptions"
+          :loading="loading"
+          @refresh="refreshAll"
+        />
 
         <div v-if="loading && rules.length === 0" class="proxy-loading">
           <n-spin size="medium" />
@@ -1179,8 +1157,6 @@ import {
   HelpCircleOutline,
   InformationCircleOutline,
   PeopleOutline,
-  RefreshOutline,
-  SearchOutline,
   TrashOutline,
   WarningOutline,
 } from '@vicons/ionicons5'
@@ -1204,6 +1180,7 @@ import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
+import ProxyToolbar from '../components/proxy/ProxyToolbar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
@@ -3275,31 +3252,6 @@ onUnmounted(() => {
   padding-bottom: 0;
 }
 
-.proxy-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-3);
-  padding: var(--fonu-space-4);
-  border-bottom: 1px solid var(--fonu-border);
-  flex-wrap: wrap;
-}
-
-.proxy-toolbar__search {
-  width: 240px;
-  max-width: 100%;
-  flex-shrink: 0;
-}
-
-.proxy-toolbar__filter {
-  width: 132px;
-  flex-shrink: 0;
-}
-
-.proxy-toolbar__spacer {
-  flex: 1;
-  min-width: 0;
-}
-
 .proxy-loading {
   display: flex;
   justify-content: center;
@@ -5001,7 +4953,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 767px) {
-  .proxy-toolbar__filter { width: 100%; }
   .proxy-detail-modal__header {
     flex-direction: column;
     align-items: flex-start;
@@ -5038,13 +4989,8 @@ onUnmounted(() => {
   }
 }
 @media (max-width: 760px) {
-  .proxy-toolbar { min-width: 0; }
 }
 .proxy-panel :deep(.fonu-card__header) { padding-bottom:12px; }
-.proxy-toolbar { background:var(--fonu-bg-muted); padding:10px 12px; gap:8px; }
-.proxy-toolbar__search { flex:1 1 220px; width:auto; min-width:0; }
-.proxy-toolbar__filter { flex:0 1 132px; min-width:100px; }
-.proxy-toolbar__spacer { display:none; }
 .proxy-entry-card { border-radius:var(--fonu-radius); }
 .proxy-entry-card__head { background:var(--fonu-bg-muted); padding:10px 12px; }
 .proxy-entry-card__running { color:var(--fonu-success); }
@@ -5052,5 +4998,5 @@ onUnmounted(() => {
 .proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible { outline-color:var(--fonu-brand); }
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent) { color:var(--fonu-brand); }
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) { color:var(--fonu-brand-hover); background:var(--fonu-brand-soft); }
-@media(max-width:760px) { .proxy-toolbar__search { flex-basis:100%; } .proxy-toolbar__filter { flex:1 1 100px; } .proxy-entry-card__head { flex-wrap:wrap; } .proxy-entry-card__intro { flex:1 1 150px; } .proxy-entry-card__actions { max-width:100%; } }
+@media(max-width:760px) { .proxy-entry-card__head { flex-wrap:wrap; } .proxy-entry-card__intro { flex:1 1 150px; } .proxy-entry-card__actions { max-width:100%; } }
 </style>

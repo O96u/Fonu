@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestFindCertificateForHostsFallsBackToDiskWhenDBPathsMissing(t *testing.T) {
@@ -13,13 +14,7 @@ func TestFindCertificateForHostsFallsBackToDiskWhenDBPathsMissing(t *testing.T) 
 		t.Fatal(err)
 	}
 	certPath := filepath.Join(certDir, "fullchain.pem")
-	keyPath := filepath.Join(certDir, "privatekey.pem")
-	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(keyPath, []byte("key"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestCertificate(t, certDir, []string{"*.example.com", "example.com"}, time.Now().Add(time.Hour))
 
 	cert := findCertificateForHosts(filepath.Join(dir, "certs"), []string{"app.example.com"}, []CertSource{{
 		Domains:  []string{"example.com", "*.example.com"},
