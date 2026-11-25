@@ -7,9 +7,9 @@
       :collapsed-width="56"
       :width="208"
       :collapsed="collapsed"
-       :show-trigger="compactViewport ? false : 'bar'"
-      @collapse="manualCollapsed = true"
-      @expand="manualCollapsed = false"
+       :show-trigger="false"
+      @collapse="setNavigation(true)"
+      @expand="setNavigation(false)"
     >
       <router-link
         v-if="!collapsed"
@@ -70,9 +70,17 @@
 
     <n-layout class="app-main">
       <header class="topbar">
-        <div class="topbar__context"><n-button quaternary size="small" aria-label="折叠或展开导航" @click="manualCollapsed = !manualCollapsed" :disabled="compactViewport"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
+        <div class="topbar__context"><n-button quaternary size="small" aria-label="折叠或展开导航" @click="setNavigation(!collapsed)" :aria-expanded="!collapsed"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
         <div class="topbar__right">
-          <n-dropdown trigger="click" :options="accentOptions" @select="setThemeAccent"><n-button quaternary circle aria-label="主题颜色" title="主题颜色"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></n-dropdown>
+          <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
+            <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
+            <div class="appearance-panel"><strong>主题颜色</strong><p>即时预览 · 自动保存</p>
+              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': isDark ? preset.dark : preset.light }">
+                <span class="appearance-preview"><i/><span><b/><em/><em/></span></span>
+                <span class="appearance-label"><i/>{{ preset.label }}<span v-if="themeAccent === preset.value" class="appearance-check">✓</span></span>
+              </button></div>
+            </div>
+          </n-popover>
           <n-dropdown trigger="click" :options="modeOptions" @select="setThemeMode"><n-button quaternary circle aria-label="主题模式" title="主题模式"><template #icon><n-icon :component="isDark ? MoonOutline : SunnyOutline" /></template></n-button></n-dropdown>
           <n-button quaternary circle aria-label="通知" title="通知" @click="router.push({ name: 'dashboard', query: { tab: 'notifications' } })"><template #icon><n-icon :component="NotificationsOutline" /></template></n-button>
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
@@ -219,6 +227,7 @@ import {
   NLayoutSider,
   NMenu,
   NModal,
+  NPopover,
   NSpace,
   useMessage,
   type DropdownOption,
@@ -252,7 +261,6 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent } = useTheme();
-const accentOptions = computed<DropdownOption[]>(() => themePresets.map(p => ({ key: p.value, label: (themeAccent.value === p.value ? '✓ ' : '') + p.label })));
 const modeOptions = computed<DropdownOption[]>(() => [{key:'system',label:'跟随系统'},{key:'light',label:'浅色'},{key:'dark',label:'深色'}].map(p => ({...p,label:(themeMode.value === p.key ? '✓ ' : '') + p.label})));
 
 function isFpkEmbed(): boolean {
@@ -266,8 +274,10 @@ function isFpkEmbed(): boolean {
 const embedded = isFpkEmbed();
 const viewportWidth = ref(window.innerWidth);
 const compactViewport = computed(() => viewportWidth.value < (embedded ? 1320 : 1000));
-const manualCollapsed = ref(false);
-const collapsed = computed(() => compactViewport.value || manualCollapsed.value);
+function readNavigation(): boolean | null { try { const v = localStorage.getItem('fonu-nav-collapsed'); return v === null ? null : v === 'true' } catch { return null } }
+const manualCollapsed = ref<boolean | null>(readNavigation());
+const collapsed = computed(() => manualCollapsed.value ?? compactViewport.value);
+function setNavigation(value: boolean) { manualCollapsed.value = value; try { localStorage.setItem('fonu-nav-collapsed', String(value)) } catch { /* storage unavailable */ } }
 function updateViewport() { viewportWidth.value = window.innerWidth; }
 
 const appVersion = ref(__APP_VERSION__);
@@ -782,4 +792,23 @@ onUnmounted(() => {
 .app-main > :deep(.n-layout-scroll-container) { display:flex; flex-direction:column; height:100%; overflow:hidden; }
 .content > :deep(.n-layout-scroll-container) { min-height:0; }
 .app-layout--compact .content { padding:12px; }
+.app-sider { background:var(--fonu-surface)!important; }
+.app-layout--compact .app-menu { padding:12px 4px; }
+.app-menu :deep(.n-menu-item-content) { border-radius:10px!important; }
+.topbar__right { gap:6px; }
+.topbar__right > :deep(.n-button) { border-radius:9px; }
+.appearance-panel { width:min(310px,calc(100vw - 48px)); padding:4px; }
+.appearance-panel p { margin:4px 0 12px; color:var(--fonu-text-muted); font-size:12px; }
+.appearance-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.appearance-grid button { min-width:0; padding:7px; border:1px solid var(--fonu-border); border-radius:9px; background:var(--fonu-surface); color:var(--fonu-text); text-align:left; cursor:pointer; }
+.appearance-grid button[aria-pressed=true] { border-color:var(--preview-accent); box-shadow:0 0 0 1px var(--preview-accent); }
+.appearance-preview { display:flex; gap:5px; height:42px; padding:5px; border-radius:5px; background:var(--fonu-bg); }
+.appearance-preview > i { width:20%; background:var(--preview-accent); border-radius:3px; opacity:.85; }
+.appearance-preview > span { flex:1; display:grid; gap:4px; grid-template-columns:1fr 1fr; }
+.appearance-preview b { grid-column:1/-1; background:var(--preview-accent); border-radius:3px; opacity:.75; }
+.appearance-preview em { background:var(--fonu-surface); border:1px solid var(--fonu-border); border-radius:3px; }
+.appearance-label { display:flex; align-items:center; gap:5px; margin-top:5px; font-size:12px; }
+.appearance-label i { width:9px;height:9px;border-radius:50%;background:var(--preview-accent); }
+.appearance-check { margin-left:auto; color:var(--preview-accent);font-weight:bold; }
+@media(max-width:600px) { .app-layout:not(.app-layout--compact) .app-sider { position:absolute; z-index:20; box-shadow:var(--fonu-shadow-md); } .app-layout:not(.app-layout--compact) .app-main { margin-left:56px; } }
 </style>

@@ -3,6 +3,7 @@
   <nav class="dashboard-tabs" aria-label="首页分区"><button v-for="tab in tabs" :key="tab.key" type="button" :aria-pressed="activeTab === tab.key" @click="selectTab(tab.key)">{{ tab.label }}</button></nav>
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
+    <div v-if="activeTab === 'overview'" class="workspace-banner"><div><span class="workspace-kicker">FONU / NETWORK</span><h2>网络工作台</h2><p>服务状态与访问动态</p></div><router-link :to="{name:'dashboard',query:{tab:'notifications'}}" class="workspace-alert"><n-icon :component="ShieldCheckmarkOutline"/>{{ notices.length ? notices.length + ' 项状态提醒' : '查看状态提醒' }}<n-icon :component="ChevronForwardOutline"/></router-link></div>
     <n-spin v-if="activeTab === 'overview' || activeTab === 'services'" :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
@@ -40,15 +41,15 @@
       </div>
     </n-spin>
 
-    <FonuCard v-if="activeTab === 'overview'" title="快捷入口"><div class="quick-links"><router-link :to="{name:'ddns'}">DDNS</router-link><router-link :to="{name:'certificates'}">证书管理</router-link><router-link :to="{name:'proxies'}">反向代理</router-link><router-link :to="{name:'frp'}">内网穿透</router-link><router-link :to="{name:'logs'}">日志中心</router-link></div></FonuCard>
-    <FonuCard v-if="activeTab === 'notifications'" title="状态提醒" subtitle="根据当前服务与证书状态生成，不是历史消息收件箱">
+
+    <FonuCard v-if="activeTab === 'notifications'" title="状态提醒" subtitle="当前需要关注的证书与服务状态">
       <div v-if="!status">尚未获取服务状态</div>
-      <div v-for="notice in notices" :key="notice.title" class="notice-row"><div><strong>{{ notice.title }}</strong><p>{{ notice.detail }}</p></div><router-link :to="{name:notice.route}">查看</router-link></div>
+      <div v-for="notice in notices" :key="notice.title" class="notice-row"><span class="notice-icon"><n-icon :component="ShieldCheckmarkOutline"/></span><div class="notice-detail"><strong>{{ notice.title }}</strong><p>{{ notice.detail }}</p></div><router-link :to="{name:notice.route}">查看</router-link></div>
       <EmptyState v-if="status && !notices.length" title="暂无状态提醒" description="当前已获取的状态中未发现需要处理的事项。" />
       <router-link :to="{name:'settings',query:{tab:'notify'}}">通知渠道设置</router-link>
       <router-link class="notification-version" :to="{name:'settings',query:{tab:'version'}}">版本与更新日志</router-link>
     </FonuCard>
-    <AnalyticsInsightSection v-if="activeTab !== 'notifications'" v-model:range="awarenessRange" :show-map="activeTab === 'access'" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
+    <AnalyticsInsightSection v-if="activeTab !== 'notifications'" v-model:range="awarenessRange" :show-map="activeTab === 'access'" :show-kpis="activeTab !== 'services'" :section-title="activeTab === 'security' ? '安全概览' : activeTab === 'services' ? '服务统计' : '访问概览'" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
 
     
 
@@ -69,7 +70,7 @@
           </div>
         </n-alert>
 
-        <FonuCard v-if="activeTab !== 'services'" class="panel awareness-charts-panel">
+        <div class="trend-workspace" :class="{ 'trend-workspace--overview': activeTab === 'overview' }"><FonuCard v-if="activeTab !== 'services'" class="panel awareness-charts-panel">
           <div class="awareness-charts-panel__block">
             <div class="panel__head">
               <div class="panel-title">
@@ -91,6 +92,7 @@
           </div>
         </FonuCard>
 
+        <FonuCard v-if="activeTab === 'overview'" title="快捷入口" class="quick-card"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><span class="quick-icon"><n-icon :component="item.icon"/></span>{{ item.label }}<n-icon :component="ChevronForwardOutline" class="quick-arrow"/></router-link></div></FonuCard></div>
         <div v-if="activeTab !== 'overview'" class="awareness-lists">
           <FonuCard v-if="activeTab === 'access'" flush class="awareness-list-card">
             <template #title>
@@ -201,6 +203,7 @@ const router = useRouter()
 const tabs = [{key:'overview',label:'概览'},{key:'notifications',label:'通知'},{key:'access',label:'访问'},{key:'security',label:'安全'},{key:'services',label:'服务'}] as const
 const activeTab = computed(() => tabs.find(t => t.key === route.query.tab)?.key ?? 'overview')
 function selectTab(key: string) { void router.replace({name:'dashboard',query:key === 'overview' ? {} : {tab:key}}) }
+const quickEntries = [{route:'ddns',label:'DDNS',icon:GlobeOutline},{route:'certificates',label:'证书管理',icon:ShieldCheckmarkOutline},{route:'proxies',label:'反向代理',icon:GitNetworkOutline},{route:'frp',label:'内网穿透',icon:WifiOutline},{route:'logs',label:'日志中心',icon:EyeOutline}]
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
@@ -1161,4 +1164,27 @@ a.ip-geo-cell__ip:hover {
 .dashboard .stats-row :deep(.stat-card) { padding:10px 12px; }
 .dashboard .stats-row :deep(.stat-card__header) { margin-bottom:4px; }
 .dashboard .awareness-section { margin-bottom:0; }
+.dashboard-tabs { border:0; background:var(--fonu-surface); border-radius:12px; padding:5px; gap:4px; box-shadow:var(--fonu-shadow); }
+.dashboard-tabs button { border:0; border-radius:8px; padding:9px 16px; }
+.dashboard-tabs button[aria-pressed=true] { background:var(--fonu-brand-soft); color:var(--fonu-brand); }
+.workspace-banner { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 20px; border-radius:12px; border:1px solid color-mix(in srgb,var(--fonu-brand) 20%,var(--fonu-border)); background:linear-gradient(115deg,var(--fonu-brand-soft),var(--fonu-surface) 80%); }
+.workspace-kicker { font-size:10px; letter-spacing:.12em; font-weight:700; color:var(--fonu-brand); }
+.workspace-banner h2 { margin:4px 0; font-size:22px; }
+.workspace-banner p { margin:0; color:var(--fonu-text-secondary); font-size:12px; }
+.workspace-alert { display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid var(--fonu-border); border-radius:8px; color:var(--fonu-brand); background:var(--fonu-surface); text-decoration:none; font-size:12px; }
+.dashboard .stats-row { border:0; gap:12px; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.dashboard .stats-row :deep(.stat-card) { background:var(--fonu-surface); border:1px solid var(--fonu-border); border-radius:12px; box-shadow:var(--fonu-shadow); padding:14px; }
+.dashboard .stats-row :deep(.stat-card__icon) { background:var(--fonu-brand-soft); color:var(--fonu-brand); width:30px; height:30px; border-radius:9px; }
+.trend-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.trend-workspace--overview { grid-template-columns:minmax(0,2fr) minmax(220px,1fr); }
+.quick-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.quick-links a { display:flex; align-items:center; gap:6px; padding:9px; background:var(--fonu-bg); color:var(--fonu-text); font-size:12px; min-width:0; }
+.quick-links a:hover { background:var(--fonu-brand-soft); color:var(--fonu-brand); }
+.quick-icon { display:grid; place-items:center; width:25px; height:25px; border-radius:7px; background:var(--fonu-brand-soft); color:var(--fonu-brand); flex-shrink:0; font-size:16px; }
+.quick-arrow { margin-left:auto; color:var(--fonu-text-muted); }
+.notice-icon { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; color:var(--fonu-warning); background:color-mix(in srgb,var(--fonu-warning) 12%,transparent); }
+.notice-detail { flex:1; }
+@media(max-width:1200px) { .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:850px) { .trend-workspace--overview { grid-template-columns:minmax(0,1fr); } .workspace-banner { padding:12px; } }
+@media(max-width:480px) { .dashboard .stats-row { grid-template-columns:minmax(0,1fr); } .workspace-banner { flex-wrap:wrap; } }
 </style>

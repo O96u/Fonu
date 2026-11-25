@@ -13,10 +13,10 @@
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         document.documentElement.classList.toggle('dark', dark);
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-        var accent = 'ice';
-        try { accent = localStorage.getItem('fonu-accent') || 'ice'; } catch (_) {}
-        var colors = { ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
-        document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.ice)[dark ? 1 : 0]);
+        var accent = 'brand';
+        try { accent = localStorage.getItem('fonu-accent') || 'brand'; } catch (_) {}
+        var colors = { brand: ['#087eaa','#55c9ef'], ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
+        document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.brand)[dark ? 1 : 0]);
       })();
     </script>
     <style>

@@ -65,7 +65,8 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: requests,
-        lineStyle: { width: 2, color: palette.value.chartSecondary },
+        color: palette.value.brand,
+        lineStyle: { width: 2, color: palette.value.brand },
         areaStyle: {
           color: {
             type: 'linear',
@@ -74,8 +75,8 @@ const option = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: palette.value.chartSecondary + '38' },
-              { offset: 1, color: palette.value.chartSecondary + '05' },
+              { offset: 0, color: palette.value.brand + '38' },
+              { offset: 1, color: palette.value.brand + '05' },
             ],
           },
         },
@@ -86,8 +87,8 @@ const option = computed(() => {
         smooth: true,
         showSymbol: false,
         data: uniqueIPs,
-        color: palette.value.brand,
-        lineStyle: { width: 2, color: palette.value.brand },
+        color: palette.value.chartSecondary,
+        lineStyle: { width: 2, color: palette.value.chartSecondary },
       },
     ],
   }
@@ -97,6 +98,6 @@ const option = computed(() => {
 <style scoped>
 .chart {
   width: 100%;
-  height: 200px;
+  height: 250px;
 }
 </style>

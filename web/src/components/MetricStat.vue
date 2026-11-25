@@ -113,4 +113,6 @@ const deltaClass = computed(() => {
 .metric__prev {
   margin-left: auto;
 }
+.metric { box-shadow:var(--fonu-shadow); }
+.metric__label::before { content:''; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--fonu-brand); flex-shrink:0; }
 </style>

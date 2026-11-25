@@ -13,6 +13,8 @@ const AnalyticsAccessMap = defineAsyncComponent(() => import('./AnalyticsAccessM
 const props = defineProps<{
   data: AnalyticsOverview | null
   showMap?: boolean
+  showKpis?: boolean
+  sectionTitle?: string
   loading?: boolean
   error?: string
 }>()
@@ -95,7 +97,7 @@ watch(regionVisitorsAll, () => {
   <section class="insight-section">
     <div class="insight-section__head">
       <div>
-        <h2 class="insight-section__title">访问</h2>
+        <h2 class="insight-section__title">{{ sectionTitle || "访问概览" }}</h2>
         <p class="insight-section__sub">当前展示：{{ displayedLabel }} · 数字、地图及访问趋势使用同一统计范围。</p>
       </div>
       <div class="insight-section__tools">
@@ -122,7 +124,7 @@ watch(regionVisitorsAll, () => {
       {{ error ? `更新失败：${error}。仍展示${displayedLabel}数据。` : `正在等待新统计，暂保留${displayedLabel}数据。` }}
       <n-button v-if="error" size="tiny" @click="emit('retry')">重试</n-button>
     </div>
-    <div class="insight-kpi-row">
+    <div v-if="showKpis !== false" class="insight-kpi-row">
       <MetricStat
         label="请求"
         :value="data ? (data.kpi.total_requests ?? 0).toLocaleString() : '—'"
@@ -431,4 +433,9 @@ watch(regionVisitorsAll, () => {
 @media(max-width:900px) { .insight-kpi-row :deep(.metric:nth-child(2)) { border-right:0; } .insight-kpi-row :deep(.metric:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
 .insight-section { gap:10px; margin-bottom:0; }
 .insight-panel__grid { --insight-geo-stack-h: clamp(300px,42vh,460px); }
+.insight-kpi-row { gap:12px; border:0; }
+.insight-kpi-row :deep(.metric) { background:var(--fonu-surface); border:1px solid var(--fonu-border); border-radius:12px; box-shadow:var(--fonu-shadow); }
+.insight-kpi-row :deep(.metric:first-child) { background:linear-gradient(135deg,var(--fonu-brand-soft),var(--fonu-surface) 75%); border-color:color-mix(in srgb,var(--fonu-brand) 24%,var(--fonu-border)); }
+.insight-kpi-row :deep(.metric:first-child .metric__value) { font-size:30px; }
+.insight-panel__grid { --insight-geo-stack-h:clamp(280px,38vh,400px); }
 </style>

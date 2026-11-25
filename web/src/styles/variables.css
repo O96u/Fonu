@@ -22,10 +22,10 @@
   --fonu-text-secondary: #555e6b;
   --fonu-text-muted: #687383;
 
-  --fonu-radius: 8px;
-  --fonu-radius-sm: 6px;
-  --fonu-shadow: none;
-  --fonu-shadow-md: none;
+  --fonu-radius: 12px;
+  --fonu-radius-sm: 8px;
+  --fonu-shadow: 0 2px 8px rgba(22,42,70,.045);
+  --fonu-shadow-md: 0 6px 18px rgba(22,42,70,.10);
 
   --fonu-sidebar-width: 208px;
   --fonu-topbar-height: 48px;
@@ -60,6 +60,8 @@ html.dark,
   --fonu-banner-bg: var(--fonu-brand-soft);
   --fonu-banner-border: var(--fonu-brand-soft);
 
-  --fonu-shadow: none;
-  --fonu-shadow-md: none;
+  --fonu-shadow: 0 2px 8px rgba(22,42,70,.045);
+  --fonu-shadow-md: 0 6px 18px rgba(22,42,70,.10);
 }
+
+html.dark { --fonu-shadow: 0 2px 8px rgba(0,0,0,.16); --fonu-shadow-md: 0 6px 18px rgba(0,0,0,.24); }
