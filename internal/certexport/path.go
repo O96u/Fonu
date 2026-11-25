@@ -2,6 +2,7 @@ package certexport
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -21,6 +22,8 @@ func ValidateTargetPath(target, certsDir string) error {
 	}
 	target = cleanAbs(target)
 	certsDir = cleanAbs(certsDir)
+	if target == filepath.VolumeName(target)+string(filepath.Separator) { return fmt.Errorf("不能使用文件系统根目录作为证书映射目标") }
+	if err := rejectSymlinkPath(target); err != nil { return err }
 	if target == certsDir {
 		return fmt.Errorf("目标目录不能与证书源目录相同")
 	}
@@ -41,4 +44,14 @@ func isUnderDir(path, parent string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// Reject symlinks in existing path components before filesystem changes.
+func rejectSymlinkPath(p string) error {
+ for p = filepath.Clean(p); ; p = filepath.Dir(p) {
+  info, err := os.Lstat(p)
+  if err == nil && info.Mode() & os.ModeSymlink != 0 { return fmt.Errorf("证书映射路径包含符号链接：%s", p) }
+  if err != nil && !os.IsNotExist(err) { return err }
+  if filepath.Dir(p) == p { return nil }
+ }
 }

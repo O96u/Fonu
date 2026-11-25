@@ -15,6 +15,7 @@ const (
 type SSHExportConfig struct {
 	Enabled              bool   `json:"enabled"`
 	Host                 string `json:"host"`
+	HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"`
 	Port                 int    `json:"port"`
 	Username             string `json:"username"`
 	AuthType             string `json:"auth_type"`
@@ -62,6 +63,7 @@ func (s SSHExportConfig) Normalize() SSHExportConfig {
 	return SSHExportConfig{
 		Enabled:              s.Enabled,
 		Host:                 strings.TrimSpace(s.Host),
+		HostKeyFingerprint: strings.TrimSpace(s.HostKeyFingerprint),
 		Port:                 port,
 		Username:             strings.TrimSpace(s.Username),
 		AuthType:             auth,

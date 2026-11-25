@@ -35,6 +35,7 @@ type Job struct {
 	mu     sync.Mutex
 	events []JobEvent
 	done   bool
+	finishedAt time.Time
 	waiters map[chan JobEvent]struct{}
 }
 
@@ -53,6 +54,12 @@ func (m *JobManager) Create() *Job {
 		waiters: map[chan JobEvent]struct{}{},
 	}
 	m.mu.Lock()
+	for id, old := range m.jobs {
+		old.mu.Lock()
+		expired := old.done && time.Since(old.finishedAt) > time.Hour
+		old.mu.Unlock()
+		if expired { delete(m.jobs, id) }
+	}
 	m.jobs[job.id] = job
 	m.mu.Unlock()
 	return job
@@ -61,6 +68,12 @@ func (m *JobManager) Create() *Job {
 func (m *JobManager) Get(id string) *Job {
 	m.mu.Lock()
 	job := m.jobs[id]
+	if job != nil {
+		job.mu.Lock()
+		expired := job.done && time.Since(job.finishedAt) > time.Hour
+		job.mu.Unlock()
+		if expired { delete(m.jobs, id); job = nil }
+	}
 	m.mu.Unlock()
 	return job
 }
@@ -83,12 +96,15 @@ func (j *Job) Finish(result JobDonePayload) {
 
 func (j *Job) emit(ev JobEvent) {
 	j.mu.Lock()
+	if j.done { j.mu.Unlock(); return }
 	j.events = append(j.events, ev)
+	if len(j.events) > 1024 { j.events = append([]JobEvent(nil), j.events[len(j.events)-1024:]...) }
 	if ev.Type == "done" {
 		j.done = true
+		j.finishedAt = time.Now()
 	}
 	for ch := range j.waiters {
-		ch <- ev
+		select { case ch <- ev: default: delete(j.waiters, ch); close(ch) }
 	}
 	j.mu.Unlock()
 }
@@ -110,9 +126,8 @@ func (j *Job) Subscribe() chan JobEvent {
 
 func (j *Job) Unsubscribe(ch chan JobEvent) {
 	j.mu.Lock()
-	delete(j.waiters, ch)
+	if _, ok := j.waiters[ch]; ok { delete(j.waiters, ch); close(ch) }
 	j.mu.Unlock()
-	close(ch)
 }
 
 func (m *JobManager) Stream(ctx context.Context, w http.ResponseWriter, id string, flush func() error) error {
@@ -140,7 +155,8 @@ func (m *JobManager) Stream(ctx context.Context, w http.ResponseWriter, id strin
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case ev := <-ch:
+		case ev, ok := <-ch:
+			if !ok { return fmt.Errorf("日志订阅过慢，请重新连接") }
 			if err := writeJobSSE(w, ev); err != nil {
 				return err
 			}

@@ -2,6 +2,7 @@ package certexport
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -11,10 +12,10 @@ import (
 	"time"
 )
 
-func runOnChangeShell(ctx context.Context, shell string, meta CertMeta, logger *slog.Logger) {
+func runOnChangeShell(ctx context.Context, shell string, meta CertMeta, logger *slog.Logger) error {
 	shell = strings.TrimSpace(shell)
 	if shell == "" {
-		return
+		return nil
 	}
 	runCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -26,13 +27,14 @@ func runOnChangeShell(ctx context.Context, shell string, meta CertMeta, logger *
 		"certFile="+meta.CertFile,
 		"keyFile="+meta.KeyFile,
 	)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if err := cmd.Run(); err != nil {
 		logger.Warn("cert export on-change shell failed",
 			"storage", meta.StorageName,
 			"deleted", meta.Deleted,
-			"error", err.Error(),
-			"output", strings.TrimSpace(string(out)))
+			"error", err.Error())
+		return fmt.Errorf("证书重载命令失败：%w", err)
 	}
+	return nil
 }
 
 func shellCommand() string {

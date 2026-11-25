@@ -3,6 +3,7 @@ import type { CertExportSettings } from '../api/types'
 export type CertSSHExportFormModel = {
   enabled: boolean
   host: string
+  host_key_fingerprint: string
   port: number
   username: string
   auth_type: 'password' | 'private_key'
@@ -38,6 +39,7 @@ export function emptySSHExportForm(): CertSSHExportFormModel {
   return {
     enabled: false,
     host: '',
+    host_key_fingerprint: '',
     port: 22,
     username: '',
     auth_type: 'password',
@@ -70,6 +72,7 @@ export function loadExportFormFromSettings(settings?: CertExportSettings): CertE
     ssh: {
       enabled: ssh?.enabled ?? false,
       host: ssh?.host ?? '',
+      host_key_fingerprint: ssh?.host_key_fingerprint ?? '',
       port: ssh?.port && ssh.port > 0 ? ssh.port : 22,
       username: ssh?.username ?? '',
       auth_type: ssh?.auth_type === 'private_key' ? 'private_key' : 'password',
@@ -102,6 +105,7 @@ export function exportPayload(form: CertExportFormModel): CertExportSettings {
     ssh: {
       enabled: form.ssh.enabled,
       host: form.ssh.host.trim(),
+      host_key_fingerprint: form.ssh.host_key_fingerprint.trim(),
       port: form.ssh.port > 0 ? form.ssh.port : 22,
       username: form.ssh.username.trim(),
       auth_type: form.ssh.auth_type,

@@ -2,6 +2,7 @@ package certexport
 
 import (
 	"context"
+	"time"
 	"fmt"
 	"os"
 	"path"
@@ -17,11 +18,15 @@ func syncSSHUpload(ctx context.Context, cfg certstore.SSHExportConfig, certsDir 
 	if len(storageNames) == 0 {
 		return nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 	client, err := sshClientConn(cfg)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
+	stop := context.AfterFunc(ctx, func() { _ = client.Close() })
+	defer stop()
 
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
@@ -33,8 +38,8 @@ func syncSSHUpload(ctx context.Context, cfg certstore.SSHExportConfig, certsDir 
 	for _, storageName := range storageNames {
 		remoteDir := path.Join(cfg.RemoteDir, storageName)
 		if remove {
-			if err := sftpClient.RemoveAll(remoteDir); err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("删除远程目录 %s：%w", remoteDir, err)
+			for _, name := range []string{certFileName, keyFileName} {
+				if err := sftpClient.Remove(path.Join(remoteDir, name)); err != nil && !os.IsNotExist(err) && firstErr == nil { firstErr = fmt.Errorf("删除远程证书文件：%w", err) }
 			}
 			continue
 		}
@@ -159,11 +164,10 @@ func runSSHCommand(client *ssh.Client, script string, meta sshCertMeta) error {
 		shellQuote(meta.KeyFile),
 		script,
 	)
-	out, err := session.CombinedOutput("sh -c " + shellQuote(wrapped))
+	err = session.Run("sh -c " + shellQuote(wrapped))
 	if err != nil {
-		return fmt.Errorf("远程命令失败：%s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("远程命令失败：%w", err)
 	}
-	_ = out
 	return nil
 }
 

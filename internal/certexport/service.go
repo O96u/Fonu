@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -130,8 +129,10 @@ func (s *Service) syncStorages(ctx context.Context, cfg certstore.ExportConfig, 
 		for _, targetRoot := range cfg.Targets {
 			targetRoot = cleanAbs(targetRoot)
 			dstDir := filepath.Join(targetRoot, storageName)
+			if err := ValidateTargetPath(targetRoot, certsDir); err != nil { if firstErr == nil { firstErr = err }; continue }
+			if err := rejectSymlinkPath(dstDir); err != nil { if firstErr == nil { firstErr = err }; continue }
 			if remove {
-				if err := os.RemoveAll(dstDir); err != nil && firstErr == nil {
+				if err := removePEMPair(dstDir); err != nil && firstErr == nil {
 					firstErr = err
 				}
 				continue
@@ -142,8 +143,8 @@ func (s *Service) syncStorages(ctx context.Context, cfg certstore.ExportConfig, 
 		}
 	}
 	meta := metaForStorage(certsDir, storageNames[0], displayName, remove)
-	runOnChangeShell(ctx, cfg.OnChangeShell, meta, s.logger)
-	return firstErr
+	if firstErr != nil { return firstErr }
+	return runOnChangeShell(ctx, cfg.OnChangeShell, meta, s.logger)
 }
 
 func displayName(rec certstore.Record) string {

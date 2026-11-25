@@ -424,6 +424,7 @@ export interface FsDirListResponse {
 export interface CertSSHExportSettings {
   enabled: boolean
   host: string
+  host_key_fingerprint?: string
   port: number
   username: string
   auth_type: 'password' | 'private_key'

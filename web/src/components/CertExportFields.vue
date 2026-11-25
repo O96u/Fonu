@@ -87,6 +87,11 @@
 
       <n-collapse-transition :show="form.ssh.enabled">
         <div class="cert-export-panel__body">
+          <div class="cert-export-panel__field">
+            <div class="cert-export-panel__label">SSH 主机指纹（SHA256）</div>
+            <n-input v-model:value="form.ssh.host_key_fingerprint" placeholder="SHA256:..." size="small" />
+            <p class="cert-export-panel__tip">请从可信服务器端核实主机公钥指纹后填写；未填写或不匹配时禁止上传私钥。旧配置升级后也需要补充。</p>
+          </div>
           <div class="cert-export-panel__grid">
             <div class="cert-export-panel__field">
               <div class="cert-export-panel__label">主机</div>
