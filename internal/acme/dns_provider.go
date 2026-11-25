@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-acme/lego/v4/challenge"
+	"github.com/go-acme/lego/v4/challenge/dns01"
+	"sync"
 
 	"github.com/fonu/fonu/internal/ddns"
 )
@@ -39,32 +41,38 @@ func dnsProviderName(provider string) string {
 }
 
 type loggingDNSProvider struct {
+	mu sync.Mutex
 	inner challenge.Provider
 	job   *Job
 }
 
 func wrapDNSProvider(inner challenge.Provider, job *Job) challenge.Provider {
-	if job == nil {
-		return inner
-	}
+	
 	return &loggingDNSProvider{inner: inner, job: job}
 }
 
 func (p *loggingDNSProvider) Present(domain, token, keyAuth string) error {
-	ident := strings.TrimSuffix(domain, ".")
-	name := strings.TrimPrefix(ident, "*.")
-	p.job.Info(fmt.Sprintf("为 %s 添加 TXT _acme-challenge.%s（同名多条并存，不覆盖）", ident, name))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.job != nil {
+		info:=dns01.GetChallengeInfo(domain,keyAuth)
+		p.job.Info(fmt.Sprintf("为 %s 添加 TXT %s（同名多条并存，不覆盖）", strings.TrimSuffix(domain,"."),info.EffectiveFQDN))
+	}
 	if err := p.inner.Present(domain, token, keyAuth); err != nil {
-		p.job.Error(fmt.Sprintf("添加 DNS TXT 记录失败: %v", err))
+		if p.job!=nil {p.job.Error(fmt.Sprintf("添加 DNS TXT 记录失败: %v", err))}
 		return err
 	}
-	p.job.Info("DNS TXT 记录已添加，等待 DNS 传播…")
+	if p.job!=nil {p.job.Info("DNS TXT 记录已添加，等待 DNS 传播…")}
 	return nil
 }
 
 func (p *loggingDNSProvider) CleanUp(domain, token, keyAuth string) error {
-	p.job.Info("清理 DNS TXT 验证记录…")
-	return p.inner.CleanUp(domain, token, keyAuth)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.job!=nil {p.job.Info("清理当前 DNS TXT 验证值…")}
+	err:=p.inner.CleanUp(domain,token,keyAuth)
+	if err!=nil&&p.job!=nil {p.job.Warn(fmt.Sprintf("清理 DNS TXT 失败: %v",err))}
+	return err
 }
 
 type dnsProviderWithTimeout struct {

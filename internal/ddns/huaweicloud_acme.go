@@ -2,6 +2,8 @@ package ddns
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	dns "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/dns/v2"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/dns/v2/model"
@@ -29,6 +31,7 @@ func (h *HuaweiCloud) UpsertTXTRecord(ctx context.Context, cred Credentials, fqd
 
 // DeleteTXTRecord removes one ACME token and keeps any other TXT values.
 func (h *HuaweiCloud) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
 	zoneName, host, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
 		return h.HasZone(ctx, cred, candidate)
 	}, fqdn)
@@ -51,14 +54,17 @@ func (h *HuaweiCloud) DeleteTXTRecord(ctx context.Context, cred Credentials, fqd
 	}
 	want := huaweiPlainValue(value)
 	var kept []string
+	found:=false
 	if rec.Records != nil {
 		for _, item := range *rec.Records {
 			if huaweiPlainValue(item) == want {
+				found=true
 				continue
 			}
 			kept = append(kept, huaweiQuoteTXT(item))
 		}
 	}
+	if !found {return nil}
 	fqdnName := huaweiFQDN(name)
 	if len(kept) == 0 {
 		_, err = client.DeleteRecordSet(&model.DeleteRecordSetRequest{

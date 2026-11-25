@@ -823,6 +823,7 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 	}
 	dnsProvider = wrapDNSProvider(dnsProvider, job)
 	dnsOpts := s.loadDNS01Options(ctx)
+	logStep(fmt.Sprintf("DNS 传播等待: %s；权威 DNS 检查: %t；跳过传播检查: %t；递归解析器: %s", dnsOpts.PropagationTimeout,!dnsOpts.DisableAuthNS,dnsOpts.SkipPropagation,strings.Join(dnsOpts.RecursiveNS,", ")))
 	dnsProvider = wrapDNSProviderTimeout(dnsProvider, dnsOpts.PropagationTimeout)
 	challengeOpts := applyDNS01Options(dnsOpts)
 	if err := client.Challenge.SetDNS01Provider(dnsProvider, challengeOpts...); err != nil {

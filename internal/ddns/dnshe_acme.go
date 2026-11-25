@@ -2,6 +2,8 @@ package ddns
 
 import (
 	"context"
+	"fmt"
+	"strings"
 )
 
 // UpsertTXTRecord 创建或更新 TXT 记录，用于 ACME DNS-01 验证。
@@ -21,6 +23,7 @@ func (d *DNSHE) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, val
 
 // DeleteTXTRecord 删除 fqdn 上内容匹配的 TXT 记录（ACME 清理）。
 func (d *DNSHE) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
 	zone, _, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
 		return d.HasZone(ctx, cred, candidate)
 	}, fqdn)

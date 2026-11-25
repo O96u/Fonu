@@ -139,24 +139,42 @@ func (t *TencentCloud) domainInfo(client *dnspod.Client, rootDomain string) (*dn
 	return nil, fmt.Errorf("未找到域名 %s 对应的腾讯云 DNS 域名", rootDomain)
 }
 
-func (t *TencentCloud) listRecords(client *dnspod.Client, zone *dnspod.DomainListItem, subDomain, recordType string) ([]*dnspod.RecordListItem, error) {
-	req := dnspod.NewDescribeRecordListRequest()
-	req.Domain = zone.Name
-	req.DomainId = zone.DomainId
-	req.Subdomain = common.StringPtr(subDomain)
-	req.RecordType = common.StringPtr(recordType)
-	resp, err := client.DescribeRecordList(req)
-	if err != nil {
-		var sdkErr *errorsdk.TencentCloudSDKError
-		if errors.As(err, &sdkErr) && sdkErr.Code == dnspod.RESOURCENOTFOUND_NODATAOFRECORD {
-			return nil, nil
+type tencentRecordAPI interface {
+	DescribeRecordListWithContext(context.Context,*dnspod.DescribeRecordListRequest)(*dnspod.DescribeRecordListResponse,error)
+	CreateRecordWithContext(context.Context,*dnspod.CreateRecordRequest)(*dnspod.CreateRecordResponse,error)
+	DeleteRecordWithContext(context.Context,*dnspod.DeleteRecordRequest)(*dnspod.DeleteRecordResponse,error)
+}
+
+func (t *TencentCloud) listRecords(client *dnspod.Client,zone *dnspod.DomainListItem,subDomain,recordType string)([]*dnspod.RecordListItem,error) {
+	return listTencentRecords(context.Background(),client,zone,subDomain,recordType)
+}
+
+func listTencentRecords(ctx context.Context,client tencentRecordAPI,zone *dnspod.DomainListItem,subDomain,recordType string)([]*dnspod.RecordListItem,error) {
+	const pageSize uint64=100
+	var out []*dnspod.RecordListItem
+	for offset:=uint64(0);; {
+		if err:=ctx.Err();err!=nil{return nil,err}
+		req:=dnspod.NewDescribeRecordListRequest()
+		req.Domain,req.DomainId=zone.Name,zone.DomainId
+		req.Subdomain=common.StringPtr(subDomain)
+		req.RecordType=common.StringPtr(recordType)
+		req.Offset,req.Limit=common.Uint64Ptr(offset),common.Uint64Ptr(pageSize)
+		resp,err:=client.DescribeRecordListWithContext(ctx,req)
+		if err!=nil {
+			var sdkErr *errorsdk.TencentCloudSDKError
+			if errors.As(err,&sdkErr)&&sdkErr.Code==dnspod.RESOURCENOTFOUND_NODATAOFRECORD {return out,nil}
+			return nil,wrapTencentErr(err)
 		}
-		return nil, wrapTencentErr(err)
+		if resp==nil||resp.Response==nil{return nil,fmt.Errorf("腾讯云 DNS API 返回空响应")}
+		page:=resp.Response.RecordList
+		out=append(out,page...)
+		offset+=uint64(len(page))
+		if len(page)==0 {break}
+		if count:=resp.Response.RecordCountInfo;count!=nil&&count.TotalCount!=nil {
+			if offset>=uint64(*count.TotalCount){break}
+		} else if uint64(len(page))<pageSize {break}
 	}
-	if resp.Response == nil {
-		return nil, nil
-	}
-	return resp.Response.RecordList, nil
+	return out,nil
 }
 
 func tencentSubdomain(recordName string) string {
@@ -180,7 +198,7 @@ func wrapTencentErr(err error) error {
 	}
 	var sdkErr *errorsdk.TencentCloudSDKError
 	if errors.As(err, &sdkErr) {
-		return fmt.Errorf("腾讯云 DNS API 错误：%s", sdkErr.Message)
+		return fmt.Errorf("腾讯云 DNS API 错误 [%s]：%s: %w", sdkErr.Code, sdkErr.Message, err)
 	}
 	return err
 }

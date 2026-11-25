@@ -2,6 +2,7 @@ package ddns
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -28,8 +29,12 @@ func (t *TencentCloud) ensureTXTRecord(ctx context.Context, cred Credentials, zo
 	if err != nil {
 		return err
 	}
-	subDomain := tencentSubdomain(host)
-	records, err := t.listRecords(client, zoneInfo, subDomain, "TXT")
+	return ensureTencentTXT(ctx,client,zoneInfo,tencentSubdomain(host),value)
+}
+
+func ensureTencentTXT(ctx context.Context,client tencentRecordAPI,zoneInfo *dnspod.DomainListItem,subDomain,value string)error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
+	records, err := listTencentRecords(ctx,client,zoneInfo,subDomain,"TXT")
 	if err != nil {
 		return err
 	}
@@ -37,7 +42,7 @@ func (t *TencentCloud) ensureTXTRecord(ctx context.Context, cred Credentials, zo
 	var existing []string
 	for _, rec := range records {
 		if rec.Value != nil {
-			existing = append(existing, strings.TrimSpace(*rec.Value))
+			existing = append(existing, dnspodTXTValue(*rec.Value))
 		}
 	}
 	if txtValuePresent(existing, want) {
@@ -50,8 +55,8 @@ func (t *TencentCloud) ensureTXTRecord(ctx context.Context, cred Credentials, zo
 	req.RecordType = common.StringPtr("TXT")
 	req.RecordLine = common.StringPtr("默认")
 	req.Value = common.StringPtr(want)
-	req.TTL = common.Uint64Ptr(600)
-	_, err = client.CreateRecord(req)
+	// TTL is optional; let DNSPod choose the valid value for this plan.
+	_, err = client.CreateRecordWithContext(ctx,req)
 	return wrapTencentErr(err)
 }
 
@@ -71,14 +76,18 @@ func (t *TencentCloud) DeleteTXTRecord(ctx context.Context, cred Credentials, fq
 	if err != nil {
 		return err
 	}
-	subDomain := tencentSubdomain(host)
-	records, err := t.listRecords(client, zoneInfo, subDomain, "TXT")
+	return deleteTencentTXT(ctx,client,zoneInfo,tencentSubdomain(host),value)
+}
+
+func deleteTencentTXT(ctx context.Context,client tencentRecordAPI,zoneInfo *dnspod.DomainListItem,subDomain,value string)error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
+	records, err := listTencentRecords(ctx,client,zoneInfo,subDomain,"TXT")
 	if err != nil {
 		return err
 	}
 	want := strings.TrimSpace(value)
 	for _, rec := range records {
-		if rec.Value == nil || strings.TrimSpace(*rec.Value) != want {
+		if rec.Value == nil || dnspodTXTValue(*rec.Value) != want {
 			continue
 		}
 		if rec.RecordId == nil {
@@ -88,7 +97,7 @@ func (t *TencentCloud) DeleteTXTRecord(ctx context.Context, cred Credentials, fq
 		req.Domain = zoneInfo.Name
 		req.DomainId = zoneInfo.DomainId
 		req.RecordId = rec.RecordId
-		if _, err := client.DeleteRecord(req); err != nil {
+		if _, err := client.DeleteRecordWithContext(ctx,req); err != nil {
 			return wrapTencentErr(err)
 		}
 	}

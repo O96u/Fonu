@@ -36,4 +36,4 @@ jobs:
       - run: go test ./...
       - name: Benchmark analytics rollups (100k events)
         run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
-      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns

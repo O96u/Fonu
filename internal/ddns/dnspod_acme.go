@@ -2,6 +2,7 @@ package ddns
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/nrdcg/dnspod-go"
@@ -43,13 +44,13 @@ func (d *DNSPod) ensureTXTRecord(ctx context.Context, cred Credentials, zone, ho
 		Name:  subDomain,
 		Value: strings.TrimSpace(value),
 		Line:  "默认",
-		TTL:   "600",
 	})
 	return err
 }
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).
 func (d *DNSPod) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
 	zone, host, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
 		return d.HasZone(ctx, cred, candidate)
 	}, fqdn)
