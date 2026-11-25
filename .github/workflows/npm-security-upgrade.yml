@@ -1,0 +1,36 @@
+name: Verify npm security upgrade
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/npm-security-upgrade.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve security updates
+        working-directory: web
+        run: |
+          npm ci
+          npm install --save-dev vue-tsc@3.3.14
+          npm audit fix --package-lock-only || true
+          npm ci
+          npm run build
+      - name: Audit candidate
+        working-directory: web
+        run: npm audit --audit-level=moderate
+      - name: Upload candidate dependency files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-security-candidate
+          path: |
+            web/package.json
+            web/package-lock.json
+          if-no-files-found: error

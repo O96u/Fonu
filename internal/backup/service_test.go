@@ -247,3 +247,15 @@ func TestRecoverInterruptedRestore(t *testing.T) {
 	}
 	if err := recoverRestore(dir); err != nil { t.Fatal(err) }
 }
+
+func TestRejectAliasedArchivePath(t *testing.T) {
+	if _,err := safeJoin(t.TempDir(),"certs/../fonu.db"); err == nil { t.Fatal("accepted aliased database path") }
+}
+
+func TestRecoverEmptyRollbackDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir,restoreRollbackName)
+	if err := os.Mkdir(path,0700); err != nil { t.Fatal(err) }
+	if err := recoverRestore(dir); err != nil { t.Fatal(err) }
+	if _,err := os.Stat(path); !os.IsNotExist(err) { t.Fatal("orphan directory remains") }
+}

@@ -42,10 +42,9 @@ ensure_runtime_dirs() {
     "${TRIM_PKGVAR}/cache/fastcgi_temp" \
     "${TRIM_PKGVAR}/cache/uwsgi_temp" \
     "${TRIM_PKGVAR}/cache/scgi_temp" \
-    "${TRIM_PKGVAR}/nginx" \
     "${TRIM_PKGVAR}/frp" \
-    "${TRIM_PKGVAR}/logs" \
-    "${TRIM_PKGVAR}/certs"
+    "${TRIM_PKGVAR}/logs"
+  # Go creates nginx/certs after recovering any interrupted restore.
   seed_bundled_geo
   mkdir -p "${APP_ROOT}/shares/etc/modules" 2>/dev/null || true
   mkdir -p "${APP_ROOT}/shares/fonu/etc" "${APP_ROOT}/shares/fonu/www" "${APP_ROOT}/shares/fonu/certs" 2>/dev/null || true
@@ -143,7 +142,7 @@ start_app() {
   cd "${TRIM_APPDEST}"
   nohup "$APP_BIN" >>"$LOG_FILE" 2>&1 &
   echo "$!" >"$PID_FILE"
-  admin_port="${FONU_ADMIN_PORT:-6893}"
+  admin_port="${FONU_LISTEN##*:}"
   ready=0
   count=0
   while [ "$count" -lt 40 ]; do

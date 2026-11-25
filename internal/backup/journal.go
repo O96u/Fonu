@@ -62,7 +62,12 @@ func validRestoreMove(dir string,m restoreMove) bool {
 func recoverRestore(dir string) error {
 	path := filepath.Join(dir,restoreJournalName)
 	raw,err := os.ReadFile(path)
-	if os.IsNotExist(err) { return nil }; if err != nil { return err }
+	if os.IsNotExist(err) {
+		// A crash between mkdir and the first durable journal leaves only an empty directory.
+		rollback := filepath.Join(dir,restoreRollbackName)
+		if err := os.Remove(rollback); err != nil && !os.IsNotExist(err) { return fmt.Errorf("orphan restore recovery directory: %w",err) }
+		return nil
+	}; if err != nil { return err }
 	var j restoreJournal
 	if err := json.Unmarshal(raw,&j); err != nil { return err }
 	for _,m := range j.Moves { if !validRestoreMove(dir,m) { return fmt.Errorf("invalid restore journal move") } }

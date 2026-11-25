@@ -115,6 +115,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 	wroteDB := false
 	var total int64
 	count := 0
+	seen := make(map[string]bool)
 	for {
 		if err := ctx.Err(); err != nil {
 			_ = os.RemoveAll(stage)
@@ -145,6 +146,8 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 			_ = os.RemoveAll(stage)
 			return err
 		}
+		if seen[target] { return fmt.Errorf("备份包含重复条目") }
+		seen[target] = true
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -166,6 +169,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 				_ = os.RemoveAll(stage)
 				return err
 			}
+			if err := out.Sync(); err != nil { out.Close(); return err }
 			if err := out.Close(); err != nil {
 				_ = os.RemoveAll(stage)
 				return err
@@ -176,7 +180,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 		}
 	}
 	// Consume the gzip footer to verify its checksum, even after tar EOF.
-	if _, err := io.Copy(io.Discard, io.LimitReader(gr, 1<<20)); err != nil { return err }
+	if n, err := io.Copy(io.Discard, io.LimitReader(gr, (1<<20)+1)); err != nil { return err } else if n > 1<<20 { return fmt.Errorf("备份包含过多尾部数据") }
 	if !wroteDB {
 		_ = os.RemoveAll(stage)
 		return fmt.Errorf("备份里没有数据库")
@@ -214,7 +218,9 @@ func allowedEntry(name string) bool {
 }
 
 func safeJoin(root, name string) (string, error) {
-	cleaned := filepath.Clean(filepath.FromSlash(name))
+	normalized := strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(name), "./"), "/")
+	cleaned := filepath.Clean(filepath.FromSlash(normalized))
+	if filepath.ToSlash(cleaned) != normalized { return "", fmt.Errorf("备份条目路径非规范") }
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) || filepath.IsAbs(cleaned) {
 		return "", fmt.Errorf("备份条目非法")
 	}
@@ -255,16 +261,10 @@ func addDatabaseSnapshot(ctx context.Context, tw *tar.Writer, dataDir string) er
 		}
 		return err
 	}
-	tmp, err := os.CreateTemp("", "fonu-export-*.db")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	tmp.Close()
-	if err := os.Remove(tmpPath); err != nil {
-		return err
-	}
-	defer os.Remove(tmpPath)
+	tmp, err := os.MkdirTemp("", "fonu-export-*")
+	if err != nil { return err }
+	defer os.RemoveAll(tmp)
+	tmpPath := filepath.Join(tmp,"fonu.db")
 	if err := db.Snapshot(src, tmpPath); err != nil {
 		return err
 	}
