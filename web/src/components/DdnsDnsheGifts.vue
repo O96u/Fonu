@@ -43,7 +43,7 @@
                   quaternary
                   type="error"
                   :loading="cancellingId === row.id"
-                  @click="cancelGift(row)"
+                  @click="confirmCancelGift(row)"
                 >
                   取消
                 </n-button>
@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NButton, NIcon, NSpin, useMessage } from 'naive-ui'
+import { NButton, NIcon, NSpin, useDialog, useMessage } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import { api } from '../api/client'
 import type { DNSHEAccount, DNSHEGift } from '../api/types'
@@ -73,6 +73,7 @@ const props = defineProps<{
 }>()
 
 const message = useMessage()
+const dialog = useDialog()
 const gifts = ref<DNSHEGift[]>([])
 const loading = ref(false)
 const cancellingId = ref<number | null>(null)
@@ -104,6 +105,17 @@ async function loadGifts() {
   } finally {
     loading.value = false
   }
+}
+
+function confirmCancelGift(row: DNSHEGift) {
+  dialog.error({
+    title: '取消转赠',
+    content: `确定取消 ${row.full_domain} 的转赠吗？该转赠码将失效。`,
+    positiveText: '确认取消',
+    negativeText: '返回',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: () => cancelGift(row),
+  })
 }
 
 async function cancelGift(row: DNSHEGift) {

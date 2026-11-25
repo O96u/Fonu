@@ -185,9 +185,6 @@ func accountView(r accountRecord) Account {
 // CreateAccount 添加账户并立即验证凭据有效性。
 func (s *Service) CreateAccount(ctx context.Context, in AccountInput) (*Account, error) {
 	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		name = "DNSHE 账户"
-	}
 	apiKey := strings.TrimSpace(in.APIKey)
 	apiSecret := strings.TrimSpace(in.APISecret)
 	if apiKey == "" || apiSecret == "" {
@@ -206,6 +203,20 @@ func (s *Service) CreateAccount(ctx context.Context, in AccountInput) (*Account,
 		return nil, err
 	}
 
+	if name == "" {
+		name = "DNSHE 账户"
+		for n := 2; ; n++ {
+			exists := false
+			for _, existing := range records {
+				if strings.TrimSpace(existing.Name) == name { exists = true; break }
+			}
+			if !exists { break }
+			name = fmt.Sprintf("DNSHE 账户 %d", n)
+		}
+	}
+	for _, existing := range records {
+		if strings.TrimSpace(existing.Name) == name { return nil, fmt.Errorf("名称已存在，请使用其他名称") }
+	}
 	rec := accountRecord{
 		ID: newAccountID(), Name: name, AutoRenew: in.AutoRenew,
 		SortOrder: len(records),

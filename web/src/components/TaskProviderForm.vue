@@ -1,14 +1,14 @@
 <template>
   <div class="provider-form">
     <div class="provider-form__head">
-      <span class="provider-form__title">{{ editing ? '编辑服务商' : '添加服务商' }}</span>
+      <span class="provider-form__title">{{ editing ? '编辑配置' : '添加服务商' }}</span>
     </div>
 
     <div class="provider-form__field">
-      <label class="provider-form__label">{{ form.provider === 'dnshe' ? '账户名称' : '名称' }}</label>
+      <label class="provider-form__label">名称（选填）</label>
       <n-input
         v-model:value="form.remark"
-        :placeholder="form.provider === 'dnshe' ? '例如：主账户' : '选填，便于区分多个任务'"
+        placeholder="选填，便于区分多个任务"
         size="small"
       />
     </div>

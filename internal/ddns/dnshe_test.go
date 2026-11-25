@@ -1,6 +1,9 @@
 package ddns
 
-import "testing"
+import (
+ "encoding/json"
+ "testing"
+)
 
 func TestDNSHEFQDN(t *testing.T) {
 	cases := []struct {
@@ -29,5 +32,19 @@ func TestDNSHERecordNameParam(t *testing.T) {
 	}
 	if got := dnsheRecordNameParam("example.cc.cd", "nas.example.cc.cd"); got != "nas" {
 		t.Errorf("sub record name param = %q, want relative name", got)
+	}
+}
+
+func TestDNSHEGiftResponse(t *testing.T) {
+	for _, raw := range []string{
+		`{"success":true,"code":"test-code","full_domain":"example.cc.cd"}`,
+		`{"success":true,"data":{"code":"test-code","full_domain":"example.cc.cd"}}`,
+		`{"success":true,"gift":{"code":"test-code","full_domain":"example.cc.cd"}}`,
+		`{"success":true,"data":{"gift":{"code":"test-code","full_domain":"example.cc.cd"}}}`,
+	} {
+		var response dnsheGiftResponse
+		if err := json.Unmarshal([]byte(raw), &response); err != nil { t.Fatal(err) }
+		gift := response.result()
+		if gift.Code != "test-code" || gift.FullDomain != "example.cc.cd" { t.Fatal("gift fields missing") }
 	}
 }

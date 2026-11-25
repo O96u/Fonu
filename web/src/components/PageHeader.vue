@@ -1,7 +1,6 @@
 <template>
   <div class="page-header">
     <div class="page-header__main">
-      <div class="page-header__eyebrow">工作空间</div>
       <h1 class="page-header__title">{{ title }}</h1>
       <p v-if="description" class="page-header__desc">{{ description }}</p>
     </div>
@@ -53,6 +52,5 @@ defineProps<{
   flex-wrap: wrap;
 }
 .page-header__main { min-width: 0; flex: 1 1 220px; }
-.page-header__eyebrow { color: var(--fonu-brand-text); font-size: 11px; font-weight: 600; letter-spacing: .08em; margin-bottom: 5px; }
 @media (max-width: 760px) { .page-header__title { font-size: 24px; } .page-header__desc { font-size: 13px; } .page-header { gap: 12px; } }
 </style>

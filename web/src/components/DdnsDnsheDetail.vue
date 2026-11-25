@@ -88,7 +88,8 @@
                   <n-button
                     size="tiny"
                     quaternary
-                    :disabled="!row.renewable"
+                    :disabled="!row.renewable || (row.days_left != null && row.days_left > 180)"
+                    :title="row.days_left != null && row.days_left > 180 ? '尚未进入续期窗口（按现有自动续期策略，剩余 180 天内检查）' : '续期'"
                     :loading="renewingId === row.id"
                     @click="renewDomain(row)"
                   >
@@ -131,8 +132,8 @@
     <!-- 账户编辑 -->
     <n-modal v-model:show="accountModal.show" preset="card" style="width: 480px" :title="accountModal.editing ? '编辑账户' : '添加账户'">
       <n-form label-placement="top">
-        <n-form-item label="账户名称">
-          <n-input v-model:value="accountModal.name" placeholder="例如：主账户" />
+        <n-form-item label="名称（选填）">
+          <n-input v-model:value="accountModal.name" placeholder="选填，便于区分多个任务" />
         </n-form-item>
         <n-form-item label="API Key">
           <n-input v-model:value="accountModal.apiKey" type="password" show-password-on="click"
@@ -331,10 +332,6 @@ function openEditAccount(account: DNSHEAccount = props.account) {
 }
 
 async function saveAccount() {
-  if (!accountModal.name.trim()) {
-    message.warning('请填写账户名称')
-    return
-  }
   if (!accountModal.editing && (!accountModal.apiKey.trim() || !accountModal.apiSecret.trim())) {
     message.warning('请填写 API Key 和 API Secret')
     return
@@ -361,11 +358,12 @@ async function saveAccount() {
 }
 
 function confirmDeleteAccount(account: DNSHEAccount) {
-  dialog.warning({
+  dialog.error({
     title: '删除账户',
     content: `确定删除账户「${account.name}」吗？仅删除本地保存的凭据，不影响 DNSHE 线上域名。`,
     positiveText: '删除',
     negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
     onPositiveClick: async () => {
       try {
         await api.deleteDNSHEAccount(account.id)
@@ -525,18 +523,21 @@ async function renewDomain(row: DNSHEDomain) {
     await loadDetail()
     notifyDomainsChanged()
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '续期失败')
+    const msg = e instanceof Error ? e.message : '续期失败'
+    if (msg.includes('renewal_not_yet_available')) message.info('尚未进入 DNSHE 续期窗口，无需提前续期。已开启的自动续期将按计划检查。')
+    else message.error(msg)
   } finally {
     renewingId.value = null
   }
 }
 
 function confirmDeleteDomain(row: DNSHEDomain) {
-  dialog.warning({
+  dialog.error({
     title: '删除域名',
     content: `确定删除域名「${row.full_domain}」吗？域名及其 DNS 记录将被永久删除，无法恢复。`,
     positiveText: '删除',
     negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
     onPositiveClick: () => deleteDomain(row),
   })
 }
@@ -559,9 +560,20 @@ async function giftDomain(row: DNSHEDomain) {
   giftingId.value = row.id
   try {
     const gift = await api.initiateDNSHEGift(selectedId.value, row.id)
-    giftModal.code = gift.code
-    giftModal.domain = gift.full_domain
-    giftModal.expiresAt = gift.expires_at ?? ''
+    let resolved = gift
+    if (!resolved.code) {
+      const gifts = await api.listDNSHEGifts(selectedId.value)
+      const matches = gifts.filter(g => g.status === 'pending' && g.full_domain.toLowerCase() === row.full_domain.toLowerCase() && g.code)
+      if (matches.length === 1 && matches[0]) resolved = matches[0]
+    }
+    if (!resolved.code) {
+      emit('gifts-changed')
+      message.warning('转赠请求已返回，请在 Gift 管理中刷新查看转赠码，勿重复发起。')
+      return
+    }
+    giftModal.code = resolved.code
+    giftModal.domain = resolved.full_domain || row.full_domain
+    giftModal.expiresAt = resolved.expires_at ?? ''
     giftModal.show = true
     await loadDetail()
     emit('gifts-changed')

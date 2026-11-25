@@ -41,23 +41,25 @@ func (d *DNSHE) DeleteSubdomain(ctx context.Context, cred Credentials, subdomain
 // InitiateGift 生成转赠码。域名注册未满 30 天时返回 422。
 func (d *DNSHE) InitiateGift(ctx context.Context, cred Credentials, subdomainID int64) (*Gift, error) {
 	payload := map[string]any{"subdomain_id": subdomainID}
-	var gift Gift
-	if err := d.call(ctx, cred, http.MethodPost, "gifts", "initiate", nil, payload, &gift); err != nil {
+	var resp dnsheGiftResponse
+	if err := d.call(ctx, cred, http.MethodPost, "gifts", "initiate", nil, payload, &resp); err != nil {
 		return nil, err
 	}
+	gift := resp.result()
 	return &gift, nil
 }
 
 // AcceptGift 凭转赠码接收域名。
 func (d *DNSHE) AcceptGift(ctx context.Context, cred Credentials, code string) (*Gift, error) {
 	payload := map[string]any{"code": strings.TrimSpace(code)}
-	var gift Gift
-	if err := d.call(ctx, cred, http.MethodPost, "gifts", "accept", nil, payload, &gift); err != nil {
+	var resp dnsheGiftResponse
+	if err := d.call(ctx, cred, http.MethodPost, "gifts", "accept", nil, payload, &resp); err != nil {
 		return nil, err
 	}
 	d.cacheMu.Lock()
 	delete(d.cache, cred.Token)
 	d.cacheMu.Unlock()
+	gift := resp.result()
 	return &gift, nil
 }
 
@@ -75,6 +77,32 @@ func (d *DNSHE) ListGifts(ctx context.Context, cred Credentials) ([]Gift, error)
 		return nil, err
 	}
 	return resp.Gifts, nil
+}
+
+// DNSHE mutation responses may wrap the gift in data or gift.
+type dnsheGiftResponse struct {
+	Gift
+	Data *struct {
+		Gift
+		Nested *Gift `json:"gift"`
+	} `json:"data"`
+	Nested *Gift `json:"gift"`
+}
+
+func (r dnsheGiftResponse) result() Gift {
+	result := r.Gift
+	for _, g := range []*Gift{r.Nested, func() *Gift { if r.Data != nil { return &r.Data.Gift }; return nil }(), func() *Gift { if r.Data != nil { return r.Data.Nested }; return nil }()} {
+		if g == nil { continue }
+		if result.ID == 0 { result.ID = g.ID }
+		if result.Code == "" { result.Code = g.Code }
+		if result.FullDomain == "" { result.FullDomain = g.FullDomain }
+		if result.Status == "" { result.Status = g.Status }
+		if result.ExpiresAt == "" { result.ExpiresAt = g.ExpiresAt }
+		if result.CreatedAt == "" { result.CreatedAt = g.CreatedAt }
+		if result.FromUserID == 0 { result.FromUserID = g.FromUserID }
+		if result.ToUserID == 0 { result.ToUserID = g.ToUserID }
+	}
+	return result
 }
 
 type dnsheGiftsResponse struct {
