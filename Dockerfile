@@ -58,6 +58,6 @@ EXPOSE 6893 80 443
 
 VOLUME ["/data"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -fsS --max-time 3 "http://127.0.0.1:${FONU_LISTEN##*:}/healthz" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD if [ -n "$FONU_TLS_CERT_FILE" ] || [ -n "$FONU_TLS_KEY_FILE" ]; then curl -fkSs --noproxy "*" --max-time 3 "https://127.0.0.1:${FONU_LISTEN##*:}/healthz"; else curl -fsS --noproxy "*" --max-time 3 "http://127.0.0.1:${FONU_LISTEN##*:}/healthz"; fi
 
 CMD ["/app/fonu"]

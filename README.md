@@ -193,6 +193,35 @@ FONU_SESSION_SECRET=your-secret docker compose up -d --build
 
 </details>
 
+### Docker 管理后台 HTTPS
+
+默认仍为 HTTP。需要原生 HTTPS 时，将已有 PEM 证书链（fullchain.pem）和对应私钥（privkey.pem）只读挂载至容器，并同时配置两个环境变量。无需新增反向代理规则。
+
+```bash
+docker run -d \
+  --name fonu \
+  --net=host \
+  -v ./data:/data \
+  -v ./console-tls:/console-tls:ro \
+  -e FONU_TLS_CERT_FILE=/console-tls/fullchain.pem \
+  -e FONU_TLS_KEY_FILE=/console-tls/privkey.pem \
+  --restart unless-stopped \
+  muxui/fonu:latest
+```
+
+使用 Compose 时，在原有 `volumes` 列表中增加 `./console-tls:/console-tls:ro`，并在 `.env` 中设置：
+
+```dotenv
+FONU_TLS_CERT_FILE=/console-tls/fullchain.pem
+FONU_TLS_KEY_FILE=/console-tls/privkey.pem
+```
+
+重新创建容器后，访问 `https://你的证书域名:6893`（或 FONU_LISTEN 指定的端口）。同一管理端口不再接受普通 HTTP，业务反代 18080/9443 不受影响。TLS 最低版本为 1.2，登录 Cookie 自动使用 Secure。证书必须匹配访问域名或 IP，客户端必须信任签发者；自签名证书不会自动获得浏览器信任。
+
+只配置一个文件、文件不可读或证书私钥不匹配时，程序拒绝启动，不会回退到 HTTP。替换/续期证书后需重启容器以加载新证书。本地容器健康检查使用 HTTPS 时仅探测服务存活，不校验回环地址证书域名。
+
+已有容器升级时保留原有数据卷及密钥配置，不要删除数据卷。未配置上述两个变量的 Docker/FPK 用户无需调整。
+
 ### 从 Docker 迁到 FPK
 
 1. 停 Docker 版，安装 FPK，将原 volume **`/data` 内容复制到** `/var/apps/fonu/var/`。
@@ -259,6 +288,8 @@ vhostHTTPSPort = 443
 | 变量                    | 默认值                    | 说明                                       |
 | ----------------------- | ------------------------- | ------------------------------------------ |
 | `FONU_LISTEN`           | `:6893`                   | 管理后台监听地址                           |
+| `FONU_TLS_CERT_FILE` | 空 | 管理后台 HTTPS PEM 证书链路径 |
+| `FONU_TLS_KEY_FILE` | 空 | 管理后台 HTTPS PEM 私钥路径 |
 | `FONU_DATA_DIR`         | `/data`                   | 数据目录（数据库、Nginx 配置、证书、日志） |
 | `FONU_SESSION_SECRET`   | `change-me-in-production` | 会话加密密钥，生产环境请自行修改           |
 | `FONU_NGINX_HTTP_PORT`  | `80`                      | 新建 HTTP 反代规则的默认监听端口           |

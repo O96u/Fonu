@@ -51,6 +51,8 @@ type App struct {
 }
 
 func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) {
+	tlsConfig, err := consoleTLSConfig(cfg)
+	if err != nil { return nil, err }
 	appLogWriter := logstore.NewAppLogWriter(cfg.LogsDir())
 	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, appLogWriter), &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -159,6 +161,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	})
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
+		TLSConfig: tlsConfig,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout: 60 * time.Second,
@@ -266,7 +269,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		logger.Warn("initial frpc bootstrap skipped", "module", "FRP", "error", err.Error())
 	}
 
-	logger.Info("application started", "module", "SYSTEM", "listen", cfg.ListenAddr)
+	logger.Info("application started", "module", "SYSTEM", "listen", cfg.ListenAddr, "https", tlsConfig != nil)
 	return app, nil
 }
 
@@ -278,6 +281,9 @@ func (a *App) bootstrapNginx(ctx context.Context, proxySvc *service.ProxyService
 }
 
 func (a *App) Run() error {
+	if a.server.TLSConfig != nil {
+		return a.server.ListenAndServeTLS("", "")
+	}
 	return a.server.ListenAndServe()
 }
 

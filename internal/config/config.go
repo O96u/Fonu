@@ -9,6 +9,8 @@ import (
 
 type Config struct {
 	ListenAddr            string
+	TLSCertFile string
+	TLSKeyFile string
 	DataDir               string
 	SessionSecret         string
 	NginxBin              string
@@ -27,6 +29,8 @@ func Load() Config {
 	}
 	return Config{
 		ListenAddr:            envOr("FONU_LISTEN", ":6893"),
+		TLSCertFile: os.Getenv("FONU_TLS_CERT_FILE"),
+		TLSKeyFile: os.Getenv("FONU_TLS_KEY_FILE"),
 		DataDir:               dataDir,
 		SessionSecret:         os.Getenv("FONU_SESSION_SECRET"),
 		NginxBin:              envOr("FONU_NGINX_BIN", "nginx"),
