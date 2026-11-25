@@ -150,3 +150,25 @@ func TestConcurrentSetupAndPasswordRevocation(t *testing.T) {
 	if err := svc.ValidateSession(ctx, token); err != ErrUnauthorized { t.Fatalf("old session still valid: %v", err) }
 	if _, err := svc.Login(ctx, user, "newpassword123"); err != nil { t.Fatal(err) }
 }
+
+func TestSessionDigestAndCleanup(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "fonu.db"))
+	if err != nil { t.Fatal(err) }
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn, filepath.Join("..", "..", "migrations")); err != nil { t.Fatal(err) }
+	svc := New(conn)
+	if err := svc.Setup(ctx, "admin", "password123"); err != nil { t.Fatal(err) }
+	token, err := svc.Login(ctx, "admin", "password123")
+	if err != nil { t.Fatal(err) }
+	var stored string
+	if err := conn.QueryRow("SELECT id FROM sessions").Scan(&stored); err != nil { t.Fatal(err) }
+	if stored == token || stored != sessionDigest(token) { t.Fatal("session token not digested") }
+	if err := svc.ValidateSession(ctx, stored); err != ErrUnauthorized { t.Fatal("database digest accepted as bearer token") }
+	if err := svc.ValidateSession(ctx, token); err != nil { t.Fatal(err) }
+	if _, err := conn.Exec("UPDATE sessions SET expires_at = '2000-01-01T00:00:00Z'"); err != nil { t.Fatal(err) }
+	if _, err := svc.AdminIDForSession(ctx, token); err != ErrUnauthorized { t.Fatal("expired session accepted") }
+	svc.CleanupSessions(ctx)
+	var count int
+	if err := conn.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count); err != nil || count != 0 { t.Fatalf("cleanup: count=%d err=%v", count, err) }
+}

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -108,9 +109,12 @@ func (s *Service) upsertAdmin(ctx context.Context, username, password string, lo
 	if err := s.db.QueryRowContext(ctx, `SELECT id FROM admins ORDER BY id LIMIT 1`).Scan(&adminID); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE admins SET username = ?, password_hash = ? WHERE id = ?`, username, string(hash), adminID); err != nil {
-		return err
-	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE admins SET username = ?, password_hash = ? WHERE id = ?`, username, string(hash), adminID); err != nil { return err }
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE admin_id = ?`, adminID); err != nil { return err }
+	if err := tx.Commit(); err != nil { return err }
 	log.Info("已按安装向导更新管理员账号", "module", "SYSTEM", "username", username)
 	return nil
 }
@@ -157,7 +161,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return "", ErrUnauthorized
 	}
-	return s.createSession(ctx, adminID)
+	return s.createSession(ctx, adminID, hash)
 }
 
 func (s *Service) AdminIDForSession(ctx context.Context, sessionID string) (int, error) {
@@ -165,7 +169,7 @@ func (s *Service) AdminIDForSession(ctx context.Context, sessionID string) (int,
 		return 0, ErrUnauthorized
 	}
 	var adminID int
-	err := s.db.QueryRowContext(ctx, `SELECT admin_id FROM sessions WHERE id = ?`, sessionID).Scan(&adminID)
+	err := s.db.QueryRowContext(ctx, `SELECT admin_id FROM sessions WHERE id = ? AND expires_at > ?`, sessionDigest(sessionID), time.Now().UTC().Format(time.RFC3339)).Scan(&adminID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrUnauthorized
@@ -240,7 +244,7 @@ func (s *Service) ChangeUsername(ctx context.Context, adminID int, password, new
 }
 
 func (s *Service) Logout(ctx context.Context, sessionID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionDigest(sessionID))
 	return err
 }
 
@@ -249,7 +253,7 @@ func (s *Service) ValidateSession(ctx context.Context, sessionID string) error {
 		return ErrUnauthorized
 	}
 	var expiresAt string
-	err := s.db.QueryRowContext(ctx, `SELECT expires_at FROM sessions WHERE id = ?`, sessionID).Scan(&expiresAt)
+	err := s.db.QueryRowContext(ctx, `SELECT expires_at FROM sessions WHERE id = ?`, sessionDigest(sessionID)).Scan(&expiresAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUnauthorized
@@ -261,22 +265,23 @@ func (s *Service) ValidateSession(ctx context.Context, sessionID string) error {
 		return ErrUnauthorized
 	}
 	if time.Now().After(expires) {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionDigest(sessionID))
 		return ErrUnauthorized
 	}
 	return nil
 }
 
-func (s *Service) createSession(ctx context.Context, adminID int) (string, error) {
+func (s *Service) createSession(ctx context.Context, adminID int, verifiedHash string) (string, error) {
 	id, err := randomToken(32)
 	if err != nil {
 		return "", err
 	}
 	expires := time.Now().Add(sessionTTL).UTC().Format(time.RFC3339)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(id, admin_id, expires_at) VALUES (?, ?, ?)`, id, adminID, expires)
-	if err != nil {
-		return "", err
-	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO sessions(id, admin_id, expires_at) SELECT ?, id, ? FROM admins WHERE id = ? AND password_hash = ?`, sessionDigest(id), expires, adminID, verifiedHash)
+	if err != nil { return "", err }
+	n, err := result.RowsAffected()
+	if err != nil { return "", err }
+	if n != 1 { return "", ErrUnauthorized }
 	return id, nil
 }
 
@@ -288,3 +293,15 @@ func randomToken(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+
+// The prefix distinguishes digests from legacy plaintext tokens in restored databases.
+func sessionDigest(token string) string {
+	digest := sha256.Sum256([]byte(token))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func (s *Service) CleanupSessions(ctx context.Context) {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC().Format(time.RFC3339)); err != nil && ctx.Err() == nil {
+		slog.Warn("session cleanup failed", "error", err)
+	}
+}

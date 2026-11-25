@@ -4,53 +4,75 @@ import (
 	"context"
 	"log/slog"
 	"runtime/debug"
+	"sync"
 	"time"
 )
 
 type Job struct {
-	Name       string
-	Interval   time.Duration
+	Name string
+	Interval time.Duration
 	IntervalOf func(ctx context.Context) time.Duration
-	Run        func(ctx context.Context)
+	Timeout time.Duration
+	Run func(ctx context.Context)
 }
 
 type Scheduler struct {
 	jobs []Job
+	once sync.Once
+	done chan struct{}
 }
 
 func New(jobs ...Job) *Scheduler {
-	return &Scheduler{jobs: jobs}
+	return &Scheduler{jobs: jobs, done: make(chan struct{})}
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
-	for _, job := range s.jobs {
-		go s.runJob(ctx, job)
+	s.once.Do(func() {
+		var wg sync.WaitGroup
+		for _, job := range s.jobs {
+			wg.Add(1)
+			go func(job Job) {
+				defer wg.Done()
+				s.runJob(ctx, job)
+			}(job)
+		}
+		go func() { wg.Wait(); close(s.done) }()
+	})
+}
+
+func (s *Scheduler) Wait(ctx context.Context) error {
+	select {
+	case <-s.done: return nil
+	case <-ctx.Done(): return ctx.Err()
 	}
 }
 
 func (s *Scheduler) runJob(ctx context.Context, job Job) {
-	for {
-		if ctx.Err() != nil { return }
+	for ctx.Err() == nil {
+		interval := job.Interval
 		func() {
 			defer func() {
-				if p := recover(); p != nil { slog.Error("scheduled job panicked", "job", job.Name, "panic", p, "stack", string(debug.Stack())) }
+				if p := recover(); p != nil {
+					slog.Error("scheduled job panicked", "job", job.Name, "panic", p, "stack", string(debug.Stack()))
+				}
 			}()
-			job.Run(ctx)
-		}()
-		interval := job.Interval
-		if job.IntervalOf != nil {
-			if d := job.IntervalOf(ctx); d > 0 {
-				interval = d
+			runCtx := ctx
+			cancel := func() {}
+			if job.Timeout > 0 { runCtx, cancel = context.WithTimeout(ctx, job.Timeout) }
+			defer cancel()
+			if job.Run != nil { job.Run(runCtx) }
+			if runCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+				slog.Warn("scheduled job deadline exceeded", "job", job.Name)
 			}
-		}
-		if interval <= 0 {
-			interval = time.Minute
-		}
+			if ctx.Err() == nil && job.IntervalOf != nil {
+				if d := job.IntervalOf(ctx); d > 0 { interval = d }
+			}
+		}()
+		if ctx.Err() != nil { return }
+		if interval <= 0 { interval = time.Minute }
 		timer := time.NewTimer(interval)
 		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
+		case <-ctx.Done(): timer.Stop(); return
 		case <-timer.C:
 		}
 	}

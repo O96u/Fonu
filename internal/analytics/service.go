@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -148,12 +149,17 @@ type StatusRow struct {
 
 func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, error) {
 	rangeKey = awareness.NormalizeRange(rangeKey)
+	loc, tz := s.location(ctx)
+	excludePrivate := false
+	if s.settings != nil { excludePrivate, _ = s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs) }
+	cacheKey := rangeKey + "|" + tz + "|" + strconv.FormatBool(excludePrivate)
 	s.overviewMu.Lock()
-	if item, ok := s.overviewCache[rangeKey]; ok && time.Since(item.at) < overviewCacheTTL {
+	for key, item := range s.overviewCache { if time.Since(item.at) >= overviewCacheTTL { delete(s.overviewCache, key) } }
+	if item, ok := s.overviewCache[cacheKey]; ok && time.Since(item.at) < overviewCacheTTL {
 		s.overviewMu.Unlock()
 		return item.ov, nil
 	}
-	if call, ok := s.overviewFlight[rangeKey]; ok {
+	if call, ok := s.overviewFlight[cacheKey]; ok {
 		s.overviewMu.Unlock()
 		select {
 		case <-call.done:
@@ -166,40 +172,35 @@ func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, erro
 	if s.overviewFlight == nil {
 		s.overviewFlight = map[string]*overviewCall{}
 	}
-	s.overviewFlight[rangeKey] = call
+	s.overviewFlight[cacheKey] = call
 	s.overviewMu.Unlock()
 
-	ov, err := s.computeOverview(ctx, rangeKey)
+	ov, err := s.computeOverview(ctx, rangeKey, loc, tz, excludePrivate)
 
 	s.overviewMu.Lock()
 	if err == nil {
 		if s.overviewCache == nil {
 			s.overviewCache = map[string]overviewCacheItem{}
 		}
-		s.overviewCache[rangeKey] = overviewCacheItem{at: time.Now(), ov: ov}
+		s.overviewCache[cacheKey] = overviewCacheItem{at: time.Now(), ov: ov}
 	}
 	call.ov, call.err = ov, err
-	delete(s.overviewFlight, rangeKey)
+	delete(s.overviewFlight, cacheKey)
 	close(call.done)
 	s.overviewMu.Unlock()
 	return ov, err
 }
 
-func (s *Service) computeOverview(ctx context.Context, rangeKey string) (Overview, error) {
+func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *time.Location, tz string, excludePrivate bool) (Overview, error) {
 	rangeKey = awareness.NormalizeRange(rangeKey)
-	loc, tz := s.location(ctx)
 	now := time.Now().In(loc)
 	period := awareness.PeriodForRange(rangeKey, now, loc)
 	start := period.Start.UTC().Format(time.RFC3339)
 	end := period.End.UTC().Format(time.RFC3339)
 
-	excludePrivate := false
-	if s.settings != nil {
-		excludePrivate, _ = s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs)
-	}
 	ipFilter := ""
 	if excludePrivate {
-		ipFilter = ` AND client_ip NOT IN ('127.0.0.1','::1') AND client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip NOT GLOB '172.[16-31].*' `
+		ipFilter = privateIPSQL
 	}
 
 	out := Overview{
@@ -376,7 +377,7 @@ func (s *Service) LiveSnapshot(ctx context.Context, rangeKey string) (awareness.
 	}, nil
 }
 
-const privateIPSQL = ` AND client_ip NOT IN ('127.0.0.1','::1') AND client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip NOT GLOB '172.[16-31].*' `
+const privateIPSQL = ` AND client_ip NOT IN ('127.0.0.1','::1') AND client_ip NOT LIKE '10.%' AND client_ip NOT LIKE '192.168.%' AND client_ip NOT GLOB '172.1[6-9].*' AND client_ip NOT GLOB '172.2[0-9].*' AND client_ip NOT GLOB '172.3[01].*' `
 
 func (s *Service) location(ctx context.Context) (*time.Location, string) {
 	tz := settings.DefaultTimezone

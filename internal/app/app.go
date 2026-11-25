@@ -173,8 +173,10 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		chinaHours = 24
 	}
 	sched := scheduler.New(
+		scheduler.Job{Name: "session_cleanup", Interval: time.Hour, Timeout: 30*time.Second, Run: authSvc.CleanupSessions},
 		scheduler.Job{
 			Name:     "ddns",
+			Timeout: 2 * time.Minute,
 			Interval: time.Duration(intervalMinutes) * time.Minute,
 			IntervalOf: func(ctx context.Context) time.Duration {
 				m, _ := settingsStore.GetInt(ctx, settings.KeyDDNSCheckInterval)
@@ -187,11 +189,13 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		},
 		scheduler.Job{
 			Name:     "acme",
+			Timeout: 30 * time.Minute,
 			Interval: 24 * time.Hour,
 			Run:      acmeSvc.Tick,
 		},
 		scheduler.Job{
 			Name:     "china_cidr",
+			Timeout: 5 * time.Minute,
 			Interval: time.Duration(chinaHours) * time.Hour,
 			IntervalOf: func(ctx context.Context) time.Duration {
 				h, _ := settingsStore.GetInt(ctx, settings.KeyChinaCIDRUpdateHours)
@@ -204,6 +208,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		},
 		scheduler.Job{
 			Name:     "dnshe_renew",
+			Timeout: 5 * time.Minute,
 			Interval: 24 * time.Hour,
 			Run:      dnsheRenewSvc.Tick,
 		},
@@ -273,6 +278,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 	if err := a.server.Shutdown(ctx); err != nil {
 		return err
+	}
+	if a.scheduler != nil {
+		if err := a.scheduler.Wait(ctx); err != nil { return fmt.Errorf("wait for scheduler: %w", err) }
 	}
 	if err := a.nginx.Stop(ctx); err != nil {
 		a.logger.Error("nginx stop failed", "module", "NGINX", "error", err.Error())
