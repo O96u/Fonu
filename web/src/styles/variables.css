@@ -1,5 +1,5 @@
 :root {
-  --fonu-brand: #3869c9;
+  --fonu-brand: #10b981;
   --fonu-brand-hover: #305ab0;
   --fonu-brand-soft: #3869c91c;
   --fonu-brand-text: #3869c9;
@@ -44,7 +44,7 @@
 
 html.dark,
 [data-theme='dark'] {
-  --fonu-brand: #8cb4ff;
+  --fonu-brand: #10b981;
   --fonu-success: #65c69b;
   --fonu-brand-soft: #8cb4ff33;
   --fonu-brand-text: #8cb4ff;

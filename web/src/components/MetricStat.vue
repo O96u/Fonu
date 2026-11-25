@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { NSpin } from 'naive-ui'
 
 const props = withDefaults(
   defineProps<{
@@ -10,6 +11,7 @@ const props = withDefaults(
     delta?: number | null
     previous?: string
     compare?: boolean
+    loading?: boolean
   }>(),
   { compare: false, delta: null },
 )
@@ -31,15 +33,16 @@ const deltaClass = computed(() => {
 </script>
 
 <template>
-  <article class="metric">
+  <article class="metric" :aria-busy="loading">
     <div class="metric__label">
       {{ label }}
       <span v-if="hint" class="metric__hint">{{ hint }}</span>
     </div>
     <div class="metric__value">
-      <slot>{{ value }}</slot>
+      <span v-if="loading" class="metric__loading" role="status" :aria-label="label + '正在统计'"><n-spin :size="26" /></span>
+      <slot v-else>{{ value }}</slot>
     </div>
-    <div v-if="compare" class="metric__foot">
+    <div v-if="compare" class="metric__foot" :class="{ 'metric__foot--loading': loading }">
       <span>较昨日</span>
       <span class="metric__delta" :class="deltaClass">{{ deltaText }}</span>
       <span v-if="previous" class="metric__prev">昨日 {{ previous }}</span>
@@ -115,4 +118,7 @@ const deltaClass = computed(() => {
 }
 .metric { box-shadow:var(--fonu-shadow); }
 .metric__label::before { content:''; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--fonu-brand); flex-shrink:0; }
+.metric__value { min-height:1.15em; }
+.metric__loading { display:inline-flex; align-items:center; vertical-align:middle; }
+.metric__foot--loading { visibility:hidden; }
 </style>

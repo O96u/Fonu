@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { darkTheme, type GlobalThemeOverrides } from 'naive-ui'
 
 export const themePresets = [
-  { value: 'brand', label: '品牌青蓝', light: '#087eaa', dark: '#55c9ef' },
+  { value: 'brand', label: '经典品牌绿（V1）', light: '#10b981', dark: '#10b981' },
   { value: 'ice', label: '冰川蓝', light: '#3869c9', dark: '#8cb4ff' },
   { value: 'teal', label: '青蓝绿', light: '#128579', dark: '#5cc7b7' },
   { value: 'forest', label: '经典翠绿', light: '#237d60', dark: '#77c6a5' },
@@ -37,7 +37,9 @@ const palette = computed(() => {
   const preset = themePresets.find(p => p.value === themeAccent.value) ?? themePresets[0]
   const dark = isDark.value
   const brand = dark ? preset.dark : preset.light
-  return { ...surfaces[dark ? 'dark' : 'light'], brand, hover: mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '33' : '1c'), onBrand: dark ? '#171a1f' : '#ffffff', chartSecondary: themeAccent.value === 'purple' ? (dark ? '#55c9ef' : '#087eaa') : (dark ? '#b49af5' : '#7558c6') }
+  const classic = preset.value === 'brand'
+  const brandText = classic ? (dark ? '#6ee7b7' : '#047857') : brand
+  return { ...surfaces[dark ? 'dark' : 'light'], brand, brandText, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: classic || dark ? '#10251e' : '#ffffff', chartSecondary: themeAccent.value === 'purple' ? (dark ? '#55c9ef' : '#087eaa') : (dark ? '#b49af5' : '#7558c6') }
 })
 function mix(hex: string, other: string, amount: number) {
   return '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount) + parseInt(other.slice(i, i + 2), 16) * amount).toString(16).padStart(2, '0')).join('')
@@ -52,8 +54,8 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
     DataTable: { borderRadius: '8px', thColor: p.muted, tdColor: p.surface, borderColor: p.border },
     Tabs: { tabGapMediumLine: '24px', tabPaddingMediumLine: '12px 4px' },
     Layout: { color: p.bg, siderColor: p.muted },
-    Menu: { itemColorActive: p.soft, itemTextColorActive: p.brand, itemIconColorActive: p.brand, itemColorActiveHover: p.soft },
-    Radio: { buttonBorderColorActive: p.brand, buttonTextColorActive: p.brand, buttonColorActive: p.soft, buttonBoxShadowHover: 'none', buttonBoxShadowFocus: 'none' },
+    Menu: { itemColorActive: p.soft, itemTextColorActive: p.brandText, itemIconColorActive: p.brand, itemColorActiveHover: p.soft },
+    Radio: { buttonBorderColorActive: p.brand, buttonTextColorActive: p.brandText, buttonColorActive: p.soft, buttonBoxShadowHover: 'none', buttonBoxShadowFocus: 'none' },
   }
 })
 watch(themeMode, mode => persist('fonu-theme', mode), { flush: 'sync' })
@@ -63,7 +65,7 @@ watch([isDark, palette], ([dark, p]) => {
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.theme = dark ? 'dark' : 'light'
   root.classList.toggle('dark', dark)
-  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brand, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
+  const tokens = { brand: p.brand, 'brand-hover': p.hover, 'brand-soft': p.soft, 'brand-text': p.brandText, 'brand-sidebar': p.brand, 'on-brand': p.onBrand, 'chart-secondary': p.chartSecondary, bg: p.bg, 'bg-muted': p.muted, surface: p.surface, border: p.border, text: p.text, 'text-secondary': p.secondary, 'text-muted': p.subtle }
   for (const [key, value] of Object.entries(tokens)) root.style.setProperty('--fonu-' + key, value)
 }, { immediate: true, flush: 'sync' })
 

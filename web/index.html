@@ -15,7 +15,7 @@
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
         var accent = 'brand';
         try { accent = localStorage.getItem('fonu-accent') || 'brand'; } catch (_) {}
-        var colors = { brand: ['#087eaa','#55c9ef'], ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
+        var colors = { brand: ['#10b981','#10b981'], ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
         document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.brand)[dark ? 1 : 0]);
       })();
     </script>
@@ -25,7 +25,7 @@
       body { margin:0; }
       #fonu-boot { min-height:100vh; display:grid; place-content:center; justify-items:center; gap:16px; font:14px system-ui,sans-serif; text-align:center; }
       #fonu-boot button { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:8px; padding:8px 16px; cursor:pointer; }
-      .boot-spinner { width:32px;height:32px;border:3px solid currentColor;border-color:transparent transparent color-mix(in srgb, var(--boot-brand, #3869c9) 25%, transparent) color-mix(in srgb, var(--boot-brand, #3869c9) 25%, transparent);border-top-color:var(--boot-brand, #3869c9);border-radius:50%;animation:boot-spin .8s linear infinite; }
+      .boot-spinner { width:32px;height:32px;border:3px solid currentColor;border-color:transparent transparent color-mix(in srgb, var(--boot-brand, #10b981) 25%, transparent) color-mix(in srgb, var(--boot-brand, #10b981) 25%, transparent);border-top-color:var(--boot-brand, #10b981);border-radius:50%;animation:boot-spin .8s linear infinite; }
       @keyframes boot-spin { to { transform:rotate(360deg); } }
       @media(prefers-reduced-motion:reduce) { .boot-spinner { animation:none; } }
     </style>

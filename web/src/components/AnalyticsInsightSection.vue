@@ -98,11 +98,10 @@ watch(regionVisitorsAll, () => {
     <div class="insight-section__head">
       <div>
         <h2 class="insight-section__title">{{ sectionTitle || "访问概览" }}</h2>
-        <p class="insight-section__sub">当前展示：{{ displayedLabel }} · 数字、地图及访问趋势使用同一统计范围。</p>
+        <p class="insight-section__sub">{{ loading ? "正在统计所选时间范围，图表暂保留" + displayedLabel + "数据。" : "当前展示：" + displayedLabel + " · 数字、地图及访问趋势使用同一统计范围。" }}</p>
       </div>
       <div class="insight-section__tools">
-        <n-spin v-if="loading" size="small" />
-        <span v-if="loading" role="status" class="insight-wait">正在统计…</span>
+        <span v-if="loading && showKpis === false" role="status" class="insight-wait">正在统计…</span>
         <div class="insight-range" role="tablist" aria-label="时间范围" :aria-busy="loading">
           <button
             v-for="opt in rangeOptions"
@@ -120,12 +119,13 @@ watch(regionVisitorsAll, () => {
       </div>
     </div>
 
-    <div v-if="data && (loading || error || displayedRange !== range)" class="insight-notice" role="status">
+    <div v-if="data && !loading && (error || displayedRange !== range)" class="insight-notice" role="status">
       {{ error ? `更新失败：${error}。仍展示${displayedLabel}数据。` : `正在等待新统计，暂保留${displayedLabel}数据。` }}
       <n-button v-if="error" size="tiny" @click="emit('retry')">重试</n-button>
     </div>
     <div v-if="showKpis !== false" class="insight-kpi-row">
       <MetricStat
+        :loading="loading"
         label="请求"
         :value="data ? (data.kpi.total_requests ?? 0).toLocaleString() : '—'"
         :compare="!!data && displayedRange === 'today'"
@@ -133,6 +133,7 @@ watch(regionVisitorsAll, () => {
         :previous="data ? (data.kpi.yesterday_total ?? 0).toLocaleString() : undefined"
       />
       <MetricStat
+        :loading="loading"
         label="独立 IP"
         :value="data ? (data.kpi.unique_ips ?? 0).toLocaleString() : '—'"
         :compare="!!data && displayedRange === 'today'"
@@ -140,6 +141,7 @@ watch(regionVisitorsAll, () => {
         :previous="data ? (data.kpi.yesterday_unique_ips ?? 0).toLocaleString() : undefined"
       />
       <MetricStat
+        :loading="loading"
         label="拦截"
         :compare="!!data && displayedRange === 'today'"
         :delta="data?.kpi.risk_trend"
@@ -150,6 +152,7 @@ watch(regionVisitorsAll, () => {
         </RouterLink>
       </MetricStat>
       <MetricStat
+        :loading="loading"
         label="疑似扫描"
         :value="data ? (data.funnel.scan_suspected ?? 0).toLocaleString() : '—'"
         :compare="!!data && displayedRange === 'today'"
@@ -196,7 +199,7 @@ watch(regionVisitorsAll, () => {
         </div>
       </div>
     </FonuCard>
-    <FonuCard v-else-if="!data" flush class="insight-panel">
+    <FonuCard v-else-if="!data && (!loading || showKpis === false)" flush class="insight-panel">
       <div class="insight-wait" role="status">
         <n-spin v-if="loading" size="small" />
         <p>{{ error || '正在统计访问，地图随后加载。' }}</p>

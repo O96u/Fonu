@@ -3,7 +3,6 @@
   <nav class="dashboard-tabs" aria-label="首页分区"><button v-for="tab in tabs" :key="tab.key" type="button" :aria-pressed="activeTab === tab.key" @click="selectTab(tab.key)">{{ tab.label }}</button></nav>
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
-    <div v-if="activeTab === 'overview'" class="workspace-banner"><div><span class="workspace-kicker">FONU / NETWORK</span><h2>网络工作台</h2><p>服务状态与访问动态</p></div><router-link :to="{name:'dashboard',query:{tab:'notifications'}}" class="workspace-alert"><n-icon :component="ShieldCheckmarkOutline"/>{{ notices.length ? notices.length + ' 项状态提醒' : '查看状态提醒' }}<n-icon :component="ChevronForwardOutline"/></router-link></div>
     <n-spin v-if="activeTab === 'overview' || activeTab === 'services'" :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
@@ -1167,11 +1166,6 @@ a.ip-geo-cell__ip:hover {
 .dashboard-tabs { border:0; background:var(--fonu-surface); border-radius:12px; padding:5px; gap:4px; box-shadow:var(--fonu-shadow); }
 .dashboard-tabs button { border:0; border-radius:8px; padding:9px 16px; }
 .dashboard-tabs button[aria-pressed=true] { background:var(--fonu-brand-soft); color:var(--fonu-brand); }
-.workspace-banner { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 20px; border-radius:12px; border:1px solid color-mix(in srgb,var(--fonu-brand) 20%,var(--fonu-border)); background:linear-gradient(115deg,var(--fonu-brand-soft),var(--fonu-surface) 80%); }
-.workspace-kicker { font-size:10px; letter-spacing:.12em; font-weight:700; color:var(--fonu-brand); }
-.workspace-banner h2 { margin:4px 0; font-size:22px; }
-.workspace-banner p { margin:0; color:var(--fonu-text-secondary); font-size:12px; }
-.workspace-alert { display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid var(--fonu-border); border-radius:8px; color:var(--fonu-brand); background:var(--fonu-surface); text-decoration:none; font-size:12px; }
 .dashboard .stats-row { border:0; gap:12px; grid-template-columns:repeat(4,minmax(0,1fr)); }
 .dashboard .stats-row :deep(.stat-card) { background:var(--fonu-surface); border:1px solid var(--fonu-border); border-radius:12px; box-shadow:var(--fonu-shadow); padding:14px; }
 .dashboard .stats-row :deep(.stat-card__icon) { background:var(--fonu-brand-soft); color:var(--fonu-brand); width:30px; height:30px; border-radius:9px; }
@@ -1185,6 +1179,6 @@ a.ip-geo-cell__ip:hover {
 .notice-icon { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; color:var(--fonu-warning); background:color-mix(in srgb,var(--fonu-warning) 12%,transparent); }
 .notice-detail { flex:1; }
 @media(max-width:1200px) { .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:850px) { .trend-workspace--overview { grid-template-columns:minmax(0,1fr); } .workspace-banner { padding:12px; } }
-@media(max-width:480px) { .dashboard .stats-row { grid-template-columns:minmax(0,1fr); } .workspace-banner { flex-wrap:wrap; } }
+@media(max-width:850px) { .trend-workspace--overview { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:480px) { .dashboard .stats-row { grid-template-columns:minmax(0,1fr); } }
 </style>
