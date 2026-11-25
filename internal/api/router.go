@@ -45,6 +45,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/auth/password", r.authHandler.ChangePassword)
 	protect("POST /api/auth/username", r.authHandler.ChangeUsername)
 	protect("GET /api/status", r.statusHandler.Get)
+	protect("GET /api/runtime", r.statusHandler.Runtime)
 	protect("GET /api/nginx/apply-status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, deps.Proxy.NginxApplyStatus()) })
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Header().Set("Cache-Control", "no-store"); w.WriteHeader(http.StatusOK); _, _ = w.Write([]byte("ok\n")) })
 	if deps.Analytics != nil {

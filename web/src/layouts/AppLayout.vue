@@ -61,13 +61,13 @@
 
     <n-layout class="app-main">
       <header class="topbar">
-        <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
+        <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '仪表盘' : route.meta.title }}</span></div>
         <div class="topbar__right">
           <n-button v-if="embedded" tag="a" :href="standaloneUrl" target="_blank" rel="noopener noreferrer" quaternary circle title="独立网页打开" aria-label="独立网页打开"><template #icon><n-icon :component="OpenOutline"/></template></n-button>
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
-            <div class="appearance-panel"><strong>外观设置</strong><p>背景风格与强调色独立选择 · 自动保存</p><div class="background-options" role="group" aria-label="背景风格"><button v-for="style in backgroundOptions" :key="style.value" type="button" :aria-pressed="backgroundStyle === style.value" @click="setBackgroundStyle(style.value)">{{ style.label }}</button></div><p>主题颜色</p>
-              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': previewTheme(preset.value, isDark, backgroundStyle).brandText, '--preview-bg': previewTheme(preset.value, isDark, backgroundStyle).bg, '--preview-chrome': previewTheme(preset.value, isDark, backgroundStyle).chrome, '--preview-surface': previewTheme(preset.value, isDark, backgroundStyle).surface, '--preview-border': previewTheme(preset.value, isDark, backgroundStyle).border }">
+            <div class="appearance-panel"><strong>外观设置</strong><p>主题颜色 · 即时预览与自动保存</p>
+              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': previewTheme(preset.value, isDark).brandText, '--preview-bg': previewTheme(preset.value, isDark).bg, '--preview-chrome': previewTheme(preset.value, isDark).chrome, '--preview-surface': previewTheme(preset.value, isDark).surface, '--preview-border': previewTheme(preset.value, isDark).border }">
                 <span class="appearance-preview"><i/><span><b/><em/><em/></span></span>
                 <span class="appearance-label"><i/>{{ preset.label }}<span v-if="themeAccent === preset.value" class="appearance-check">✓</span></span>
               </button></div>
@@ -250,7 +250,7 @@ import logoImg from "../assets/brand/logo.png";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent, backgroundStyle, setBackgroundStyle } = useTheme();
+const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent } = useTheme();
 const modeOptions = computed<DropdownOption[]>(() => [{key:'system',label:'跟随系统'},{key:'light',label:'浅色'},{key:'dark',label:'深色'}].map(p => ({...p,label:(themeMode.value === p.key ? '✓ ' : '') + p.label})));
 
 function isFpkEmbed(): boolean {
@@ -261,15 +261,14 @@ function isFpkEmbed(): boolean {
   }
 }
 
-const backgroundOptions = [{value:'neutral',label:'经典中性'},{value:'tinted',label:'柔和主题'},{value:'colorful',label:'全局主题'}] as const;
 const embedded = isFpkEmbed();
 const standaloneUrl = window.location.href;
 const viewportWidth = ref(window.innerWidth);
-const compactViewport = computed(() => viewportWidth.value < (embedded ? 1320 : 1000));
+const compactViewport = computed(() => embedded ? viewportWidth.value < 1320 : viewportWidth.value < 1000);
 function readNavigation(): boolean | null { try { const v = localStorage.getItem('fonu-nav-collapsed'); return v === null ? null : v === 'true' } catch { return null } }
-const manualCollapsed = ref<boolean | null>(readNavigation());
+const manualCollapsed = ref<boolean | null>(embedded ? null : readNavigation());
 const collapsed = computed(() => manualCollapsed.value ?? compactViewport.value);
-function setNavigation(value: boolean) { manualCollapsed.value = value; try { localStorage.setItem('fonu-nav-collapsed', String(value)) } catch { /* storage unavailable */ } }
+function setNavigation(value: boolean) { manualCollapsed.value = value; if (!embedded) { try { localStorage.setItem('fonu-nav-collapsed', String(value)) } catch { /* storage unavailable */ } } }
 function updateViewport() { viewportWidth.value = window.innerWidth; }
 
 const appVersion = ref(__APP_VERSION__);
@@ -834,7 +833,4 @@ onUnmounted(() => {
 .appearance-preview > i { background:var(--preview-chrome); border:1px solid var(--preview-border); border-left:3px solid var(--preview-accent); opacity:1; }
 .appearance-preview b { background:var(--preview-accent); }
 .appearance-preview em { background:var(--preview-surface); border-color:var(--preview-border); }
-.background-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:12px}
-.background-options button{padding:7px 3px;border:1px solid var(--fonu-border);border-radius:7px;background:var(--fonu-surface);color:var(--fonu-text-secondary);font-size:12px;cursor:pointer}
-.background-options button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);border-color:var(--fonu-brand);font-weight:600}
 </style>

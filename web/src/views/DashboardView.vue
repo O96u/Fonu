@@ -42,6 +42,7 @@
     </n-spin></FonuCard>
     <div class="workspace-grid"><FonuCard class="traffic-panel"><AnalyticsInsightSection v-model:range="awarenessRange" compact :show-kpis="true" :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" /><div class="chart-caption"><span>{{ awarenessTrendTitle }}</span><span>{{ awarenessTrendTag }} · 更新于 {{ awarenessUpdatedLabel }}</span></div><AwarenessTrendChart v-if="analyticsOverview" :labels="analyticsOverview.series.labels" :requests="analyticsOverview.series.requests" :uniqueIPs="analyticsOverview.series.unique_ips" :current-bucket="analyticsOverview.series.current_bucket" /><EmptyState v-else title="正在读取访问趋势" description="统计数据加载后将显示访问趋势。"/></FonuCard>
       <aside class="workspace-side">
+        <RuntimePanel/>
         <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
         <FonuCard title="待处理事项"><div v-for="notice in notices" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p></FonuCard>
       </aside>
@@ -54,7 +55,7 @@
   <template v-else-if="activeTab === 'access'">
     <FonuCard class="traffic-panel"><AnalyticsInsightSection v-model:range="awarenessRange" compact :show-kpis="true" :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" /><div class="chart-caption"><span>{{ awarenessTrendTitle }}</span><span>{{ awarenessTrendTag }} · 更新于 {{ awarenessUpdatedLabel }}</span></div><AwarenessTrendChart v-if="analyticsOverview" :labels="analyticsOverview.series.labels" :requests="analyticsOverview.series.requests" :uniqueIPs="analyticsOverview.series.unique_ips" :current-bucket="analyticsOverview.series.current_bucket" /><EmptyState v-else title="正在读取访问趋势" description="统计数据加载后将显示访问趋势。"/></FonuCard>
     <AnalyticsInsightSection v-model:range="awarenessRange" map-only show-map :data="analyticsOverview" :loading="awarenessLoading" />
-    <FonuCard title="按服务汇总" :subtitle="awarenessServiceListHint"><n-data-table v-if="awarenessServices.length" :columns="awarenessServiceColumns" :data="awarenessServices" :bordered="false" :max-height="awarenessTableScrollHeight" size="small"/><EmptyState v-else title="暂无已识别服务" description="当前统计范围内没有可展示的已识别服务。"/></FonuCard>
+    <FonuCard title="按服务汇总" :subtitle="awarenessServiceListHint"><n-data-table v-if="awarenessServices.length" :columns="awarenessServiceColumns" :data="awarenessServices" :bordered="false" :scroll-x="620" :pagination="{pageSize:8}" size="small"/><EmptyState v-else title="暂无已识别服务" description="当前统计范围内没有可展示的已识别服务。"/></FonuCard>
     <FonuCard title="最近访问 · 30 条"><template #header><router-link class="text-link" :to="{name:'logs',query:{tab:'access'}}">查看全部 →</router-link></template><n-data-table v-if="awarenessEvents.length" :columns="awarenessEventColumns" :data="awarenessEvents" :bordered="false" :max-height="awarenessTableScrollHeight" size="small"/><EmptyState v-else title="暂无访问记录" description="当前统计范围内没有访问记录。"/></FonuCard>
   </template>
   <template v-else>
@@ -87,6 +88,7 @@ import type {
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import ServiceFavicon from '../components/ServiceFavicon.vue'
+import RuntimePanel from '../components/RuntimePanel.vue'
 import type { ProxyRule } from '../api/types'
 const AnalyticsInsightSection = defineAsyncComponent(() => import('../components/AnalyticsInsightSection.vue'))
 const AnalyticsAnomalySection = defineAsyncComponent(() => import('../components/AnalyticsAnomalySection.vue'))
@@ -262,7 +264,7 @@ const serviceIconRules = computed(() => {
   return result
 })
 watch(activeTab, async tab => {
-  if (tab !== 'overview' || iconRulesLoaded) return
+  if (tab === 'security' || iconRulesLoaded) return
   iconRulesLoaded = true
   try { iconRules.value = asList(await api.listProxies()) } catch { iconRulesLoaded = false }
 }, { immediate: true })
@@ -355,14 +357,15 @@ const awarenessEventColumns: DataTableColumns<AwarenessEvent> = [
 ]
 
 const awarenessServiceColumns: DataTableColumns<AwarenessServiceRow> = [
-  { title: '服务', key: 'service', ellipsis: { tooltip: true } },
+  { title: '服务', key: 'service', width: 210, render: r => h('div',{class:'service-name',title:r.service},[h(ServiceFavicon,{ruleId:serviceIconRules.value.get(r.service)}),h('span',r.service)]) },
   {
     title: '请求',
     key: 'requests',
-    width: 72,
+    width: 160,
     align: 'right',
     titleAlign: 'right',
-    render: (r) => h('span', { class: 'tabular-nums' }, String(r.requests)),
+    sorter: (a,b) => a.requests-b.requests,
+    render: (r) => h('div',{class:'service-table-volume'},[h('span',{class:'service-table-bar'},[h('i',{style:{width:rankPercent(r.requests,awarenessServices.value[0]?.requests)}})]),h('span',r.requests.toLocaleString())]),
   },
   {
     title: '独立 IP',
@@ -516,4 +519,5 @@ onUnmounted(pauseDashboard)
 .rank-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.rank-row{display:grid;grid-template-columns:minmax(70px,1fr) minmax(45px,2fr) auto;gap:10px;align-items:center;padding:8px 0;font-size:12px}.rank-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-row strong{font-variant-numeric:tabular-nums;font-weight:600}.rank-track{height:7px;border-radius:5px;background:var(--fonu-bg-muted);overflow:hidden}.rank-track i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name{display:flex;align-items:center;gap:6px}.service-icon{display:grid;place-items:center;flex-shrink:0;width:25px;height:25px;background:var(--fonu-brand-soft);color:var(--fonu-brand-text);border-radius:7px}.muted{color:var(--fonu-text-muted);font-size:12px}.text-link{border:0;background:transparent;color:var(--fonu-brand-text);cursor:pointer;font-size:12px;text-decoration:none}
 @container(max-width:820px){.stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-row :deep(.stat-card:nth-child(2)){border-right:0}.workspace-grid,.rank-grid{grid-template-columns:1fr}}
 @container(max-width:400px){.stats-row{grid-template-columns:1fr}.stats-row :deep(.stat-card){border-right:0}}
+.service-table-volume{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-variant-numeric:tabular-nums}.service-table-bar{width:70px;height:5px;background:var(--fonu-bg-muted);border-radius:5px;overflow:hidden}.service-table-bar i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>

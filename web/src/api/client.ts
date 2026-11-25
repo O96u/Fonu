@@ -127,6 +127,7 @@ export const api = {
     }),
 
   getStatus: () => request<DashboardStatus>('/api/status'),
+  getRuntime: () => request<{uptime_seconds:number;rss_bytes?:number;heap_bytes:number;goroutines:number;host_cpu_total?:number;host_cpu_idle?:number;host_memory_total?:number;host_memory_available?:number}>('/api/runtime'),
   getNginxApplyStatus: () => request<import('./types').NginxApplyStatus>('/api/nginx/apply-status'),
   getAwarenessLive: (range: AwarenessRange = 'today') => {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
