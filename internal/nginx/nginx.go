@@ -125,6 +125,22 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	if err := EnsureCustomDirs(m.cfg); err != nil {
 		return ApplyResult{}, err
 	}
+	authSnapshot, err := snapshotHtpasswd(m.cfg)
+	if err != nil { return ApplyResult{}, err }
+	authRestored := false
+	restoreAuth := func() error {
+		if authRestored { return nil }
+		err := restoreHtpasswd(m.cfg, authSnapshot)
+		if err == nil { authRestored = true }
+		return err
+	}
+	defer func() {
+		if applyErr != nil {
+			if err := restoreAuth(); err != nil {
+				applyErr = errors.Join(applyErr, fmt.Errorf("restore htpasswd: %w", err))
+			}
+		}
+	}()
 	if err := SyncHtpasswdFiles(m.cfg, rules); err != nil {
 		return ApplyResult{}, err
 	}
@@ -179,6 +195,9 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 		if err := restoreConfig(currentPath, backupPath, hadPrevious); err != nil {
 			applyErr = errors.Join(applyErr, fmt.Errorf("restore nginx config: %w", err))
 			return
+		}
+		if err := restoreAuth(); err != nil {
+			applyErr = errors.Join(applyErr, fmt.Errorf("restore htpasswd: %w", err))
 		}
 		if hadPrevious && m.available() {
 			rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

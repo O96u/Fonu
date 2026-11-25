@@ -130,6 +130,9 @@ func ListBackups(backupDir string) ([]BackupEntry, error) {
 }
 
 func RestoreBackup(backupDir, backupName, targetPath string) error {
+	if backupName == "" || filepath.Base(backupName) != backupName || !strings.HasSuffix(backupName, ".conf") {
+		return fmt.Errorf("无效的备份名称")
+	}
 	src := filepath.Join(backupDir, backupName)
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("备份不存在")

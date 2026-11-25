@@ -45,87 +45,74 @@ func (s *ProxyService) ListEntries(ctx context.Context) ([]proxy.Entry, error) {
 }
 
 func (s *ProxyService) ReorderEntries(ctx context.Context, ids []int64) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	return s.store.ReorderEntries(ctx, ids)
 }
 
 func (s *ProxyService) CreateEntry(ctx context.Context, in proxy.EntryCreateInput) (proxy.Entry, error) {
-	entry, err := s.store.CreateEntry(ctx, in)
-	if err != nil {
-		return proxy.Entry{}, err
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil { return proxy.Entry{}, err }
+	defer tx.Rollback()
+	entry, err := proxy.NewStoreWithTx(tx).CreateEntry(ctx, in)
+	if err != nil { return proxy.Entry{}, err }
+	if err := tx.Commit(); err != nil { return proxy.Entry{}, err }
 	return entry, nil
 }
 
 func (s *ProxyService) UpdateEntry(ctx context.Context, id int64, in proxy.EntryUpdateInput) (proxy.Entry, error) {
-	entry, err := s.store.UpdateEntry(ctx, id, in)
-	if err != nil {
-		return proxy.Entry{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return entry, fmt.Errorf("入口已保存，但 Nginx 重载失败：%w", err)
-	}
-	return entry, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Entry, error) {
+		return store.UpdateEntry(ctx, id, in)
+	})
 }
 
 func (s *ProxyService) DeleteEntry(ctx context.Context, id int64) error {
-	ruleIDs, err := s.store.RuleIDsByEntry(ctx, id)
-	if err != nil {
-		return err
-	}
-	for _, ruleID := range ruleIDs {
-		_ = nginx.RemoveRuleCustom(s.cfg, ruleID)
-	}
-	if err := s.store.DeleteEntry(ctx, id); err != nil {
-		return err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return fmt.Errorf("入口已删除，但 Nginx 重载失败：%w", err)
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	ids, err := mutateProxy(ctx, s, func(store *proxy.Store) ([]int64, error) {
+		ids, err := store.RuleIDsByEntry(ctx, id)
+		if err != nil { return nil, err }
+		return ids, store.DeleteEntry(ctx, id)
+	})
+	if err != nil { return err }
+	for _, id := range ids { _ = nginx.RemoveRuleCustom(s.cfg, id) }
 	return nil
 }
 
 func (s *ProxyService) CloneEntry(ctx context.Context, sourceID int64, in proxy.EntryCloneInput) (proxy.Entry, int, error) {
-	all, err := s.store.List(ctx)
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	var copied []int64
+	entry, err := mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Entry, error) {
+		entry, idMap, err := store.CloneEntry(ctx, sourceID, in)
+		if err != nil { return proxy.Entry{}, err }
+		for oldID, newID := range idMap {
+			content, err := nginx.ReadRuleCustom(s.cfg, oldID)
+			if err != nil { return proxy.Entry{}, err }
+			if strings.TrimSpace(content) == "" { continue }
+			// A custom server block may contain the source port, host and auth paths.
+			// Require explicit conversion/edit instead of copying an active conflicting block.
+			old, err := store.Get(ctx, oldID)
+			if err != nil { return proxy.Entry{}, err }
+			if old.NginxMode == "custom" && old.Enabled {
+				return proxy.Entry{}, fmt.Errorf("入口包含启用的手动 Nginx 规则，请先切换为自动模式后复制")
+			}
+			copied = append(copied, newID)
+			if err := nginx.WriteRuleCustom(s.cfg, newID, content); err != nil { return proxy.Entry{}, err }
+		}
+		return entry, nil
+	})
 	if err != nil {
+		for _, id := range copied { _ = nginx.RemoveRuleCustom(s.cfg, id) }
 		return proxy.Entry{}, 0, err
 	}
-	hostnames := make([]string, 0)
-	for _, rule := range all {
-		if rule.EntryID == nil || *rule.EntryID != sourceID {
-			continue
-		}
-		for _, host := range rule.Hosts {
-			hostnames = append(hostnames, host.Hostname)
-		}
-	}
-	if in.HTTPSEnabled {
-		if err := s.validateHTTPSInput(ctx, hostnames, true); err != nil {
-			return proxy.Entry{}, 0, err
-		}
-	}
-
-	entry, idMap, err := s.store.CloneEntry(ctx, sourceID, in)
-	if err != nil {
-		return proxy.Entry{}, 0, err
-	}
-
-	for oldID, newID := range idMap {
-		content, err := nginx.ReadRuleCustom(s.cfg, oldID)
-		if err != nil {
-			return entry, len(idMap), fmt.Errorf("入口已复制，但读取自定义 Nginx 配置失败：%w", err)
-		}
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		if err := nginx.WriteRuleCustom(s.cfg, newID, content); err != nil {
-			return entry, len(idMap), fmt.Errorf("入口已复制，但写入自定义 Nginx 配置失败：%w", err)
-		}
-	}
-
-	if err := s.applyNginx(ctx); err != nil {
-		return entry, len(idMap), fmt.Errorf("入口已复制，但 Nginx 重载失败：%w", err)
-	}
-	return entry, len(idMap), nil
+	ids, err := s.store.RuleIDsByEntry(ctx, entry.ID)
+	if err != nil { return entry, 0, err }
+	return entry, len(ids), nil
 }
 
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {
@@ -137,59 +124,35 @@ func (s *ProxyService) Get(ctx context.Context, id int64) (proxy.Rule, error) {
 }
 
 func (s *ProxyService) Create(ctx context.Context, in proxy.CreateInput) (proxy.Rule, error) {
-	if err := s.validateHTTPSInput(ctx, in.Hosts, in.HTTPSEnabled); err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rule, err := s.store.Create(ctx, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
-	}
-	return rule, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Rule, error) {
+		return store.Create(ctx, in)
+	})
 }
 
 func (s *ProxyService) Update(ctx context.Context, id int64, in proxy.UpdateInput) (proxy.Rule, error) {
-	current, err := s.Get(ctx, id)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	httpsEnabled := current.HTTPSEnabled
-	if in.HTTPSEnabled != nil {
-		httpsEnabled = *in.HTTPSEnabled
-	}
-	hosts := hostsFromRule(current)
-	if in.Hosts != nil {
-		hosts = *in.Hosts
-	}
-	if err := s.validateHTTPSInput(ctx, hosts, httpsEnabled); err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rule, err := s.store.Update(ctx, id, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
-	}
-	return rule, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Rule, error) {
+		return store.Update(ctx, id, in)
+	})
 }
 
 func (s *ProxyService) Reorder(ctx context.Context, ids []int64) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	return s.store.Reorder(ctx, ids)
 }
 
 func (s *ProxyService) Delete(ctx context.Context, id int64) error {
-	if err := s.store.Delete(ctx, id); err != nil {
-		return err
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	_, err := mutateProxy(ctx, s, func(store *proxy.Store) (struct{}, error) {
+		return struct{}{}, store.Delete(ctx, id)
+	})
+	if err != nil { return err }
 	_ = nginx.RemoveRuleCustom(s.cfg, id)
-	if err := s.applyNginx(ctx); err != nil {
-		return fmt.Errorf("规则已删除，但 Nginx 重载失败：%w", err)
-	}
 	return nil
 }
 

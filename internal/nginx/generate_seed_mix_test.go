@@ -35,11 +35,7 @@ func TestGenerateMixedRulesWithoutCerts(t *testing.T) {
 		},
 	}
 
-	content, err := Generate(cfg, rules, nil, GenerateOptions{})
-	if err != nil {
-		t.Fatalf("generate failed: %v", err)
-	}
-	if err := assertValidSSLBlocks(content); err != nil {
-		t.Fatalf("invalid ssl blocks: %v\n%s", err, content)
+	if _, err := Generate(cfg, rules, nil, GenerateOptions{}); err == nil {
+		t.Fatal("expected missing certificate error, not HTTP downgrade")
 	}
 }
