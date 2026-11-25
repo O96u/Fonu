@@ -33,4 +33,10 @@ jobs:
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/
       - run: go vet ./...
       - run: go test ./...
+      - name: Benchmark analytics rollups (100k events)
+        run: go test ./internal/analytics -run '^
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup
+ -bench '^BenchmarkSeriesRawVsRollup
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup
+ -benchtime=3x -benchmem
       - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup

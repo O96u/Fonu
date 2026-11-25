@@ -2,7 +2,7 @@ name: Verify npm security upgrade
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/npm-security-upgrade.yml', 'web/src/views/ProxyView.vue', 'web/src/views/SettingsView.vue']
+    paths: ['.github/workflows/npm-security-upgrade.yml', 'web/src/components/MiniTrafficChart.vue', 'web/package.json', 'web/package-lock.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vue-tsc: ['3.1', '3.2', '3.3.14']
+        vue-tsc: ['3.2']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,7 +22,7 @@ jobs:
         working-directory: web
         run: |
           npm ci
-          npm install --save-dev 'vue-tsc@${{ matrix.vue-tsc }}'
+          npm install --save-dev --save-exact 'vue-tsc@${{ matrix.vue-tsc }}'
           npm audit fix --package-lock-only || true
           npm ci
           npm run build
@@ -30,7 +30,7 @@ jobs:
         working-directory: web
         run: npm audit --audit-level=moderate
       - name: Upload candidate dependency files
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: npm-security-candidate-${{ matrix.vue-tsc }}
