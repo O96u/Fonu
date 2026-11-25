@@ -45,7 +45,7 @@ jobs:
           run_id="$INPUT_RUN_ID"
           sha="$GITHUB_SHA"
           # One-time migration: publish the already-started Beta 5 build.
-          if [ -z "$run_id" ] && [ "$BEFORE_SHA" = 82bc6b4616eac29a0f9f39345fc01131e29c4550 ]; then
+          if [ -z "$run_id" ] && { [ "$BEFORE_SHA" = 82bc6b4616eac29a0f9f39345fc01131e29c4550 ] || [ "$BEFORE_SHA" = 5157ce38eaf807e142afdcca615ccdfb94709ec7 ]; }; then
             run_id=45579336896
           fi
           if [ -n "$run_id" ]; then
@@ -115,7 +115,7 @@ jobs:
           [[ "$stable" != *-* ]]
           # Refuse sources with legacy tag workflows that may overwrite Latest.
           for file in github-release.yml docker-release.yml fpk-build.yml; do
-            gh api "repos/$repo/contents/.github/workflows/$file?ref=$SOURCE_SHA" --jq .content | base64 -d | grep -Fq "'!v*-*'" || { echo "::error::Missing beta exclusion in $file"; exit 1; }
+            gh api "repos/$repo/contents/.github/workflows/$file?ref=$SOURCE_SHA" --jq .content | base64 -d | grep -F "'!v*-*'" >/dev/null || { echo "::error::Missing beta exclusion in $file"; exit 1; }
           done
           if gh api "repos/$repo/git/ref/tags/$TAG" > tag.json 2>/dev/null; then
             jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha' tag.json
