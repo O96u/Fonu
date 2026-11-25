@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"log/slog"
+	"runtime/debug"
 	"time"
 )
 
@@ -28,7 +30,13 @@ func (s *Scheduler) Start(ctx context.Context) {
 
 func (s *Scheduler) runJob(ctx context.Context, job Job) {
 	for {
-		job.Run(ctx)
+		if ctx.Err() != nil { return }
+		func() {
+			defer func() {
+				if p := recover(); p != nil { slog.Error("scheduled job panicked", "job", job.Name, "panic", p, "stack", string(debug.Stack())) }
+			}()
+			job.Run(ctx)
+		}()
 		interval := job.Interval
 		if job.IntervalOf != nil {
 			if d := job.IntervalOf(ctx); d > 0 {

@@ -117,7 +117,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "密码已更新"})
+	clearSessionCookie(w)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "密码已更新，请重新登录"})
 }
 
 func (h *AuthHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {

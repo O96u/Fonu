@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,6 +27,8 @@ type Manager struct {
 	cfg    config.Config
 	logger *slog.Logger
 	opts   GenerateOptions
+	mu sync.Mutex
+	optsMu sync.RWMutex
 }
 
 type ApplyResult struct {
@@ -38,10 +41,14 @@ func NewManager(cfg config.Config, logger *slog.Logger) *Manager {
 }
 
 func (m *Manager) SetGenerateOptions(opts GenerateOptions) {
+	m.optsMu.Lock()
+	defer m.optsMu.Unlock()
 	m.opts = opts
 }
 
 func (m *Manager) CurrentOptions() GenerateOptions {
+	m.optsMu.RLock()
+	defer m.optsMu.RUnlock()
 	return m.opts
 }
 
@@ -86,6 +93,13 @@ func (m *Manager) available() bool {
 }
 
 func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSource) (ApplyResult, error) {
+	return m.ApplyWithOptions(ctx, rules, certs, m.CurrentOptions())
+}
+
+func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (ApplyResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil { return ApplyResult{}, err }
 	if err := m.EnsureDirs(); err != nil {
 		return ApplyResult{}, err
 	}
@@ -100,8 +114,7 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 		return ApplyResult{}, err
 	}
 
-	opts := m.opts
-	// Path override is only for pre-rename validation during China CIDR updates.
+		// Path override is only for pre-rename validation during China CIDR updates.
 	opts.ChinaCIDRPathOverride = ""
 	opts.ChinaCIDRAvailable = chinaCIDRExists(m.cfg)
 
@@ -110,10 +123,9 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 		return ApplyResult{}, err
 	}
 
-	tmpPath := m.cfg.NginxConfigPath() + ".tmp"
-	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
-		return ApplyResult{}, err
-	}
+	tmpPath, err := writeTemporaryConfig(m.cfg.NginxDir(), content)
+	if err != nil { return ApplyResult{}, err }
+	defer os.Remove(tmpPath)
 
 	if err := ValidateConfigSyntax(content); err != nil {
 		_ = os.Remove(tmpPath)
@@ -169,10 +181,12 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 }
 
 func (m *Manager) ValidateOnly(ctx context.Context, rules []proxy.Rule, certs []CertSource) error {
-	return m.ValidateOnlyWithOptions(ctx, rules, certs, m.opts)
+	return m.ValidateOnlyWithOptions(ctx, rules, certs, m.CurrentOptions())
 }
 
 func (m *Manager) ValidateOnlyWithOptions(ctx context.Context, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if opts.ChinaCIDRPathOverride != "" {
 		opts.ChinaCIDRAvailable = true
 	} else {
@@ -189,18 +203,20 @@ func (m *Manager) ValidateOnlyWithOptions(ctx context.Context, rules []proxy.Rul
 		m.logger.Warn("nginx binary not found, syntax-only validation", "bin", m.cfg.NginxBin)
 		return nil
 	}
-	tmpPath := filepath.Join(m.cfg.NginxDir(), "validate.tmp.conf")
-	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
-		return err
-	}
+	tmpPath, err := writeTemporaryConfig(m.cfg.NginxDir(), content)
+	if err != nil { return err }
 	defer os.Remove(tmpPath)
 	return m.validate(ctx, tmpPath)
 }
 
 func (m *Manager) validate(ctx context.Context, configPath string) error {
-	tmpErr := filepath.Join(m.cfg.NginxDir(), "validate.error.log")
+	f, err := os.CreateTemp(m.cfg.NginxDir(), "validate-*.log")
+	if err != nil { return err }
+	tmpErr := f.Name()
+	if err := f.Close(); err != nil { os.Remove(tmpErr); return err }
+	defer os.Remove(tmpErr)
 	args := []string{"-e", absNginxPath(tmpErr), "-t", "-c", configPath}
-	err := m.runNginx(ctx, args, "Nginx 配置校验失败")
+	err = m.runNginx(ctx, args, "Nginx 配置校验失败")
 	_ = os.Remove(tmpErr)
 	return err
 }
@@ -278,6 +294,8 @@ func (m *Manager) terminateMaster() {
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if !m.isRunningQuick() {
 		return nil
 	}
@@ -382,6 +400,8 @@ func (m *Manager) isRunningQuick() bool {
 }
 
 func (m *Manager) ValidateContent(ctx context.Context, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := ValidateConfigSyntax(content); err != nil {
 		return err
 	}
@@ -389,10 +409,8 @@ func (m *Manager) ValidateContent(ctx context.Context, content string) error {
 		m.logger.Warn("nginx binary not found, syntax-only validation", "bin", m.cfg.NginxBin)
 		return nil
 	}
-	tmpPath := filepath.Join(m.cfg.NginxDir(), "validate.tmp.conf")
-	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
-		return err
-	}
+	tmpPath, err := writeTemporaryConfig(m.cfg.NginxDir(), content)
+	if err != nil { return err }
 	defer os.Remove(tmpPath)
 	return m.validate(ctx, tmpPath)
 }
@@ -413,4 +431,15 @@ func sanitizeNginxError(msg string) string {
 	msg = strings.ReplaceAll(msg, "\r\n", " ")
 	msg = strings.ReplaceAll(msg, "\n", " ")
 	return strings.TrimSpace(msg)
+}
+
+func writeTemporaryConfig(dir, content string) (string, error) {
+	f, err := os.CreateTemp(dir, "nginx-*.conf")
+	if err != nil { return "", err }
+	name := f.Name()
+	_, err = f.WriteString(content)
+	closeErr := f.Close()
+	if err == nil { err = closeErr }
+	if err != nil { os.Remove(name); return "", err }
+	return name, nil
 }

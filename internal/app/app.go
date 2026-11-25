@@ -151,6 +151,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout: 60 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

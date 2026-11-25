@@ -136,8 +136,12 @@ func (s *Service) Setup(ctx context.Context, username, password string) error {
 		return err
 	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO admins(username, password_hash) VALUES (?, ?)`, username, string(hash))
-	return err
+	result, err := s.db.ExecContext(ctx, `INSERT INTO admins(username, password_hash) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM admins)`, username, string(hash))
+	if err != nil { return err }
+	n, err := result.RowsAffected()
+	if err != nil { return err }
+	if n != 1 { return fmt.Errorf("管理员已初始化") }
+	return nil
 }
 
 func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
@@ -187,8 +191,16 @@ func (s *Service) ChangePassword(ctx context.Context, adminID int, oldPassword, 
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE admins SET password_hash = ? WHERE id = ?`, string(newHash), adminID)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE admins SET password_hash = ? WHERE id = ? AND password_hash = ?`, string(newHash), adminID, hash)
+	if err != nil { return err }
+	n, err := result.RowsAffected()
+	if err != nil { return err }
+	if n != 1 { return ErrUnauthorized }
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE admin_id = ?`, adminID); err != nil { return err }
+	return tx.Commit()
 }
 
 func (s *Service) Username(ctx context.Context, adminID int) (string, error) {

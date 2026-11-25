@@ -38,10 +38,12 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, 512 << 20)
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		writeError(r, w, http.StatusBadRequest, "上传文件无效")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		writeError(r, w, http.StatusBadRequest, "请选择备份文件")

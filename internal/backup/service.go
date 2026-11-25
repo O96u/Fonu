@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fonu/fonu/internal/db"
@@ -17,6 +18,7 @@ import (
 const pendingDirName = "restore-pending"
 
 type Service struct {
+	mu sync.Mutex
 	dataDir    string
 	onRestored func()
 }
@@ -36,16 +38,18 @@ func (s *Service) NotifyRestored() {
 }
 
 func (s *Service) Export(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	tmpDir := filepath.Join(s.dataDir, "backups")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("fonu-backup-%s.tar.gz", time.Now().Format("20060102-His"))
-	outPath := filepath.Join(tmpDir, name)
-	file, err := os.Create(outPath)
+	name := fmt.Sprintf("fonu-backup-%s-*.tar.gz", time.Now().Format("20060102-His"))
+	file, err := os.CreateTemp(tmpDir, name)
 	if err != nil {
 		return "", err
 	}
+	outPath := file.Name()
 	defer file.Close()
 
 	gw := gzip.NewWriter(file)
@@ -81,6 +85,8 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 }
 
 func (s *Service) Restore(ctx context.Context, archivePath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -104,6 +110,8 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 
 	tr := tar.NewReader(gr)
 	wroteDB := false
+	var total int64
+	count := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			_ = os.RemoveAll(pending)
@@ -117,6 +125,12 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 			_ = os.RemoveAll(pending)
 			return err
 		}
+		count++
+		if count > 100000 || header.Size < 0 || header.Size > (2<<30)-total {
+			_ = os.RemoveAll(pending)
+			return fmt.Errorf("备份解压大小或文件数量超出限制")
+		}
+		total += header.Size
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeDir {
 			continue
 		}
@@ -139,7 +153,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 				_ = os.RemoveAll(pending)
 				return err
 			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {
 				_ = os.RemoveAll(pending)
 				return err

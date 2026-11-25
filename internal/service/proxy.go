@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/fonu/fonu/internal/certificate"
 	"github.com/fonu/fonu/internal/config"
@@ -17,6 +18,7 @@ import (
 )
 
 type ProxyService struct {
+	applyMu sync.Mutex
 	db        *sql.DB
 	cfg       config.Config
 	store     *proxy.Store
@@ -192,6 +194,8 @@ func (s *ProxyService) ReloadAll(ctx context.Context) error {
 }
 
 func (s *ProxyService) applyNginx(ctx context.Context) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	rules, err := s.store.ListEnabled(ctx)
 	if err != nil {
 		return err
@@ -200,8 +204,9 @@ func (s *ProxyService) applyNginx(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.nginx.SetGenerateOptions(s.loadGenerateOptions(ctx))
-	_, err = s.nginx.Apply(ctx, rules, certs)
+	opts := s.loadGenerateOptions(ctx)
+	s.nginx.SetGenerateOptions(opts)
+	_, err = s.nginx.ApplyWithOptions(ctx, rules, certs, opts)
 	if err != nil && s.notify != nil {
 		s.notify.Alert(ctx, notify.EventNginxReloadFailure, "Nginx 重载失败", err.Error())
 	}
@@ -230,8 +235,7 @@ func (s *ProxyService) ValidateRule(ctx context.Context, candidate proxy.Rule, e
 	if err != nil {
 		return err
 	}
-	s.nginx.SetGenerateOptions(s.loadGenerateOptions(ctx))
-	if err := s.nginx.ValidateOnly(ctx, rules, certs); err != nil {
+	if err := s.nginx.ValidateOnlyWithOptions(ctx, rules, certs, s.loadGenerateOptions(ctx)); err != nil {
 		return err
 	}
 	return nil

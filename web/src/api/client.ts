@@ -67,14 +67,15 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_
 }
 
 async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
+  const headers = new Headers(init?.headers)
+  if (typeof init?.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
   const response = await fetch(path, {
-    credentials: 'include',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
     ...init,
+    credentials: 'include',
+    signal: signal && init?.signal ? AbortSignal.any([signal, init.signal]) : signal ?? init?.signal,
+    headers,
   })
 
   if (!response.ok) {
@@ -283,6 +284,7 @@ export const api = {
         ca: payload.ca ?? '',
         email: payload.email ?? '',
         name: payload.name ?? '',
+        export: payload.export,
       }),
     }),
   certificateApplyStreamURL: (jobId: string) => `/api/certificates/jobs/${encodeURIComponent(jobId)}/stream`,

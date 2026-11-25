@@ -65,7 +65,10 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		Name           string                 `json:"name"`
 		Export         certstore.ExportConfig `json:"export"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(r, w, http.StatusBadRequest, "请求格式无效")
+		return
+	}
 	domains := req.Domains
 	if len(domains) == 0 && strings.TrimSpace(req.Domain) != "" {
 		domains = []string{req.Domain}
