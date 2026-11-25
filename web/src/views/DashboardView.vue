@@ -48,7 +48,7 @@
     </div>
     <div class="rank-grid">
       <FonuCard title="来源排行"><template #header><button class="text-link" @click="selectTab('access')">查看分析 →</button></template><div v-for="r in sourceRanking" :key="r.country" class="rank-row"><span>{{ r.country }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,sourceRanking[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!sourceRanking.length" title="暂无来源数据" description="当前统计范围内没有可展示的来源。"/></FonuCard>
-      <FonuCard title="服务排行"><template #header><button class="text-link" @click="selectTab('access')">查看全部 →</button></template><div v-for="r in awarenessServices.slice(0,5)" :key="r.service" class="rank-row service-rank"><span class="service-name"><span class="service-icon"><n-icon :component="GitNetworkOutline"/></span>{{ r.service }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,awarenessServices[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!awarenessServices.length" title="暂无已识别服务" description="当前统计范围内没有可展示的已识别服务。"/></FonuCard>
+      <FonuCard title="服务排行"><template #header><button class="text-link" @click="selectTab('access')">查看全部 →</button></template><div v-for="r in awarenessServices.slice(0,5)" :key="r.service" class="rank-row service-rank"><span class="service-name"><ServiceFavicon :rule-id="serviceIconRules.get(r.service)" />{{ r.service }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,awarenessServices[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!awarenessServices.length" title="暂无已识别服务" description="当前统计范围内没有可展示的已识别服务。"/></FonuCard>
     </div>
   </template>
   <template v-else-if="activeTab === 'access'">
@@ -86,6 +86,8 @@ import type {
   DDNSConfig,
 } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
+import ServiceFavicon from '../components/ServiceFavicon.vue'
+import type { ProxyRule } from '../api/types'
 const AnalyticsInsightSection = defineAsyncComponent(() => import('../components/AnalyticsInsightSection.vue'))
 const AnalyticsAnomalySection = defineAsyncComponent(() => import('../components/AnalyticsAnomalySection.vue'))
 const AwarenessTrendChart = defineAsyncComponent(() => import('../components/AwarenessTrendChart.vue'))
@@ -244,6 +246,26 @@ watch(awarenessRange, () => {
 })
 
 const awarenessEvents = computed(() => analyticsOverview.value?.recent_events ?? [])
+const iconRules = shallowRef<ProxyRule[]>([])
+let iconRulesLoaded = false
+const serviceIconRules = computed(() => {
+  const result = new Map<string, number>()
+  const duplicates = new Set<string>()
+  for (const rule of iconRules.value) {
+    if (!rule.enabled) continue
+    const label = rule.name.trim() || rule.domain.trim() || rule.upstream.trim()
+    if (!label) continue
+    if (result.has(label)) duplicates.add(label)
+    else result.set(label, rule.id)
+  }
+  for (const label of duplicates) result.delete(label)
+  return result
+})
+watch(activeTab, async tab => {
+  if (tab !== 'overview' || iconRulesLoaded) return
+  iconRulesLoaded = true
+  try { iconRules.value = asList(await api.listProxies()) } catch { iconRulesLoaded = false }
+}, { immediate: true })
 const awarenessServices = computed(() => (analyticsOverview.value?.by_service ?? []).filter(r => { const name = r.service.trim(); return !!name && !/^(?:_|\*|):\d+$/.test(name) && name !== '_' && name !== '*' }))
 const sourceRanking = computed(() => (analyticsOverview.value?.by_country ?? []).filter(r => r.country && r.country !== '未知' && r.requests > 0).slice().sort((a,b)=>b.requests-a.requests).slice(0,5))
 function rankPercent(value:number,max?:number) { return (max && max > 0 ? Math.min(100,value/max*100) : 0) + '%' }

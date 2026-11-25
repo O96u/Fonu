@@ -26,8 +26,14 @@ export const themeSurfaces = {
   orange: { light: { bg: '#f7eee5', muted: '#f0e3d5', surface: '#fffdf9', chrome: '#fcf8f3', border: '#eadbcc', brandText: '#a95218', chartSecondary: '#128579' }, dark: { bg: '#2b211b', muted: '#3b2e24', surface: '#43352a', chrome: '#34271f', border: '#584638', brandText: '#ecad72', chartSecondary: '#5cc7b7' } },
   graphite: { light: { bg: '#e9ebee', muted: '#e0e3e7', surface: '#fcfcfd', chrome: '#f3f4f5', border: '#d7dade', brandText: '#626971', chartSecondary: '#3869c9' }, dark: { bg: '#191c21', muted: '#24282e', surface: '#2b3037', chrome: '#20242a', border: '#434a54', brandText: '#b5bcc5', chartSecondary: '#8cb4ff' } },
 } as const
-export function previewTheme(accent: keyof typeof themeSurfaces, dark: boolean) {
-  return themeSurfaces[accent][dark ? 'dark' : 'light']
+export type BackgroundStyle = 'neutral' | 'tinted' | 'colorful'
+function normalizeBackground(value: string): BackgroundStyle { return value === 'tinted' || value === 'colorful' ? value : 'neutral' }
+const backgroundStyle = ref<BackgroundStyle>(normalizeBackground(read('fonu-background', 'neutral')))
+export function previewTheme(accent: keyof typeof themeSurfaces, dark: boolean, style: BackgroundStyle = backgroundStyle.value) {
+  const theme = themeSurfaces[accent][dark ? 'dark' : 'light']
+  const neutral = dark ? { bg:'#171a1f', muted:'#1d2128', surface:'#22262e', chrome:'#1d2128', border:'#343b45' } : { bg:'#f4f6f8', muted:'#eef1f4', surface:'#ffffff', chrome:'#ffffff', border:'#e2e7ec' }
+  const amount = style === 'colorful' ? 1 : style === 'tinted' ? .35 : 0
+  return { ...theme, bg:mix(neutral.bg,theme.bg,amount), muted:mix(neutral.muted,theme.muted,amount), surface:mix(neutral.surface,theme.surface,amount), chrome:mix(neutral.chrome,theme.chrome,amount), border:mix(neutral.border,theme.border,amount) }
 }
 function read(key: string, fallback: string) {
   try { return localStorage.getItem(key) || fallback } catch { return fallback }
@@ -74,6 +80,7 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
     Radio: { buttonBorderColorActive: p.brand, buttonTextColorActive: p.brandText, buttonColorActive: p.soft, buttonBoxShadowHover: 'none', buttonBoxShadowFocus: 'none' },
   }
 })
+watch(backgroundStyle, value => persist('fonu-background', value), { flush: 'sync' })
 watch(themeMode, mode => persist('fonu-theme', mode), { flush: 'sync' })
 watch(themeAccent, accent => persist('fonu-accent', accent), { flush: 'sync' })
 watch([isDark, palette], ([dark, p]) => {
@@ -91,5 +98,6 @@ export function useTheme() {
   function setThemeMode(mode: string) { themeMode.value = normalizeMode(mode) }
   function setThemeAccent(accent: string) { themeAccent.value = normalizeAccent(accent) }
   function toggleTheme() { setThemeMode(isDark.value ? 'light' : 'dark') }
-  return { themeMode, themeAccent, naiveTheme, themeOverrides, isDark, palette, toggleTheme, setThemeMode, setThemeAccent }
+  function setBackgroundStyle(value: string) { backgroundStyle.value = normalizeBackground(value) }
+  return { backgroundStyle, setBackgroundStyle, themeMode, themeAccent, naiveTheme, themeOverrides, isDark, palette, toggleTheme, setThemeMode, setThemeAccent }
 }

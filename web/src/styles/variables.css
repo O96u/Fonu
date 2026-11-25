@@ -12,13 +12,13 @@
   --fonu-info: #3b82f6;
   --fonu-info-soft: rgba(59, 130, 246, 0.1);
 
-  --fonu-bg: #edf5f1;
-  --fonu-bg-muted: #e4efe9;
+  --fonu-bg: #f4f6f8;
+  --fonu-bg-muted: #eef1f4;
   --fonu-banner-bg: var(--fonu-brand-soft);
   --fonu-banner-border: var(--fonu-brand-soft);
-  --fonu-surface: #fcfefd;
-  --fonu-chrome: #f5faf7;
-  --fonu-border: #d5e5dd;
+  --fonu-surface: #ffffff;
+  --fonu-chrome: #ffffff;
+  --fonu-border: #e2e7ec;
   --fonu-text: #20242c;
   --fonu-text-secondary: #555e6b;
   --fonu-text-muted: #687383;
@@ -51,11 +51,11 @@ html.dark,
   --fonu-brand-text: #6ee7b7;
   --fonu-info-soft: rgba(59, 130, 246, 0.16);
 
-  --fonu-bg: #101e19;
-  --fonu-bg-muted: #172b23;
-  --fonu-surface: #1c3028;
-  --fonu-chrome: #14251e;
-  --fonu-border: #304a3e;
+  --fonu-bg: #171a1f;
+  --fonu-bg-muted: #1d2128;
+  --fonu-surface: #22262e;
+  --fonu-chrome: #1d2128;
+  --fonu-border: #343b45;
   --fonu-text: #e8ecf2;
   --fonu-text-secondary: #b4bdca;
   --fonu-text-muted: #9da9b9;

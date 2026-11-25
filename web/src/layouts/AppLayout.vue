@@ -7,7 +7,7 @@
       :collapsed-width="56"
       :width="208"
       :collapsed="collapsed"
-       :show-trigger="false"
+       show-trigger="bar"
       @collapse="setNavigation(true)"
       @expand="setNavigation(false)"
     >
@@ -59,15 +59,15 @@
       </div>
     </n-layout-sider>
 
-    <button class="nav-edge" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开导航' : '收起导航'" :title="collapsed ? '展开导航' : '收起导航'" @click="setNavigation(!collapsed)"><span class="nav-edge__bar" aria-hidden="true"/><n-icon :component="collapsed ? ChevronForwardOutline : ChevronBackOutline" /></button>
     <n-layout class="app-main">
       <header class="topbar">
         <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
         <div class="topbar__right">
+          <n-button v-if="embedded" tag="a" :href="standaloneUrl" target="_blank" rel="noopener noreferrer" quaternary circle title="独立网页打开" aria-label="独立网页打开"><template #icon><n-icon :component="OpenOutline"/></template></n-button>
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
-            <div class="appearance-panel"><strong>全局主题</strong><p>背景、卡片与强调色同步 · 自动保存</p>
-              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': previewTheme(preset.value, isDark).brandText, '--preview-bg': previewTheme(preset.value, isDark).bg, '--preview-chrome': previewTheme(preset.value, isDark).chrome, '--preview-surface': previewTheme(preset.value, isDark).surface, '--preview-border': previewTheme(preset.value, isDark).border }">
+            <div class="appearance-panel"><strong>外观设置</strong><p>背景风格与强调色独立选择 · 自动保存</p><div class="background-options" role="group" aria-label="背景风格"><button v-for="style in backgroundOptions" :key="style.value" type="button" :aria-pressed="backgroundStyle === style.value" @click="setBackgroundStyle(style.value)">{{ style.label }}</button></div><p>主题颜色</p>
+              <div class="appearance-grid"><button v-for="preset in themePresets" :key="preset.value" type="button" :aria-pressed="themeAccent === preset.value" @click="setThemeAccent(preset.value)" :style="{ '--preview-accent': previewTheme(preset.value, isDark, backgroundStyle).brandText, '--preview-bg': previewTheme(preset.value, isDark, backgroundStyle).bg, '--preview-chrome': previewTheme(preset.value, isDark, backgroundStyle).chrome, '--preview-surface': previewTheme(preset.value, isDark, backgroundStyle).surface, '--preview-border': previewTheme(preset.value, isDark, backgroundStyle).border }">
                 <span class="appearance-preview"><i/><span><b/><em/><em/></span></span>
                 <span class="appearance-label"><i/>{{ preset.label }}<span v-if="themeAccent === preset.value" class="appearance-check">✓</span></span>
               </button></div>
@@ -234,8 +234,7 @@ import {
   LockClosedOutline,
   LogoGithub,
   MoonOutline,
-  ChevronForwardOutline,
-  ChevronBackOutline,
+  OpenOutline,
   ColorPaletteOutline,
   NotificationsOutline,
   SunnyOutline,
@@ -251,7 +250,7 @@ import logoImg from "../assets/brand/logo.png";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent } = useTheme();
+const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent, backgroundStyle, setBackgroundStyle } = useTheme();
 const modeOptions = computed<DropdownOption[]>(() => [{key:'system',label:'跟随系统'},{key:'light',label:'浅色'},{key:'dark',label:'深色'}].map(p => ({...p,label:(themeMode.value === p.key ? '✓ ' : '') + p.label})));
 
 function isFpkEmbed(): boolean {
@@ -262,7 +261,9 @@ function isFpkEmbed(): boolean {
   }
 }
 
+const backgroundOptions = [{value:'neutral',label:'经典中性'},{value:'tinted',label:'柔和主题'},{value:'colorful',label:'全局主题'}] as const;
 const embedded = isFpkEmbed();
+const standaloneUrl = window.location.href;
 const viewportWidth = ref(window.innerWidth);
 const compactViewport = computed(() => viewportWidth.value < (embedded ? 1320 : 1000));
 function readNavigation(): boolean | null { try { const v = localStorage.getItem('fonu-nav-collapsed'); return v === null ? null : v === 'true' } catch { return null } }
@@ -827,20 +828,13 @@ onUnmounted(() => {
 .notification-pop{width:min(300px,calc(100vw - 48px));padding:4px;display:flex;flex-direction:column;gap:10px}
 .notification-pop a{display:flex;flex-direction:column;color:var(--fonu-brand-text);text-decoration:none;padding:8px;border-top:1px solid var(--fonu-border)}
 .notification-pop small,.notification-pop p{color:var(--fonu-text-secondary);margin:4px 0;font-size:12px}
-.app-layout { position:relative; --nav-edge-x:208px; }
-.app-layout--compact { --nav-edge-x:56px; }
-.nav-edge { position:absolute; z-index:30; left:var(--nav-edge-x); top:50%; transform:translate(-50%,-50%); width:16px; height:64px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; background:transparent; color:var(--fonu-text-secondary); cursor:pointer; transition:background .15s,color .15s; }
-.nav-edge__bar { width:3px; height:38px; border-radius:3px; background:var(--fonu-text-muted); opacity:.48; }
-.nav-edge :deep(.n-icon) { display:none; font-size:16px; }
-.nav-edge:hover,.nav-edge:focus-visible { background:var(--fonu-bg-muted); color:var(--fonu-brand-text); }
-.nav-edge:hover .nav-edge__bar,.nav-edge:focus-visible .nav-edge__bar { display:none; }
-.nav-edge:hover :deep(.n-icon),.nav-edge:focus-visible :deep(.n-icon) { display:block; }
-.nav-edge:focus-visible { outline:2px solid var(--fonu-brand); outline-offset:2px; }
-@media (hover:none) { .nav-edge__bar{display:none} .nav-edge :deep(.n-icon){display:block} .nav-edge{background:var(--fonu-bg-muted)} }
 .topbar { background:var(--fonu-chrome); }
 .app-sider :deep(.n-layout-sider-scroll-container) { background:var(--fonu-chrome); }
 .appearance-preview { background:var(--preview-bg); border:1px solid var(--preview-border); }
 .appearance-preview > i { background:var(--preview-chrome); border:1px solid var(--preview-border); border-left:3px solid var(--preview-accent); opacity:1; }
 .appearance-preview b { background:var(--preview-accent); }
 .appearance-preview em { background:var(--preview-surface); border-color:var(--preview-border); }
+.background-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:12px}
+.background-options button{padding:7px 3px;border:1px solid var(--fonu-border);border-radius:7px;background:var(--fonu-surface);color:var(--fonu-text-secondary);font-size:12px;cursor:pointer}
+.background-options button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);border-color:var(--fonu-brand);font-weight:600}
 </style>
