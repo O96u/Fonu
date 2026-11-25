@@ -207,3 +207,22 @@ func writeArchive(path string, files map[string][]byte) error {
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
+
+func TestRestoreRollsBackAllMoves(t *testing.T) {
+	dir := t.TempDir()
+	pending := filepath.Join(dir, pendingDirName)
+	if err := os.Mkdir(pending, 0700); err != nil { t.Fatal(err) }
+	for _, name := range []string{"fonu.db", "certs", "nginx", ".secret_key"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("old-"+name), 0600); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(filepath.Join(pending, name), []byte("new-"+name), 0600); err != nil { t.Fatal(err) }
+	}
+	err := swapRestoreFiles(dir, pending, func(from, to string) error {
+		if from == filepath.Join(pending, "nginx") { return os.ErrPermission }
+		return os.Rename(from, to)
+	})
+	if err == nil { t.Fatal("expected restore failure") }
+	for _, name := range []string{"fonu.db", "certs", "nginx", ".secret_key"} {
+		got, err := os.ReadFile(filepath.Join(dir, name)); if err != nil || string(got) != "old-"+name { t.Fatalf("live %s: %q %v", name, got, err) }
+		got, err = os.ReadFile(filepath.Join(pending, name)); if err != nil || string(got) != "new-"+name { t.Fatalf("staged %s: %q %v", name, got, err) }
+	}
+}

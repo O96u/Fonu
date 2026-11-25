@@ -35,8 +35,6 @@ RUN apt-get update \
          | tar -xz -C /tmp \
     && install -m 755 "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" /usr/local/bin/frpc \
     && rm -rf "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}" \
-    && apt-get purge -y curl \
-    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -52,5 +50,7 @@ ENV FONU_DATA_DIR=/data \
 EXPOSE 6893 80 443
 
 VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -fsS --max-time 3 "http://127.0.0.1:${FONU_LISTEN##*:}/healthz" || exit 1
 
 CMD ["/app/fonu"]

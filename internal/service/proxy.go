@@ -290,3 +290,8 @@ func (s *ProxyService) loadCertSources(ctx context.Context) ([]nginx.CertSource,
 	}
 	return sources, nil
 }
+
+func (s *ProxyService) NginxApplyStatus() nginx.ApplyStatus {
+	if s.nginx == nil { return nginx.ApplyStatus{State: "unknown"} }
+	return s.nginx.ApplyStatus()
+}

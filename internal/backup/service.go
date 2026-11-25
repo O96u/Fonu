@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -51,7 +52,8 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 		return "", err
 	}
 	outPath := file.Name()
-	defer file.Close()
+	success := false
+	defer func() { file.Close(); if !success { os.Remove(outPath) } }()
 
 	gw := gzip.NewWriter(file)
 	tw := tar.NewWriter(gw)
@@ -83,6 +85,8 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 	if err := gw.Close(); err != nil {
 		return "", err
 	}
+	if err := file.Close(); err != nil { return "", err }
+	success = true
 	return outPath, nil
 }
 
@@ -96,10 +100,8 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 	defer file.Close()
 
 	pending := filepath.Join(s.dataDir, pendingDirName)
-	if err := os.RemoveAll(pending); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(pending, 0o755); err != nil {
+	if _, err := os.Stat(pending); err == nil { return fmt.Errorf("已有待恢复备份，请等待重启") } else if !os.IsNotExist(err) { return err }
+	if err := os.MkdirAll(pending, 0o700); err != nil {
 		return err
 	}
 
@@ -236,62 +238,49 @@ func ApplyPending(dataDir string) error {
 		return fmt.Errorf("待恢复的数据库不可用")
 	}
 
-	live := filepath.Join(dataDir, "fonu.db")
-	bak := live + ".before-restore"
-	_ = os.Remove(bak)
-	if _, err := os.Stat(live); err == nil {
-		if err := os.Rename(live, bak); err != nil {
-			return err
-		}
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		side := live + suffix
-		if _, err := os.Stat(side); err == nil {
-			_ = os.Remove(bak + suffix)
-			if err := os.Rename(side, bak+suffix); err != nil {
-				_ = os.Rename(bak, live)
-				return err
-			}
-		}
-	}
-	if err := os.Rename(staged, live); err != nil {
-		_ = os.Rename(bak, live)
-		for _, suffix := range []string{"-wal", "-shm"} {
-			_ = os.Rename(bak+suffix, live+suffix)
-		}
-		return err
-	}
+	return swapRestoreFiles(dataDir, pending, os.Rename)
+}
 
-	for _, dir := range []string{"certs", "nginx"} {
-		src := filepath.Join(pending, dir)
-		if _, err := os.Stat(src); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return err
-		}
-		dst := filepath.Join(dataDir, dir)
-		dstBak := dst + ".before-restore"
-		_ = os.RemoveAll(dstBak)
-		if _, err := os.Stat(dst); err == nil {
-			if err := os.Rename(dst, dstBak); err != nil {
-				return err
-			}
-		}
-		if err := os.Rename(src, dst); err != nil {
-			_ = os.Rename(dstBak, dst)
-			return err
-		}
-		_ = os.RemoveAll(dstBak)
+// Keep all displaced files until every replacement succeeds. On a normal I/O
+// failure, undo renames in reverse order and leave the staged archive retryable.
+func swapRestoreFiles(dataDir, pending string, rename func(string, string) error) (err error) {
+	rollbackDir, err := os.MkdirTemp(dataDir, ".restore-rollback-*")
+	if err != nil { return err }
+	type move struct { from, to string }
+	var moves []move
+	moveFile := func(from, to string) error {
+		if err := rename(from, to); err != nil { return err }
+		moves = append(moves, move{from, to})
+		return nil
 	}
-
-	if key, err := os.ReadFile(filepath.Join(pending, secret.KeyFileName)); err == nil {
-		if err := secret.SaveStoredKey(dataDir, string(key)); err != nil { return err }
-	} else if !os.IsNotExist(err) { return err }
-	_ = os.Remove(bak)
-	_ = os.Remove(bak + "-wal")
-	_ = os.Remove(bak + "-shm")
-	return os.RemoveAll(pending)
+	defer func() {
+		if err != nil {
+			var rollbackErr error
+			for i := len(moves)-1; i >= 0; i-- {
+				m := moves[i]
+				if e := rename(m.to, m.from); e != nil { rollbackErr = errors.Join(rollbackErr, e) }
+			}
+			if rollbackErr != nil { err = errors.Join(err, fmt.Errorf("rollback failed; recovery files: %s: %w", rollbackDir, rollbackErr)); return }
+		}
+		_ = os.RemoveAll(rollbackDir)
+	}()
+	for _, name := range []string{"fonu.db-wal", "fonu.db-shm", "fonu.db", "certs", "nginx", secret.KeyFileName} {
+		staged := filepath.Join(pending, name)
+		live := filepath.Join(dataDir, name)
+		_, stageErr := os.Lstat(staged)
+		sidecar := name == "fonu.db-wal" || name == "fonu.db-shm"
+		if stageErr != nil && !os.IsNotExist(stageErr) { return stageErr }
+		if !sidecar && os.IsNotExist(stageErr) { continue }
+		if _, liveErr := os.Lstat(live); liveErr == nil {
+			if err := moveFile(live, filepath.Join(rollbackDir, name)); err != nil { return err }
+		} else if !os.IsNotExist(liveErr) { return liveErr }
+		if !sidecar && stageErr == nil {
+			if err := moveFile(staged, live); err != nil { return err }
+		}
+	}
+	// All replacements are committed. A cleanup failure must not undo a successful restore.
+	_ = os.RemoveAll(pending)
+	return nil
 }
 
 func addDatabaseSnapshot(ctx context.Context, tw *tar.Writer, dataDir string) error {
@@ -346,7 +335,8 @@ func addDir(ctx context.Context, tw *tar.Writer, baseDir, rel string) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
+		if err := ctx.Err(); err != nil { return err }
+		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
 		if strings.Contains(path, string(os.PathSeparator)+"backups"+string(os.PathSeparator)) {

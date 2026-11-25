@@ -3,6 +3,8 @@ package nginx
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,6 +31,8 @@ type Manager struct {
 	opts   GenerateOptions
 	mu sync.Mutex
 	optsMu sync.RWMutex
+	statusMu sync.RWMutex
+	status ApplyStatus
 }
 
 type ApplyResult struct {
@@ -96,9 +100,20 @@ func (m *Manager) Apply(ctx context.Context, rules []proxy.Rule, certs []CertSou
 	return m.ApplyWithOptions(ctx, rules, certs, m.CurrentOptions())
 }
 
-func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (ApplyResult, error) {
+func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (result ApplyResult, applyErr error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.statusMu.Lock()
+	m.status.State = "applying"
+	m.status.LastError = ""
+	m.status.Desired = ""
+	m.statusMu.Unlock()
+	defer func() {
+		m.statusMu.Lock()
+		defer m.statusMu.Unlock()
+		m.status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if applyErr != nil { m.status.State = "failed"; m.status.LastError = applyErr.Error() } else if result.Reloaded { m.status.State = "reload_requested"; m.status.Applied = m.status.Desired } else { m.status.State = "saved" }
+	}()
 	if err := ctx.Err(); err != nil { return ApplyResult{}, err }
 	if err := m.EnsureDirs(); err != nil {
 		return ApplyResult{}, err
@@ -123,6 +138,9 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 		return ApplyResult{}, err
 	}
 
+	m.statusMu.Lock()
+	m.status.Desired = fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
+	m.statusMu.Unlock()
 	tmpPath, err := writeTemporaryConfig(m.cfg.NginxDir(), content)
 	if err != nil { return ApplyResult{}, err }
 	defer os.Remove(tmpPath)
@@ -142,18 +160,32 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 
 	currentPath := m.cfg.NginxConfigPath()
 	backupPath := currentPath + ".bak"
+	hadPrevious := false
 	if _, err := os.Stat(currentPath); err == nil {
+		hadPrevious = true
 		if err := copyFile(currentPath, backupPath); err != nil {
 			_ = os.Remove(tmpPath)
 			return ApplyResult{}, err
 		}
-	}
+	} else if !os.IsNotExist(err) { return ApplyResult{}, err }
 
 	if err := os.Rename(tmpPath, currentPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return ApplyResult{}, err
 	}
 
+	defer func() {
+		if applyErr == nil { return }
+		if err := restoreConfig(currentPath, backupPath, hadPrevious); err != nil {
+			applyErr = errors.Join(applyErr, fmt.Errorf("restore nginx config: %w", err))
+			return
+		}
+		if hadPrevious && m.available() {
+			rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := m.start(rollbackCtx); err != nil { applyErr = errors.Join(applyErr, fmt.Errorf("restore nginx service: %w", err)) }
+		}
+	}()
 	if !m.available() {
 		return ApplyResult{Message: "Nginx 未安装，配置已保存"}, nil
 	}
@@ -171,11 +203,8 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	}
 
 	if err := m.reload(ctx); err != nil {
-		m.logger.Warn("nginx reload failed, trying restart", "error", err)
-		if err := m.forceRestart(ctx); err != nil {
-			return ApplyResult{}, err
-		}
-		return ApplyResult{Reloaded: true, Message: "Nginx 已重新启动"}, nil
+		m.logger.Warn("nginx reload failed; restoring previous config", "error", err)
+		return ApplyResult{}, err
 	}
 	return ApplyResult{Reloaded: true, Message: "Nginx 已重载"}, nil
 }
@@ -442,4 +471,31 @@ func writeTemporaryConfig(dir, content string) (string, error) {
 	if err == nil { err = closeErr }
 	if err != nil { os.Remove(name); return "", err }
 	return name, nil
+}
+
+// ApplyStatus reports the last apply attempt; a successful signal is not a worker acknowledgement.
+type ApplyStatus struct {
+	State string `json:"state"`
+	Desired string `json:"desired_revision,omitempty"`
+	Applied string `json:"last_requested_revision,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+func (m *Manager) ApplyStatus() ApplyStatus {
+	m.statusMu.RLock()
+	defer m.statusMu.RUnlock()
+	status := m.status
+	if status.State == "" { status.State = "unknown" }
+	return status
+}
+
+func restoreConfig(current, backup string, hadPrevious bool) error {
+	if !hadPrevious { return os.Remove(current) }
+	content, err := os.ReadFile(backup)
+	if err != nil { return err }
+	tmp, err := writeTemporaryConfig(filepath.Dir(current), string(content))
+	if err != nil { return err }
+	defer os.Remove(tmp)
+	return os.Rename(tmp, current)
 }
