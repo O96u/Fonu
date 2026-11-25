@@ -944,172 +944,34 @@
     </div>
   </n-modal>
 
-  <n-modal v-model:show="showEntryModal" :mask-closable="false" transform-origin="center">
-    <div class="proxy-entry-edit-modal">
-      <div class="proxy-entry-edit-modal__header">
-        <h3 class="modal-title">{{ entryModalTitle }}</h3>
-        <n-button size="small" quaternary @click="showEntryModal = false">
-          <template #icon><n-icon :component="CloseOutline" /></template>
-        </n-button>
-      </div>
-      <n-form label-placement="top" class="proxy-entry-edit-modal__body">
-        <n-form-item label="名称">
-          <n-input v-model:value="entryForm.name" maxlength="100" show-count placeholder="选填；留空时标题自动显示为「端口 · HTTPS · IPv4」" />
-        </n-form-item>
-        <div class="listen-row">
-          <div class="listen-col listen-col--port">
-            <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
-            <div class="listen-col__control">
-              <n-input-number v-model:value="entryForm.listen_port" :min="1" :max="65535" class="port-input" />
-            </div>
-          </div>
-          <div class="listen-col listen-col--protocol">
-            <div class="listen-col__label">监听协议</div>
-            <div class="listen-col__control">
-              <div class="listen-types">
-                <n-checkbox v-model:checked="entryForm.listen_ipv4">IPv4</n-checkbox>
-                <n-checkbox v-model:checked="entryForm.listen_ipv6">IPv6</n-checkbox>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="form-switch-list form-switch-list--compact">
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">启用 HTTPS</div>
-            </div>
-            <n-switch v-model:value="entryForm.https_enabled" />
-          </div>
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
-            </div>
-            <n-switch v-model:value="entryForm.http_redirect" :disabled="!entryForm.https_enabled" />
-          </div>
-        </div>
-        <p v-if="cloningSourceId" class="field-hint">
-          保存后将新建监听入口，并把原入口下的 {{ cloneRuleCount }} 条规则（前端域名、上游地址与安全设置）一并复制到新端口；复制后两份规则相互独立。
-        </p>
-        <p v-else-if="editingEntryId" class="field-hint">
-          仅修改入口名称、监听与 HTTPS；域名、目标与安全策略请在下方列表中编辑各条规则。
-        </p>
-        <p v-else class="field-hint">
-          先创建空入口，再在下方列表添加规则；批量改域名、目标或安全策略时请点「编辑入口」。
-        </p>
-      </n-form>
-      <div class="modal-footer">
-        <n-button @click="showEntryModal = false">取消</n-button>
-        <n-button type="primary" :loading="savingEntry" @click="saveEntry">保存</n-button>
-      </div>
-    </div>
-  </n-modal>
-
-  <n-modal v-model:show="showDiscoveryModal" :mask-closable="false" transform-origin="center">
-    <div class="discovery-modal">
-      <div class="discovery-modal__header">
-        <div>
-          <h3 class="modal-title">发现内网服务</h3>
-          <p class="discovery-modal__subtitle">
-            {{ discoveryTarget ? '扫描常见端口并识别 HTTP 服务，勾选后填写前端域名添加到当前入口' : '扫描常见端口并识别 HTTP 服务，勾选后批量创建反向代理规则' }}
-          </p>
-        </div>
-        <n-button size="small" quaternary @click="showDiscoveryModal = false">
-          <template #icon><n-icon :component="CloseOutline" /></template>
-        </n-button>
-      </div>
-
-      <div class="discovery-modal__toolbar">
-        <n-input
-          v-model:value="discoveryHost"
-          size="small"
-          placeholder="扫描地址，如 127.0.0.1"
-          class="discovery-modal__host"
-          :disabled="discoveryLoading"
-          @keydown.enter.prevent="runDiscoveryScan"
-        />
-        <n-button size="small" type="primary" :loading="discoveryLoading" @click="runDiscoveryScan">
-          {{ discoveryLoading ? '扫描中…' : '开始发现' }}
-        </n-button>
-        <span v-if="discoveryLoading" class="discovery-modal__status discovery-modal__status--loading">
-          <n-spin size="small" />
-          正在扫描 {{ discoveryScanHost }} …
-        </span>
-        <span v-else-if="discoverySummary" class="discovery-modal__summary">{{ discoverySummary }}</span>
-      </div>
-
-      <div class="discovery-modal__content">
-        <div v-if="discoveryLoading && discoveryRows.length === 0" class="discovery-modal__loading">
-          <n-spin size="medium" />
-          <span>正在扫描 {{ discoveryScanHost }} 的常见 Web 端口…</span>
-        </div>
-        <n-empty
-          v-else-if="!discoveryLoading && discoveryRows.length === 0"
-          description="暂未发现可添加的服务，请确认目标地址后重试"
-        />
-        <div v-else class="discovery-modal__list-wrap">
-          <div v-if="discoveryLoading" class="discovery-modal__scan-overlay">
-            <n-spin size="medium" />
-            <span>正在重新扫描 {{ discoveryScanHost }} …</span>
-          </div>
-          <div class="discovery-modal__list">
-            <div class="discovery-modal__list-head">
-              <n-checkbox
-                class="discovery-modal__select-all"
-                :checked="discoverySelectAllChecked"
-                :indeterminate="discoverySelectAllIndeterminate"
-                :disabled="discoveryLoading"
-                aria-label="全选"
-                @update:checked="onDiscoverySelectAll"
-              />
-              <span>服务</span>
-              <span>规则名称</span>
-              <span>前端域名</span>
-            </div>
-            <div
-              v-for="row in discoveryRows"
-              :key="row.id"
-              class="discovery-item"
-            >
-              <n-checkbox v-model:checked="row.selected" :disabled="discoveryLoading" />
-              <div class="discovery-item__info">
-                <div class="discovery-item__title mono">{{ row.service.upstream }}</div>
-                <div class="discovery-item__meta">{{ row.service.name }}</div>
-                <div v-if="row.service.suggestion" class="discovery-item__hint">{{ row.service.suggestion }}</div>
-              </div>
-              <n-input
-                v-model:value="row.ruleName"
-                size="small"
-                maxlength="100"
-                placeholder="规则名称"
-                :disabled="!row.selected || discoveryLoading"
-              />
-              <n-input
-                v-model:value="row.hostname"
-                size="small"
-                placeholder="例如 nas.example.com"
-                :disabled="!row.selected || discoveryLoading"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-footer discovery-modal__footer">
-        <n-button @click="showDiscoveryModal = false" :disabled="discoveryLoading">取消</n-button>
-        <n-button :loading="discoveryLoading" @click="runDiscoveryScan">
-          {{ discoveryLoading ? '扫描中…' : '重新扫描' }}
-        </n-button>
-        <n-button
-          type="primary"
-          :loading="discoveryAdding"
-          :disabled="!hasSelectedDiscoveryRows || discoveryLoading"
-          @click="submitDiscovery"
-        >
-          {{ discoveryTarget ? '添加为子规则' : '批量创建规则' }}
-        </n-button>
-      </div>
-    </div>
-  </n-modal>
+  <ProxyEntryEditor
+    v-model:show-entry-modal="showEntryModal"
+    :entry-modal-title="entryModalTitle"
+    :entry-form="entryForm"
+    :cloning-source-id="cloningSourceId"
+    :editing-entry-id="editingEntryId"
+    :clone-rule-count="cloneRuleCount"
+    :saving-entry="savingEntry"
+    @patch="Object.assign(entryForm, $event)"
+    @save="saveEntry"
+  />
+  <ProxyDiscovery
+    v-model:show-discovery-modal="showDiscoveryModal"
+    v-model:discovery-host="discoveryHost"
+    :discovery-target="discoveryTarget"
+    :discovery-loading="discoveryLoading"
+    :discovery-scan-host="discoveryScanHost"
+    :discovery-summary="discoverySummary"
+    :discovery-rows="discoveryRows"
+    :discovery-select-all-checked="discoverySelectAllChecked"
+    :discovery-select-all-indeterminate="discoverySelectAllIndeterminate"
+    :discovery-adding="discoveryAdding"
+    :has-selected-discovery-rows="hasSelectedDiscoveryRows"
+    @scan="runDiscoveryScan"
+    @select-all="onDiscoverySelectAll"
+    @patch-row="patchDiscoveryRow"
+    @submit="submitDiscovery"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1181,6 +1043,8 @@ import PageHeader from '../components/PageHeader.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
 import ProxyToolbar from '../components/proxy/ProxyToolbar.vue'
+import ProxyEntryEditor from '../components/proxy/ProxyEntryEditor.vue'
+import ProxyDiscovery from '../components/proxy/ProxyDiscovery.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
@@ -1752,6 +1616,11 @@ function openDiscoveryModal(group?: ProxyEntryGroup) {
   discoveryRows.value = []
   showDiscoveryModal.value = true
   void runDiscoveryScan()
+}
+
+function patchDiscoveryRow(id: string, patch: Partial<DiscoveryRow>) {
+  const row = discoveryRows.value.find(row => row.id === id)
+  if (row) Object.assign(row, patch)
 }
 
 function onDiscoverySelectAll(checked: boolean) {
@@ -3443,184 +3312,53 @@ onUnmounted(() => {
   opacity: 0.35;
 }
 
-.discovery-modal {
-  width: min(760px, 94vw);
-  max-height: 82vh;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: var(--fonu-space-4);
-  background: var(--fonu-surface, #fff);
-  border-radius: var(--fonu-radius-lg, 12px);
-}
 
-.discovery-modal__header,
-.discovery-modal__toolbar,
-.discovery-modal__footer {
-  flex-shrink: 0;
-}
 
-.discovery-modal__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-3);
-  margin-bottom: var(--fonu-space-3);
-}
 
-.discovery-modal__subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--fonu-text-secondary);
-}
 
-.discovery-modal__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--fonu-space-3);
-}
 
-.discovery-modal__host {
-  width: 180px;
-}
 
-.discovery-modal__summary {
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-}
 
-.discovery-modal__list-head .discovery-modal__select-all {
-  justify-self: start;
-}
 
-.discovery-modal__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-}
 
-.discovery-modal__status--loading {
-  color: var(--fonu-accent, #18a058);
-}
 
-.discovery-modal__content {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
 
-.discovery-modal__loading {
-  display: flex;
-  flex: 1;
-  min-height: 120px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--fonu-space-3);
-  padding: var(--fonu-space-6) 0;
-  color: var(--fonu-text-secondary);
-  font-size: 13px;
-}
 
-.discovery-modal__list-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
 
-.discovery-modal__scan-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--fonu-space-3);
-  background: color-mix(in srgb, var(--fonu-surface, #fff) 82%, transparent);
-  backdrop-filter: blur(1px);
-  font-size: 13px;
-  color: var(--fonu-text-secondary);
-}
 
-.discovery-modal__list {
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--fonu-border);
-  border-radius: var(--fonu-radius-md, 8px);
-}
 
-.discovery-modal__list-head,
-.discovery-item {
-  display: grid;
-  grid-template-columns: 36px minmax(180px, 1.2fr) minmax(120px, 0.9fr) minmax(160px, 1fr);
-  gap: var(--fonu-space-2);
-  align-items: center;
-  padding: 10px 12px;
-}
 
-.discovery-modal__list-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fonu-text-secondary);
-  background: var(--fonu-bg-subtle, rgba(0, 0, 0, 0.02));
-  border-bottom: 1px solid var(--fonu-border);
-}
 
-.discovery-item + .discovery-item {
-  border-top: 1px solid var(--fonu-border);
-}
 
-.discovery-item--offline {
-  opacity: 0.55;
-}
 
-.discovery-item__title {
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-  word-break: break-all;
-}
 
-.discovery-item__meta {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fonu-text-primary);
-}
 
-.discovery-item__hint {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--fonu-text-secondary);
-}
 
-.discovery-modal__footer {
-  margin-top: var(--fonu-space-4);
-}
 
-.proxy-entry-edit-modal {
-  width: min(480px, 92vw);
-  padding: var(--fonu-space-4);
-  background: var(--fonu-surface, #fff);
-  border-radius: var(--fonu-radius-lg, 12px);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .entry-batch {
   margin-top: var(--fonu-space-3, 12px);
