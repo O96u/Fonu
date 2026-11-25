@@ -24,6 +24,10 @@ jobs:
           for f in packaging/fonu-fpk/cmd/*; do bash -n "$f"; done
       - run: npm ci
         working-directory: web
+      - name: Report npm dependency vulnerabilities
+        working-directory: web
+        run: npm audit --audit-level=high
+        continue-on-error: true
       - run: npm run build
         working-directory: web
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/

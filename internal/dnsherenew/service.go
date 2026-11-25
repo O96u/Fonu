@@ -607,24 +607,27 @@ func (s *Service) ListGifts(ctx context.Context, accountID string) ([]ddns.Gift,
 
 // Tick 是调度器入口（底层 ticker 每天唤醒一次，绝大多数轮次零 API 调用）。
 // 逐账户检查：未开启自动续期或未到该账户的「下次检查时间」则跳过。
-func (s *Service) Tick(ctx context.Context) {
+func (s *Service) Tick(ctx context.Context) { _ = s.TickErr(ctx) }
+
+func (s *Service) TickErr(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	records, err := s.loadRecords(ctx)
 	if err != nil {
-		return
+		return err
 	}
 	records, err = s.migrateOnce(ctx, records)
 	if err != nil {
-		return
+		return err
 	}
 	if len(records) == 0 {
-		return
+		return nil
 	}
 
 	now := time.Now()
 	for i := range records {
+		if ctx.Err() != nil { break }
 		rec := &records[i]
 		if !rec.AutoRenew {
 			continue
@@ -636,7 +639,8 @@ func (s *Service) Tick(ctx context.Context) {
 		}
 		s.tickAccount(ctx, rec, now)
 	}
-	_ = s.saveRecords(ctx, records)
+	if err := s.saveRecords(ctx, records); err != nil { return err }
+	return ctx.Err()
 }
 
 func (s *Service) tickAccount(ctx context.Context, rec *accountRecord, now time.Time) {

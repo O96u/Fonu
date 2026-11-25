@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fonu/fonu/internal/notify"
@@ -14,6 +15,7 @@ import (
 )
 
 type Service struct {
+	updateMu sync.Mutex
 	store     *Store
 	settings  *settings.Store
 	secretBox *secret.Box
@@ -357,15 +359,18 @@ func (s *Service) UpdateAll(ctx context.Context) ([]Config, error) {
 	return list, nil
 }
 
-func (s *Service) Tick(ctx context.Context) {
+func (s *Service) Tick(ctx context.Context) { _ = s.TickErr(ctx) }
+
+func (s *Service) TickErr(ctx context.Context) error {
 	configs, err := s.store.List(ctx)
 	if err != nil {
 		s.logger.Warn("ddns scheduled check skipped", "error", err.Error())
-		return
+		return err
 	}
 	var enabled int
 	var failed int
 	for _, cfg := range configs {
+		if err := ctx.Err(); err != nil { return err }
 		if !cfg.Enabled || cfg.AcmeOnly {
 			continue
 		}
@@ -381,6 +386,8 @@ func (s *Service) Tick(ctx context.Context) {
 	if enabled > 0 {
 		s.logger.Info("ddns scheduled check finished", "enabled_tasks", enabled, "failed", failed)
 	}
+	if failed > 0 { return fmt.Errorf("%d DDNS updates failed", failed) }
+	return ctx.Err()
 }
 
 // PublicIPs returns the most recently synced public IPs from enabled DDNS configs.
@@ -534,6 +541,12 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 }
 
 func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
+	if !s.updateMu.TryLock() { return fmt.Errorf("DDNS 更新正在执行，请稍后重试") }
+	defer s.updateMu.Unlock()
+	if err := ctx.Err(); err != nil { return err }
+	latest, err := s.store.GetByID(ctx, cfg.ID)
+	if err != nil { return err }
+	cfg = latest
 	prevIPv4 := cfg.LastIPv4
 	prevIPv6 := cfg.LastIPv6
 

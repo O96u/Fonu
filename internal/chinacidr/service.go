@@ -56,11 +56,15 @@ func New(cfg config.Config, settingsStore *settings.Store, nginxMgr *nginx.Manag
 // SetApplyCIDR is configured before the service is started.
 func (s *Service) SetApplyCIDR(fn func(context.Context, string) error) { s.applyCIDR = fn }
 
-func (s *Service) Tick(ctx context.Context) {
-	if err := s.Update(ctx); err != nil {
+func (s *Service) Tick(ctx context.Context) { _ = s.TickErr(ctx) }
+
+func (s *Service) TickErr(ctx context.Context) error {
+	err := s.Update(ctx)
+	if err != nil {
 		s.logger.Warn("china cidr update failed", "module", "CHINA_CIDR", "error", err.Error())
 		s.RecordLastError(ctx, err)
 	}
+	return err
 }
 
 func (s *Service) RecordLastError(ctx context.Context, err error) {

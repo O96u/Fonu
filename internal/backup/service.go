@@ -101,13 +101,13 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 
 	pending := filepath.Join(s.dataDir, pendingDirName)
 	if _, err := os.Stat(pending); err == nil { return fmt.Errorf("已有待恢复备份，请等待重启") } else if !os.IsNotExist(err) { return err }
-	if err := os.MkdirAll(pending, 0o700); err != nil {
-		return err
-	}
+	stage, err := os.MkdirTemp(s.dataDir, ".restore-stage-*")
+	if err != nil { return err }
+	defer os.RemoveAll(stage)
 
 	gr, err := gzip.NewReader(file)
 	if err != nil {
-		_ = os.RemoveAll(pending)
+		_ = os.RemoveAll(stage)
 		return fmt.Errorf("无效的备份文件")
 	}
 	defer gr.Close()
@@ -118,7 +118,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 	count := 0
 	for {
 		if err := ctx.Err(); err != nil {
-			_ = os.RemoveAll(pending)
+			_ = os.RemoveAll(stage)
 			return err
 		}
 		header, err := tr.Next()
@@ -126,12 +126,12 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 			break
 		}
 		if err != nil {
-			_ = os.RemoveAll(pending)
+			_ = os.RemoveAll(stage)
 			return err
 		}
 		count++
 		if count > 100000 || header.Size < 0 || header.Size > (2<<30)-total {
-			_ = os.RemoveAll(pending)
+			_ = os.RemoveAll(stage)
 			return fmt.Errorf("备份解压大小或文件数量超出限制")
 		}
 		total += header.Size
@@ -141,34 +141,34 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 		if !allowedEntry(header.Name) {
 			continue
 		}
-		target, err := safeJoin(pending, header.Name)
+		target, err := safeJoin(stage, header.Name)
 		if err != nil {
-			_ = os.RemoveAll(pending)
+			_ = os.RemoveAll(stage)
 			return err
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
-				_ = os.RemoveAll(pending)
+				_ = os.RemoveAll(stage)
 				return err
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				_ = os.RemoveAll(pending)
+				_ = os.RemoveAll(stage)
 				return err
 			}
 			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if err != nil {
-				_ = os.RemoveAll(pending)
+				_ = os.RemoveAll(stage)
 				return err
 			}
 			if _, err := io.Copy(out, tr); err != nil {
 				out.Close()
-				_ = os.RemoveAll(pending)
+				_ = os.RemoveAll(stage)
 				return err
 			}
 			if err := out.Close(); err != nil {
-				_ = os.RemoveAll(pending)
+				_ = os.RemoveAll(stage)
 				return err
 			}
 			if filepath.ToSlash(header.Name) == "fonu.db" {
@@ -177,24 +177,25 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 		}
 	}
 	if !wroteDB {
-		_ = os.RemoveAll(pending)
+		_ = os.RemoveAll(stage)
 		return fmt.Errorf("备份里没有数据库")
 	}
-	if key, err := os.ReadFile(filepath.Join(pending, secret.KeyFileName)); err == nil {
+	if key, err := os.ReadFile(filepath.Join(stage, secret.KeyFileName)); err == nil {
 		if err := secret.ValidateStoredKey(string(key)); err != nil {
-			_ = os.RemoveAll(pending)
+			_ = os.RemoveAll(stage)
 			return err
 		}
 	} else if !os.IsNotExist(err) {
-		_ = os.RemoveAll(pending)
+		_ = os.RemoveAll(stage)
 		return err
 	}
 	// 进程还占着正在使用的库。先放到旁边校验，下次启动、打开数据库之前再换上去。
-	if err := db.PrepareRestore(filepath.Join(pending, "fonu.db")); err != nil {
-		_ = os.RemoveAll(pending)
+	if err := db.PrepareRestore(filepath.Join(stage, "fonu.db")); err != nil {
+		_ = os.RemoveAll(stage)
 		return fmt.Errorf("备份里的数据库不可用")
 	}
-	return nil
+	// Publish only a complete, verified archive; interrupted extraction is never applied.
+	return os.Rename(stage, pending)
 }
 
 func allowedEntry(name string) bool {

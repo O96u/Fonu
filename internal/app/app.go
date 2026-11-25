@@ -190,7 +190,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 				}
 				return time.Duration(m) * time.Minute
 			},
-			Run: ddnsSvc.Tick,
+			RunErr: ddnsSvc.TickErr,
+			RetryMin: time.Minute,
+			RetryMax: 15*time.Minute,
 		},
 		scheduler.Job{
 			Name:     "acme",
@@ -209,13 +211,17 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 				}
 				return time.Duration(h) * time.Hour
 			},
-			Run: chinaCIDRSvc.Tick,
+			RunErr: chinaCIDRSvc.TickErr,
+			RetryMin: 5*time.Minute,
+			RetryMax: time.Hour,
 		},
 		scheduler.Job{
 			Name:     "dnshe_renew",
 			Timeout: 5 * time.Minute,
 			Interval: 24 * time.Hour,
-			Run:      dnsheRenewSvc.Tick,
+			RunErr: dnsheRenewSvc.TickErr,
+			RetryMin: 15*time.Minute,
+			RetryMax: 2*time.Hour,
 		},
 	)
 	sched.Start(ctx)

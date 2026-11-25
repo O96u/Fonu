@@ -79,7 +79,7 @@ func (s *Scheduler) runJob(ctx context.Context, job Job) {
 		}()
 		if ctx.Err() != nil { return }
 		if interval <= 0 { interval = time.Minute }
-		if failed { failures++; if job.RetryMin > 0 { interval = retryDelay(job.RetryMin, job.RetryMax, failures) } } else { failures = 0 }
+		if failed { failures++; if job.RetryMin > 0 { interval = min(interval, retryDelay(job.RetryMin, job.RetryMax, failures)) } } else { failures = 0 }
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done(): timer.Stop(); return
