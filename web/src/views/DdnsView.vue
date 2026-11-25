@@ -50,32 +50,10 @@
         <div class="stat-card__foot">上次检测 {{ ipCheckedLabel }}</div>
       </div>
 
-      <div class="stat-card">
-        <n-icon :component="ListOutline" class="stat-card__icon stat-card__icon--gray" />
-        <div class="stat-card__value">{{ taskCount }}</div>
-        <div class="stat-card__label">任务总数</div>
-        <div class="stat-card__sub">已配置的 DDNS 任务</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="CheckmarkCircleOutline" class="stat-card__icon stat-card__icon--green" />
-        <div class="stat-card__value stat-card__value--green">{{ normalTaskCount }}</div>
-        <div class="stat-card__label">正常任务</div>
-        <div class="stat-card__sub">运行正常</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="AlertCircleOutline" class="stat-card__icon stat-card__icon--red" />
-        <div class="stat-card__value stat-card__value--red">{{ abnormalTaskCount }}</div>
-        <div class="stat-card__label">异常任务</div>
-        <div class="stat-card__sub">需要处理</div>
-      </div>
-
-      <div class="stat-card">
-        <n-icon :component="TimeOutline" class="stat-card__icon stat-card__icon--blue" />
-        <div class="stat-card__value stat-card__value--sm">{{ lastSyncRelative }}</div>
-        <div class="stat-card__label">最后同步</div>
-        <div class="stat-card__sub">{{ lastSyncAbsolute }}</div>
+      <div class="ddns-summary">
+        <div v-for="stat in taskStats" :key="stat.label" class="ddns-summary__item">
+          <strong>{{ stat.count }}</strong><span>{{ stat.label }}</span>
+        </div>
       </div>
     </div>
 
@@ -180,10 +158,7 @@
                 <span class="task-item__muted">（共 {{ domainRecordsOf(cfg).length }} 条记录）</span>
               </div>
               <div class="task-item__foot">
-                <div class="task-item__tags">
-                  <span v-if="cfg.ipv4_enabled && cfg.last_ipv4" class="ip-tag">IPv4 {{ cfg.last_ipv4 }}</span>
-                  <span v-if="cfg.ipv6_enabled && cfg.last_ipv6" class="ip-tag">IPv6 {{ shortIPv6(cfg.last_ipv6) }}</span>
-                </div>
+                <span class="task-item__spacer" />
                 <div class="task-item__foot-actions">
                   <n-button size="tiny" quaternary title="编辑服务商" @click.stop="startEditTask(cfg)">
                     <template #icon><n-icon :component="CreateOutline" /></template>
@@ -237,14 +212,7 @@
                 <span class="task-item__muted">（共 {{ dnsheAccountRecordCount(acc) }} 条记录）</span>
               </div>
               <div class="task-item__foot">
-                <div class="task-item__tags">
-                  <span v-if="dnsheAccountIpSummary(acc).ipv4" class="ip-tag">
-                    IPv4 {{ dnsheAccountIpSummary(acc).ipv4 }}
-                  </span>
-                  <span v-if="dnsheAccountIpSummary(acc).ipv6" class="ip-tag">
-                    IPv6 {{ shortIPv6(dnsheAccountIpSummary(acc).ipv6!) }}
-                  </span>
-                </div>
+                <span class="task-item__spacer" />
                 <div class="task-item__foot-actions">
                   <n-button size="tiny" quaternary title="编辑服务商" @click.stop="startEditDnsheAccount(acc)">
                     <template #icon><n-icon :component="CreateOutline" /></template>
@@ -263,7 +231,7 @@
         </div>
       </aside>
 
-      <section v-if="detailVisible" class="task-detail">
+      <section v-if="detailVisible" v-show="!detailCollapsed" class="task-detail">
         <div v-if="isDnsheAccountSelected && selectedDnsheAccount" class="task-detail__head">
           <div class="task-detail__head-top">
             <div class="task-detail__title-wrap">
@@ -387,7 +355,11 @@
           </div>
         </div>
 
+        <div v-if="isDnsheAccountSelected" class="dnshe-tabs" role="group" aria-label="DNSHE 管理">
+          <n-button v-for="tab in dnsheTabs" :key="tab.key" size="small" :type="dnsheTab === tab.key ? 'primary' : 'default'" :aria-pressed="dnsheTab === tab.key" @click="dnsheTab = tab.key">{{ tab.label }}</n-button>
+        </div>
         <DdnsDnsheDetail
+          v-show="dnsheTab === 'domains'"
           v-if="isDnsheAccountSelected && selectedDnsheAccount"
           ref="dnsheDetailRef"
           :account="selectedDnsheAccount"
@@ -402,6 +374,7 @@
         <FonuCard
           v-if="panelTask || isDnsheAccountSelected"
           ref="dnsheRecordsRef"
+          v-show="!isDnsheAccountSelected || dnsheTab === 'records'"
           flush
           class="detail-section"
         >
@@ -565,17 +538,13 @@
           </div>
         </div>
 
-        <div class="alert alert--info">
-          <n-icon :component="InformationCircleOutline" class="alert__icon" />
-          <div class="alert__body">
-            <div class="alert__title">提示</div>
-            <div class="alert__text">
-              每条记录请填写完整域名（如 s.example.com、www.sub.example.com）。同一服务商任务可管理多个不同域名，Fonu 会按同步周期自动检测公网 IP 并更新对应解析记录。
-            </div>
-          </div>
-        </div>
+        <details class="ddns-help">
+          <summary>解析记录填写说明</summary>
+          <p>请填写完整域名（如 s.example.com、www.sub.example.com）。同一服务商任务可管理多个域名，Fonu 按同步周期自动检测公网 IP 并更新解析记录。</p>
+        </details>
 
         <DdnsDnsheGifts
+          v-show="dnsheTab === 'gifts'"
           v-if="isDnsheAccountSelected && selectedDnsheAccount"
           ref="dnsheGiftsRef"
           :account="selectedDnsheAccount"
@@ -603,14 +572,10 @@ import {
 import {
   AddOutline,
   AlertCircleOutline,
-  CheckmarkCircleOutline,
   CopyOutline,
   CreateOutline,
   GlobeOutline,
-  InformationCircleOutline,
-  ListOutline,
   RefreshOutline,
-  TimeOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import aliyunIcon from '../assets/brand/dns/aliyun.png'
@@ -631,7 +596,7 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import TaskProviderForm, { type ProviderForm } from '../components/TaskProviderForm.vue'
 import { copyToClipboard } from '../utils/clipboard'
-import { formatDate, formatRelativeTime } from '../utils/format'
+import { formatRelativeTime } from '../utils/format'
 import { statusLabel } from '../utils/status'
 
 const DRAFT_KEY = '__draft__'
@@ -767,22 +732,35 @@ const headIpToggleLoading = computed(() => {
 
 const showDraftInList = computed(() => taskEditMode.value !== 'create')
 
-const taskCount = computed(
-  () => sidebarConfigs.value.length + dnsheAccounts.value.length + (providerDraft.value ? 1 : 0),
-)
-
-const normalTaskCount = computed(() => configs.value.filter((c) => c.enabled && isTaskHealthy(c)).length)
-const abnormalTaskCount = computed(() => configs.value.filter((c) => c.enabled && !isTaskHealthy(c)).length)
-
-const lastSyncIso = computed(() => {
-  const times = configs.value.map((c) => c.last_updated_at).filter(Boolean) as string[]
-  if (times.length === 0) return ''
-  return times.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
+type TaskBucket = 'healthy' | 'error' | 'paused' | 'pending'
+function taskBucket(cfg: DDNSConfig): TaskBucket {
+  if (!cfg.enabled) return 'paused'
+  if (cfg.last_status === 'error' || cfg.last_status === 'warning') return 'error'
+  return isTaskHealthy(cfg) ? 'healthy' : 'pending'
+}
+function accountBucket(acc: DNSHEAccount): TaskBucket {
+  const rows = dnsheLinkedConfigs(acc)
+  if (!rows.length) return 'pending'
+  const buckets = rows.map(taskBucket)
+  if (buckets.includes('error')) return 'error'
+  if (buckets.includes('pending')) return 'pending'
+  if (buckets.includes('healthy')) return 'healthy'
+  return 'paused'
+}
+const taskStats = computed(() => {
+  const buckets = [...sidebarConfigs.value.map(taskBucket), ...dnsheAccounts.value.map(accountBucket)]
+  return [
+    { label: '全部', count: buckets.length },
+    { label: '正常', count: buckets.filter(b => b === 'healthy').length },
+    { label: '异常', count: buckets.filter(b => b === 'error').length },
+    { label: '暂停', count: buckets.filter(b => b === 'paused').length },
+    { label: '待配置 / 同步', count: buckets.filter(b => b === 'pending').length },
+  ]
 })
-
-const lastSyncRelative = computed(() => formatRelativeTime(lastSyncIso.value) || '-')
-const lastSyncAbsolute = computed(() => (lastSyncIso.value ? formatDate(lastSyncIso.value) : '暂无同步记录'))
-const ipCheckedLabel = computed(() => formatRelativeTime(ipCheckedAt.value) || '刚刚')
+const ipCheckedLabel = computed(() => ipCheckedAt.value ? formatRelativeTime(ipCheckedAt.value) || '刚刚' : '尚未检测')
+const detailCollapsed = ref(false)
+const dnsheTab = ref<'domains' | 'records' | 'gifts'>('domains')
+const dnsheTabs = [{ key: 'domains', label: '域名管理' }, { key: 'records', label: '解析记录' }, { key: 'gifts', label: 'Gift 管理' }] as const
 
 const displayRecords = computed(() => {
   const task = panelTask.value
@@ -864,25 +842,21 @@ function providerIcon(v: string) {
   return providerMeta(v).icon
 }
 
-function shortIPv6(ip: string) {
-  return ip.length <= 24 ? ip : `${ip.slice(0, 18)}…`
-}
-
 function isTaskHealthy(cfg: DDNSConfig) {
   if (!cfg.enabled) return false
-  return cfg.last_status === 'ok' || cfg.last_status === 'unchanged' || !cfg.last_status
+  return cfg.last_status === 'ok' || cfg.last_status === 'unchanged'
 }
 
 function taskStatusKind(cfg: DDNSConfig) {
   if (!cfg.enabled) return 'disabled'
   if (cfg.last_status === 'error' || cfg.last_status === 'warning') return cfg.last_status
-  return 'ok'
+  return isTaskHealthy(cfg) ? 'ok' : 'unknown'
 }
 
 function taskStatusText(cfg: DDNSConfig) {
   if (!cfg.enabled) return '暂停'
   if (cfg.last_status === 'error' || cfg.last_status === 'warning') return '异常'
-  return '正常'
+  return isTaskHealthy(cfg) ? '正常' : '待同步'
 }
 
 function dnsheAccountLastSync(acc: DNSHEAccount): string {
@@ -905,15 +879,6 @@ function dnsheAccountRecordCount(acc: DNSHEAccount): number {
   return count
 }
 
-function dnsheAccountIpSummary(acc: DNSHEAccount): { ipv4?: string; ipv6?: string } {
-  for (const cfg of dnsheLinkedConfigs(acc)) {
-    const ipv4 = cfg.ipv4_enabled && cfg.last_ipv4 ? cfg.last_ipv4 : undefined
-    const ipv6 = cfg.ipv6_enabled && cfg.last_ipv6 ? cfg.last_ipv6 : undefined
-    if (ipv4 || ipv6) return { ipv4, ipv6 }
-  }
-  return {}
-}
-
 function dnsheAccountEnabled(acc: DNSHEAccount): boolean {
   const linked = dnsheLinkedConfigs(acc)
   return linked.length > 0 && linked.some((c) => c.enabled)
@@ -926,8 +891,7 @@ function dnsheAccountStatusKind(acc: DNSHEAccount) {
   if (linked.some((c) => c.enabled && (c.last_status === 'error' || c.last_status === 'warning'))) {
     return linked.some((c) => c.enabled && c.last_status === 'error') ? 'error' : 'warning'
   }
-  if (linked.some((c) => c.enabled && isTaskHealthy(c))) return 'ok'
-  return 'ok'
+  return accountBucket(acc) === 'healthy' ? 'ok' : 'unknown'
 }
 
 function dnsheAccountStatusText(acc: DNSHEAccount) {
@@ -935,7 +899,7 @@ function dnsheAccountStatusText(acc: DNSHEAccount) {
   if (linked.length === 0) return '待配置'
   if (!linked.some((c) => c.enabled)) return '暂停'
   if (linked.some((c) => c.enabled && (c.last_status === 'error' || c.last_status === 'warning'))) return '异常'
-  return '正常'
+  return accountBucket(acc) === 'healthy' ? '正常' : '待同步'
 }
 
 function recordNamesOf(row: DDNSConfig): string[] {
@@ -1054,11 +1018,16 @@ function ensureSelection() {
 watch(configs, ensureSelection)
 
 function selectTask(id: number) {
+  if (selectedKey.value === String(id) && !recordEditing.value && taskEditMode.value === null) { detailCollapsed.value = !detailCollapsed.value; return }
+  detailCollapsed.value = false
   selectedKey.value = String(id)
   cancelRecordEdit()
 }
 
 function selectDnsheAccount(id: string) {
+  if (selectedKey.value === dnsheAccountKey(id) && !recordEditing.value && taskEditMode.value === null) { detailCollapsed.value = !detailCollapsed.value; return }
+  detailCollapsed.value = false
+  dnsheTab.value = 'domains'
   selectedKey.value = dnsheAccountKey(id)
   cancelRecordEdit()
 }
@@ -1078,6 +1047,7 @@ function dnsheAccountEditingStub(acc: DNSHEAccount): DDNSConfig {
 }
 
 function startEditDnsheAccount(acc: DNSHEAccount) {
+  detailCollapsed.value = false
   selectedKey.value = dnsheAccountKey(acc.id)
   cancelRecordEdit()
   Object.assign(taskForm, {
@@ -1112,6 +1082,7 @@ async function toggleDnsheAccountEnabled(acc: DNSHEAccount, enabled: boolean) {
 }
 
 function selectDraft() {
+  detailCollapsed.value = false
   selectedKey.value = DRAFT_KEY
   cancelRecordEdit()
 }
@@ -1119,6 +1090,7 @@ function selectDraft() {
 const createTaskPanelRef = ref<HTMLElement | null>(null)
 
 function startCreateTask() {
+  detailCollapsed.value = false
   resetTaskForm()
   taskEditMode.value = 'create'
   cancelRecordEdit()
@@ -1128,6 +1100,7 @@ function startCreateTask() {
 }
 
 function startEditTask(cfg: DDNSConfig) {
+  detailCollapsed.value = false
   selectedKey.value = String(cfg.id)
   Object.assign(taskForm, {
     provider: cfg.provider || 'cloudflare',
@@ -1197,7 +1170,7 @@ async function refreshLiveDNS() {
     configs.value = asList(await api.listDDNS())
     ensureSelection()
   } catch {
-    // keep cache
+    message.warning('实时解析刷新失败，继续显示上次数据')
   }
 }
 
@@ -1206,7 +1179,7 @@ async function loadDnsheAccounts() {
     dnsheAccounts.value = await api.listDNSHEAccounts()
     ensureSelection()
   } catch {
-    dnsheAccounts.value = []
+    message.warning('DNSHE 账户加载失败，保留已加载数据')
   }
 }
 
@@ -1229,6 +1202,8 @@ function isDnsheDomainInRecords(fullDomain: string): boolean {
 }
 
 function scrollToDnsheRecords() {
+  dnsheTab.value = 'records'
+  detailCollapsed.value = false
   nextTick(() => {
     const el = dnsheRecordsRef.value?.$el as HTMLElement | undefined
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1621,11 +1596,14 @@ async function updateDnsheLinked() {
   if (rows.length === 0) return
   updatingDnsheLinked.value = true
   try {
+    let failures = 0
     for (const row of rows) {
       const updated = await api.updateDDNSOne(row.id)
       configs.value = configs.value.map((c) => (c.id === updated.id ? updated : c))
+      if (syncFeedbackMessage(updated).type !== 'success') failures++
     }
-    message.success('DNSHE 解析已同步')
+    if (failures) message.warning(`${failures} 个关联任务同步异常，请查看解析记录`)
+    else message.success('DNSHE 解析已同步')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '更新失败')
     await refreshLiveDNS()
@@ -1710,7 +1688,7 @@ function confirmDeleteRecordFor(record: DDNSDomainRecord) {
 function confirmDeleteRecord(row: DDNSConfig, record: DDNSDomainRecord) {
   dialog.warning({
     title: '删除解析记录',
-    content: `确定从 DDNS 中移除 ${record.domain} 吗？`,
+    content: `确定从 DDNS 中移除 ${record.domain} 吗？${domainsOf(row).length === 1 ? '这是最后一条记录，移除后对应 DDNS 配置也将被删除。' : ''}`,
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -2320,4 +2298,26 @@ onMounted(init)
 .stat-card__icon--red,.stat-card__value--red { color:var(--fonu-error); }
 @media(max-width:1100px) { .ddns-layout { grid-template-columns:minmax(0,1fr); } .task-sidebar__list { max-height:300px; } }
 @media(max-width:760px) { .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .stat-card--ip { grid-column:1/-1; } .stat-card__value { font-size:24px; } }
+
+/* Beta 10: main shell owns vertical scrolling. */
+.stats-row { display:flex; flex-direction:column; gap:0; background:var(--fonu-surface); }
+.stats-row > .stat-card { min-height:0; padding:12px 16px; }
+.stat-card--ip .ip-lines { display:flex; flex-wrap:wrap; gap:4px 24px; }
+.stat-card--ip .ip-line { min-width:0; flex:1 1 250px; }
+.ddns-summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); border-top:1px solid var(--fonu-border); }
+.ddns-summary__item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; color:var(--fonu-text); }
+.ddns-summary__item + .ddns-summary__item { border-left:1px solid var(--fonu-border); }
+.ddns-summary__item strong { font-size:20px; font-weight:600; }
+.ddns-summary__item span { font-size:12px; color:var(--fonu-text-secondary); text-align:center; }
+.task-sidebar__create, .task-sidebar__list, .task-sidebar__list--with-create { max-height:none; overflow:visible; }
+.task-sidebar { min-width:0; }
+.task-item { padding:10px 12px; }
+.task-item__foot { margin-top:2px; justify-content:flex-end; }
+.task-item__spacer { flex:1; }
+.task-detail__head { padding:12px 16px; }
+.dnshe-tabs { display:flex; flex-wrap:wrap; gap:8px; }
+.ddns-help { color:var(--fonu-text-secondary); font-size:12px; padding:4px 8px; }
+.ddns-help summary { cursor:pointer; }
+@media(max-width:1199px) { .ddns-layout { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:480px) { .ddns-summary__item span { font-size:11px; } }
 </style>
