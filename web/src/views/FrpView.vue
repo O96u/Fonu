@@ -727,6 +727,7 @@ import {
   NTabPane,
   NTabs,
   NTag,
+  useDialog,
   useMessage,
   type DataTableColumns,
 } from "naive-ui";
@@ -768,6 +769,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { createId } from "../utils/id";
 
 const message = useMessage();
+const dialog = useDialog();
 const loading = ref(false);
 const saving = ref(false);
 const restarting = ref(false);
@@ -1009,7 +1011,7 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
             size: "small",
             quaternary: true,
             type: "error",
-            onClick: () => removeTcpProxy(row.id),
+            onClick: () => confirmRemoveTcpProxy(row),
           },
           { default: () => "删除" },
         ),
@@ -1226,6 +1228,19 @@ async function saveTcpModal() {
   if (await save({ quiet: true, successText: "隧道已保存" })) {
     showTcpModal.value = false;
   }
+}
+
+function confirmRemoveTcpProxy(row: FRPTCPProxy) {
+  dialog.error({
+    title: "删除隧道",
+    content: `确定删除隧道「${row.name}」吗？对应的端口转发将停止。`,
+    positiveText: "删除",
+    negativeText: "取消",
+    positiveButtonProps: { type: "error" },
+    onPositiveClick: async () => {
+      await removeTcpProxy(row.id);
+    },
+  });
 }
 
 async function removeTcpProxy(id: string) {

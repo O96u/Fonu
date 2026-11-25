@@ -1350,11 +1350,12 @@ async function syncEditCertExport() {
 }
 
 function confirmDelete(row: CertificateRecord) {
-  dialog.warning({
+  dialog.error({
     title: '删除证书',
     content: `确定删除 ${row.domain} 的证书？相关文件将被移除，使用该证书的 HTTPS 代理可能失效。`,
     positiveText: '删除',
     negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
     onPositiveClick: async () => {
       try {
         await api.deleteCertificate(row.domain)

@@ -190,6 +190,7 @@
                           size="small"
                           quaternary
                           circle
+                          type="error"
                           class="proxy-entry-card__action-btn proxy-entry-card__action-btn--danger"
                           :disabled="!group.entryId"
                           @click="confirmDeleteEntry(group)"
@@ -1721,11 +1722,12 @@ function duplicateEntry(group: ProxyEntryGroup) {
 function confirmDeleteEntry(group: ProxyEntryGroup) {
   if (!group.entryId) return
   const title = entryGroupDisplayName(group)
-  dialog.warning({
+  dialog.error({
     title: `确定删除入口「${title}」？`,
     content: `将删除该入口下的 ${group.rules.length} 条规则，相关域名将停止反向代理。`,
     positiveText: '删除',
     negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
     onPositiveClick: () =>
       api
         .deleteProxyEntry(group.entryId!)
@@ -3202,11 +3204,12 @@ async function save() {
 }
 
 function confirmDelete(rule: ProxyRule) {
-  dialog.warning({
+  dialog.error({
     title: `确定删除 ${ruleTitle(rule)}？`,
     content: '删除后相关域名将停止反向代理。',
     positiveText: '删除',
     negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
     onPositiveClick: () =>
       api
         .deleteProxy(rule.id)
