@@ -101,7 +101,7 @@ func (s *Store) AddDeploymentEvent(ctx context.Context, domain, channel, operati
 }
 
 func (s *Store) DeploymentHistory(ctx context.Context, domain string) ([]DeploymentEvent, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, domain, channel, operation, ok, created_at FROM cert_deployment_history WHERE domain = ? ORDER BY id DESC LIMIT 100", domain)
+	rows, err := s.db.QueryContext(ctx, "SELECT id, domain, channel, operation, ok, created_at FROM cert_deployment_history WHERE domain = ? ORDER BY id DESC LIMIT 5", domain)
 	if err != nil { return nil, err }; defer rows.Close()
 	out := []DeploymentEvent{}
 	for rows.Next() { var e DeploymentEvent; if err := rows.Scan(&e.ID,&e.Domain,&e.Channel,&e.Operation,&e.OK,&e.CreatedAt); err != nil { return nil,err }; out = append(out,e) }

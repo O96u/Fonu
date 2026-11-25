@@ -556,7 +556,11 @@
         </n-form-item>
       </template>
 
-      <div v-if="!editCertImported" class="apply-auto-renew"><div><strong>续签 DNS 凭证</strong><n-select v-model:value="editDNSConfig" :options="[{label:'自动匹配',value:0}, ...applyDdnsConfigs.map(c => ({label: (c.remark || providerLabel(c.provider)) + ' · ' + c.root_domain,value:c.id}))]" /></div><n-button size="small" :loading="dnsSaving" @click="saveDNSConfig">保存关联</n-button></div>
+      <div v-if="!editCertImported" class="cert-dns-binding">
+        <div class="cert-dns-binding__head"><span>DNS 验证凭证</span><n-button size="tiny" quaternary @click="editDNSChanging = !editDNSChanging; editDNSConfig = editDNSOriginal">{{ editDNSChanging ? '取消更换' : '更换' }}</n-button></div>
+        <span v-if="!editDNSChanging" class="cert-dns-binding__value">{{ editDNSLabel }}</span>
+        <n-select v-else v-model:value="editDNSConfig" :options="[{label:'自动匹配（旧证书兼容）',value:0}, ...applyDdnsConfigs.map(c => ({label: (c.remark || providerLabel(c.provider)) + ' · ' + c.root_domain,value:c.id}))]" />
+      </div>
       <CertExportFields
         :certificate-domain="editCertDomain"
         v-model:form="editExportForm"
@@ -564,7 +568,7 @@
         show-sync-status
         v-bind="certExportFieldProps"
       />
-      <div class="deployment-history"><strong>部署历史（最近 100 条）</strong><n-button size="small" quaternary @click="refreshDeploymentHistory(editCertDomain)">刷新</n-button><p v-if="historyError">{{ historyError }}</p><p v-else-if="!deploymentHistory.length">暂无部署记录</p><div v-for="event in deploymentHistory" :key="event.id" class="deployment-history-row"><span>{{ formatDate(event.created_at) }}</span><span>{{ event.channel === 'ssh' ? 'SSH' : '本地' }} · {{ event.operation === 'remove' ? '移除' : '同步' }}</span><n-tag size="small" :type="event.ok ? 'success' : 'error'">{{ event.ok ? '成功' : '失败' }}</n-tag></div></div>
+      <div class="deployment-history"><div class="deployment-history__head"><strong>部署历史（最近 5 条）</strong><n-button size="tiny" quaternary :loading="historyLoading" title="刷新部署历史" aria-label="刷新部署历史" @click="refreshDeploymentHistory(editCertDomain)"><template #icon><n-icon :component="RefreshOutline" /></template></n-button></div><p v-if="historyError">{{ historyError }}</p><p v-else-if="!deploymentHistory.length">暂无部署记录</p><div v-for="event in deploymentHistory" :key="event.id" class="deployment-history-row"><span>{{ formatDate(event.created_at) }}</span><span>{{ event.channel === 'ssh' ? 'SSH' : '本地' }} · {{ event.operation === 'remove' ? '移除' : '同步' }}</span><n-tag size="small" :type="event.ok ? 'success' : 'error'">{{ event.ok ? '成功' : '失败' }}</n-tag></div></div>
     </n-form>
     <template #footer>
       <div class="cert-edit-footer">
@@ -620,6 +624,7 @@ import {
   CloudUploadOutline,
   FolderOpenOutline,
   SearchOutline,
+  RefreshOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
 import type {
@@ -673,7 +678,14 @@ const loadError = ref('')
 const showCertEdit = ref(false)
 const editCertDomain = ref('')
 const editDNSConfig = ref(0)
-const dnsSaving = ref(false)
+const editDNSChanging = ref(false)
+const editDNSOriginal = ref(0)
+const editDNSLabel = computed(() => {
+  if (!editDNSOriginal.value) return '自动匹配（旧证书兼容）'
+  const cfg = applyDdnsConfigs.value.find(c => c.id === editDNSOriginal.value)
+  return cfg ? (cfg.remark || providerLabel(cfg.provider)) + ' · ' + cfg.root_domain : '已关联凭证 #' + editDNSOriginal.value + '（未列出）'
+})
+const historyLoading = ref(false)
 const deploymentHistory = ref<{id:number;channel:string;operation:string;ok:boolean;created_at:string}[]>([])
 const historyError = ref('')
 const editCertName = ref('')
@@ -1294,6 +1306,8 @@ function confirmRenew(row: CertificateRecord) {
 function editCert(row: CertificateRecord) {
   editCertDomain.value = row.domain
   editDNSConfig.value = row.dns_config_id ?? 0
+  editDNSOriginal.value = editDNSConfig.value
+  editDNSChanging.value = false
   deploymentHistory.value = []
   historyError.value = ''
   void refreshDeploymentHistory(row.domain)
@@ -1320,16 +1334,12 @@ async function onEditKeyFile(event: Event) {
 }
 
 async function refreshDeploymentHistory(domain: string) {
+  if (historyLoading.value && editCertDomain.value === domain) return
+  historyLoading.value = true
   try { const rows = await api.listCertificateDeployments(domain); if (editCertDomain.value === domain) { deploymentHistory.value = rows; historyError.value = '' } }
   catch (error) { if (editCertDomain.value === domain) historyError.value = error instanceof Error ? error.message : '读取失败' }
+  finally { historyLoading.value = false }
 }
-async function saveDNSConfig() {
-  dnsSaving.value = true
-  try { const updated = await api.setCertificateDNSConfig(editCertDomain.value, editDNSConfig.value); records.value = records.value.map(r => r.id === updated.id ? updated : r); message.success('DNS 凭证关联已保存') }
-  catch(error) { message.error(error instanceof Error ? error.message : '保存失败') }
-  finally { dnsSaving.value = false }
-}
-
 async function saveCertEdit() {
   if (!editCertDomain.value) return
   const certPEM = editImportCert.value.trim()
@@ -1340,6 +1350,11 @@ async function saveCertEdit() {
   }
   editSaving.value = true
   try {
+    if (editDNSChanging.value && editDNSConfig.value !== editDNSOriginal.value && !editCertImported.value) {
+      const bound = await api.setCertificateDNSConfig(editCertDomain.value, editDNSConfig.value)
+      records.value = records.value.map(r => r.id === bound.id ? bound : r)
+      editDNSOriginal.value = bound.dns_config_id ?? 0
+    }
     const updated = await api.updateCertificate(editCertDomain.value, {
       name: editCertName.value.trim(),
       export: exportPayload(editExportForm),
@@ -2568,4 +2583,10 @@ html.dark .apply-log-box {
 
 .deployment-history { display:grid; gap:8px; margin-top:12px; }
 .deployment-history-row { display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; border-bottom:1px solid var(--fonu-border); padding:6px 0; }
+
+.cert-dns-binding { padding:10px 12px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); margin-bottom:12px; display:grid; gap:6px; }
+.cert-dns-binding__head,.deployment-history__head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.cert-dns-binding__value { font-size:12px; color:var(--fonu-text-secondary); overflow-wrap:anywhere; }
+.deployment-history { border-top:1px solid var(--fonu-border); padding-top:12px; }
+.deployment-history p { margin:0; font-size:12px; color:var(--fonu-text-secondary); }
 </style>
