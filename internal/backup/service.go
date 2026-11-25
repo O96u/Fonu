@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fonu/fonu/internal/db"
+	"github.com/fonu/fonu/internal/secret"
 )
 
 const pendingDirName = "restore-pending"
@@ -57,6 +58,7 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 
 	entries := []string{
 		"fonu.db",
+		secret.KeyFileName,
 		"certs",
 		"nginx",
 	}
@@ -176,6 +178,15 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 		_ = os.RemoveAll(pending)
 		return fmt.Errorf("备份里没有数据库")
 	}
+	if key, err := os.ReadFile(filepath.Join(pending, secret.KeyFileName)); err == nil {
+		if err := secret.ValidateStoredKey(string(key)); err != nil {
+			_ = os.RemoveAll(pending)
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		_ = os.RemoveAll(pending)
+		return err
+	}
 	// 进程还占着正在使用的库。先放到旁边校验，下次启动、打开数据库之前再换上去。
 	if err := db.PrepareRestore(filepath.Join(pending, "fonu.db")); err != nil {
 		_ = os.RemoveAll(pending)
@@ -187,7 +198,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 func allowedEntry(name string) bool {
 	name = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(name)), "./")
 	switch {
-	case name == "fonu.db":
+	case name == "fonu.db" || name == secret.KeyFileName:
 		return true
 	case name == "certs" || strings.HasPrefix(name, "certs/"):
 		return true
@@ -274,6 +285,9 @@ func ApplyPending(dataDir string) error {
 		_ = os.RemoveAll(dstBak)
 	}
 
+	if key, err := os.ReadFile(filepath.Join(pending, secret.KeyFileName)); err == nil {
+		if err := secret.SaveStoredKey(dataDir, string(key)); err != nil { return err }
+	} else if !os.IsNotExist(err) { return err }
 	_ = os.Remove(bak)
 	_ = os.Remove(bak + "-wal")
 	_ = os.Remove(bak + "-shm")

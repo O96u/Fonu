@@ -28,7 +28,7 @@ func Load() Config {
 	return Config{
 		ListenAddr:            envOr("FONU_LISTEN", ":6893"),
 		DataDir:               dataDir,
-		SessionSecret:         envOr("FONU_SESSION_SECRET", "change-me-in-production"),
+		SessionSecret:         os.Getenv("FONU_SESSION_SECRET"),
 		NginxBin:              envOr("FONU_NGINX_BIN", "nginx"),
 		NginxPIDFile:          envOr("FONU_NGINX_PID", dataDir+"/nginx/nginx.pid"),
 		NginxMimeTypes:        resolveNginxMimeTypes(dataDir, os.Getenv("FONU_NGINX_MIME_TYPES")),

@@ -64,6 +64,14 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 
+	key, err := secret.ResolveKey(cfg.DataDir, cfg.SessionSecret)
+	if err != nil {
+		return nil, fmt.Errorf("resolve encryption key: %w", err)
+	}
+	cfg.SessionSecret = key
+	if key == secret.LegacyDefaultKey {
+		logger.Warn("legacy default encryption key in use; migrate credentials before changing FONU_SESSION_SECRET", "module", "SYSTEM")
+	}
 	conn, err := db.Open(cfg.DBPath())
 	if err != nil {
 		return nil, err

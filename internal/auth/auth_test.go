@@ -125,3 +125,28 @@ func TestChangeUsername(t *testing.T) {
 		t.Fatal("old username should not work")
 	}
 }
+
+func TestConcurrentSetupAndPasswordRevocation(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "fonu.db"))
+	if err != nil { t.Fatal(err) }
+	defer conn.Close()
+	ctx := context.Background()
+	if err := db.Migrate(ctx, conn, filepath.Join("..", "..", "migrations")); err != nil { t.Fatal(err) }
+	svc := New(conn)
+	results := make(chan error, 2)
+	for _, user := range []string{"admin1", "admin2"} {
+		go func(user string) { results <- svc.Setup(ctx, user, "password123") }(user)
+	}
+	success := 0
+	for i := 0; i < 2; i++ { if <-results == nil { success++ } }
+	if success != 1 { t.Fatalf("expected one successful setup, got %d", success) }
+	var user string
+	if err := conn.QueryRow("SELECT username FROM admins").Scan(&user); err != nil { t.Fatal(err) }
+	token, err := svc.Login(ctx, user, "password123")
+	if err != nil { t.Fatal(err) }
+	id, err := svc.AdminIDForSession(ctx, token)
+	if err != nil { t.Fatal(err) }
+	if err := svc.ChangePassword(ctx, id, "password123", "newpassword123"); err != nil { t.Fatal(err) }
+	if err := svc.ValidateSession(ctx, token); err != ErrUnauthorized { t.Fatalf("old session still valid: %v", err) }
+	if _, err := svc.Login(ctx, user, "newpassword123"); err != nil { t.Fatal(err) }
+}

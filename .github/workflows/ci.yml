@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api

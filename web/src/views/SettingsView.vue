@@ -1578,7 +1578,8 @@ async function changePassword() {
     passwordForm.old_password = ''
     passwordForm.new_password = ''
     passwordForm.confirm_password = ''
-    message.success('密码已更新')
+    message.success('密码已更新，请重新登录')
+    await router.replace({ name: 'login' })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '更新密码失败')
   } finally {

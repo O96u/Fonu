@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -72,7 +73,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "管理员已创建，请重新登录")
 		return
 	}
-	setSessionCookie(w, sessionID)
+	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "管理员已创建"})
 }
 
@@ -94,7 +95,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "登录失败")
 		return
 	}
-	setSessionCookie(w, sessionID)
+	setSessionCookie(w, r, sessionID)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "登录成功"})
 }
 
@@ -151,13 +152,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "已退出登录"})
 }
 
-func setSessionCookie(w http.ResponseWriter, sessionID string) {
+func setSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "fonu_session",
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure: r.TLS != nil || os.Getenv("FONU_SECURE_COOKIE") == "true",
 		MaxAge:   int((7 * 24 * time.Hour).Seconds()),
 	})
 }

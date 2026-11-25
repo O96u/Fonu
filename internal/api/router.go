@@ -139,7 +139,7 @@ func NewRouter(deps Deps) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return loggingMiddleware(logger, SessionMiddleware(deps.Auth)(mux))
+	return loggingMiddleware(logger, protectRequests(SessionMiddleware(deps.Auth)(mux)))
 }
 
 type Router struct {
