@@ -3,6 +3,8 @@ package ddns
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -15,21 +17,8 @@ func (a *AliDNS) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 		return err
 	}
 	subDomain := aliRR(host)
-	body, err := a.request(ctx, cred, map[string]string{
-		"Action":     "DescribeDomainRecords",
-		"DomainName": zone,
-		"RRKeyWord":  subDomain,
-		"Type":       "TXT",
-		"PageNumber": "1",
-		"PageSize":   "50",
-	})
-	if err != nil {
-		return err
-	}
-	var resp alidnsRecordsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return err
-	}
+	resp,err:=a.listACMETXT(ctx,cred,zone,subDomain)
+	if err!=nil{return err}
 	var existing []string
 	for _, rec := range resp.DomainRecords.Record {
 		if strings.EqualFold(rec.Type, "TXT") && rec.RR == subDomain {
@@ -52,6 +41,7 @@ func (a *AliDNS) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).
 func (a *AliDNS) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
 	zone, host, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
 		return a.HasZone(ctx, cred, candidate)
 	}, fqdn)
@@ -59,21 +49,8 @@ func (a *AliDNS) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 		return err
 	}
 	subDomain := aliRR(host)
-	body, err := a.request(ctx, cred, map[string]string{
-		"Action":     "DescribeDomainRecords",
-		"DomainName": zone,
-		"RRKeyWord":  subDomain,
-		"Type":       "TXT",
-		"PageNumber": "1",
-		"PageSize":   "50",
-	})
-	if err != nil {
-		return err
-	}
-	var resp alidnsRecordsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return err
-	}
+	resp,err:=a.listACMETXT(ctx,cred,zone,subDomain)
+	if err!=nil{return err}
 	want := strings.TrimSpace(value)
 	for _, rec := range resp.DomainRecords.Record {
 		if !strings.EqualFold(rec.Type, "TXT") || rec.RR != subDomain || strings.TrimSpace(rec.Value) != want {
@@ -90,4 +67,17 @@ func (a *AliDNS) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 		}
 	}
 	return nil
+}
+
+func (a *AliDNS) listACMETXT(ctx context.Context,cred Credentials,zone,host string)(alidnsRecordsResponse,error){
+	var out alidnsRecordsResponse
+	for page:=1;page<=10000;page++ {
+		body,err:=a.request(ctx,cred,map[string]string{"Action":"DescribeDomainRecords","DomainName":zone,"RRKeyWord":host,"Type":"TXT","PageNumber":strconv.Itoa(page),"PageSize":"50"})
+		if err!=nil{return out,err}
+		var result alidnsRecordsResponse
+		if err:=json.Unmarshal(body,&result);err!=nil{return out,err}
+		out.DomainRecords.Record=append(out.DomainRecords.Record,result.DomainRecords.Record...)
+		if len(result.DomainRecords.Record)==0||len(out.DomainRecords.Record)>=result.TotalCount{return out,nil}
+	}
+	return out,fmt.Errorf("AliDNS TXT pagination exceeded limit")
 }

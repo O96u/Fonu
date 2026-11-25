@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -21,14 +22,8 @@ func (c *Cloudflare) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn
 		return err
 	}
 	recordFQDN := fqdnForRecord(zone, host)
-	body, err := c.request(ctx, cred.Token, http.MethodGet, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?type=TXT&name=%s", zoneID, recordFQDN), nil)
-	if err != nil {
-		return err
-	}
-	var resp cfRecordsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return err
-	}
+	resp,err:=c.listACMETXT(ctx,cred.Token,zoneID,recordFQDN)
+	if err!=nil{return err}
 	var existing []string
 	for _, rec := range resp.Result {
 		existing = append(existing, rec.Content)
@@ -48,6 +43,7 @@ func (c *Cloudflare) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn
 
 // DeleteTXTRecord removes TXT records matching value at fqdn (ACME cleanup).
 func (c *Cloudflare) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
+	if strings.TrimSpace(value)=="" {return fmt.Errorf("empty ACME TXT value")}
 	zone, host, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
 		return c.HasZone(ctx, cred, candidate)
 	}, fqdn)
@@ -59,14 +55,8 @@ func (c *Cloudflare) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn
 		return err
 	}
 	recordFQDN := fqdnForRecord(zone, host)
-	body, err := c.request(ctx, cred.Token, http.MethodGet, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?type=TXT&name=%s", zoneID, recordFQDN), nil)
-	if err != nil {
-		return err
-	}
-	var resp cfRecordsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return err
-	}
+	resp,err:=c.listACMETXT(ctx,cred.Token,zoneID,recordFQDN)
+	if err!=nil{return err}
 	want := strings.TrimSpace(value)
 	for _, rec := range resp.Result {
 		if strings.TrimSpace(rec.Content) != want {
@@ -80,4 +70,17 @@ func (c *Cloudflare) DeleteTXTRecord(ctx context.Context, cred Credentials, fqdn
 		}
 	}
 	return nil
+}
+
+func (c *Cloudflare) listACMETXT(ctx context.Context,token,zoneID,fqdn string)(cfRecordsResponse,error){
+	var out cfRecordsResponse
+	for page:=1;page<=10000;page++ {
+		body,err:=c.request(ctx,token,http.MethodGet,fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?type=TXT&name=%s&per_page=100&page=%d",zoneID,url.QueryEscape(fqdn),page),nil)
+		if err!=nil{return out,err}
+		var result cfRecordsResponse
+		if err:=json.Unmarshal(body,&result);err!=nil{return out,err}
+		out.Result=append(out.Result,result.Result...)
+		if len(result.Result)==0||page>=result.ResultInfo.TotalPages{return out,nil}
+	}
+	return out,fmt.Errorf("Cloudflare TXT pagination exceeded limit")
 }

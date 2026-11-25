@@ -157,6 +157,7 @@ type cfZonesResponse struct {
 }
 
 type cfRecordsResponse struct {
+	ResultInfo struct { TotalPages int `json:"total_pages"` } `json:"result_info"`
 	Result []struct {
 		ID      string `json:"id"`
 		Content string `json:"content"`

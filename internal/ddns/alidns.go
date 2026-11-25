@@ -225,6 +225,7 @@ type alidnsEnvelope struct {
 }
 
 type alidnsRecordsResponse struct {
+	TotalCount int `json:"TotalCount"`
 	DomainRecords struct {
 		Record []struct {
 			RecordID string `json:"RecordId"`
