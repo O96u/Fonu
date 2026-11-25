@@ -52,7 +52,7 @@ const deltaClass = computed(() => {
   min-width: 0;
   min-height: 108px;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--fonu-radius);
   background: var(--fonu-surface);
   border: 1px solid var(--fonu-border);
   display: flex;
@@ -101,12 +101,12 @@ const deltaClass = computed(() => {
 }
 
 .metric__delta--up {
-  color: #ef4444;
+  color: var(--fonu-error);
   font-weight: 600;
 }
 
 .metric__delta--down {
-  color: #10b981;
+  color: var(--fonu-success);
   font-weight: 600;
 }
 

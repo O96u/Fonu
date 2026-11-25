@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onUnmounted, ref, watch } from 'vue'
 import { NTag, NSpin, NButton } from 'naive-ui'
 import { RouterLink } from 'vue-router'
 import type { AnalyticsOverview, AwarenessRange } from '../api/types'
@@ -18,6 +18,8 @@ const props = defineProps<{
 const emit = defineEmits<{ retry: [] }>()
 
 const range = defineModel<AwarenessRange>('range', { default: 'today' })
+const displayedRange = computed(() => props.data?.range ?? range.value)
+const displayedLabel = computed(() => rangeOptions.find(opt => opt.key === displayedRange.value)?.label ?? '—')
 const rangeOptions: { key: AwarenessRange; label: string }[] = [
   { key: 'today', label: '今天' },
   { key: '7d', label: '7 天' },
@@ -43,13 +45,15 @@ function updateVisibleRowCount() {
   visibleRowCount.value = Math.max(4, Math.floor(bodyH / TABLE_ROW_PX))
 }
 
-onMounted(() => {
+watch(regionTableWrapRef, (el) => {
+  tableResizeObserver?.disconnect()
+  tableResizeObserver = null
   updateVisibleRowCount()
-  if (typeof ResizeObserver !== 'undefined' && regionTableWrapRef.value) {
-    tableResizeObserver = new ResizeObserver(() => updateVisibleRowCount())
-    tableResizeObserver.observe(regionTableWrapRef.value)
+  if (typeof ResizeObserver !== 'undefined' && el) {
+    tableResizeObserver = new ResizeObserver(updateVisibleRowCount)
+    tableResizeObserver.observe(el)
   }
-})
+}, { flush: 'post' })
 
 onUnmounted(() => {
   tableResizeObserver?.disconnect()
@@ -91,7 +95,7 @@ watch(regionVisitorsAll, () => {
     <div class="insight-section__head">
       <div>
         <h2 class="insight-section__title">访问</h2>
-        <p class="insight-section__sub">数字、地图和下面的趋势用同一个时间范围。</p>
+        <p class="insight-section__sub">当前展示：{{ displayedLabel }} · 数字、地图及访问趋势使用同一统计范围。</p>
       </div>
       <div class="insight-section__tools">
         <n-spin v-if="loading" size="small" />
@@ -113,24 +117,28 @@ watch(regionVisitorsAll, () => {
       </div>
     </div>
 
+    <div v-if="data && (loading || error || displayedRange !== range)" class="insight-notice" role="status">
+      {{ error ? `更新失败：${error}。仍展示${displayedLabel}数据。` : `正在等待新统计，暂保留${displayedLabel}数据。` }}
+      <n-button v-if="error" size="tiny" @click="emit('retry')">重试</n-button>
+    </div>
     <div class="insight-kpi-row">
       <MetricStat
         label="请求"
         :value="data ? (data.kpi.total_requests ?? 0).toLocaleString() : '—'"
-        :compare="!!data && range === 'today'"
+        :compare="!!data && displayedRange === 'today'"
         :delta="data?.kpi.request_trend"
         :previous="data ? (data.kpi.yesterday_total ?? 0).toLocaleString() : undefined"
       />
       <MetricStat
         label="独立 IP"
         :value="data ? (data.kpi.unique_ips ?? 0).toLocaleString() : '—'"
-        :compare="!!data && range === 'today'"
+        :compare="!!data && displayedRange === 'today'"
         :delta="data?.kpi.unique_ip_trend"
         :previous="data ? (data.kpi.yesterday_unique_ips ?? 0).toLocaleString() : undefined"
       />
       <MetricStat
         label="拦截"
-        :compare="!!data && range === 'today'"
+        :compare="!!data && displayedRange === 'today'"
         :delta="data?.kpi.risk_trend"
         :previous="data ? (data.kpi.yesterday_risk ?? 0).toLocaleString() : undefined"
       >
@@ -141,7 +149,7 @@ watch(regionVisitorsAll, () => {
       <MetricStat
         label="疑似扫描"
         :value="data ? (data.funnel.scan_suspected ?? 0).toLocaleString() : '—'"
-        :compare="!!data && range === 'today'"
+        :compare="!!data && displayedRange === 'today'"
         :delta="data?.funnel.scan_trend"
         :previous="data ? (data.funnel.yesterday_scan ?? 0).toLocaleString() : undefined"
       />
@@ -254,12 +262,12 @@ watch(regionVisitorsAll, () => {
 
 .insight-range__btn--active {
   background: var(--fonu-brand);
-  color: #fff;
+  color: var(--fonu-on-brand, #fff);
   font-weight: 600;
 }
 
 .insight-range__btn:not(.insight-range__btn--active):hover {
-  background: rgba(16, 185, 129, 0.08);
+  background: var(--fonu-brand-soft);
   color: var(--fonu-text);
 }
 
@@ -412,4 +420,12 @@ watch(regionVisitorsAll, () => {
     max-height: min(360px, 40vh);
   }
 }
+.insight-notice { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--fonu-text-secondary); padding:8px 12px; border-left:2px solid var(--fonu-brand); background:var(--fonu-bg-muted); }
+.insight-kpi-row { gap:0; border-block:1px solid var(--fonu-border); }
+.insight-kpi-row :deep(.metric) { background:transparent; border:0; border-right:1px solid var(--fonu-border); border-radius:0; }
+.insight-kpi-row :deep(.metric:first-child .metric__value) { color:var(--fonu-brand-text); font-size:clamp(30px,4vw,44px); letter-spacing:-.04em; }
+.insight-kpi-row :deep(.metric:last-child) { border-right:0; }
+.insight-section__title { font-size:20px; }
+.insight-section__tools > .insight-wait { padding:0; }
+@media(max-width:900px) { .insight-kpi-row :deep(.metric:nth-child(2)) { border-right:0; } .insight-kpi-row :deep(.metric:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
 </style>

@@ -17,7 +17,7 @@ const props = defineProps<{
   data: AnalyticsOverview | null
 }>()
 
-const { isDark } = useTheme()
+const { palette } = useTheme()
 
 const anomaly = computed<AnalyticsAnomaly>(() => {
   return (
@@ -80,8 +80,8 @@ const cards = computed(() => {
 })
 
 const option = computed(() => {
-  const text = isDark.value ? '#94a3b8' : '#9ca3af'
-  const split = isDark.value ? '#334155' : '#f3f4f6'
+  const text = palette.value.secondary
+  const split = palette.value.border
   const trend = anomaly.value.trend ?? []
   const barPeak = Math.max(
     1,
@@ -148,7 +148,7 @@ const option = computed(() => {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        itemStyle: { color: '#60a5fa' },
+        itemStyle: { color: palette.value.chartSecondary },
         data: trend.map((p) => Math.round(p.avg_request_ms)),
       },
     ],
@@ -279,7 +279,7 @@ function deltaText(n: number, unit: string): string {
 .anomaly__panel {
   min-width: 0;
   padding: 16px 18px 12px;
-  border-radius: 16px;
+  border-radius: var(--fonu-radius);
   background: var(--fonu-surface);
   border: 1px solid var(--fonu-border);
 }

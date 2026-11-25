@@ -434,7 +434,8 @@ func (s *Service) queryKPI(ctx context.Context, start, end, ipFilter string) (KP
 			COALESCE(SUM(CASE WHEN kind = 'blocked' OR status = 403 THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN kind = 'rate_limited' OR status = 429 THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN kind = 'auth_failed' OR status = 401 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN kind = 'scan_suspected' THEN 1 ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN kind = 'scan_suspected' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed') OR status IN (401,403,429) THEN 1 ELSE 0 END), 0)
 		FROM access_facts WHERE ts >= ? AND ts <= ?` + ipFilter
 	err := s.db.QueryRowContext(ctx, q, start, end).Scan(
 		&kpi.TotalRequests,
@@ -446,7 +447,7 @@ func (s *Service) queryKPI(ctx context.Context, start, end, ipFilter string) (KP
 		&funnel.RateLimited429,
 		&funnel.AuthFailed401,
 		&funnel.ScanSuspected,
+		&funnel.BlockedTotal,
 	)
-	funnel.BlockedTotal = funnel.Blocked403 + funnel.RateLimited429 + funnel.AuthFailed401
 	return kpi, funnel, err
 }

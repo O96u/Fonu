@@ -95,5 +95,8 @@ func startOfDay(t time.Time, loc *time.Location) time.Time {
 func dayIndex(start, t time.Time, loc *time.Location) int {
 	s := startOfDay(start.In(loc), loc)
 	tt := startOfDay(t.In(loc), loc)
-	return int(tt.Sub(s) / (24 * time.Hour))
+	// Calendar days, not elapsed 24-hour intervals (DST days may be 23 or 25 hours).
+	sy, sm, sd := s.Date()
+	ty, tm, td := tt.Date()
+	return int(time.Date(ty, tm, td, 0, 0, 0, 0, time.UTC).Sub(time.Date(sy, sm, sd, 0, 0, 0, 0, time.UTC)) / (24 * time.Hour))
 }

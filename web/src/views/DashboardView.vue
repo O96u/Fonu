@@ -1,7 +1,8 @@
 <template>
+  <div class="dashboard">
+  <header class="dashboard-heading"><div><p class="dashboard-eyebrow">FONU / 工作空间</p><h1>运行概览</h1><p>网络服务、访问趋势与安全状态</p></div></header>
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
-  <template v-else>
     <n-spin :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
@@ -41,13 +42,13 @@
 
     <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
 
-    <AnalyticsAnomalySection v-if="analyticsOverview" :data="analyticsOverview" />
+    
 
       <section class="awareness-section">
         <div class="awareness-header">
           <div>
             <h2 class="awareness-title">趋势与记录</h2>
-            <p class="awareness-subtitle">曲线跟着上面的时间范围。</p>
+            <p class="awareness-subtitle">当前展示：{{ awarenessPeriodLabel }}，与上方已加载统计一致。</p>
           </div>
           <span v-if="analyticsOverview" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
         </div>
@@ -144,11 +145,12 @@
           </FonuCard>
         </div>
       </section>
-  </template>
+      <AnalyticsAnomalySection v-if="analyticsOverview" :data="analyticsOverview" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onActivated, onDeactivated, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
   ChevronForwardOutline,
@@ -189,7 +191,8 @@ defineOptions({ name: 'DashboardView' })
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
-const analyticsOverview = ref<AnalyticsOverview | null>(null)
+const analyticsOverview = shallowRef<AnalyticsOverview | null>(null)
+const displayedRange = computed(() => analyticsOverview.value?.range ?? awarenessRange.value)
 const awarenessLoading = ref(false)
 const awarenessError = ref('')
 const awarenessRange = ref<AwarenessRange>('today')
@@ -285,20 +288,20 @@ const awarenessNginxWarning = computed((): string | null => {
 })
 
 const awarenessPeriodLabel = computed(() => {
-  switch (awarenessRange.value) {
+  switch (displayedRange.value) {
     case '7d':
       return '近 7 天'
     case '30d':
       return '近 30 天'
     case 'all':
-      return '全部'
+      return '近一年'
     default:
       return '当日'
   }
 })
 
 const awarenessTrendTitle = computed(() => {
-  if (awarenessRange.value === 'today') return '今日流量趋势'
+  if (displayedRange.value === 'today') return '今日流量趋势'
   return `${awarenessPeriodLabel.value}流量趋势`
 })
 
@@ -312,7 +315,7 @@ const awarenessRecentScopeLabel = computed(() => awarenessPeriodLabel.value)
 
 watch(awarenessRange, () => {
   cancelAwareness()
-  analyticsOverview.value = null
+  awarenessLoading.value = true
   awarenessError.value = ''
   void refreshAwareness(true)
 })
@@ -446,6 +449,7 @@ let dashboardActive = false
 function cancelAwareness() {
   awarenessController?.abort()
   awarenessController = null
+  awarenessLoading.value = false
   stopAwarenessPoll()
 }
 async function refreshAwareness(force = false) {
@@ -483,7 +487,7 @@ function stopAwarenessPoll() {
 function onVisibilityChange() {
   if (!dashboardActive) return
   if (document.hidden) cancelAwareness()
-  else void refreshAwareness(!analyticsOverview.value)
+  else void refreshAwareness(!analyticsOverview.value || displayedRange.value !== awarenessRange.value)
 }
 
 async function load() {
@@ -506,15 +510,13 @@ async function load() {
 
 async function loadDashboardExtras() {
   try {
-    certificates.value = asList(await api.listCertificates())
+    await Promise.allSettled([
+      api.listCertificates().then(rows => { certificates.value = asList(rows) }),
+      api.listDDNSLite().then(rows => { ddnsConfigs.value = asList(rows) }),
+    ])
   } catch {
     // 次要区块失败不阻断首页
   }
-  api.listDDNSLite()
-    .then((ddns) => {
-      ddnsConfigs.value = asList(ddns)
-    })
-    .catch(() => {})
 }
 
 function resumeDashboard() {
@@ -1116,4 +1118,14 @@ a.ip-geo-cell__ip:hover {
 @media (max-width: 767px) {
   .stats-row { grid-template-columns: 1fr; }
 }
+.dashboard-heading { display:flex; justify-content:space-between; align-items:flex-start; margin: 0 0 4px; }
+.dashboard-heading h1 { margin:4px 0; font-size:30px; font-weight:650; letter-spacing:-.035em; color:var(--fonu-text); }
+.dashboard-heading p { margin:0; color:var(--fonu-text-secondary); font-size:13px; }
+.dashboard-heading .dashboard-eyebrow { font-size:10px; letter-spacing:.10em; color:var(--fonu-brand-text); font-weight:600; }
+.dashboard .stats-row { gap:0; border-block:1px solid var(--fonu-border); margin:0; }
+.dashboard .stats-row :deep(.stat-card) { background:transparent; border:0; border-right:1px solid var(--fonu-border); border-radius:0; box-shadow:none; min-width:0; }
+.dashboard .stats-row :deep(.stat-card:last-child) { border-right:0; }
+.dashboard .stats-row :deep(.stat-card__icon) { background:transparent; color:var(--fonu-brand); width:22px; height:22px; }
+.dashboard .awareness-section { gap:12px; }
+@media(max-width:767px) { .dashboard-heading h1 { font-size:25px; } .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .dashboard .stats-row :deep(.stat-card:nth-child(2)) { border-right:0; } .dashboard .stats-row :deep(.stat-card:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
 </style>

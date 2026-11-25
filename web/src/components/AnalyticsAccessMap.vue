@@ -26,6 +26,20 @@ type MapScope = 'china' | 'world'
 type MapMetric = 'requests' | 'intercept'
 
 const mapReady = ref(true)
+const switching = ref(false)
+let switchFrame = 0
+function selectMap(nextScope: MapScope, nextMetric: MapMetric) {
+  if (nextScope === scope.value && nextMetric === metric.value && !switching.value) return
+  switching.value = true
+  cancelAnimationFrame(switchFrame)
+  switchFrame = requestAnimationFrame(() => {
+    switchFrame = requestAnimationFrame(() => {
+      scope.value = nextScope
+      metric.value = nextMetric
+      switchFrame = requestAnimationFrame(() => { switching.value = false })
+    })
+  })
+}
 const mapStageRef = ref<HTMLElement | null>(null)
 const layoutSizePercent = ref(100)
 const chartInitOptions = { devicePixelRatio: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2) }
@@ -114,6 +128,7 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
+  cancelAnimationFrame(switchFrame)
   stageResizeObserver?.disconnect()
   stageResizeObserver = null
 })
@@ -382,12 +397,13 @@ watch(scope, () => {
 
 <template>
   <div class="access-map">
-    <div class="access-map__toolbar">
+    <div class="access-map__toolbar" :aria-busy="switching">
+      <span v-if="switching" role="status" class="map-switch-status"><i /> 地图更新中</span>
       <div class="access-map__seg" role="group" aria-label="地图范围">
-        <button type="button" class="access-map__seg-btn" :class="{ 'access-map__seg-btn--active': scope === 'world' }" @click="scope = 'world'">
+        <button type="button" class="access-map__seg-btn" :class="{ 'access-map__seg-btn--active': scope === 'world' }" @click="selectMap('world', metric)">
           全球
         </button>
-        <button type="button" class="access-map__seg-btn" :class="{ 'access-map__seg-btn--active': scope === 'china' }" @click="scope = 'china'">
+        <button type="button" class="access-map__seg-btn" :class="{ 'access-map__seg-btn--active': scope === 'china' }" @click="selectMap('china', metric)">
           国内
         </button>
       </div>
@@ -396,7 +412,7 @@ watch(scope, () => {
           type="button"
           class="access-map__seg-btn"
           :class="{ 'access-map__seg-btn--active': metric === 'requests' }"
-          @click="metric = 'requests'"
+          @click="selectMap(scope, 'requests')" 
         >
           请求数
         </button>
@@ -404,7 +420,7 @@ watch(scope, () => {
           type="button"
           class="access-map__seg-btn"
           :class="{ 'access-map__seg-btn--active': metric === 'intercept' }"
-          @click="metric = 'intercept'"
+          @click="selectMap(scope, 'intercept')" 
         >
           拦截数
         </button>
@@ -492,7 +508,7 @@ watch(scope, () => {
 
 .access-map__seg-btn--active {
   background: var(--fonu-brand, #10b981);
-  color: #fff;
+  color: var(--fonu-on-brand, #fff);
 }
 
 .access-map__legend {
@@ -583,4 +599,8 @@ watch(scope, () => {
   border-radius: 50%;
   background: var(--fonu-chart-secondary);
 }
+.map-switch-status { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--fonu-text-secondary); }
+.map-switch-status i { width:12px; height:12px; border:2px solid var(--fonu-border); border-top-color:var(--fonu-brand); border-radius:50%; animation:map-spin .7s linear infinite; }
+@keyframes map-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .map-switch-status i { animation:none; } }
 </style>
