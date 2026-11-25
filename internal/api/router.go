@@ -108,6 +108,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/certificates/import", r.certHandler.Import)
 	protect("POST /api/certificates/renew", r.certHandler.Renew)
 	protect("PUT /api/certificates/{domain}", r.certHandler.Update)
+	protect("PUT /api/certificates/{domain}/auto-renew", r.certHandler.SetAutoRenew)
 	protect("POST /api/certificates/{domain}/export/sync", r.certHandler.SyncExport)
 	protect("GET /api/certificates/{domain}/download", r.certHandler.Download)
 	protect("DELETE /api/certificates/{domain}", r.certHandler.Delete)

@@ -67,7 +67,7 @@
           <article v-for="row in paginatedRecords" :key="row.id" class="cert-mobile-card">
             <div class="cert-mobile-head"><strong>{{ row.name?.trim() || certDisplayName(row.domain) }}</strong><n-tag size="small" round :bordered="false" :type="certLifeTagType(certLifeStatus(row))">{{ certLifeLabel(certLifeStatus(row)) }}</n-tag></div>
             <div class="cert-mobile-domains">{{ (row.domains?.length ? row.domains : [row.domain]).join(' · ') }}</div>
-            <div class="cert-mobile-grid"><div><small>颁发机构</small>{{ caLabel(row.acme_ca) }}</div><div><small>有效期</small>{{ row.expires_at ? formatDate(row.expires_at) : '-' }}</div><div><small>续签策略</small>{{ row.acme_ca === 'imported' ? '手动更换' : '全局自动续签' }}</div><div><small>部署状态</small>{{ deploymentLabel(row) }}</div></div>
+            <div class="cert-mobile-grid"><div><small>颁发机构</small>{{ caLabel(row.acme_ca) }}</div><div><small>有效期</small>{{ row.expires_at ? formatDate(row.expires_at) : '-' }}</div><div><small>续签策略</small><span v-if="row.acme_ca === 'imported'">手动更换</span><n-switch v-else size="small" :value="row.auto_renew" :loading="renewPolicySaving === row.domain" :disabled="!!renewPolicySaving" @update:value="(v: boolean) => setAutoRenew(row, v)" /></div><div><small>部署状态</small>{{ deploymentLabel(row) }}</div></div>
             <div v-if="row.last_error" class="cert-mobile-error">{{ row.last_error }}</div>
             <div class="cert-mobile-actions"><n-button size="small" quaternary @click="editCert(row)">编辑</n-button><n-button v-if="row.acme_ca !== 'imported'" size="small" quaternary @click="confirmRenew(row)">续签</n-button><n-button v-if="row.expires_at" size="small" quaternary @click="downloadCert(row, 'zip')">下载</n-button><n-button size="small" quaternary type="error" @click="confirmDelete(row)">删除</n-button></div>
           </article>
@@ -339,7 +339,7 @@
     </div>
 
     <div v-else-if="applyStep === 3" class="deployment-step">
-      <div class="apply-auto-renew"><div><div class="apply-auto-renew__title">自动续签</div><div class="apply-auto-renew__sub">按系统全局续签策略执行；此版本不支持单证书开关。</div></div><router-link :to="{ name: 'settings', query: { tab: 'acme' } }">续签设置</router-link></div>
+      <div class="apply-auto-renew"><div><div class="apply-auto-renew__title">自动续签</div><div class="apply-auto-renew__sub">开启后按系统续签周期自动检查，不影响手动续签。</div></div><n-switch v-model:value="applyAutoRenew" size="small" /></div>
       <CertExportFields v-model:form="applyExportForm" v-bind="certExportFieldProps" />
       <n-alert v-if="applyError" type="error" :bordered="false" class="form-alert" :title="applyError" />
     </div>
@@ -348,7 +348,7 @@
         DNS 验证与证书签发可能需要 1～3 分钟，请保持窗口打开
       </p>
 
-      <div ref="applyLogBox" class="apply-log-box" :class="{ paused: !applyStreaming }">
+      <div class="apply-log-box" :class="{ paused: !applyStreaming }">
         <div
           v-for="(line, i) in applyLogLines"
           :key="i"
@@ -602,6 +602,7 @@ import {
   NResult,
   NSelect,
   NSpace,
+  NSwitch,
   NSpin,
   NTag,
   useDialog,
@@ -671,6 +672,8 @@ const editCertDomain = ref('')
 const editCertName = ref('')
 const editCertSourceHint = ref('')
 const editCertImported = ref(false)
+const applyAutoRenew = ref(true)
+const renewPolicySaving = ref('')
 const editCertDomainsText = ref('')
 const editImportCert = ref('')
 const editImportKey = ref('')
@@ -706,7 +709,7 @@ const applyModalContentStyle = computed(() => ({
   paddingBottom: '4px',
   minHeight: '0',
   flex: '1 1 auto',
-  maxHeight: 'calc(100dvh - 180px)',
+  overscrollBehavior: 'contain' as const,
   overflowY: 'auto' as const,
 }))
 const caOptions = ref<CertificateCAOption[]>([])
@@ -753,7 +756,6 @@ const applyLogLines = ref<{ level: string; text: string }[]>([])
 const applyResult = ref<CertificateJobDone | null>(null)
 const applyFinished = ref(false)
 const applyStreaming = ref(false)
-const applyLogBox = ref<HTMLElement | null>(null)
 let applyEventSource: EventSource | null = null
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const applyDdnsConfigs = computed(() => ddnsConfigs.value)
@@ -1192,7 +1194,7 @@ const columns: DataTableColumns<CertificateRecord> = [
     title: '续签策略',
     key: 'auto_renew',
     width: 112,
-    render: (row) => row.acme_ca === 'imported' ? '手动更换' : '全局策略',
+    render: (row) => row.acme_ca === 'imported' ? '手动更换' : h(NSwitch, { size: 'small', value: row.auto_renew, loading: renewPolicySaving.value === row.domain, disabled: !!renewPolicySaving.value, 'onUpdate:value': (v: boolean) => setAutoRenew(row, v) }),
   },
   {
     title: '部署状态',
@@ -1231,6 +1233,18 @@ const columns: DataTableColumns<CertificateRecord> = [
     },
   },
 ]
+
+async function setAutoRenew(row: CertificateRecord, enabled: boolean) {
+  if (renewPolicySaving.value) return
+  renewPolicySaving.value = row.domain
+  try {
+    const updated = await api.setCertificateAutoRenew(row.domain, enabled)
+    records.value = records.value.map(r => r.id === updated.id ? updated : r)
+    message.success('续签策略已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '保存失败')
+  } finally { renewPolicySaving.value = '' }
+}
 
 async function downloadCert(row: CertificateRecord, part: 'zip' | 'cert' | 'key') {
   downloadingDomain.value = row.domain
@@ -1375,6 +1389,7 @@ function selectVerificationChannel(cfg: DDNSConfig) {
 }
 
 function resetApplyWizard() {
+  applyAutoRenew.value = true
   applyStep.value = 1
   applyCertName.value = ''
   applyDomainsText.value = ''
@@ -1499,9 +1514,6 @@ function appendApplyLog(level: string, text: string) {
   if (applyLogLines.value.length > 300) {
     applyLogLines.value = applyLogLines.value.slice(-250)
   }
-  requestAnimationFrame(() => {
-    applyLogBox.value?.scrollTo({ top: applyLogBox.value.scrollHeight })
-  })
 }
 
 function handleApplyJobEvent(ev: CertificateJobEvent) {
@@ -1592,6 +1604,7 @@ async function submitApply() {
             ca: applyCA.value,
             email: applyEmail.value.trim(),
             name: applyCertName.value.trim(),
+            auto_renew: applyAutoRenew.value,
             export: exportPayload(applyExportForm),
           }
         : {
@@ -1607,6 +1620,7 @@ async function submitApply() {
             ca: applyCA.value,
             email: applyEmail.value.trim(),
             name: applyCertName.value.trim(),
+            auto_renew: applyAutoRenew.value,
             export: exportPayload(applyExportForm),
           }
     const { job_id } = await api.applyCertificate(payload)
@@ -2522,4 +2536,9 @@ html.dark .apply-log-box {
 .deployment-step { display:grid; gap:12px; }
 @media(max-width:1000px) { .cert-wide { display:none; } .cert-narrow { display:grid; gap:10px; } }
 @media(max-width:700px) { .stats-row { grid-template-columns:repeat(3,minmax(0,1fr)); } .apply-step__label { font-size:11px; } }
+
+.apply-log-box { max-height:none; min-height:0; overflow:visible; overflow-wrap:anywhere; white-space:pre-wrap; }
+.apply-modal-scroll { min-height:0; overflow:visible; }
+.apply-cert-modal :deep(.n-card__content) { flex:1 1 auto; min-height:0; overscroll-behavior:contain; }
+.apply-cert-modal :deep(.n-card-header), .apply-cert-modal :deep(.n-card__footer) { flex-shrink:0; }
 </style>

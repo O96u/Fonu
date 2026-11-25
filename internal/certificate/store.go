@@ -11,6 +11,7 @@ import (
 )
 
 type Record struct {
+	AutoRenew bool `json:"auto_renew"`
 	ID          int64      `json:"id"`
 	Domain      string     `json:"domain"`
 	Name        string     `json:"name"`
@@ -38,7 +39,7 @@ func NewStore(db *sql.DB) *Store {
 func (s *Store) List(ctx context.Context) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, '')
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew
 		FROM certificates ORDER BY id ASC
 	`)
 	if err != nil {
@@ -77,6 +78,11 @@ func (s *Store) Upsert(ctx context.Context, domain string, wildcard bool, domain
 		return Record{}, err
 	}
 	return s.GetByDomain(ctx, domain)
+}
+
+func (s *Store) SetAutoRenew(ctx context.Context, domain string, enabled bool) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE certificates SET auto_renew = ?, updated_at = datetime('now') WHERE domain = ?", boolInt(enabled), domain)
+	return err
 }
 
 func (s *Store) UpdateStatus(ctx context.Context, domain, status, lastError string) error {
@@ -135,7 +141,7 @@ func (s *Store) Delete(ctx context.Context, domain string) error {
 func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, domain, COALESCE(name, ''), COALESCE(domains, ''), wildcard, COALESCE(acme_ca, ''), COALESCE(cert_path, ''), COALESCE(key_path, ''),
-		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, '')
+		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew
 		FROM certificates WHERE domain = ?
 	`, domain)
 	rec, err := scanRecord(row)
@@ -147,11 +153,11 @@ func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) 
 
 func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var rec Record
-	var wildcard int
+	var wildcard, autoRenew int
 	var domainsJSON string
 	var expiresAt, lastRenewAt sql.NullString
 	var exportJSON string
-	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON); err != nil {
+	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON, &autoRenew); err != nil {
 		return Record{}, err
 	}
 	exportCfg, err := ParseExportConfig(exportJSON)
@@ -160,6 +166,7 @@ func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	}
 	rec.Export = exportCfg
 	rec.Wildcard = wildcard == 1
+	rec.AutoRenew = autoRenew == 1 && rec.ACMECA != "imported"
 	rec.Domains = decodeDomains(domainsJSON, rec.Domain, rec.Wildcard)
 	if expiresAt.Valid {
 		t := parseTime(expiresAt.String)

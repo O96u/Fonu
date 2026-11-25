@@ -72,6 +72,7 @@ func (s *Service) Get(ctx context.Context, domain string) (certstore.Record, err
 }
 
 type ApplyOptions struct {
+	AutoRenew *bool
 	DDNSConfigID   int64
 	InlineDNS      InlineDNS
 	SaveDNSProfile bool
@@ -85,7 +86,7 @@ func (s *Service) StartApply(ctx context.Context, domains []string, ca, email st
 		return "", err
 	}
 	job := s.jobs.Create()
-	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name, opts.Export)
+	go s.runApplyJob(job, dnsZone, domains, ca, email, primary, provider, cred, name, opts.Export, opts.AutoRenew)
 	return job.ID(), nil
 }
 
@@ -259,7 +260,7 @@ func (s *Service) prepareApplyByZone(ctx context.Context, dnsZone string, domain
 	return domains, ca, email, primary, dnsZone, provider, cred, nil
 }
 
-func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string, export certstore.ExportConfig) {
+func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string, export certstore.ExportConfig, autoRenew *bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	if !s.operationMu.TryLock() {
@@ -281,6 +282,13 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 		return
 	}
 	s.setCertName(ctx, primary, name)
+	if autoRenew != nil {
+		if err := s.store.SetAutoRenew(ctx, primary, *autoRenew); err != nil {
+			job.Error("证书已签发，但保存自动续签策略失败：" + err.Error())
+			job.Finish(JobDonePayload{OK: false, Error: "证书已签发，但自动续签策略保存失败", Domain: primary})
+			return
+		}
+	}
 	s.saveCertExport(ctx, primary, export)
 	if err := s.settings.Set(ctx, settings.KeyACMECA, ca); err != nil {
 		job.Warn("保存 ACME 颁发机构设置失败: " + err.Error())
@@ -595,6 +603,16 @@ func (s *Service) UpdateMeta(ctx context.Context, domain, name string, export ce
 	return rec, nil
 }
 
+func (s *Service) SetAutoRenew(ctx context.Context, domain string, enabled bool) (certstore.Record, error) {
+	if !s.operationMu.TryLock() { return certstore.Record{}, fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
+	rec, err := s.store.GetByDomain(ctx, domain)
+	if err != nil { return rec, err }
+	if rec.ACMECA == "imported" { return rec, fmt.Errorf("手动导入证书不支持自动续签") }
+	if err := s.store.SetAutoRenew(ctx, domain, enabled); err != nil { return rec, err }
+	return s.store.GetByDomain(ctx, domain)
+}
+
 func (s *Service) Tick(ctx context.Context) { _ = s.TickErr(ctx) }
 
 func (s *Service) TickErr(ctx context.Context) error {
@@ -614,7 +632,7 @@ func (s *Service) TickErr(ctx context.Context) error {
 			s.maybeAlertCertExpiry(ctx, rec.Domain, rec.DaysLeft)
 		}
 		if rec.DaysLeft <= threshold {
-			if rec.ACMECA == "imported" {
+			if rec.ACMECA == "imported" || !rec.AutoRenew {
 				continue
 			}
 			if _, err := s.Renew(ctx, rec.Domain, rec.ACMECA); err != nil {

@@ -261,7 +261,9 @@ export const api = {
   listCertificates: () => request<CertificateRecord[]>('/api/certificates'),
   getCertificateExportPaths: () => request<CertExportPathHints>('/api/certificates/export-paths'),
   listCertificateCAOptions: () => request<CertificateCAOption[]>('/api/certificates/ca-options'),
+  setCertificateAutoRenew: (domain: string, enabled: boolean) => request<CertificateRecord>(`/api/certificates/${encodeURIComponent(domain)}/auto-renew`, { method: 'PUT', body: JSON.stringify({ auto_renew: enabled }) }),
   applyCertificate: (payload: {
+    auto_renew?: boolean
     dns_zone?: string
     ddns_config_id?: number
     dns?: {
@@ -281,6 +283,7 @@ export const api = {
     request<{ job_id: string }>('/api/certificates/apply', {
       method: 'POST',
       body: JSON.stringify({
+        auto_renew: payload.auto_renew,
         dns_zone: payload.dns_zone ?? '',
         ddns_config_id: payload.ddns_config_id ?? 0,
         dns: payload.dns ?? {},

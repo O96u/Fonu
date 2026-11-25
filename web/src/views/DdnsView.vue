@@ -2213,5 +2213,8 @@ onMounted(init)
 
 .task-chevron { display:inline-flex; align-items:center; justify-content:center; padding:0; height:30px; }
 .task-chevron :deep(.n-button__content) { display:flex; align-items:center; justify-content:center; line-height:1; }
-.task-item--editing { max-width:760px; width:100%; margin-inline:auto; box-sizing:border-box; }
+.task-item--editing { max-width:none; width:100%; margin-inline:0; box-sizing:border-box; }
+.task-sidebar__create { padding:0; }
+.task-sidebar__create .task-item--editing-create { width:100%; }
+.task-item--editing .provider-form { text-align:left; }
 </style>

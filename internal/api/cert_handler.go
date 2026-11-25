@@ -53,6 +53,7 @@ func (h *CertHandler) Options(w http.ResponseWriter, r *http.Request) {
 
 func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		AutoRenew *bool `json:"auto_renew"`
 		Domain         string                 `json:"domain"`
 		DNSZone        string                 `json:"dns_zone"`
 		DDNSConfigID   int64                  `json:"ddns_config_id"`
@@ -74,6 +75,7 @@ func (h *CertHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		domains = []string{req.Domain}
 	}
 	jobID, err := h.svc.StartApply(r.Context(), domains, req.CA, req.Email, acme.ApplyOptions{
+		AutoRenew: req.AutoRenew,
 		DDNSConfigID:   req.DDNSConfigID,
 		InlineDNS:      req.DNS,
 		SaveDNSProfile: req.SaveDNSProfile,
@@ -129,6 +131,14 @@ func (h *CertHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, redactCertRecord(record))
+}
+
+func (h *CertHandler) SetAutoRenew(w http.ResponseWriter, r *http.Request) {
+	var req struct { AutoRenew *bool `json:"auto_renew"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AutoRenew == nil { writeError(r,w,http.StatusBadRequest,"请选择自动续签状态"); return }
+	record, err := h.svc.SetAutoRenew(r.Context(), strings.TrimSpace(r.PathValue("domain")), *req.AutoRenew)
+	if err != nil { writeError(r,w,http.StatusBadRequest,err.Error()); return }
+	writeJSON(w,http.StatusOK,redactCertRecord(record))
 }
 
 func (h *CertHandler) Update(w http.ResponseWriter, r *http.Request) {

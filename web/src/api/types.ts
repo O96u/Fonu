@@ -385,6 +385,7 @@ export interface CertificateJobEvent {
 }
 
 export interface CertificateRecord {
+  auto_renew: boolean
   id: number
   domain: string
   name?: string
