@@ -28,6 +28,24 @@ export function withLocalPreview(notes: ReleaseNote[]): ReleaseNote[] {
 /** 连不上 GitHub 时仍能展示最近五次发版说明。 */
 export const FALLBACK_RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.3.11',
+    date: '2026-11-25',
+    url: `${GITHUB_RELEASES}/tag/v1.3.11`,
+    markdown: [
+      '### 新增',
+      '',
+      '- Docker 管理后台支持原生 HTTPS',
+      '',
+      '### 修复',
+      '',
+      '- 会话与认证加固、Nginx 失败回滚、备份恢复与 ACME / DDNS 等多项稳定性修复',
+      '',
+      '### 变更',
+      '',
+      '- 访问分析增量汇总与前端分包、依赖安全更新',
+    ].join('\n'),
+  },
+  {
     version: '1.3.10',
     date: '2026-11-17',
     url: `${GITHUB_RELEASES}/tag/v1.3.10`,
