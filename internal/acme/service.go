@@ -43,6 +43,7 @@ type Service struct {
 	notify     *notify.Service
 	jobs     *JobManager
 
+	operationMu sync.Mutex
 	expiryAlertMu sync.Mutex
 	expiryAlerted map[string]string
 }
@@ -259,7 +260,13 @@ func (s *Service) prepareApplyByZone(ctx context.Context, dnsZone string, domain
 }
 
 func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, email, primary, provider string, cred ddns.Credentials, name string, export certstore.ExportConfig) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	if !s.operationMu.TryLock() {
+		job.Finish(JobDonePayload{OK:false, Error:"已有证书操作正在执行，请稍后重试", Domain:primary})
+		return
+	}
+	defer s.operationMu.Unlock()
 	job.Info("开始申请证书…")
 	job.Info(fmt.Sprintf("主域名: %s", primary))
 	job.Info(fmt.Sprintf("覆盖域名: %s", formatApplyDomains(domains)))
@@ -289,6 +296,8 @@ func (s *Service) runApplyJob(job *Job, dnsZone string, domains []string, ca, em
 }
 
 func (s *Service) Apply(ctx context.Context, dnsZone string, domains []string, ca, email string) ([]certstore.Record, error) {
+	if !s.operationMu.TryLock() { return nil,fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
 	domains, ca, email, primary, _, provider, cred, err := s.prepareApplyByZone(ctx, dnsZone, domains, ca, email)
 	if err != nil {
 		return nil, err
@@ -377,6 +386,9 @@ func (s *Service) Delete(ctx context.Context, domain string) error {
 }
 
 func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstore.Record, error) {
+	if !s.operationMu.TryLock() { return certstore.Record{},fmt.Errorf("已有证书操作正在执行，请稍后重试") }
+	defer s.operationMu.Unlock()
+	if err:=ctx.Err();err!=nil {return certstore.Record{},err}
 	rootDomain := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(domain, "*.")))
 	if rootDomain == "" {
 		return certstore.Record{}, fmt.Errorf("请选择要续签的证书域名")
@@ -583,16 +595,18 @@ func (s *Service) UpdateMeta(ctx context.Context, domain, name string, export ce
 	return rec, nil
 }
 
-func (s *Service) Tick(ctx context.Context) {
+func (s *Service) Tick(ctx context.Context) { _ = s.TickErr(ctx) }
+
+func (s *Service) TickErr(ctx context.Context) error {
 	records, err := s.store.List(ctx)
-	if err != nil {
-		return
-	}
+	if err != nil { return err }
+	failed := 0
 	threshold, err := s.settings.GetInt(ctx, settings.KeyCertRenewThreshold)
 	if err != nil || threshold <= 0 {
 		threshold = 30
 	}
 	for _, rec := range records {
+		if err:=ctx.Err();err!=nil {return err}
 		if rec.ExpiresAt == nil {
 			continue
 		}
@@ -604,6 +618,7 @@ func (s *Service) Tick(ctx context.Context) {
 				continue
 			}
 			if _, err := s.Renew(ctx, rec.Domain, rec.ACMECA); err != nil {
+				failed++
 				s.logger.Error("certificate renew failed", "domain", rec.Domain, "error", err.Error())
 				if s.notify != nil {
 					s.notify.Alert(ctx, notify.EventCertRenewFailure, "证书续签失败",
@@ -612,6 +627,8 @@ func (s *Service) Tick(ctx context.Context) {
 			}
 		}
 	}
+	if failed > 0 { return fmt.Errorf("%d certificate renewals failed",failed) }
+	return ctx.Err()
 }
 
 func (s *Service) maybeAlertCertExpiry(ctx context.Context, domain string, daysLeft int) {

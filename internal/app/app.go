@@ -195,7 +195,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 			Name:     "acme",
 			Timeout: 30 * time.Minute,
 			Interval: 24 * time.Hour,
-			Run:      acmeSvc.Tick,
+			RunErr: acmeSvc.TickErr,
+			RetryMin: 2*time.Hour,
+			RetryMax: 12*time.Hour,
 		},
 		scheduler.Job{
 			Name:     "china_cidr",
