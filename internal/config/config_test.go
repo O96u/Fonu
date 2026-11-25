@@ -26,8 +26,8 @@ func TestLoadNginxDefaultPorts(t *testing.T) {
 }
 
 func TestLoadNginxDefaultPortsFallback(t *testing.T) {
-	os.Unsetenv("FONU_NGINX_HTTP_PORT")
-	os.Unsetenv("FONU_NGINX_HTTPS_PORT")
+	t.Setenv("FONU_NGINX_HTTP_PORT", "")
+	t.Setenv("FONU_NGINX_HTTPS_PORT", "")
 
 	cfg := Load()
 	if cfg.NginxDefaultHTTPPort != 80 || cfg.NginxDefaultHTTPSPort != 443 {
@@ -41,11 +41,27 @@ func TestResolveNginxMimeTypesIgnoresMissingDockerPath(t *testing.T) {
 	if err := os.WriteFile(mime, []byte("types { text/html html; }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("FONU_NGINX_MIME_TYPES", "/etc/nginx/mime.types")
+	t.Setenv("FONU_NGINX_MIME_TYPES", filepath.Join(dir, "missing", "mime.types"))
 	t.Setenv("FONU_DATA_DIR", dir)
 
 	cfg := Load()
 	if cfg.NginxMimeTypes != mime {
 		t.Fatalf("mime types %q want %q", cfg.NginxMimeTypes, mime)
+	}
+}
+
+func TestResolveNginxMimeTypesPrefersExistingExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	fallback := filepath.Join(dir, "mime.types")
+	explicit := filepath.Join(dir, "explicit.types")
+	for _, path := range []string{fallback, explicit} {
+		if err := os.WriteFile(path, []byte("types { text/html html; }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("FONU_DATA_DIR", dir)
+	t.Setenv("FONU_NGINX_MIME_TYPES", explicit)
+	if got := Load().NginxMimeTypes; got != explicit {
+		t.Fatalf("mime types %q want %q", got, explicit)
 	}
 }
