@@ -52,6 +52,7 @@ jobs:
           (cd assets && sha256sum *.fpk > SHA256SUMS.txt)
       - name: Create or verify source tag
         env:
+          GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN || github.token }}
           SOURCE_SHA: ${{ steps.verify.outputs.sha }}
         run: |
           set -euo pipefail
@@ -59,10 +60,14 @@ jobs:
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > tag.json 2>/dev/null; then
             jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha' tag.json
           else
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"
+            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"; then
+              echo "::error::Cannot create $tag at $SOURCE_SHA. Configure V2_RELEASE_TOKEN with repository Contents and Workflows write access, or create this exact tag manually and retry."
+              exit 1
+            fi
           fi
       - name: Publish prerelease without changing Latest
         env:
+          GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN || github.token }}
           SOURCE_SHA: ${{ steps.verify.outputs.sha }}
         run: |
           set -euo pipefail
