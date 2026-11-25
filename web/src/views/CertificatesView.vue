@@ -608,6 +608,9 @@
 import { computed, h, onMounted, onUnmounted, reactive, ref, watch, type VNode } from 'vue'
 import {
   NAlert,
+  NModal,
+  NRadio,
+  NCheckbox,
   NButton,
   NDataTable,
   NForm,
@@ -2499,4 +2502,6 @@ html.dark .apply-log-box {
     min-width: 900px;
   }
 }
+.stats-row { gap: 1px; background: var(--fonu-border); border: 1px solid var(--fonu-border); border-radius: var(--fonu-radius); overflow: hidden; }
+.stats-row > .stat-card { border: 0; border-radius: 0; box-shadow: none; min-width: 0; background: var(--fonu-surface); }
 </style>

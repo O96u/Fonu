@@ -39,6 +39,7 @@ defineProps<{
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--fonu-space-4);
   padding: var(--fonu-space-4) var(--fonu-space-4) 0;
 }
@@ -69,4 +70,8 @@ defineProps<{
 .fonu-card--flush .fonu-card__body {
   padding-top: 0;
 }
+.fonu-card { min-width: 0; }
+.fonu-card__header > div:first-child { min-width: 0; }
+.fonu-card__header-extra { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 760px) { .fonu-card__header, .fonu-card__body { padding-inline: 12px; } }
 </style>

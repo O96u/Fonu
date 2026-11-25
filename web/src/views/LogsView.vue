@@ -1007,4 +1007,7 @@ onUnmounted(() => {
 .logs-card :deep(.log-module-tag) {
   white-space: nowrap;
 }
+@media (max-width: 760px) {
+  .logs-card { min-width: 0; }
+}
 </style>

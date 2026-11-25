@@ -1,6 +1,7 @@
 <template>
   <div class="page-header">
     <div class="page-header__main">
+      <div class="page-header__eyebrow">工作空间</div>
       <h1 class="page-header__title">{{ title }}</h1>
       <p v-if="description" class="page-header__desc">{{ description }}</p>
     </div>
@@ -24,12 +25,14 @@ defineProps<{
   justify-content: space-between;
   gap: var(--fonu-space-4);
   margin-bottom: var(--fonu-space-5);
+  padding-bottom: var(--fonu-space-4);
+  border-bottom: 1px solid var(--fonu-border);
   flex-wrap: wrap;
 }
 
 .page-header__title {
   margin: 0;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 650;
   line-height: 1.3;
   color: var(--fonu-text);
@@ -49,4 +52,7 @@ defineProps<{
   gap: var(--fonu-space-3);
   flex-wrap: wrap;
 }
+.page-header__main { min-width: 0; flex: 1 1 220px; }
+.page-header__eyebrow { color: var(--fonu-brand-text); font-size: 11px; font-weight: 600; letter-spacing: .08em; margin-bottom: 5px; }
+@media (max-width: 760px) { .page-header__title { font-size: 24px; } .page-header__desc { font-size: 13px; } .page-header { gap: 12px; } }
 </style>

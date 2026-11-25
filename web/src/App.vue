@@ -81,4 +81,11 @@ body {
   font-size: 13px;
   color: var(--fonu-text-secondary);
 }
+.page-body { min-width: 0; }
+.page-body .n-data-table { font-variant-numeric: tabular-nums; }
+.page-body .n-data-table-td { overflow-wrap: anywhere; }
+.page-body .n-data-table-th { white-space: nowrap; }
+.page-body .n-tabs-nav { min-width: 0; }
+.page-body .n-button:focus-visible { outline: 2px solid var(--fonu-brand); outline-offset: 2px; }
+@media (max-width: 760px) { .page-body .toolbar { gap: 8px; } }
 </style>

@@ -1,16 +1,22 @@
 import { createApp } from 'vue'
-import naive from 'naive-ui'
 import App from './App.vue'
 import router from './router'
 
+performance.mark('fonu:entry')
 const app = createApp(App)
 
 app.config.errorHandler = (err, _instance, info) => {
   console.error('[fonu]', info, err)
 }
 
-app.use(router).use(naive)
-router.isReady().then(() => app.mount('#app')).catch((err: unknown) => {
+app.use(router)
+router.isReady().then(() => {
+  performance.mark('fonu:route-ready')
+  app.mount('#app')
+  performance.mark('fonu:mounted')
+  performance.measure('fonu:route-init', 'fonu:entry', 'fonu:route-ready')
+  performance.measure('fonu:mount', 'fonu:route-ready', 'fonu:mounted')
+}).catch((err: unknown) => {
   console.error('[fonu] startup', err)
   const text = document.getElementById('fonu-boot-text')
   const retry = document.getElementById('fonu-boot-retry')

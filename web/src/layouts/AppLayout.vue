@@ -280,6 +280,8 @@ const passwordForm = reactive({
   new_password: "",
   confirm_password: "",
 });
+let updateTimer: number | undefined;
+let layoutActive = true;
 const latestVersion = ref("");
 const hasUpdate = ref(false);
 
@@ -304,7 +306,8 @@ async function loadVersion() {
     // keep build-time fallback
   }
 
-  await checkForUpdate();
+  // Release metadata is nonessential during startup.
+  if (layoutActive) updateTimer = window.setTimeout(() => { void checkForUpdate(); }, 2500);
 }
 
 const menuDefs = [
@@ -451,6 +454,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  layoutActive = false;
+  if (updateTimer !== undefined) window.clearTimeout(updateTimer);
   window.removeEventListener("resize", updateViewport);
 });
 </script>

@@ -74,7 +74,8 @@ async function submit() {
 
 <style scoped>
 .auth-page {
-  min-height: 100%;
+  height: 100%;
+  overflow: auto;
   display: grid;
   place-items: center;
   padding: var(--fonu-space-5);
@@ -83,7 +84,7 @@ async function submit() {
 
 .auth-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   background: var(--fonu-surface);
   border: 1px solid var(--fonu-border);
   border-radius: var(--fonu-radius);
@@ -101,14 +102,14 @@ async function submit() {
 .auth-brand__logo {
   width: 48px;
   height: 48px;
-  border-radius: 14px;
+  border-radius: var(--fonu-radius);
   object-fit: cover;
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.22);
+  box-shadow: none;
 }
 
 .auth-brand h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
 }
 

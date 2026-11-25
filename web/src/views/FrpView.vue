@@ -2319,4 +2319,7 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+@media (max-width: 760px) {
+  .frp-page { min-width: 0; }
+}
 </style>

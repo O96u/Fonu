@@ -2305,4 +2305,6 @@ onMounted(init)
   .settings-row { flex-direction: column; align-items: flex-start; }
   .task-sidebar__head-row { flex-direction: column; align-items: stretch; }
 }
+.stats-row { gap: 1px; background: var(--fonu-border); border: 1px solid var(--fonu-border); border-radius: var(--fonu-radius); overflow: hidden; }
+.stats-row > .stat-card { border: 0; border-radius: 0; box-shadow: none; min-width: 0; background: var(--fonu-surface); }
 </style>

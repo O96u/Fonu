@@ -744,6 +744,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  NAlert,
   NButton,
   NIcon,
   NInput,
@@ -2230,4 +2231,7 @@ onMounted(() => {
 .accent-option[aria-pressed="true"] { border-color: var(--fonu-brand); background: var(--fonu-brand-soft); color: var(--fonu-text); }
 .accent-option:focus-visible { outline: 2px solid var(--fonu-brand); outline-offset: 2px; }
 .accent-swatch { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
+@media (max-width: 760px) {
+  .settings-grid { min-width: 0; }
+}
 </style>
