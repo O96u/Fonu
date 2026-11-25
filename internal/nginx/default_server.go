@@ -29,10 +29,11 @@ func collectListenEndpoints(rules []proxy.Rule, certsDir string, certs []CertSou
 			if len(group.Hostnames) == 0 {
 				continue
 			}
-			cert := findCertificateForHosts(certsDir, group.Hostnames[:1], certs)
 			useHTTPS := rule.HTTPSEnabled
+			var cert *certFiles
+			if useHTTPS { cert = findCertificateForHosts(certsDir, group.Hostnames[:1], certs) }
 
-			key := listenEndpointKey(group.Port, useHTTPS, rule.ListenIPv4, rule.ListenIPv6)
+			key := fmt.Sprintf("%d|%t",group.Port,useHTTPS)
 			ep := merged[key]
 			if ep == nil {
 				ep = &listenEndpoint{
@@ -123,4 +124,16 @@ func sslLabel(ssl bool) string {
 		return " HTTPS"
 	}
 	return ""
+}
+
+// A TCP socket cannot be both a plain HTTP and a TLS listener.
+func validateListenProtocols(endpoints []listenEndpoint) error {
+	for i,a:=range endpoints {
+		for _,b:=range endpoints[i+1:] {
+			if a.Port==b.Port&&a.SSL!=b.SSL&&((a.IPv4&&b.IPv4)||(a.IPv6&&b.IPv6)){
+				return fmt.Errorf("端口 %d 的同一监听地址不能同时使用 HTTP 和 HTTPS",a.Port)
+			}
+		}
+	}
+	return nil
 }

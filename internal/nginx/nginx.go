@@ -265,8 +265,15 @@ func (m *Manager) validate(ctx context.Context, configPath string) error {
 	defer os.Remove(tmpErr)
 	args := []string{"-e", absNginxPath(tmpErr), "-t", "-c", configPath}
 	err = m.runNginx(ctx, args, "Nginx 配置校验失败")
-	_ = os.Remove(tmpErr)
-	return err
+	if err != nil { return err }
+	data, err := os.ReadFile(tmpErr)
+	if err != nil { return err }
+	for _, line := range strings.Split(string(data),"\n") {
+		if strings.Contains(line,"conflicting server name") {
+			return fmt.Errorf("Nginx 域名与监听冲突：%s",sanitizeNginxError(line))
+		}
+	}
+	return nil
 }
 
 func (m *Manager) start(ctx context.Context) error {
@@ -294,6 +301,8 @@ func (m *Manager) start(ctx context.Context) error {
 }
 
 func (m *Manager) trySilentReload(ctx context.Context) bool {
+	pid, err := readPIDFile(m.cfg.NginxPIDFile)
+	if err != nil || !m.ownsMaster(pid) { return false }
 	ctx, cancel := context.WithTimeout(ctx, nginxCmdTimeout)
 	defer cancel()
 
@@ -304,16 +313,17 @@ func (m *Manager) trySilentReload(ctx context.Context) bool {
 
 func (m *Manager) reload(ctx context.Context) error {
 	pid, err := readPIDFile(m.cfg.NginxPIDFile)
-	if err == nil && isPIDAlive(pid) {
+	if err == nil && m.ownsMaster(pid) {
 		if err := reloadProcess(pid); err == nil {
 			m.logger.Info("nginx reloaded")
 			return nil
 		}
 		m.logger.Warn("nginx signal reload failed, falling back to cli", "pid", pid, "error", err)
-	} else if err != nil && !os.IsNotExist(err) {
-		removePIDFile(m.cfg.NginxPIDFile)
+	} else {
+		return fmt.Errorf("未找到经过身份确认的 Fonu Nginx 主进程")
 	}
 
+	if !m.ownsMaster(pid) { return fmt.Errorf("Nginx 主进程身份已变化") }
 	if err := m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "reload"}, "Nginx 重载失败"); err != nil {
 		return err
 	}
@@ -330,12 +340,12 @@ func (m *Manager) forceRestart(ctx context.Context) error {
 
 func (m *Manager) terminateMaster() {
 	pid, err := readPIDFile(m.cfg.NginxPIDFile)
-	if err != nil || !isPIDAlive(pid) {
+	if err != nil || !m.ownsMaster(pid) {
 		return
 	}
 	_ = terminateProcess(pid, syscall.SIGTERM)
 	waitProcessExit(pid, nginxTerminateWait)
-	if isPIDAlive(pid) {
+	if m.ownsMaster(pid) {
 		_ = terminateProcess(pid, syscall.SIGKILL)
 		waitProcessExit(pid, time.Second)
 	}
@@ -435,7 +445,7 @@ func (m *Manager) isRunning() (bool, error) {
 		removePIDFile(m.cfg.NginxPIDFile)
 		return false, nil
 	}
-	if !isPIDAlive(pid) {
+	if !m.ownsMaster(pid) {
 		removePIDFile(m.cfg.NginxPIDFile)
 		return false, nil
 	}

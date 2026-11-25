@@ -124,7 +124,9 @@ func (c SecurityConfig) Normalize() SecurityConfig {
 }
 
 func RuleForAPI(rule Rule) Rule {
+	legacy := !rule.Security.ProxySSLVerifyConfigured
 	rule.Security = rule.Security.ForAPI()
+	if legacy && !strings.HasPrefix(rule.Upstream,"https://") { rule.Security.ProxySSLVerifyOff = false }
 	return rule
 }
 

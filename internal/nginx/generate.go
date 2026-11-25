@@ -57,6 +57,7 @@ http {
 	if err := writeGlobalCustomInclude(&b, cfg, opts); err != nil { return "", err }
 
 	catchAllEndpoints := collectListenEndpoints(rules, cfg.CertsDir(), certs)
+	if err := validateListenProtocols(catchAllEndpoints); err != nil { return "",err }
 
 	for _, rule := range rules {
 		if !rule.Enabled {
