@@ -10,7 +10,7 @@
       <template #prefix><n-icon :component="SearchOutline" /></template>
     </n-input>
     <n-select
-      :value="statusFilter" @update:value="emit('update:statusFilter', $event)"
+      :value="statusFilter" @update:value="emit('update:statusFilter', typeof $event === 'string' ? $event : null)"
       size="small"
       :options="statusOptions"
       clearable
@@ -18,7 +18,7 @@
       class="proxy-toolbar__filter"
     />
     <n-select
-      :value="httpsFilter" @update:value="emit('update:httpsFilter', $event)"
+      :value="httpsFilter" @update:value="emit('update:httpsFilter', typeof $event === 'string' ? $event : null)"
       size="small"
       :options="httpsOptions"
       clearable

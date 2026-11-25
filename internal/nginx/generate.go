@@ -54,7 +54,7 @@ http {
 	writeLimitZones(&b, rules)
 	writeChinaGeoBlocks(&b, cfg, opts, rules)
 	writeChinaOnlyBypassGeo(&b, rules, opts)
-	writeGlobalCustomInclude(&b, cfg, opts)
+	if err := writeGlobalCustomInclude(&b, cfg, opts); err != nil { return "", err }
 
 	catchAllEndpoints := collectListenEndpoints(rules, cfg.CertsDir(), certs)
 
@@ -96,17 +96,29 @@ func GenerateRuleBlocks(cfg config.Config, rule proxy.Rule, certs []CertSource, 
 	return content, nil
 }
 
-func writeGlobalCustomInclude(b *strings.Builder, cfg config.Config, opts GenerateOptions) {
-	if strings.TrimSpace(opts.GlobalCustomOverride) != "" {
+func writeGlobalCustomInclude(b *strings.Builder, cfg config.Config, opts GenerateOptions) error {
+	if opts.GlobalCustomMode == "auto" {
+		writeIndentedHTTPSnippet(b, DefaultGlobalHTTPSnippet())
+		return nil
+	}
+	if opts.GlobalCustomOverrideSet || strings.TrimSpace(opts.GlobalCustomOverride) != "" {
 		writeIndentedHTTPSnippet(b, opts.GlobalCustomOverride)
-		return
+		return nil
+	}
+	if opts.GlobalCustomMode == "custom" {
+		// Embed the selected version so a later file write cannot mutate active config.
+		content, err := ReadGlobalCustom(cfg)
+		if err != nil { return err }
+		writeIndentedHTTPSnippet(b, content)
+		return nil
 	}
 	if globalCustomShouldInclude(cfg, opts) {
 		path := globalCustomPath(cfg, opts)
 		b.WriteString(fmt.Sprintf("    include %s;\n\n", absNginxPath(path)))
-		return
+		return nil
 	}
 	writeIndentedHTTPSnippet(b, DefaultGlobalHTTPSnippet())
+	return nil
 }
 
 func writeIndentedHTTPSnippet(b *strings.Builder, content string) {

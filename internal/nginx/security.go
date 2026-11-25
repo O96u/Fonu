@@ -15,6 +15,8 @@ type GenerateOptions struct {
 	GlobalIPWhitelist          []string
 	ChinaCIDRAvailable         bool
 	ChinaCIDRPathOverride      string
+	GlobalCustomMode           string
+	GlobalCustomOverrideSet    bool
 	GlobalCustomOverride       string
 	GlobalCustomPathOverride   string
 	RuleCustomOverrides        map[int64]string

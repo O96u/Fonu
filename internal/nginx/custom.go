@@ -151,14 +151,14 @@ func WriteGlobalCustom(cfg config.Config, content string) error {
 	if err := EnsureCustomDirs(cfg); err != nil {
 		return err
 	}
-	return os.WriteFile(cfg.NginxGlobalCustomPath(), []byte(content), 0o644)
+	return WriteCustomAtomic(cfg.NginxGlobalCustomPath(),content)
 }
 
 func WriteRuleCustom(cfg config.Config, ruleID int64, content string) error {
 	if err := os.MkdirAll(cfg.NginxRulesDir(), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(cfg.NginxRuleCustomPath(ruleID), []byte(content), 0o644)
+	return WriteCustomAtomic(cfg.NginxRuleCustomPath(ruleID),content)
 }
 
 func RemoveRuleCustom(cfg config.Config, ruleID int64) error {
@@ -259,4 +259,18 @@ http {
 		absNginxPath(cfg.NginxPIDFile),
 		absNginxPath(cfg.NginxMimeTypes),
 		absNginxPath(filepath.Join(cfg.LogsDir(), "access.log")))
+}
+
+// WriteCustomAtomic replaces a complete snippet, never a partially written file.
+func WriteCustomAtomic(path,content string)error{
+	if err:=os.MkdirAll(filepath.Dir(path),0755);err!=nil{return err}
+	f,err:=os.CreateTemp(filepath.Dir(path),".custom-*")
+	if err!=nil{return err}
+	defer os.Remove(f.Name())
+	if err=f.Chmod(0600);err==nil{_,err=f.WriteString(content)}
+	if err==nil{err=f.Sync()}
+	closeErr:=f.Close()
+	if err==nil{err=closeErr}
+	if err!=nil{return err}
+	return os.Rename(f.Name(),path)
 }

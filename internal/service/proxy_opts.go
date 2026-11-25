@@ -13,6 +13,7 @@ func (s *ProxyService) loadGenerateOptions(ctx context.Context) nginx.GenerateOp
 	if s.settings == nil {
 		return opts
 	}
+	opts.GlobalCustomMode, _ = s.settings.Get(ctx, settings.KeyNginxGlobalMode)
 	raw, err := s.settings.Get(ctx, settings.KeyTrustedProxy)
 	if err == nil {
 		opts.TrustedProxy = nginx.ParseTrustedProxyJSON(raw)
