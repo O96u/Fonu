@@ -118,36 +118,24 @@ func (s *Service) queryAnomaly(ctx context.Context, now time.Time, loc *time.Loc
 }
 
 func (s *Service) queryAnomalyDays(ctx context.Context, start, end time.Time, ipFilter string) (map[string]anomalyDay, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT date(ts, 'localtime') AS day,
-		       COUNT(*) AS total,
-		       SUM(CASE WHEN status >= 400 AND status < 500 THEN 1 ELSE 0 END),
-		       SUM(CASE WHEN status >= 500 AND status < 600 THEN 1 ELSE 0 END),
-		       SUM(CASE WHEN `+anomalyLatencyWhere+` AND request_ms >= ? THEN 1 ELSE 0 END),
-		       AVG(CASE WHEN `+anomalyLatencyWhere+` THEN request_ms END),
-		       SUM(CASE WHEN `+anomalyLatencyWhere+` THEN 1 ELSE 0 END)
-		FROM access_facts
-		WHERE ts >= ? AND ts <= ?`+ipFilter+`
-		GROUP BY day
-	`, anomalySlowMS, start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]anomalyDay{}
-	for rows.Next() {
-		var day string
+	out:=map[string]anomalyDay{}
+	for day:=start;!day.After(end);day=day.AddDate(0,0,1){
+		stop:=day.AddDate(0,0,1)
+		if last:=end.Add(time.Second);last.Before(stop){stop=last}
 		var snap anomalyDay
 		var avg sql.NullFloat64
-		if err := rows.Scan(&day, &snap.total, &snap.status4xx, &snap.status5xx, &snap.slow, &avg, &snap.latencyCount); err != nil {
-			return nil, err
-		}
-		if avg.Valid {
-			snap.avgMS = avg.Float64
-		}
-		out[day] = snap
+		err:=s.db.QueryRowContext(ctx,`SELECT COUNT(*),
+		COALESCE(SUM(CASE WHEN status>=400 AND status<500 THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN status>=500 AND status<600 THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN `+anomalyLatencyWhere+` AND request_ms>=? THEN 1 ELSE 0 END),0),
+		AVG(CASE WHEN `+anomalyLatencyWhere+` THEN request_ms END),
+		COALESCE(SUM(CASE WHEN `+anomalyLatencyWhere+` THEN 1 ELSE 0 END),0)
+		FROM access_facts WHERE ts>=? AND ts<?`+ipFilter,anomalySlowMS,day.UTC().Format(time.RFC3339),stop.UTC().Format(time.RFC3339)).Scan(&snap.total,&snap.status4xx,&snap.status5xx,&snap.slow,&avg,&snap.latencyCount)
+		if err!=nil{return nil,err}
+		if avg.Valid{snap.avgMS=avg.Float64}
+		out[day.Format("2006-01-02")]=snap
 	}
-	return out, rows.Err()
+	return out,nil
 }
 
 func (s *Service) queryAnomalyURLs(ctx context.Context, curStart, curEnd, prevStart, prevEnd time.Time, ipFilter string) ([]AnomalyURL, error) {

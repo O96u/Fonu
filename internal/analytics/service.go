@@ -32,6 +32,9 @@ type overviewCacheItem struct {
 
 // 首页每 5 秒刷新一次。缓存盖住这一轮，同一时间只算一份。
 const overviewCacheTTL = 15 * time.Second
+func rangeCacheTTL(key string) time.Duration {
+ switch key {case awareness.Range7d:return 30*time.Second;case awareness.Range30d,awareness.RangeAll:return 60*time.Second;default:return overviewCacheTTL}
+}
 
 type overviewCall struct {
 	done chan struct{}
@@ -154,8 +157,8 @@ func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, erro
 	if s.settings != nil { excludePrivate, _ = s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs) }
 	cacheKey := rangeKey + "|" + tz + "|" + strconv.FormatBool(excludePrivate)
 	s.overviewMu.Lock()
-	for key, item := range s.overviewCache { if time.Since(item.at) >= overviewCacheTTL { delete(s.overviewCache, key) } }
-	if item, ok := s.overviewCache[cacheKey]; ok && time.Since(item.at) < overviewCacheTTL {
+	for key, item := range s.overviewCache { if time.Since(item.at) >= rangeCacheTTL(strings.SplitN(key,"|",2)[0]) { delete(s.overviewCache, key) } }
+	if item, ok := s.overviewCache[cacheKey]; ok && time.Since(item.at) < rangeCacheTTL(rangeKey) {
 		s.overviewMu.Unlock()
 		return item.ov, nil
 	}
@@ -257,11 +260,11 @@ func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *tim
 		anomaly, err = s.queryAnomaly(ctx, now, loc, ipFilter)
 		anomalyOK = err == nil
 	})
-	spawn(func() { recent, _ = s.recentEvents(ctx, 30) })
-	spawn(func() { services, _ = s.byService(ctx, rangeKey) })
+	spawn(func() { recent, _ = s.recentEvents(ctx, start, end, ipFilter, 30) })
+	spawn(func() { services, _ = s.byService(ctx, start, end, ipFilter) })
 	if rangeKey == awareness.RangeToday {
 		yStart := startOfDay(now.AddDate(0, 0, -1), loc).UTC().Format(time.RFC3339)
-		yEnd := startOfDay(now, loc).UTC().Format(time.RFC3339)
+		yEnd := startOfDay(now, loc).Add(-time.Second).UTC().Format(time.RFC3339)
 		spawn(func() { yKPI, yFunnel, _ = s.queryKPI(ctx, yStart, yEnd, ipFilter) })
 	}
 	if s.serverGeo != nil {
@@ -327,7 +330,7 @@ func (s *Service) MetricsForStatus(ctx context.Context) (today, yesterday int, h
 	}
 	today, _ = s.countRequests(ctx, start, end, ipFilter)
 	yStart := startOfDay(now.AddDate(0, 0, -1), loc).UTC().Format(time.RFC3339)
-	yEnd := start
+	yEnd := startOfDay(now,loc).Add(-time.Second).UTC().Format(time.RFC3339)
 	yesterday, _ = s.countRequests(ctx, yStart, yEnd, ipFilter)
 	trend = requestTrendPercent(today, yesterday)
 
@@ -426,7 +429,7 @@ func (s *Service) queryKPI(ctx context.Context, start, end, ipFilter string) (KP
 			COUNT(*),
 			COUNT(DISTINCT client_ip),
 			COALESCE(SUM(bytes_sent), 0),
-			COALESCE(SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed','scan_suspected','abnormal_burst') THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed','scan_suspected','abnormal_burst') OR status IN (401,403,429) THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status >= 200 AND status < 400 AND kind = 'access' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN kind = 'blocked' OR status = 403 THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN kind = 'rate_limited' OR status = 429 THEN 1 ELSE 0 END), 0),

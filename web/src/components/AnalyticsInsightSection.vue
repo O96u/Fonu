@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { NTag } from 'naive-ui'
+import { NTag, NSpin, NButton } from 'naive-ui'
 import { RouterLink } from 'vue-router'
 import type { AnalyticsOverview, AwarenessRange } from '../api/types'
 import { displayRegionName } from '../utils/geoDisplay'
@@ -12,14 +12,17 @@ const AnalyticsAccessMap = defineAsyncComponent(() => import('./AnalyticsAccessM
 
 const props = defineProps<{
   data: AnalyticsOverview | null
+  loading?: boolean
+  error?: string
 }>()
+const emit = defineEmits<{ retry: [] }>()
 
 const range = defineModel<AwarenessRange>('range', { default: 'today' })
 const rangeOptions: { key: AwarenessRange; label: string }[] = [
   { key: 'today', label: '今天' },
   { key: '7d', label: '7 天' },
   { key: '30d', label: '30 天' },
-  { key: 'all', label: '全部' },
+  { key: 'all', label: '近一年' },
 ]
 
 const regionTableWrapRef = ref<HTMLElement | null>(null)
@@ -91,7 +94,9 @@ watch(regionVisitorsAll, () => {
         <p class="insight-section__sub">数字、地图和下面的趋势用同一个时间范围。</p>
       </div>
       <div class="insight-section__tools">
-        <div class="insight-range" role="tablist" aria-label="时间范围">
+        <n-spin v-if="loading" size="small" />
+        <span v-if="loading" role="status" class="insight-wait">正在统计…</span>
+        <div class="insight-range" role="tablist" aria-label="时间范围" :aria-busy="loading">
           <button
             v-for="opt in rangeOptions"
             :key="opt.key"
@@ -181,7 +186,11 @@ watch(regionVisitorsAll, () => {
       </div>
     </FonuCard>
     <FonuCard v-else flush class="insight-panel">
-      <p class="insight-wait">正在统计访问，地图随后加载。</p>
+      <div class="insight-wait" role="status">
+        <n-spin v-if="loading" size="small" />
+        <p>{{ error || '正在统计访问，地图随后加载。' }}</p>
+        <n-button v-if="error" size="small" @click="emit('retry')">重新加载</n-button>
+      </div>
     </FonuCard>
   </section>
 </template>

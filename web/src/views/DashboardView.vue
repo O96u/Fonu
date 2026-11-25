@@ -39,7 +39,7 @@
       </div>
     </n-spin>
 
-    <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" />
+    <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
 
     <AnalyticsAnomalySection v-if="analyticsOverview" :data="analyticsOverview" />
 
@@ -190,13 +190,15 @@ const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
 const analyticsOverview = ref<AnalyticsOverview | null>(null)
+const awarenessLoading = ref(false)
+const awarenessError = ref('')
 const awarenessRange = ref<AwarenessRange>('today')
 const ddnsConfigs = ref<DDNSConfig[]>([])
 const certificates = ref<CertificateRecord[]>([])
 const loading = ref(false)
 const loadError = ref('')
 let awarenessTimer: ReturnType<typeof setInterval> | null = null
-const AWARENESS_POLL_MS = 5000
+const pollInterval = () => awarenessRange.value === 'today' ? 15000 : awarenessRange.value === '7d' ? 30000 : 60000
 const awarenessTableScrollHeight = 360
 
 const primaryCert = computed(() => {
@@ -306,10 +308,13 @@ const awarenessTrendTag = computed(() => {
   return '2 小时粒度 · 已过去时段'
 })
 
-const awarenessRecentScopeLabel = '全部访问'
+const awarenessRecentScopeLabel = computed(() => awarenessPeriodLabel.value)
 
 watch(awarenessRange, () => {
-  void refreshAwareness()
+  cancelAwareness()
+  analyticsOverview.value = null
+  awarenessError.value = ''
+  void refreshAwareness(true)
 })
 
 const awarenessEvents = computed(() => analyticsOverview.value?.recent_events ?? [])
@@ -436,31 +441,49 @@ const awarenessServiceColumns: DataTableColumns<AwarenessServiceRow> = [
   },
 ]
 
-const awarenessPending = new Set<string>()
-async function refreshAwareness() {
+let awarenessController: AbortController | null = null
+let dashboardActive = false
+function cancelAwareness() {
+  awarenessController?.abort()
+  awarenessController = null
+  stopAwarenessPoll()
+}
+async function refreshAwareness(force = false) {
+  if (!dashboardActive || document.hidden || awarenessController) return
   const range = awarenessRange.value
-  if (document.hidden || awarenessPending.has(range)) return
-  awarenessPending.add(range)
+  const controller = new AbortController()
+  awarenessController = controller
+  if (force || !analyticsOverview.value) awarenessLoading.value = true
+  awarenessError.value = ''
   try {
-    const overview = await api.getAnalyticsOverview(range)
-    if (awarenessRange.value === range) analyticsOverview.value = overview
-  } catch {
-    // 轮询失败时保留上一份数据
+    const overview = await api.getAnalyticsOverview(range, controller.signal)
+    if (!controller.signal.aborted && awarenessRange.value === range && dashboardActive) {
+      analyticsOverview.value = overview
+    }
+  } catch (error) {
+    if (!controller.signal.aborted) awarenessError.value = error instanceof Error ? error.message : '统计加载失败，请重试'
   } finally {
-    awarenessPending.delete(range)
+    if (awarenessController === controller) {
+      awarenessController = null
+      awarenessLoading.value = false
+      startAwarenessPoll()
+    }
   }
 }
-
 function startAwarenessPoll() {
   stopAwarenessPoll()
-  awarenessTimer = setInterval(refreshAwareness, AWARENESS_POLL_MS)
+  if (dashboardActive && !document.hidden) awarenessTimer = setTimeout(() => { void refreshAwareness() }, pollInterval())
 }
-
 function stopAwarenessPoll() {
   if (awarenessTimer) {
-    clearInterval(awarenessTimer)
+    clearTimeout(awarenessTimer)
     awarenessTimer = null
   }
+}
+function onVisibilityChange() {
+  if (!dashboardActive) return
+  if (document.hidden) cancelAwareness()
+  else void refreshAwareness(!analyticsOverview.value)
 }
 
 async function load() {
@@ -495,20 +518,22 @@ async function loadDashboardExtras() {
 }
 
 function resumeDashboard() {
+  dashboardActive = true
+  document.addEventListener('visibilitychange', onVisibilityChange)
   void load()
-  void refreshAwareness()
-  startAwarenessPoll()
+  void refreshAwareness(true)
 }
 
 onActivated(resumeDashboard)
 
-onDeactivated(() => {
-  stopAwarenessPoll()
-})
-
-onUnmounted(() => {
-  stopAwarenessPoll()
-})
+function pauseDashboard() {
+  dashboardActive = false
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  cancelAwareness()
+  awarenessLoading.value = false
+}
+onDeactivated(pauseDashboard)
+onUnmounted(pauseDashboard)
 </script>
 
 <style scoped>

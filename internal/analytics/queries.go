@@ -213,13 +213,14 @@ func (s *Service) queryStatus(ctx context.Context, start, end, ipFilter string) 
 	return out, rows.Err()
 }
 
-func (s *Service) recentEvents(ctx context.Context, limit int) ([]awareness.Event, error) {
+func (s *Service) recentEvents(ctx context.Context, start,end,ipFilter string, limit int) ([]awareness.Event, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT ts, client_ip, service, host, path, status, kind, geo_label
 		FROM access_facts
+		WHERE ts >= ? AND ts <= ?`+ipFilter+`
 		ORDER BY ts DESC, id DESC
 		LIMIT ?
-	`, limit)
+	`, start,end,limit)
 	if err != nil {
 		return nil, err
 	}
@@ -238,12 +239,7 @@ func (s *Service) recentEvents(ctx context.Context, limit int) ([]awareness.Even
 	return out, rows.Err()
 }
 
-func (s *Service) byService(ctx context.Context, rangeKey string) ([]awareness.ServiceRow, error) {
-	loc, _ := s.location(ctx)
-	now := time.Now().In(loc)
-	period := awareness.PeriodForRange(rangeKey, now, loc)
-	start := period.Start.UTC().Format(time.RFC3339)
-	end := period.End.UTC().Format(time.RFC3339)
+func (s *Service) byService(ctx context.Context, start,end,ipFilter string) ([]awareness.ServiceRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT service,
 		       COUNT(*),
@@ -251,7 +247,7 @@ func (s *Service) byService(ctx context.Context, rangeKey string) ([]awareness.S
 		       SUM(CASE WHEN kind IN ('blocked','rate_limited','auth_failed') OR status IN (401,403,429) THEN 1 ELSE 0 END),
 		       SUM(CASE WHEN kind = 'scan_suspected' THEN 1 ELSE 0 END)
 		FROM access_facts
-		WHERE ts >= ? AND ts <= ?
+		WHERE ts >= ? AND ts <= ?`+ipFilter+`
 		GROUP BY service
 		ORDER BY COUNT(*) DESC
 		LIMIT 20

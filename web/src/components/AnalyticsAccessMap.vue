@@ -236,6 +236,7 @@ const option = computed(() => {
   }
 
   return {
+    animation: false,
     tooltip: {
       trigger: 'item',
       backgroundColor: isDark.value ? '#1e293b' : '#fff',
@@ -295,7 +296,7 @@ const option = computed(() => {
         geoIndex: 0,
         z: 3,
         effect: {
-          show: showAccessLines && accessLines.length > 0,
+          show: false,
           period: 4,
           trailLength: 0.15,
           symbol: 'arrow',
@@ -322,7 +323,7 @@ const option = computed(() => {
         geoIndex: 0,
         z: 4,
         effect: {
-          show: interceptLines.length > 0,
+          show: false,
           period: 3,
           trailLength: 0.12,
           symbol: 'arrow',
@@ -345,7 +346,7 @@ const option = computed(() => {
       },
       {
         name: '服务节点',
-        type: 'effectScatter',
+        type: 'scatter',
         coordinateSystem: 'geo',
         geoIndex: 0,
         z: 5,

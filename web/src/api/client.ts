@@ -50,6 +50,9 @@ const CERT_REQUEST_TIMEOUT_MS = 10 * 60_000
 async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const abort = () => controller.abort()
+  if (init?.signal?.aborted) abort()
+  else init?.signal?.addEventListener('abort', abort, { once: true })
   try {
     return await requestWithSignal<T>(path, init, controller.signal)
   } catch (error) {
@@ -63,6 +66,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_
     throw error
   } finally {
     clearTimeout(timeout)
+    init?.signal?.removeEventListener('abort', abort)
   }
 }
 
@@ -74,7 +78,7 @@ async function requestWithSignal<T>(path: string, init?: RequestInit, signal?: A
   const response = await fetch(path, {
     ...init,
     credentials: 'include',
-    signal: signal && init?.signal ? AbortSignal.any([signal, init.signal]) : signal ?? init?.signal,
+    signal: signal ?? init?.signal,
     headers,
   })
 
@@ -128,9 +132,9 @@ export const api = {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
     return request<AwarenessLiveSnapshot>(`/api/awareness/live${q}`)
   },
-  getAnalyticsOverview: (range: AwarenessRange = 'today') => {
+  getAnalyticsOverview: (range: AwarenessRange = 'today', signal?: AbortSignal) => {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
-    return request<AnalyticsOverview>(`/api/analytics/overview${q}`)
+    return request<AnalyticsOverview>(`/api/analytics/overview${q}`, { signal }, 120_000)
   },
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
   listProxyEntries: () => request<ProxyEntry[]>('/api/proxy-entries'),

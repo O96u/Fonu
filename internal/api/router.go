@@ -162,7 +162,7 @@ type Router struct {
 	staticFS         fs.FS
 }
 
-var hashedAsset = regexp.MustCompile(`-[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9]+$`)
+var hashedAsset = regexp.MustCompile(`-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$`)
 
 func (r *Router) spaHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(r.staticFS))
