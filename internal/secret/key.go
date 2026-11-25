@@ -39,6 +39,10 @@ func ValidateStoredKey(key string) error {
 
 func SaveStoredKey(dir, key string) error {
 	if err := ValidateStoredKey(key); err != nil { return err }
+	return writeKeyFile(dir, KeyFileName, key)
+}
+
+func writeKeyFile(dir, name, key string) error {
 	f, err := os.CreateTemp(dir, ".secret-key-*")
 	if err != nil { return err }
 	defer os.Remove(f.Name())
@@ -47,5 +51,5 @@ func SaveStoredKey(dir, key string) error {
 	closeErr := f.Close()
 	if err == nil { err = closeErr }
 	if err != nil { return err }
-	return os.Rename(f.Name(), filepath.Join(dir, KeyFileName))
+	return os.Rename(f.Name(), filepath.Join(dir, name))
 }

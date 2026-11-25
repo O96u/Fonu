@@ -69,9 +69,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, fmt.Errorf("resolve encryption key: %w", err)
 	}
 	cfg.SessionSecret = key
-	if key == secret.LegacyDefaultKey {
-		logger.Warn("legacy default encryption key in use; migrate credentials before changing FONU_SESSION_SECRET", "module", "SYSTEM")
-	}
+	
 	conn, err := db.Open(cfg.DBPath())
 	if err != nil {
 		return nil, err
@@ -81,6 +79,12 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		return nil, err
 	}
 
+	if key == secret.LegacyDefaultKey || secret.HasPendingRotation(cfg.DataDir) {
+		key, err = secret.RotateLegacyKey(context.Background(), conn, cfg.DataDir, key)
+		if err != nil { conn.Close(); return nil, fmt.Errorf("rotate legacy encryption key: %w", err) }
+		cfg.SessionSecret = key
+		logger.Info("legacy encryption key rotation completed", "module", "SYSTEM")
+	}
 	secretBox, err := secret.NewBox(cfg.SessionSecret)
 	if err != nil {
 		conn.Close()
