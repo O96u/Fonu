@@ -387,7 +387,6 @@ import {
   AddOutline,
   AlertCircleOutline,
   CopyOutline,
-  CreateOutline,
   GlobeOutline,
   RefreshOutline,
 } from '@vicons/ionicons5'
