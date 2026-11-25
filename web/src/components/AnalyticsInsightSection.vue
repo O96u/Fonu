@@ -100,7 +100,7 @@ watch(regionVisitorsAll, () => {
     <div v-if="!mapOnly" class="insight-section__head">
       <div>
         <h2 class="insight-section__title">{{ sectionTitle || "访问概览" }}</h2>
-        <p class="insight-section__sub">{{ loading ? "正在统计所选时间范围，图表暂保留" + displayedLabel + "数据。" : "当前展示：" + displayedLabel + " · 数字、地图及访问趋势使用同一统计范围。" }}</p>
+        <p class="insight-section__sub">{{ loading ? '正在统计，图表暂保留' + displayedLabel + '数据' : '当前展示：' + displayedLabel }}</p>
       </div>
       <div class="insight-section__tools">
         <span v-if="loading && showKpis === false" role="status" class="insight-wait">正在统计…</span>

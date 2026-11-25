@@ -1,9 +1,10 @@
 <template>
-  <div class="dashboard">
+<div class="dashboard-v6">
   <nav class="dashboard-tabs" aria-label="首页分区"><button v-for="tab in tabs" :key="tab.key" type="button" :aria-pressed="activeTab === tab.key" @click="selectTab(tab.key)">{{ tab.label }}</button></nav>
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
-
-    <n-spin v-if="activeTab === 'overview' || activeTab === 'services'" :show="loading && !status">
+  <n-alert v-if="awarenessNginxWarning && activeTab !== 'security'" type="warning" :bordered="false">{{ awarenessNginxWarning }}</n-alert>
+  <template v-if="activeTab === 'overview'">
+    <FonuCard class="status-strip">    <n-spin v-if="activeTab === 'overview'" :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
@@ -38,135 +39,35 @@
           <p class="stat-desc">反代进程</p>
         </StatCard>
       </div>
-    </n-spin>
-
-
-    <FonuCard v-if="activeTab === 'notifications'" title="状态提醒" subtitle="当前需要关注的证书与服务状态">
-      <div v-if="!status">尚未获取服务状态</div>
-      <div v-for="notice in notices" :key="notice.title" class="notice-row"><span class="notice-icon"><n-icon :component="ShieldCheckmarkOutline"/></span><div class="notice-detail"><strong>{{ notice.title }}</strong><p>{{ notice.detail }}</p></div><router-link :to="{name:notice.route}">查看</router-link></div>
-      <EmptyState v-if="status && !notices.length" title="暂无状态提醒" description="当前已获取的状态中未发现需要处理的事项。" />
-      <router-link :to="{name:'settings',query:{tab:'notify'}}">通知渠道设置</router-link>
-      <router-link class="notification-version" :to="{name:'settings',query:{tab:'version'}}">版本与更新日志</router-link>
-    </FonuCard>
-    <AnalyticsInsightSection v-if="activeTab === 'security' || activeTab === 'services'" v-model:range="awarenessRange" :show-map="false" :show-kpis="false" :section-title="activeTab === 'security' ? '安全统计范围' : '服务统计范围'" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
-
-    
-
-      <section v-if="activeTab === 'overview' || activeTab === 'access' || activeTab === 'services'" class="awareness-section">
-        <div v-if="activeTab === 'services'" class="awareness-header">
-          <div>
-            <h2 class="awareness-title">趋势与记录</h2>
-            <p class="awareness-subtitle">当前展示：{{ awarenessPeriodLabel }}，与上方已加载统计一致。</p>
-          </div>
-          <span v-if="analyticsOverview" class="awareness-updated">更新于 {{ awarenessUpdatedLabel }}</span>
-        </div>
-        <n-alert v-if="awarenessNginxWarning" type="warning" :bordered="false" class="awareness-alert">
-          <div class="awareness-alert__content">
-            <span>{{ awarenessNginxWarning }}</span>
-            <router-link v-if="status?.nginx_available !== false" :to="{ name: 'proxies' }" class="awareness-alert__link">
-              前往反向代理
-            </router-link>
-          </div>
-        </n-alert>
-
-        <div v-if="activeTab !== 'services'" class="trend-workspace" :class="{ 'trend-workspace--overview': activeTab === 'overview' }"><FonuCard class="panel awareness-charts-panel">
-          <AnalyticsInsightSection v-model:range="awarenessRange" compact :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
-          <div class="awareness-charts-panel__block">
-            <div class="panel__head">
-              <div class="panel-title">
-                <n-icon :component="FlashOutline" class="panel-title__icon panel-title__icon--amber" />
-                <span>{{ awarenessTrendTitle }}</span>
-              </div>
-              <n-tag size="small" :bordered="false" class="range-tag">{{ awarenessTrendTag }}</n-tag>
-            </div>
-            <div class="panel__body awareness-charts-panel__trend">
-              <AwarenessTrendChart
-                v-if="analyticsOverview"
-                :labels="analyticsOverview.series.labels"
-                :requests="analyticsOverview.series.requests"
-                :uniqueIPs="analyticsOverview.series.unique_ips"
-                :current-bucket="analyticsOverview.series.current_bucket"
-              />
-              <EmptyState v-else title="正在读取" description="访问趋势马上出来。" />
-            </div>
-          </div>
-        </FonuCard>
-
-        <div v-if="activeTab === 'overview'" class="overview-side"><FonuCard title="快捷操作" class="quick-card"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><span class="quick-icon"><n-icon :component="item.icon"/></span>{{ item.label }}<n-icon :component="ChevronForwardOutline" class="quick-arrow"/></router-link></div></FonuCard><FonuCard title="状态提醒"><template #header><router-link class="card-link" :to="{name:'dashboard',query:{tab:'notifications'}}">查看全部 <n-icon :component="ChevronForwardOutline"/></router-link></template><div v-for="notice in notices" :key="notice.title" class="notice-row"><span class="notice-icon"><n-icon :component="ShieldCheckmarkOutline"/></span><div class="notice-detail"><strong>{{ notice.title }}</strong><p>{{ notice.detail }}</p></div></div><p v-if="!notices.length" class="stat-desc">{{ status ? '暂无待处理提醒' : '正在获取服务状态' }}</p></FonuCard></div></div>
-        <AnalyticsInsightSection v-if="activeTab === 'overview' || activeTab === 'access'" v-model:range="awarenessRange" map-only show-map :data="analyticsOverview" :loading="awarenessLoading" />
-        <div class="awareness-lists">
-          <FonuCard v-if="activeTab === 'access' || activeTab === 'overview'" flush class="awareness-list-card">
-            <template #title>
-              <n-icon :component="EyeOutline" class="card-title-icon" />
-              <span>访问记录 · 最近 30 条</span>
-            </template>
-            <template #header>
-              <div class="awareness-list-card__header-actions">
-                <n-tag size="small" :bordered="false">{{ awarenessRecentScopeLabel }}</n-tag>
-                <router-link
-                  :to="{ name: 'logs', query: { tab: 'access', kind: 'intercept' } }"
-                  class="card-link"
-                >
-                  拦截记录
-                  <n-icon :component="ChevronForwardOutline" />
-                </router-link>
-                <router-link :to="{ name: 'logs', query: { tab: 'access' } }" class="card-link">
-                  查看全部
-                  <n-icon :component="ChevronForwardOutline" />
-                </router-link>
-              </div>
-            </template>
-            <div class="awareness-list-card__body">
-              <n-data-table
-                v-if="awarenessEvents.length"
-                class="awareness-table"
-                :columns="awarenessEventColumns"
-                :data="activeTab === 'overview' ? awarenessEvents.slice(0,5) : awarenessEvents"
-                :bordered="false"
-                :max-height="awarenessTableScrollHeight"
-                size="small"
-              />
-              <EmptyState v-else title="暂无访问" description="access.log 中尚无反代访问记录（已排除 favicon 等噪声）。" />
-            </div>
-          </FonuCard>
-
-          <FonuCard v-if="activeTab === 'services'" flush class="awareness-list-card">
-            <template #title>
-              <n-icon :component="GitNetworkOutline" class="card-title-icon" />
-              <span>按服务汇总</span>
-            </template>
-            <template #header>
-              <div class="awareness-list-card__header-actions">
-                <n-tag size="small" :bordered="false" class="range-tag">{{ awarenessPeriodLabel }}</n-tag>
-                <span v-if="awarenessServiceListHint" class="awareness-list-card__meta">{{ awarenessServiceListHint }}</span>
-              </div>
-            </template>
-            <div class="awareness-list-card__body">
-              <n-data-table
-                v-if="awarenessServices.length"
-                class="awareness-table"
-                :columns="awarenessServiceColumns"
-                :data="awarenessServices"
-                :bordered="false"
-                :max-height="awarenessTableScrollHeight"
-                size="small"
-              />
-              <EmptyState v-else title="暂无数据" description="访问各反代服务后将出现汇总。" />
-            </div>
-          </FonuCard>
-        </div>
-      </section>
-      <AnalyticsAnomalySection v-if="activeTab === 'security' && analyticsOverview?.anomaly" :data="analyticsOverview" />
-  </div>
+    </n-spin></FonuCard>
+    <div class="workspace-grid"><FonuCard class="traffic-panel"><AnalyticsInsightSection v-model:range="awarenessRange" compact :show-kpis="true" :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" /><div class="chart-caption"><span>{{ awarenessTrendTitle }}</span><span>{{ awarenessTrendTag }} · 更新于 {{ awarenessUpdatedLabel }}</span></div><AwarenessTrendChart v-if="analyticsOverview" :labels="analyticsOverview.series.labels" :requests="analyticsOverview.series.requests" :uniqueIPs="analyticsOverview.series.unique_ips" :current-bucket="analyticsOverview.series.current_bucket" /><EmptyState v-else title="正在读取访问趋势" /></FonuCard>
+      <aside class="workspace-side">
+        <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
+        <FonuCard title="待处理事项"><div v-for="notice in notices" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p></FonuCard>
+      </aside>
+    </div>
+    <div class="rank-grid">
+      <FonuCard title="来源排行"><template #header><button class="text-link" @click="selectTab('access')">查看分析 →</button></template><div v-for="r in sourceRanking" :key="r.country" class="rank-row"><span>{{ r.country }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,sourceRanking[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!sourceRanking.length" title="暂无来源数据"/></FonuCard>
+      <FonuCard title="服务排行"><template #header><button class="text-link" @click="selectTab('access')">查看全部 →</button></template><div v-for="r in awarenessServices.slice(0,5)" :key="r.service" class="rank-row service-rank"><span class="service-name"><span class="service-icon"><n-icon :component="GitNetworkOutline"/></span>{{ r.service }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,awarenessServices[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!awarenessServices.length" title="暂无已识别服务"/></FonuCard>
+    </div>
+  </template>
+  <template v-else-if="activeTab === 'access'">
+    <FonuCard class="traffic-panel"><AnalyticsInsightSection v-model:range="awarenessRange" compact :show-kpis="true" :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" /><div class="chart-caption"><span>{{ awarenessTrendTitle }}</span><span>{{ awarenessTrendTag }} · 更新于 {{ awarenessUpdatedLabel }}</span></div><AwarenessTrendChart v-if="analyticsOverview" :labels="analyticsOverview.series.labels" :requests="analyticsOverview.series.requests" :uniqueIPs="analyticsOverview.series.unique_ips" :current-bucket="analyticsOverview.series.current_bucket" /><EmptyState v-else title="正在读取访问趋势" /></FonuCard>
+    <AnalyticsInsightSection v-model:range="awarenessRange" map-only show-map :data="analyticsOverview" :loading="awarenessLoading" />
+    <FonuCard title="按服务汇总" :subtitle="awarenessServiceListHint"><n-data-table v-if="awarenessServices.length" :columns="awarenessServiceColumns" :data="awarenessServices" :bordered="false" :max-height="awarenessTableScrollHeight" size="small"/><EmptyState v-else title="暂无已识别服务"/></FonuCard>
+    <FonuCard title="最近访问 · 30 条"><template #header><router-link class="text-link" :to="{name:'logs',query:{tab:'access'}}">查看全部 →</router-link></template><n-data-table v-if="awarenessEvents.length" :columns="awarenessEventColumns" :data="awarenessEvents" :bordered="false" :max-height="awarenessTableScrollHeight" size="small"/><EmptyState v-else title="暂无访问记录"/></FonuCard>
+  </template>
+  <template v-else>
+    <AnalyticsAnomalySection v-if="analyticsOverview?.anomaly" :data="analyticsOverview"/>
+    <EmptyState v-else title="正在读取安全分析"/>
+  </template>
+</div>
 </template>
-
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, onActivated, onDeactivated, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
-  ChevronForwardOutline,
   EyeOutline,
-  FlashOutline,
   GitNetworkOutline,
   GlobeOutline,
   ShieldCheckmarkOutline,
@@ -201,8 +102,8 @@ defineOptions({ name: 'DashboardView' })
 
 const route = useRoute()
 const router = useRouter()
-const tabs = [{key:'overview',label:'概览'},{key:'notifications',label:'通知'},{key:'access',label:'访问'},{key:'security',label:'安全'},{key:'services',label:'服务'}] as const
-const activeTab = computed(() => tabs.find(t => t.key === route.query.tab)?.key ?? 'overview')
+const tabs = [{key:'overview',label:'概览'},{key:'access',label:'访问分析'},{key:'security',label:'安全分析'}] as const
+const activeTab = computed(() => route.query.tab === 'services' ? 'access' : tabs.find(t => t.key === route.query.tab)?.key ?? 'overview')
 function selectTab(key: string) { void router.replace({name:'dashboard',query:key === 'overview' ? {} : {tab:key}}) }
 const quickEntries = [{route:'ddns',label:'DDNS',icon:GlobeOutline},{route:'certificates',label:'证书管理',icon:ShieldCheckmarkOutline},{route:'proxies',label:'反向代理',icon:GitNetworkOutline},{route:'frp',label:'内网穿透',icon:WifiOutline},{route:'logs',label:'日志中心',icon:EyeOutline},{route:'settings',label:'系统设置',icon:GitNetworkOutline}]
 const message = useMessage()
@@ -334,7 +235,6 @@ const awarenessTrendTag = computed(() => {
   return '2 小时粒度 · 已过去时段'
 })
 
-const awarenessRecentScopeLabel = computed(() => awarenessPeriodLabel.value)
 
 watch(awarenessRange, () => {
   cancelAwareness()
@@ -344,14 +244,15 @@ watch(awarenessRange, () => {
 })
 
 const awarenessEvents = computed(() => analyticsOverview.value?.recent_events ?? [])
-const awarenessServices = computed(() => analyticsOverview.value?.by_service ?? [])
+const awarenessServices = computed(() => (analyticsOverview.value?.by_service ?? []).filter(r => { const name = r.service.trim(); return !!name && !/^(?:_|\*|):\d+$/.test(name) && name !== '_' && name !== '*' }))
+const sourceRanking = computed(() => (analyticsOverview.value?.by_country ?? []).filter(r => r.country && r.country !== '未知' && r.requests > 0).slice().sort((a,b)=>b.requests-a.requests).slice(0,5))
+function rankPercent(value:number,max?:number) { return (max && max > 0 ? Math.min(100,value/max*100) : 0) + '%' }
 
 /** Backend returns at most 20 services sorted by request volume. */
 const awarenessServiceListHint = computed(() => {
   const n = awarenessServices.value.length
   if (n === 0) return ''
-  if (n >= 20) return '按请求量 Top 20，非全部服务'
-  return `共 ${n} 个服务`
+  return `已识别服务 ${n} 项 · 从请求量前 20 项中筛选，原始日志及总量不变`
 })
 
 function renderAccessIPCell(row: { client_ip: string; geo?: string }) {
@@ -561,642 +462,31 @@ onDeactivated(pauseDashboard)
 onUnmounted(pauseDashboard)
 </script>
 
+
 <style scoped>
-.dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fonu-space-4);
-}
-
-.stats-row :deep(.stat-card) {
-  min-height: 0;
-  padding: 14px 16px;
-}
-
-.stats-row :deep(.stat-card__header) {
-  margin-bottom: 8px;
-}
-
-.stats-row :deep(.stat-card__value),
-.stats-row :deep(.stat-card__value-slot) {
-  font-size: 18px;
-}
-
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--fonu-space-4);
-  margin-bottom: var(--fonu-space-4);
-}
-
-.awareness-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fonu-space-4);
-  margin-bottom: var(--fonu-space-4);
-}
-
-.awareness-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-4);
-  flex-wrap: wrap;
-}
-
-.awareness-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--fonu-text);
-}
-
-.awareness-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--fonu-text-secondary);
-  max-width: 640px;
-  line-height: 1.5;
-}
-
-.awareness-updated {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-  padding-top: 2px;
-}
-
-.awareness-alert {
-  border-radius: 12px;
-  line-height: 1.55;
-}
-
-.awareness-alert__content {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-
-.awareness-alert__link {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 600;
-  color: var(--fonu-brand);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.awareness-alert__link:hover {
-  text-decoration: underline;
-}
-
-.awareness-lists {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--fonu-space-5);
-  align-items: stretch;
-}
-
-.awareness-list-card :deep(.fonu-card__header) {
-  padding-bottom: var(--fonu-space-3);
-  gap: var(--fonu-space-3);
-}
-
-.awareness-list-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.awareness-list-card :deep(.fonu-card__body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding-top: 0;
-}
-
-.awareness-list-card__body {
-  flex: 1;
-  padding: 0 var(--fonu-space-4) var(--fonu-space-4);
-  min-height: 0;
-}
-
-.awareness-table :deep(.n-data-table-th) {
-  background: var(--fonu-bg-muted) !important;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fonu-text-secondary);
-  padding: 10px 12px !important;
-}
-
-.awareness-table :deep(.n-data-table-td) {
-  font-size: 13px;
-  padding: 8px 12px !important;
-  vertical-align: top;
-}
-
-.awareness-muted {
-  color: var(--fonu-text-muted);
-  font-size: 12px;
-}
-
-.awareness-table :deep(.n-data-table-th:last-child),
-.awareness-table :deep(.n-data-table-td:last-child) {
-  padding-right: 12px !important;
-}
-
-.awareness-table :deep(.n-data-table-th:first-child),
-.awareness-table :deep(.n-data-table-td:first-child) {
-  padding-left: 12px !important;
-}
-
-.awareness-table :deep(.n-scrollbar-rail),
-.awareness-table :deep(.n-scrollbar-rail__scrollbar) {
-  display: none !important;
-}
-
-.awareness-table :deep(.n-data-table-base-table-body) {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.awareness-table :deep(.n-data-table-base-table-body)::-webkit-scrollbar {
-  display: none;
-}
-
-.awareness-list-card__meta {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-  white-space: nowrap;
-}
-
-.awareness-list-card__header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-3);
-  flex-wrap: wrap;
-}
-
-.awareness-charts-panel :deep(.fonu-card__body) {
-  padding: 0;
-}
-
-.awareness-charts-panel__trend :deep(.chart) {
-  height: 260px;
-}
-
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-primary {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--fonu-text);
-  line-height: 1.3;
-}
-
-.stat-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-  line-height: 1.45;
-}
-
-.stat-foot {
-  margin-top: var(--fonu-space-3);
-  padding-top: var(--fonu-space-3);
-  border-top: 1px solid var(--fonu-border);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stat-foot__line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--fonu-text);
-}
-
-.stat-foot__muted {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.stat-highlight {
-  color: var(--fonu-brand);
-  font-weight: 600;
-}
-
-.proxy-metrics {
-  display: flex;
-  gap: var(--fonu-space-5);
-  margin-top: var(--fonu-space-3);
-  padding-top: var(--fonu-space-3);
-  border-top: 1px solid var(--fonu-border);
-}
-
-.proxy-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.proxy-metric__val {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--fonu-text);
-}
-
-.proxy-metric__val--ok {
-  color: var(--fonu-brand);
-}
-
-.proxy-metric__lbl {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.traffic-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.traffic-panel :deep(.fonu-card__body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.requests-panel__body,
-.traffic-panel__body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.panel-chart {
-  flex: 1;
-  min-height: 240px;
-}
-
-.requests-panel .panel-chart :deep(.chart),
-.traffic-panel:not(.awareness-traffic-panel) .panel-chart :deep(.chart) {
-  height: 100%;
-  min-height: 240px;
-}
-
-.traffic-rates {
-  display: flex;
-  gap: var(--fonu-space-4);
-  margin-bottom: var(--fonu-space-3);
-}
-
-.traffic-rate {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.traffic-rate__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.traffic-rate--up .traffic-rate__dot {
-  background: #10b981;
-}
-
-.traffic-rate--down .traffic-rate__dot {
-  background: #3b82f6;
-}
-
-.traffic-rate__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.traffic-rate__value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--fonu-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.panel :deep(.fonu-card__body) {
-  padding-top: 0;
-}
-
-.panel__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--fonu-space-5) var(--fonu-space-5) 0;
-}
-
-.panel__body {
-  padding: var(--fonu-space-3) var(--fonu-space-5) var(--fonu-space-5);
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--fonu-text);
-}
-
-.panel-title__icon {
-  font-size: 18px;
-  color: var(--fonu-brand);
-}
-
-.panel-title__icon--amber {
-  color: #f59e0b;
-}
-
-.panel-title__icon--teal {
-  color: #14b8a6;
-}
-
-.range-tag {
-  background: var(--fonu-bg) !important;
-  color: var(--fonu-text-secondary) !important;
-}
-
-.metric-hero {
-  display: flex;
-  align-items: baseline;
-  gap: var(--fonu-space-3);
-  margin-bottom: 4px;
-}
-
-.metric-hero__value {
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--fonu-text);
-  line-height: 1.1;
-}
-
-.requests-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.requests-panel :deep(.fonu-card__body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.perf-panel :deep(.fonu-card__body) {
-  display: flex;
-  flex-direction: column;
-  justify-content: stretch;
-  height: 100%;
-  padding: var(--fonu-space-5);
-}
-
-.perf-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.perf-block {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: var(--fonu-space-3) 0;
-}
-
-.perf-block__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.perf-block__value {
-  margin-top: 6px;
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--fonu-text);
-  line-height: 1.1;
-}
-
-.perf-block__value--error {
-  color: var(--fonu-error);
-}
-
-.perf-block__value small {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--fonu-text-secondary);
-  margin-left: 2px;
-}
-
-.perf-block__meta {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--fonu-text-muted);
-}
-
-.perf-block__meta--error {
-  color: var(--fonu-error);
-  opacity: 0.85;
-}
-
-.perf-divider {
-  height: 1px;
-  background: var(--fonu-border);
-  margin: var(--fonu-space-2) 0;
-}
-
-.awareness-table :deep(.ip-geo-cell) {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  width: 100%;
-  line-height: 1.35;
-}
-
-.awareness-table :deep(.ip-geo-cell__ip) {
-  display: block;
-  width: 100%;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fonu-text);
-  text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.awareness-table :deep(a.ip-geo-cell__ip:hover) {
-  color: var(--fonu-brand);
-  text-decoration: underline;
-}
-
-.awareness-table :deep(.ip-geo-cell__geo) {
-  display: block;
-  width: 100%;
-  font-size: 11px;
-  color: var(--fonu-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.awareness-table :deep(.ip-geo-cell__geo--empty) {
-  opacity: 0.45;
-}
-
-.ip-cell {
-  display: inline-block;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.ip-geo-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-  width: 100%;
-}
-
-.ip-geo-cell__ip {
-  display: block;
-  width: 100%;
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 500;
-  color: var(--fonu-text);
-  text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-a.ip-geo-cell__ip:hover {
-  color: var(--fonu-brand);
-  text-decoration: underline;
-}
-
-.ip-geo-cell__geo {
-  display: block;
-  width: 100%;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--fonu-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ip-geo-cell__geo--empty {
-  opacity: 0.45;
-}
-
-.card-title-icon {
-  font-size: 18px;
-  color: var(--fonu-brand);
-}
-
-.card-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 13px;
-  color: var(--fonu-text-secondary);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.card-link:hover {
-  color: var(--fonu-brand);
-}
-
-.mono {
-  font-family: var(--fonu-mono);
-}
-
-@media (max-width: 1199px) {
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .awareness-lists {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .stats-row { grid-template-columns: 1fr; }
-}
-.dashboard-heading { display:flex; justify-content:space-between; align-items:flex-start; margin: 0 0 4px; }
-.dashboard-heading h1 { margin:4px 0; font-size:30px; font-weight:650; letter-spacing:-.035em; color:var(--fonu-text); }
-.dashboard-heading p { margin:0; color:var(--fonu-text-secondary); font-size:13px; }
-.dashboard-heading .dashboard-eyebrow { font-size:10px; letter-spacing:.10em; color:var(--fonu-brand-text); font-weight:600; }
-.dashboard .stats-row { gap:0; border-block:1px solid var(--fonu-border); margin:0; }
-.dashboard .stats-row :deep(.stat-card) { background:transparent; border:0; border-right:1px solid var(--fonu-border); border-radius:0; box-shadow:none; min-width:0; }
-.dashboard .stats-row :deep(.stat-card:last-child) { border-right:0; }
-.dashboard .stats-row :deep(.stat-card__icon) { background:transparent; color:var(--fonu-brand); width:22px; height:22px; }
-.dashboard .awareness-section { gap:12px; }
-@media(max-width:767px) { .dashboard-heading h1 { font-size:25px; } .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .dashboard .stats-row :deep(.stat-card:nth-child(2)) { border-right:0; } .dashboard .stats-row :deep(.stat-card:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
-.dashboard { gap:12px; }
-.dashboard-tabs { display:flex; gap:8px; border-bottom:1px solid var(--fonu-border); flex-wrap:wrap; }
-.dashboard-tabs button { font:inherit; font-weight:500; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--fonu-text-secondary); padding:10px 14px; cursor:pointer; }
-.dashboard-tabs button[aria-pressed=true] { color:var(--fonu-brand); border-color:var(--fonu-brand); font-weight:650; }
-.quick-links { display:flex; gap:8px; flex-wrap:wrap; }
-.quick-links a { padding:8px 12px; border:1px solid var(--fonu-border); border-radius:6px; color:var(--fonu-brand); text-decoration:none; }
-.notice-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--fonu-border); }
-.notice-row p { margin:4px 0; color:var(--fonu-text-secondary); }
-.notice-row a,.notification-version { color:var(--fonu-brand); }
-.notification-version { margin-left:16px; }
-.dashboard .awareness-lists { grid-template-columns:minmax(0,1fr); }
-.dashboard .stats-row :deep(.stat-card) { padding:10px 12px; }
-.dashboard .stats-row :deep(.stat-card__header) { margin-bottom:4px; }
-.dashboard .awareness-section { margin-bottom:0; }
-.dashboard-tabs { border:0; background:var(--fonu-surface); border-radius:12px; padding:5px; gap:4px; box-shadow:var(--fonu-shadow); }
-.dashboard-tabs button { border:0; border-radius:8px; padding:9px 16px; }
-.dashboard-tabs button[aria-pressed=true] { background:var(--fonu-brand-soft); color:var(--fonu-brand); }
-.dashboard .stats-row { border:0; gap:12px; grid-template-columns:repeat(4,minmax(0,1fr)); }
-.dashboard .stats-row :deep(.stat-card) { background:var(--fonu-surface); border:1px solid var(--fonu-border); border-radius:12px; box-shadow:var(--fonu-shadow); padding:14px; }
-.dashboard .stats-row :deep(.stat-card__icon) { background:var(--fonu-brand-soft); color:var(--fonu-brand); width:30px; height:30px; border-radius:9px; }
-.trend-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
-.trend-workspace--overview { grid-template-columns:minmax(0,2fr) minmax(220px,1fr); }
-.quick-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-.quick-links a { display:flex; align-items:center; gap:6px; padding:9px; background:var(--fonu-bg); color:var(--fonu-text); font-size:12px; min-width:0; }
-.quick-links a:hover { background:var(--fonu-brand-soft); color:var(--fonu-brand); }
-.quick-icon { display:grid; place-items:center; width:25px; height:25px; border-radius:7px; background:var(--fonu-brand-soft); color:var(--fonu-brand); flex-shrink:0; font-size:16px; }
-.quick-arrow { margin-left:auto; color:var(--fonu-text-muted); }
-.notice-icon { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; color:var(--fonu-warning); background:color-mix(in srgb,var(--fonu-warning) 12%,transparent); }
-.notice-detail { flex:1; }
-@media(max-width:1200px) { .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:850px) { .trend-workspace--overview { grid-template-columns:minmax(0,1fr); } }
-@media(max-width:480px) { .dashboard .stats-row { grid-template-columns:minmax(0,1fr); } }
-.dashboard { container-type:inline-size; gap:12px; }
-.dashboard .stats-row { grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-.dashboard .stats-row :deep(.stat-card) { padding:10px 12px; min-height:90px; border:1px solid var(--fonu-border); }
-.dashboard .stats-row :deep(.stat-card__header) { gap:4px; align-items:center; margin-bottom:5px; flex-wrap:wrap; }
-.dashboard .stats-row :deep(.stat-card__title-row) { gap:7px; }
-.dashboard .stats-row :deep(.stat-card__icon) { width:25px;height:25px;font-size:15px; }
-.dashboard .stats-row :deep(.stat-card__value-slot),.dashboard .stats-row :deep(.stat-card__value) { font-size:18px; }
-.dashboard .stats-row .stat-desc { margin:3px 0 0; overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.dashboard-tabs { background:transparent;box-shadow:none;padding:3px 0; }
-.dashboard-tabs button[aria-pressed=true] { color:var(--fonu-brand-text); }
-.trend-workspace--overview { grid-template-columns:minmax(0,2fr) minmax(230px,1fr); }
-.overview-side { display:flex;flex-direction:column;gap:12px;min-width:0; }
-.overview-side .quick-links a { background:var(--fonu-surface); }
-.overview-side .notice-row:last-child { border-bottom:0; }
-@container (max-width:850px) { .dashboard .stats-row {grid-template-columns:repeat(2,minmax(0,1fr));} .trend-workspace--overview {grid-template-columns:minmax(0,1fr);} }
-@container (max-width:420px) { .dashboard .stats-row {grid-template-columns:1fr;} }
+.dashboard-v6{display:flex;flex-direction:column;gap:12px;min-width:0;container-type:inline-size}
+.dashboard-tabs{display:flex;gap:6px;align-items:center}
+.dashboard-tabs button{border:0;background:transparent;color:var(--fonu-text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px}
+.dashboard-tabs button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);font-weight:600}
+.stats-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
+.status-strip :deep(.fonu-card__body){padding:10px 6px}
+.stats-row :deep(.stat-card){min-width:0;min-height:0;padding:5px 12px;border:0;border-right:1px solid var(--fonu-border);border-radius:0;background:transparent;box-shadow:none}
+.stats-row :deep(.stat-card:last-child){border-right:0}
+.stats-row :deep(.stat-card__header){margin-bottom:4px;gap:4px}
+.stats-row :deep(.stat-card__icon){width:25px;height:25px;border-radius:7px;background:var(--fonu-brand-soft);color:var(--fonu-brand-text)}
+.stats-row :deep(.stat-card__value){font-size:18px}
+.stat-desc{font-size:11px;color:var(--fonu-text-secondary);margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12px;align-items:start}
+.workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.traffic-panel :deep(.fonu-card__body){padding:16px}
+.chart-caption{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--fonu-text-secondary);font-size:11px;margin:6px 0}
+.quick-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.quick-links a{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 3px;border:1px solid var(--fonu-border);border-radius:8px;color:var(--fonu-text);text-decoration:none;font-size:11px}
+.quick-links a:hover{background:var(--fonu-brand-soft);color:var(--fonu-brand-text)}
+.quick-links :deep(.n-icon){font-size:19px;color:var(--fonu-brand-text)}
+.notice-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--fonu-border)}
+.notice-row:last-child{border:0}.notice-row>a{color:var(--fonu-text);text-decoration:none;min-width:0}.notice-row small{display:block;color:var(--fonu-text-secondary);margin-top:3px}.notice-row>.n-icon{color:var(--fonu-warning);font-size:22px}
+.rank-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.rank-row{display:grid;grid-template-columns:minmax(70px,1fr) minmax(45px,2fr) auto;gap:10px;align-items:center;padding:8px 0;font-size:12px}.rank-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-row strong{font-variant-numeric:tabular-nums;font-weight:600}.rank-track{height:7px;border-radius:5px;background:var(--fonu-bg-muted);overflow:hidden}.rank-track i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name{display:flex;align-items:center;gap:6px}.service-icon{display:grid;place-items:center;flex-shrink:0;width:25px;height:25px;background:var(--fonu-brand-soft);color:var(--fonu-brand-text);border-radius:7px}.muted{color:var(--fonu-text-muted);font-size:12px}.text-link{border:0;background:transparent;color:var(--fonu-brand-text);cursor:pointer;font-size:12px;text-decoration:none}
+@container(max-width:820px){.stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-row :deep(.stat-card:nth-child(2)){border-right:0}.workspace-grid,.rank-grid{grid-template-columns:1fr}}
+@container(max-width:400px){.stats-row{grid-template-columns:1fr}.stats-row :deep(.stat-card){border-right:0}}
 </style>

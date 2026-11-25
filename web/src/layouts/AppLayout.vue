@@ -11,7 +11,6 @@
       @collapse="setNavigation(true)"
       @expand="setNavigation(false)"
     >
-      <button v-if="collapsed" class="rail-toggle" type="button" title="展开导航" aria-label="展开导航" @click="setNavigation(false)"><n-icon :component="MenuOutline" /></button>
       <router-link
         v-if="!collapsed"
         class="brand"
@@ -25,16 +24,7 @@
         </div>
       </router-link>
 
-      <n-menu
-        class="app-menu"
-        :value="activeKey"
-        :collapsed="collapsed"
-        :collapsed-width="56"
-        :collapsed-icon-size="20"
-        :root-indent="14"
-        :options="menuOptions"
-        @update:value="handleMenu"
-      />
+      <nav class="side-nav" aria-label="主导航"><button v-for="item in menuDefs" :key="item.key" type="button" :title="item.label" :aria-label="item.label" :aria-current="activeKey === item.key ? 'page' : undefined" @click="handleMenu(item.key)"><n-icon :component="item.icon"/><span v-if="!collapsed">{{ item.label }}</span></button></nav>
 
       <div v-if="!collapsed" class="sider-footer">
         <div class="sider-footer__row">
@@ -67,11 +57,12 @@
           <span>{{ GITHUB_REPO }}</span>
         </a>
       </div>
+      <button class="nav-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开导航' : '收起导航'" :title="collapsed ? '展开导航' : '收起导航'" @click="setNavigation(!collapsed)"><n-icon :component="collapsed ? ChevronForwardOutline : ChevronBackOutline"/><span v-if="!collapsed">收起导航</span></button>
     </n-layout-sider>
 
     <n-layout class="app-main">
       <header class="topbar">
-        <div class="topbar__context"><n-button v-if="!collapsed" quaternary size="small" title="收起导航" aria-label="收起导航" @click="setNavigation(!collapsed)" :aria-expanded="!collapsed"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
+        <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
         <div class="topbar__right">
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
@@ -83,7 +74,7 @@
             </div>
           </n-popover>
           <n-dropdown trigger="click" :options="modeOptions" @select="setThemeMode"><n-button quaternary circle aria-label="主题模式" title="主题模式"><template #icon><n-icon :component="isDark ? MoonOutline : SunnyOutline" /></template></n-button></n-dropdown>
-          <n-button quaternary circle aria-label="通知" title="通知" @click="router.push({ name: 'dashboard', query: { tab: 'notifications' } })"><template #icon><n-icon :component="NotificationsOutline" /></template></n-button>
+          <n-popover trigger="click" placement="bottom-end" @update:show="loadNotifications"><template #trigger><n-button quaternary circle aria-label="通知" title="通知"><template #icon><n-icon :component="NotificationsOutline"/></template></n-button></template><div class="notification-pop"><strong>状态提醒</strong><p v-if="notificationLoading">正在获取状态…</p><p v-else-if="notificationError">状态获取失败，请重新打开。</p><template v-else><router-link v-for="n in notificationRows" :key="n.title" :to="{name:n.route}"><strong>{{ n.title }}</strong><small>{{ n.detail }}</small></router-link><p v-if="!notificationRows.length">暂无待处理事项</p></template><router-link :to="{name:'settings',query:{tab:'notify'}}">通知渠道设置</router-link></div></n-popover>
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
             <n-button quaternary class="user-btn">
               <span class="user-avatar">{{ displayUsername.charAt(0).toUpperCase() }}</span>
@@ -214,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   NButton,
@@ -226,13 +217,11 @@ import {
   NLayout,
   NLayoutContent,
   NLayoutSider,
-  NMenu,
   NModal,
   NPopover,
   NSpace,
   useMessage,
   type DropdownOption,
-  type MenuOption,
 } from "naive-ui";
 import {
   ChevronDownOutline,
@@ -245,13 +234,14 @@ import {
   LockClosedOutline,
   LogoGithub,
   MoonOutline,
-  MenuOutline,
+  ChevronForwardOutline,
+  ChevronBackOutline,
   ColorPaletteOutline,
   NotificationsOutline,
   SunnyOutline,
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
-import { api } from "../api/client";
+import { api, asList } from "../api/client";
 import { routeAuthStatus, invalidateRouteAuth } from "../router";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
 import { useTheme, themePresets } from "../composables/useTheme";
@@ -333,14 +323,18 @@ const menuDefs = [
   { label: "系统设置", key: "settings", icon: CogOutline },
 ];
 
-const menuOptions = computed<MenuOption[]>(() =>
-  menuDefs.map((item) => ({
-    label: item.label,
-    key: item.key,
-    icon: () => h(NIcon, null, { default: () => h(item.icon) }),
-  })),
-);
 
+const notificationRows = ref<{title:string;detail:string;route:string}[]>([]);
+const notificationLoading = ref(false);
+const notificationError = ref(false);
+async function loadNotifications(show:boolean) {
+  if (!show || notificationLoading.value) return;
+  notificationLoading.value=true; notificationError.value=false;
+  try { const [status,certs]=await Promise.all([api.getStatus(),api.listCertificates()]);
+    notificationRows.value=asList(certs).filter(c=>c.days_left<=30).map(c=>({title:c.domain,detail:c.days_left<0?'证书已过期':'证书剩余 '+c.days_left+' 天',route:'certificates'}));
+    if(status.nginx_status==='stopped') notificationRows.value.push({title:'Nginx 已停止',detail:'检查反向代理',route:'proxies'});
+  } catch {notificationError.value=true;} finally {notificationLoading.value=false;}
+}
 const activeKey = computed(() => {
   const name = route.name;
   return typeof name === "string" ? name : "dashboard";
@@ -821,4 +815,16 @@ onUnmounted(() => {
 .app-layout--compact .app-menu :deep(.n-menu-item-content-header) { display:none; }
 .app-layout--compact .app-menu :deep(.n-menu-item-content::before) { inset:0; }
 .rail-toggle:focus-visible { outline:2px solid var(--fonu-brand); outline-offset:2px; }
+.side-nav{flex:1;display:flex;flex-direction:column;gap:4px;padding:8px;min-height:0;overflow-y:auto;overflow-x:hidden}
+.side-nav button,.nav-toggle{display:flex;align-items:center;gap:12px;min-height:40px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--fonu-text-secondary);cursor:pointer;white-space:nowrap;text-align:left}
+.side-nav button[aria-current=page]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);font-weight:600}
+.side-nav button:hover,.nav-toggle:hover{background:var(--fonu-brand-soft);color:var(--fonu-brand-text)}
+.side-nav button :deep(.n-icon),.nav-toggle :deep(.n-icon){font-size:20px;flex:0 0 20px;display:grid;place-items:center}
+.app-layout--compact .side-nav{padding:8px 0;align-items:center}
+.app-layout--compact .side-nav button,.app-layout--compact .nav-toggle{width:42px;padding:0;justify-content:center}
+.nav-toggle{flex-shrink:0;margin:6px 8px 10px;justify-content:center;border:1px solid var(--fonu-border)}
+.app-layout--compact .nav-toggle{margin:6px auto 10px}
+.notification-pop{width:min(300px,calc(100vw - 48px));padding:4px;display:flex;flex-direction:column;gap:10px}
+.notification-pop a{display:flex;flex-direction:column;color:var(--fonu-brand-text);text-decoration:none;padding:8px;border-top:1px solid var(--fonu-border)}
+.notification-pop small,.notification-pop p{color:var(--fonu-text-secondary);margin:4px 0;font-size:12px}
 </style>
