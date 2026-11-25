@@ -130,6 +130,11 @@ func Upstream(raw string) (string, error) {
 		return "", fmt.Errorf("目标地址主机名无效")
 	}
 
+	if strings.HasSuffix(u.Host, ":") { return "", fmt.Errorf("目标地址端口无效") }
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || ListenPort(n) != nil { return "", fmt.Errorf("目标地址端口无效") }
+	}
 	normalized := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	if !strings.HasPrefix(normalized, "http://") && !strings.HasPrefix(normalized, "https://") {
 		return "", fmt.Errorf("目标地址格式无效")

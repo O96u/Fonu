@@ -35,6 +35,7 @@ type SecurityConfig struct {
 	RateLimit         *RateLimitConfig `json:"rate_limit,omitempty"`
 	ConnLimit         *ConnLimitConfig `json:"conn_limit,omitempty"`
 	ProxySSLVerifyOff bool             `json:"proxy_ssl_verify_off,omitempty"`
+	ProxySSLVerifyConfigured bool      `json:"proxy_ssl_verify_configured,omitempty"`
 	ProxyHostUpstream bool             `json:"proxy_host_upstream,omitempty"` // use $proxy_host instead of $http_host
 	TLSMin13Only      bool             `json:"tls_min_13_only,omitempty"`
 	SecurityHeaders   bool             `json:"security_headers,omitempty"`
@@ -137,6 +138,9 @@ func RulesForAPI(rules []Rule) []Rule {
 
 func (c SecurityConfig) ForAPI() SecurityConfig {
 	out := c.Normalize()
+	// Older versions never enabled Nginx verification. Expose the effective
+	// behavior so editing an existing rule does not silently break PVE/NAS.
+	out.ProxySSLVerifyOff = !c.ProxySSLVerifyConfigured || c.ProxySSLVerifyOff
 	if out.BasicAuth != nil {
 		hasPassword := out.BasicAuth.PasswordHash != ""
 		out.BasicAuth = &BasicAuthConfig{
@@ -200,6 +204,7 @@ func MergeSecurity(current SecurityConfig, in SecurityInput) (SecurityConfig, er
 	}
 	if in.ProxySSLVerifyOff != nil {
 		out.ProxySSLVerifyOff = *in.ProxySSLVerifyOff
+		out.ProxySSLVerifyConfigured = true
 	}
 	if in.ProxyHostUpstream != nil {
 		out.ProxyHostUpstream = *in.ProxyHostUpstream
@@ -251,7 +256,7 @@ func ValidateSecurity(cfg SecurityConfig) error {
 		return fmt.Errorf("启用白名单模式时至少添加一条 IP 或 CIDR")
 	}
 	if cfg.BasicAuth != nil && cfg.BasicAuth.Enabled {
-		if err := validate.Username(cfg.BasicAuth.Username); err != nil {
+		if err := validate.BasicAuthUsername(cfg.BasicAuth.Username); err != nil {
 			return fmt.Errorf("Basic Auth：%w", err)
 		}
 		if cfg.BasicAuth.PasswordHash == "" {

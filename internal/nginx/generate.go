@@ -141,6 +141,9 @@ func writeCustomRuleBlocks(b *strings.Builder, cfg config.Config, ruleID int64, 
 }
 
 func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	if strings.HasPrefix(rule.Upstream,"https://") && rule.Security.ProxySSLVerifyConfigured && !rule.Security.ProxySSLVerifyOff && systemCABundle() == "" {
+		return fmt.Errorf("系统 CA 证书文件不可用，请安装 CA 证书或明确关闭上游 TLS 验证")
+	}
 	for _, group := range rule.PortGroups() {
 		if len(group.Hostnames) == 0 {
 			continue
@@ -217,20 +220,19 @@ func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.Secur
 	}
 	sslBlock := ""
 	if strings.HasPrefix(upstream, "https://") {
-		if sec.ProxySSLVerifyOff {
+		if !sec.ProxySSLVerifyConfigured || sec.ProxySSLVerifyOff {
 			sslBlock = `        proxy_ssl_verify off;
         proxy_ssl_server_name on;
 `
 		} else {
-			sslBlock = `        proxy_ssl_server_name on;
-`
+			sslBlock = fmt.Sprintf("        proxy_ssl_server_name on;\n        proxy_ssl_verify on;\n        proxy_ssl_trusted_certificate %s;\n        proxy_ssl_verify_depth 5;\n",systemCABundle())
 		}
 	}
 	b.WriteString(fmt.Sprintf(`%s        proxy_pass %s;
         proxy_http_version 1.1;
         proxy_set_header Host %s;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Forwarded-Port $server_port;
@@ -293,4 +295,11 @@ func certAt(certsDir, name string) *certFiles {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+func systemCABundle() string {
+	for _, path := range []string{"/etc/ssl/certs/ca-certificates.crt","/etc/pki/tls/certs/ca-bundle.crt","/etc/ssl/cert.pem"} {
+		if fileExists(path) { return path }
+	}
+	return ""
 }

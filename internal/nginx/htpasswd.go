@@ -8,6 +8,7 @@ import (
 
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/validate"
 )
 
 // nginxHtpasswdHash normalizes bcrypt hashes for nginx/apr auth_basic.
@@ -38,6 +39,7 @@ func SyncHtpasswdFiles(cfg config.Config, rules []proxy.Rule) error {
 	for _, rule := range rules {
 		path := HtpasswdPath(cfg, rule.ID)
 		if rule.Security.BasicAuthEnabled() {
+			if err := validate.BasicAuthUsername(rule.Security.BasicAuth.Username); err != nil { return err }
 			active[rule.ID] = true
 			line := fmt.Sprintf("%s:%s\n", rule.Security.BasicAuth.Username, nginxHtpasswdHash(rule.Security.BasicAuth.PasswordHash))
 			if err := writeHtpasswdAtomic(path, []byte(line)); err != nil {

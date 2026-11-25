@@ -271,7 +271,7 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Rule, error) {
 		return Rule{}, err
 	}
 
-	security, err := MergeSecurity(DefaultSecurityConfig(), in.Security)
+	security, err := MergeSecurity(SecurityConfig{ProxySSLVerifyConfigured: true}, in.Security)
 	if err != nil {
 		return Rule{}, err
 	}
