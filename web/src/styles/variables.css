@@ -1,9 +1,9 @@
 :root {
-  --fonu-brand: #237d60;
-  --fonu-brand-hover: #1c654e;
-  --fonu-brand-soft: #237d601c;
-  --fonu-brand-text: #237d60;
-  --fonu-brand-sidebar: #237d60;
+  --fonu-brand: #3869c9;
+  --fonu-brand-hover: #305ab0;
+  --fonu-brand-soft: #3869c91c;
+  --fonu-brand-text: #3869c9;
+  --fonu-brand-sidebar: #3869c9;
 
   --fonu-success: #16835a;
   --fonu-warning: #f59e0b;
@@ -12,15 +12,15 @@
   --fonu-info: #3b82f6;
   --fonu-info-soft: rgba(59, 130, 246, 0.1);
 
-  --fonu-bg: #f8f9f7;
-  --fonu-bg-muted: #edf0eb;
+  --fonu-bg: #f5f6f8;
+  --fonu-bg-muted: #eef0f3;
   --fonu-banner-bg: var(--fonu-brand-soft);
   --fonu-banner-border: var(--fonu-brand-soft);
   --fonu-surface: #ffffff;
-  --fonu-border: #dfe5df;
-  --fonu-text: #202923;
-  --fonu-text-secondary: #59665d;
-  --fonu-text-muted: #68756c;
+  --fonu-border: #dfe3e8;
+  --fonu-text: #20242c;
+  --fonu-text-secondary: #555e6b;
+  --fonu-text-muted: #687383;
 
   --fonu-radius: 8px;
   --fonu-radius-sm: 6px;
@@ -44,19 +44,19 @@
 
 html.dark,
 [data-theme='dark'] {
-  --fonu-brand: #77c6a5;
-  --fonu-success: #77c6a5;
-  --fonu-brand-soft: rgba(16, 185, 129, 0.18);
-  --fonu-brand-text: #77c6a5;
+  --fonu-brand: #8cb4ff;
+  --fonu-success: #65c69b;
+  --fonu-brand-soft: #8cb4ff33;
+  --fonu-brand-text: #8cb4ff;
   --fonu-info-soft: rgba(59, 130, 246, 0.16);
 
-  --fonu-bg: #171c1a;
-  --fonu-bg-muted: #1e2521;
-  --fonu-surface: #242c27;
-  --fonu-border: #354139;
-  --fonu-text: #e8eee9;
-  --fonu-text-secondary: #b1bdb4;
-  --fonu-text-muted: #98a69c;
+  --fonu-bg: #171a1f;
+  --fonu-bg-muted: #1d2128;
+  --fonu-surface: #22262e;
+  --fonu-border: #343b45;
+  --fonu-text: #e8ecf2;
+  --fonu-text-secondary: #b4bdca;
+  --fonu-text-muted: #9da9b9;
   --fonu-banner-bg: var(--fonu-brand-soft);
   --fonu-banner-border: var(--fonu-brand-soft);
 

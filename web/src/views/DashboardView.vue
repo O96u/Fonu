@@ -1,9 +1,9 @@
 <template>
   <div class="dashboard">
-  <header class="dashboard-heading"><div><p class="dashboard-eyebrow">FONU / 工作空间</p><h1>运行概览</h1><p>网络服务、访问趋势与安全状态</p></div></header>
+  <nav class="dashboard-tabs" aria-label="首页分区"><button v-for="tab in tabs" :key="tab.key" type="button" :aria-pressed="activeTab === tab.key" @click="selectTab(tab.key)">{{ tab.label }}</button></nav>
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
-    <n-spin :show="loading && !status">
+    <n-spin v-if="activeTab === 'overview' || activeTab === 'services'" :show="loading && !status">
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
@@ -40,11 +40,19 @@
       </div>
     </n-spin>
 
-    <AnalyticsInsightSection v-model:range="awarenessRange" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
+    <FonuCard v-if="activeTab === 'overview'" title="快捷入口"><div class="quick-links"><router-link :to="{name:'ddns'}">DDNS</router-link><router-link :to="{name:'certificates'}">证书管理</router-link><router-link :to="{name:'proxies'}">反向代理</router-link><router-link :to="{name:'frp'}">内网穿透</router-link><router-link :to="{name:'logs'}">日志中心</router-link></div></FonuCard>
+    <FonuCard v-if="activeTab === 'notifications'" title="状态提醒" subtitle="根据当前服务与证书状态生成，不是历史消息收件箱">
+      <div v-if="!status">尚未获取服务状态</div>
+      <div v-for="notice in notices" :key="notice.title" class="notice-row"><div><strong>{{ notice.title }}</strong><p>{{ notice.detail }}</p></div><router-link :to="{name:notice.route}">查看</router-link></div>
+      <EmptyState v-if="status && !notices.length" title="暂无状态提醒" description="当前已获取的状态中未发现需要处理的事项。" />
+      <router-link :to="{name:'settings',query:{tab:'notify'}}">通知渠道设置</router-link>
+      <router-link class="notification-version" :to="{name:'settings',query:{tab:'version'}}">版本与更新日志</router-link>
+    </FonuCard>
+    <AnalyticsInsightSection v-if="activeTab !== 'notifications'" v-model:range="awarenessRange" :show-map="activeTab === 'access'" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" />
 
     
 
-      <section class="awareness-section">
+      <section v-if="activeTab === 'overview' || activeTab === 'access' || activeTab === 'services'" class="awareness-section">
         <div class="awareness-header">
           <div>
             <h2 class="awareness-title">趋势与记录</h2>
@@ -61,7 +69,7 @@
           </div>
         </n-alert>
 
-        <FonuCard class="panel awareness-charts-panel">
+        <FonuCard v-if="activeTab !== 'services'" class="panel awareness-charts-panel">
           <div class="awareness-charts-panel__block">
             <div class="panel__head">
               <div class="panel-title">
@@ -83,8 +91,8 @@
           </div>
         </FonuCard>
 
-        <div class="awareness-lists">
-          <FonuCard flush class="awareness-list-card">
+        <div v-if="activeTab !== 'overview'" class="awareness-lists">
+          <FonuCard v-if="activeTab === 'access'" flush class="awareness-list-card">
             <template #title>
               <n-icon :component="EyeOutline" class="card-title-icon" />
               <span>访问记录 · 最近 30 条</span>
@@ -119,7 +127,7 @@
             </div>
           </FonuCard>
 
-          <FonuCard flush class="awareness-list-card">
+          <FonuCard v-if="activeTab === 'services'" flush class="awareness-list-card">
             <template #title>
               <n-icon :component="GitNetworkOutline" class="card-title-icon" />
               <span>按服务汇总</span>
@@ -145,7 +153,7 @@
           </FonuCard>
         </div>
       </section>
-      <AnalyticsAnomalySection v-if="analyticsOverview" :data="analyticsOverview" />
+      <AnalyticsAnomalySection v-if="activeTab === 'security' && analyticsOverview?.anomaly" :data="analyticsOverview" />
   </div>
 </template>
 
@@ -161,7 +169,7 @@ import {
   ShieldCheckmarkOutline,
   WifiOutline,
 } from '@vicons/ionicons5'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api, asList } from '../api/client'
 import type {
   AnalyticsOverview,
@@ -188,6 +196,11 @@ import { httpStatusKind } from '../utils/status'
 
 defineOptions({ name: 'DashboardView' })
 
+const route = useRoute()
+const router = useRouter()
+const tabs = [{key:'overview',label:'概览'},{key:'notifications',label:'通知'},{key:'access',label:'访问'},{key:'security',label:'安全'},{key:'services',label:'服务'}] as const
+const activeTab = computed(() => tabs.find(t => t.key === route.query.tab)?.key ?? 'overview')
+function selectTab(key: string) { void router.replace({name:'dashboard',query:key === 'overview' ? {} : {tab:key}}) }
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
@@ -202,7 +215,13 @@ const loading = ref(false)
 const loadError = ref('')
 let awarenessTimer: ReturnType<typeof setInterval> | null = null
 const pollInterval = () => awarenessRange.value === 'today' ? 15000 : awarenessRange.value === '7d' ? 30000 : 60000
-const awarenessTableScrollHeight = 360
+const awarenessTableScrollHeight = 520
+const notices = computed(() => {
+  const rows: {title:string;detail:string;route:string}[] = []
+  for (const cert of certificates.value.filter(c => c.days_left <= 30)) rows.push({title:cert.domain,detail:cert.days_left < 0 ? '证书已过期' : '证书剩余 '+cert.days_left+' 天',route:'certificates'})
+  if (status.value?.nginx_status === 'stopped') rows.push({title:'Nginx 已停止',detail:'检查反向代理配置与运行状态',route:'proxies'})
+  return rows
+})
 
 const primaryCert = computed(() => {
   if (certificates.value.length === 0) return null
@@ -1128,4 +1147,18 @@ a.ip-geo-cell__ip:hover {
 .dashboard .stats-row :deep(.stat-card__icon) { background:transparent; color:var(--fonu-brand); width:22px; height:22px; }
 .dashboard .awareness-section { gap:12px; }
 @media(max-width:767px) { .dashboard-heading h1 { font-size:25px; } .dashboard .stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .dashboard .stats-row :deep(.stat-card:nth-child(2)) { border-right:0; } .dashboard .stats-row :deep(.stat-card:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
+.dashboard { gap:12px; }
+.dashboard-tabs { display:flex; gap:8px; border-bottom:1px solid var(--fonu-border); flex-wrap:wrap; }
+.dashboard-tabs button { font:inherit; font-weight:500; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--fonu-text-secondary); padding:10px 14px; cursor:pointer; }
+.dashboard-tabs button[aria-pressed=true] { color:var(--fonu-brand); border-color:var(--fonu-brand); font-weight:650; }
+.quick-links { display:flex; gap:8px; flex-wrap:wrap; }
+.quick-links a { padding:8px 12px; border:1px solid var(--fonu-border); border-radius:6px; color:var(--fonu-brand); text-decoration:none; }
+.notice-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--fonu-border); }
+.notice-row p { margin:4px 0; color:var(--fonu-text-secondary); }
+.notice-row a,.notification-version { color:var(--fonu-brand); }
+.notification-version { margin-left:16px; }
+.dashboard .awareness-lists { grid-template-columns:minmax(0,1fr); }
+.dashboard .stats-row :deep(.stat-card) { padding:10px 12px; }
+.dashboard .stats-row :deep(.stat-card__header) { margin-bottom:4px; }
+.dashboard .awareness-section { margin-bottom:0; }
 </style>

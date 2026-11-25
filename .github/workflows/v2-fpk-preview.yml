@@ -5,6 +5,7 @@ on:
     branches: [v2]
     paths:
       - '.github/workflows/v2-fpk-preview.yml'
+      - 'web/src/**'
   workflow_dispatch:
 
 permissions:

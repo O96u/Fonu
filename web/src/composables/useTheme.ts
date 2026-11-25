@@ -2,15 +2,17 @@ import { computed, ref, watch } from 'vue'
 import { darkTheme, type GlobalThemeOverrides } from 'naive-ui'
 
 export const themePresets = [
-  { value: 'forest', label: '森林绿', light: '#237d60', dark: '#77c6a5' },
-  { value: 'blue', label: '经典蓝', light: '#285ec9', dark: '#82aaff' },
+  { value: 'ice', label: '冰川蓝', light: '#3869c9', dark: '#8cb4ff' },
+  { value: 'teal', label: '青蓝绿', light: '#128579', dark: '#5cc7b7' },
+  { value: 'forest', label: '经典翠绿', light: '#237d60', dark: '#77c6a5' },
+  { value: 'blue', label: '科技蓝', light: '#2563eb', dark: '#82aaff' },
   { value: 'purple', label: '星空紫', light: '#7549be', dark: '#b49af5' },
   { value: 'orange', label: '暖橙色', light: '#a95218', dark: '#ecad72' },
   { value: 'graphite', label: '石墨灰', light: '#626971', dark: '#b5bcc5' },
 ] as const
 export const surfaces = {
-  light: { bg: '#f8f9f7', muted: '#edf0eb', surface: '#ffffff', border: '#dfe5df', text: '#202923', secondary: '#59665d', subtle: '#68756c' },
-  dark: { bg: '#171c1a', muted: '#1e2521', surface: '#242c27', border: '#354139', text: '#e8eee9', secondary: '#b1bdb4', subtle: '#98a69c' },
+  light: { bg: '#f5f6f8', muted: '#eef0f3', surface: '#ffffff', border: '#dfe3e8', text: '#20242c', secondary: '#555e6b', subtle: '#687383' },
+  dark: { bg: '#171a1f', muted: '#1d2128', surface: '#22262e', border: '#343b45', text: '#e8ecf2', secondary: '#b4bdca', subtle: '#9da9b9' },
 }
 function read(key: string, fallback: string) {
   try { return localStorage.getItem(key) || fallback } catch { return fallback }
@@ -19,9 +21,9 @@ function persist(key: string, value: string) {
   try { localStorage.setItem(key, value) } catch { /* storage unavailable */ }
 }
 function normalizeMode(mode: string) { return mode === 'light' || mode === 'dark' ? mode : 'system' }
-function normalizeAccent(value: string) { return themePresets.find(p => p.value === value)?.value ?? 'forest' }
+function normalizeAccent(value: string) { return themePresets.find(p => p.value === value)?.value ?? 'ice' }
 const themeMode = ref(normalizeMode(read('fonu-theme', 'system')))
-const themeAccent = ref(normalizeAccent(read('fonu-accent', 'forest')))
+const themeAccent = ref(normalizeAccent(read('fonu-accent', 'ice')))
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const systemIsDark = ref(media.matches)
 const onMediaChange = (event: MediaQueryListEvent) => { systemIsDark.value = event.matches }
@@ -34,7 +36,7 @@ const palette = computed(() => {
   const preset = themePresets.find(p => p.value === themeAccent.value) ?? themePresets[0]
   const dark = isDark.value
   const brand = dark ? preset.dark : preset.light
-  return { ...surfaces[dark ? 'dark' : 'light'], brand, hover: mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '33' : '1c'), onBrand: dark ? '#171c1a' : '#ffffff', chartSecondary: themeAccent.value === 'blue' ? (dark ? '#77c6a5' : '#237d60') : (dark ? '#82aaff' : '#285ec9') }
+  return { ...surfaces[dark ? 'dark' : 'light'], brand, hover: mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '33' : '1c'), onBrand: dark ? '#171a1f' : '#ffffff', chartSecondary: ['blue', 'ice'].includes(themeAccent.value) ? (dark ? '#77c6a5' : '#237d60') : (dark ? '#82aaff' : '#285ec9') }
 })
 function mix(hex: string, other: string, amount: number) {
   return '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount) + parseInt(other.slice(i, i + 2), 16) * amount).toString(16).padStart(2, '0')).join('')

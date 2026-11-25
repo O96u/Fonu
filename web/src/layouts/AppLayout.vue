@@ -70,16 +70,14 @@
 
     <n-layout class="app-main">
       <header class="topbar">
-        <div class="topbar__context"><span class="topbar__workspace">工作空间</span><span class="topbar__separator">/</span><span class="topbar__page">{{ route.meta.title || "概览" }}</span></div>
+        <div class="topbar__context"><n-button quaternary size="small" aria-label="折叠或展开导航" @click="manualCollapsed = !manualCollapsed" :disabled="compactViewport"><template #icon><n-icon :component="MenuOutline" /></template></n-button><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
         <div class="topbar__right">
-          <n-button quaternary circle aria-label="切换深浅色主题" @click="toggleTheme">
-            <template #icon>
-              <n-icon :component="isDark ? MoonOutline : SunnyOutline" />
-            </template>
-          </n-button>
+          <n-dropdown trigger="click" :options="accentOptions" @select="setThemeAccent"><n-button quaternary circle aria-label="主题颜色" title="主题颜色"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></n-dropdown>
+          <n-dropdown trigger="click" :options="modeOptions" @select="setThemeMode"><n-button quaternary circle aria-label="主题模式" title="主题模式"><template #icon><n-icon :component="isDark ? MoonOutline : SunnyOutline" /></template></n-button></n-dropdown>
+          <n-button quaternary circle aria-label="通知" title="通知" @click="router.push({ name: 'dashboard', query: { tab: 'notifications' } })"><template #icon><n-icon :component="NotificationsOutline" /></template></n-button>
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
             <n-button quaternary class="user-btn">
-              <n-icon :component="PersonOutline" class="user-btn__icon" />
+              <span class="user-avatar">{{ displayUsername.charAt(0).toUpperCase() }}</span>
               <span class="user-name">{{ displayUsername }}</span>
               <n-icon
                 :component="ChevronDownOutline"
@@ -237,21 +235,25 @@ import {
   LockClosedOutline,
   LogoGithub,
   MoonOutline,
-  PersonOutline,
+  MenuOutline,
+  ColorPaletteOutline,
+  NotificationsOutline,
   SunnyOutline,
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
 import { api } from "../api/client";
 import { routeAuthStatus, invalidateRouteAuth } from "../router";
 import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
-import { useTheme } from "../composables/useTheme";
+import { useTheme, themePresets } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
 import logoImg from "../assets/brand/logo.png";
 
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { isDark, toggleTheme } = useTheme();
+const { isDark, themeMode, themeAccent, setThemeMode, setThemeAccent } = useTheme();
+const accentOptions = computed<DropdownOption[]>(() => themePresets.map(p => ({ key: p.value, label: (themeAccent.value === p.value ? '✓ ' : '') + p.label })));
+const modeOptions = computed<DropdownOption[]>(() => [{key:'system',label:'跟随系统'},{key:'light',label:'浅色'},{key:'dark',label:'深色'}].map(p => ({...p,label:(themeMode.value === p.key ? '✓ ' : '') + p.label})));
 
 function isFpkEmbed(): boolean {
   try {
@@ -263,7 +265,7 @@ function isFpkEmbed(): boolean {
 
 const embedded = isFpkEmbed();
 const viewportWidth = ref(window.innerWidth);
-const compactViewport = computed(() => viewportWidth.value < (embedded ? 960 : 760));
+const compactViewport = computed(() => viewportWidth.value < (embedded ? 1320 : 1000));
 const manualCollapsed = ref(false);
 const collapsed = computed(() => compactViewport.value || manualCollapsed.value);
 function updateViewport() { viewportWidth.value = window.innerWidth; }
@@ -342,6 +344,10 @@ const usernameChanged = computed(
 );
 
 const userMenuOptions: DropdownOption[] = [
+  { label: "外观设置", key: "appearance" },
+  { label: "系统设置", key: "settings" },
+  { label: "版本信息", key: "version" },
+  { type: "divider", key: "settings-divider" },
   { label: "修改用户名", key: "username" },
   { label: "修改密码", key: "password" },
   { type: "divider", key: "account-divider" },
@@ -431,6 +437,10 @@ async function submitPassword() {
 }
 
 async function handleUserMenu(key: string) {
+  if (['appearance','settings','version'].includes(key)) {
+    await router.push({ name: 'settings', query: { tab: key === 'version' ? 'version' : 'general' } });
+    return;
+  }
   if (key === "username") {
     openUsernameModal();
     return;
@@ -764,4 +774,12 @@ onUnmounted(() => {
 .app-layout--compact .content { padding: 16px; }
 .app-layout--compact .topbar { padding-inline: 16px; }
 @media (prefers-reduced-motion: reduce) { .app-layout :deep(*) { scroll-behavior: auto; } }
+.topbar__right { gap:4px; }
+.user-avatar { display:inline-grid; place-items:center; width:26px; height:26px; border-radius:50%; background:var(--fonu-brand-soft); color:var(--fonu-brand); font-weight:600; }
+.user-btn { margin-left:8px; }
+.app-layout--compact .user-name,.app-layout--compact .user-btn__chevron { display:none; }
+.app-main :deep(.n-layout-scroll-container) { min-height:0; }
+.app-main > :deep(.n-layout-scroll-container) { display:flex; flex-direction:column; height:100%; overflow:hidden; }
+.content > :deep(.n-layout-scroll-container) { min-height:0; }
+.app-layout--compact .content { padding:12px; }
 </style>

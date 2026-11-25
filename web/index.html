@@ -13,19 +13,19 @@
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         document.documentElement.classList.toggle('dark', dark);
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-        var accent = 'forest';
-        try { accent = localStorage.getItem('fonu-accent') || 'forest'; } catch (_) {}
-        var colors = { forest: ['#237d60','#77c6a5'], blue: ['#285ec9','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
-        document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.forest)[dark ? 1 : 0]);
+        var accent = 'ice';
+        try { accent = localStorage.getItem('fonu-accent') || 'ice'; } catch (_) {}
+        var colors = { ice: ['#3869c9','#8cb4ff'], teal: ['#128579','#5cc7b7'], forest: ['#237d60','#77c6a5'], blue: ['#2563eb','#82aaff'], purple: ['#7549be','#b49af5'], orange: ['#a95218','#ecad72'], graphite: ['#626971','#b5bcc5'] };
+        document.documentElement.style.setProperty('--boot-brand', (Object.prototype.hasOwnProperty.call(colors, accent) ? colors[accent] : colors.ice)[dark ? 1 : 0]);
       })();
     </script>
     <style>
-      html { background:#f8f9f7; color:#59665d; }
-      html[data-theme="dark"] { background:#171c1a; color:#b1bdb4; }
+      html { background:#f5f6f8; color:#555e6b; }
+      html[data-theme="dark"] { background:#171a1f; color:#b4bdca; }
       body { margin:0; }
       #fonu-boot { min-height:100vh; display:grid; place-content:center; justify-items:center; gap:16px; font:14px system-ui,sans-serif; text-align:center; }
       #fonu-boot button { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:8px; padding:8px 16px; cursor:pointer; }
-      .boot-spinner { width:32px;height:32px;border:3px solid currentColor;border-color:transparent transparent color-mix(in srgb, var(--boot-brand, #237d60) 25%, transparent) color-mix(in srgb, var(--boot-brand, #237d60) 25%, transparent);border-top-color:var(--boot-brand, #237d60);border-radius:50%;animation:boot-spin .8s linear infinite; }
+      .boot-spinner { width:32px;height:32px;border:3px solid currentColor;border-color:transparent transparent color-mix(in srgb, var(--boot-brand, #3869c9) 25%, transparent) color-mix(in srgb, var(--boot-brand, #3869c9) 25%, transparent);border-top-color:var(--boot-brand, #3869c9);border-radius:50%;animation:boot-spin .8s linear infinite; }
       @keyframes boot-spin { to { transform:rotate(360deg); } }
       @media(prefers-reduced-motion:reduce) { .boot-spinner { animation:none; } }
     </style>

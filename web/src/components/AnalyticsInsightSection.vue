@@ -12,6 +12,7 @@ const AnalyticsAccessMap = defineAsyncComponent(() => import('./AnalyticsAccessM
 
 const props = defineProps<{
   data: AnalyticsOverview | null
+  showMap?: boolean
   loading?: boolean
   error?: string
 }>()
@@ -155,7 +156,7 @@ watch(regionVisitorsAll, () => {
       />
     </div>
 
-    <FonuCard v-if="data" flush class="insight-panel">
+    <FonuCard v-if="data && showMap" flush class="insight-panel">
       <div class="insight-panel__grid">
         <div class="insight-panel__block insight-panel__block--map">
           <h4 class="insight-panel__heading">地图</h4>
@@ -193,7 +194,7 @@ watch(regionVisitorsAll, () => {
         </div>
       </div>
     </FonuCard>
-    <FonuCard v-else flush class="insight-panel">
+    <FonuCard v-else-if="!data" flush class="insight-panel">
       <div class="insight-wait" role="status">
         <n-spin v-if="loading" size="small" />
         <p>{{ error || '正在统计访问，地图随后加载。' }}</p>
@@ -428,4 +429,6 @@ watch(regionVisitorsAll, () => {
 .insight-section__title { font-size:20px; }
 .insight-section__tools > .insight-wait { padding:0; }
 @media(max-width:900px) { .insight-kpi-row :deep(.metric:nth-child(2)) { border-right:0; } .insight-kpi-row :deep(.metric:nth-child(-n+2)) { border-bottom:1px solid var(--fonu-border); } }
+.insight-section { gap:10px; margin-bottom:0; }
+.insight-panel__grid { --insight-geo-stack-h: clamp(300px,42vh,460px); }
 </style>
