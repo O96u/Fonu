@@ -57,9 +57,9 @@
           <span>{{ GITHUB_REPO }}</span>
         </a>
       </div>
-      <button class="nav-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开导航' : '收起导航'" :title="collapsed ? '展开导航' : '收起导航'" @click="setNavigation(!collapsed)"><n-icon :component="collapsed ? ChevronForwardOutline : ChevronBackOutline"/><span v-if="!collapsed">收起导航</span></button>
     </n-layout-sider>
 
+    <button class="nav-edge" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开导航' : '收起导航'" :title="collapsed ? '展开导航' : '收起导航'" @click="setNavigation(!collapsed)"><span class="nav-edge__bar" aria-hidden="true"/><n-icon :component="collapsed ? ChevronForwardOutline : ChevronBackOutline" /></button>
     <n-layout class="app-main">
       <header class="topbar">
         <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '概览' : route.meta.title }}</span></div>
@@ -827,4 +827,14 @@ onUnmounted(() => {
 .notification-pop{width:min(300px,calc(100vw - 48px));padding:4px;display:flex;flex-direction:column;gap:10px}
 .notification-pop a{display:flex;flex-direction:column;color:var(--fonu-brand-text);text-decoration:none;padding:8px;border-top:1px solid var(--fonu-border)}
 .notification-pop small,.notification-pop p{color:var(--fonu-text-secondary);margin:4px 0;font-size:12px}
+.app-layout { position:relative; --nav-edge-x:208px; }
+.app-layout--compact { --nav-edge-x:56px; }
+.nav-edge { position:absolute; z-index:30; left:var(--nav-edge-x); top:50%; transform:translate(-50%,-50%); width:16px; height:64px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; background:transparent; color:var(--fonu-text-secondary); cursor:pointer; transition:background .15s,color .15s; }
+.nav-edge__bar { width:3px; height:38px; border-radius:3px; background:var(--fonu-text-muted); opacity:.48; }
+.nav-edge :deep(.n-icon) { display:none; font-size:16px; }
+.nav-edge:hover,.nav-edge:focus-visible { background:var(--fonu-bg-muted); color:var(--fonu-brand-text); }
+.nav-edge:hover .nav-edge__bar,.nav-edge:focus-visible .nav-edge__bar { display:none; }
+.nav-edge:hover :deep(.n-icon),.nav-edge:focus-visible :deep(.n-icon) { display:block; }
+.nav-edge:focus-visible { outline:2px solid var(--fonu-brand); outline-offset:2px; }
+@media (hover:none) { .nav-edge__bar{display:none} .nav-edge :deep(.n-icon){display:block} .nav-edge{background:var(--fonu-bg-muted)} }
 </style>

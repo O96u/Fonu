@@ -12,14 +12,14 @@
           <template #value>
             <span class="stat-primary mono">{{ publicIPv4Label }}</span>
           </template>
-          <p class="stat-desc">{{ publicIPv6Label }} · {{ publicIPSourceLabel }}</p>
+          <p class="stat-desc" :title="publicIPv6Label + ' · ' + publicIPSourceLabel">{{ publicIPv6Label }} · {{ publicIPSourceLabel }}</p>
         </StatCard>
 
         <StatCard label="域名" tone="green">
           <template #icon><n-icon :component="WifiOutline" /></template>
           <template #extra><StatusBadge :value="status?.ddns_status" /></template>
           <template #value>{{ domainCountLabel }}</template>
-          <p class="stat-desc">{{ domainExamplesLabel }}</p>
+          <p class="stat-desc" :title="domainExamplesLabel">{{ domainExamplesLabel }}</p>
         </StatCard>
 
         <StatCard label="证书" tone="blue">
@@ -468,13 +468,18 @@ onUnmounted(pauseDashboard)
 .dashboard-tabs{display:flex;gap:6px;align-items:center}
 .dashboard-tabs button{border:0;background:transparent;color:var(--fonu-text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px}
 .dashboard-tabs button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);font-weight:600}
-.stats-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
-.status-strip :deep(.fonu-card__body){padding:10px 6px}
+.stats-row{display:grid;grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr));gap:0}
+.status-strip :deep(.fonu-card__body){padding:12px 8px}
 .stats-row :deep(.stat-card){min-width:0;min-height:0;padding:5px 12px;border:0;border-right:1px solid var(--fonu-border);border-radius:0;background:transparent;box-shadow:none}
 .stats-row :deep(.stat-card:last-child){border-right:0}
 .stats-row :deep(.stat-card__header){margin-bottom:4px;gap:4px}
 .stats-row :deep(.stat-card__icon){width:25px;height:25px;border-radius:7px;background:var(--fonu-brand-soft);color:var(--fonu-brand-text)}
-.stats-row :deep(.stat-card__value){font-size:18px}
+.stats-row :deep(.stat-card__value),.stats-row :deep(.stat-card__value-slot){font-size:19px;line-height:1.3;font-weight:650;letter-spacing:-.01em;overflow-wrap:anywhere;word-break:normal}
+.stats-row :deep(.stat-card__title-row){gap:7px;min-width:0}
+.stats-row :deep(.stat-card__header){align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.stats-row :deep(.stat-card__label){white-space:nowrap;font-size:12px}
+.stat-primary{font-size:inherit; font-variant-numeric:tabular-nums}
+.stats-row :deep(.stat-card){padding:6px 14px}
 .stat-desc{font-size:11px;color:var(--fonu-text-secondary);margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12px;align-items:start}
 .workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}

@@ -231,6 +231,7 @@ function deltaText(n: number, unit: string): string {
 
 <style scoped>
 .anomaly {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--fonu-space-4);
@@ -366,20 +367,24 @@ function deltaText(n: number, unit: string): string {
   word-break: break-word;
 }
 
-@media (max-width: 1180px) {
+@container (max-width: 760px) {
   .anomaly__cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
+@container (max-width: 1060px) {
   .anomaly__grid {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 720px) {
+@container (max-width: 390px) {
   .anomaly__cards {
     grid-template-columns: 1fr;
   }
+}
+@container (max-width: 520px) {
 
   .anomaly-table__head {
     display: none;
@@ -422,4 +427,10 @@ function deltaText(n: number, unit: string): string {
     font-size: 12px;
   }
 }
+.anomaly__cards :deep(.metric) { min-height:90px; padding:12px 14px; gap:7px; }
+.anomaly__cards :deep(.metric__label) { flex-wrap:wrap; gap:4px; font-size:12px; }
+.anomaly__cards :deep(.metric__hint) { font-size:11px; }
+.anomaly__cards :deep(.metric__value) { font-size:24px; }
+.anomaly__cards :deep(.metric__foot) { font-size:11px; gap:4px; }
+.anomaly__cards :deep(.metric__prev) { margin-left:auto; }
 </style>
