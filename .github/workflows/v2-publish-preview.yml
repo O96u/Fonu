@@ -9,7 +9,7 @@ on:
       run_id:
         description: Successful V2 FPK preview run ID
         required: true
-        default: '45571678799'
+        default: '45577167926'
 permissions:
   contents: write
   actions: read
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_ID: ${{ inputs.run_id || '45571678799' }}
+      RUN_ID: ${{ inputs.run_id || '45577167926' }}
     steps:
       - name: Verify source build and CI
         id: verify
@@ -33,7 +33,7 @@ jobs:
           run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
           jq -e '.head_branch == "v2" and .conclusion == "success" and .path == ".github/workflows/v2-fpk-preview.yml"' <<< "$run"
           sha="$(jq -r .head_sha <<< "$run")"
-          test "$sha" = 088dd4ba643183cf683a19d26ab8faaf39180d9a
+          test "$sha" = 5240a5eee1d6f5f1af8b08f07834742bdfc01e76
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&branch=v2" | jq -e '.workflow_runs | any(.name == "CI" and .conclusion == "success")'
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -44,7 +44,7 @@ jobs:
           mkdir assets
           for arch in amd64 arm64; do
             for suffix in "" _root; do
-              name="fonu_2.0.0-beta.3_${arch}${suffix}.fpk"
+              name="fonu_2.0.0-beta.4_${arch}${suffix}.fpk"
               test -s "packages/fonu-fpk-$arch/$name"
               cp "packages/fonu-fpk-$arch/$name" assets/
             done
@@ -56,7 +56,7 @@ jobs:
           SOURCE_SHA: ${{ steps.verify.outputs.sha }}
         run: |
           set -euo pipefail
-          tag="v2.0.0-beta.3"
+          tag="v2.0.0-beta.4"
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > tag.json 2>/dev/null; then
             jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha' tag.json
           else
@@ -71,13 +71,13 @@ jobs:
           SOURCE_SHA: ${{ steps.verify.outputs.sha }}
         run: |
           set -euo pipefail
-          tag="v2.0.0-beta.3"
+          tag="v2.0.0-beta.4"
           notes="V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation; application ID is unchanged."
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --title "Fonu 2.0 Beta 3" --notes "$notes"
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false --title "Fonu 2.0 Beta 4" --notes "$notes"
             gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Fonu 2.0 Beta 3" --notes "$notes"
+            gh release create "$tag" assets/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Fonu 2.0 Beta 4" --notes "$notes"
           fi
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease' | grep -qx true
           stable="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.3.10")"
