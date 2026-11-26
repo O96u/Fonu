@@ -32,7 +32,15 @@ func tailLines(path string, max int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	size := info.Size()
+	return tailLinesAt(file,info.Size(),max)
+}
+
+const maxTailScanBytes int64 = 8 << 20
+const maxLogLineBytes = 256 << 10
+
+func tailLinesAt(file *os.File,size int64,max int)([]string,error){
+	if max<=0{return nil,nil}
+	if max>10000{max=10000}
 	if size == 0 {
 		return nil, nil
 	}
@@ -40,11 +48,13 @@ func tailLines(path string, max int) ([]string, error) {
 	var pending []byte
 	var lines []string
 	offset := size
-
-	for offset > 0 && len(lines) < max {
+	floor:=size-maxTailScanBytes
+	if floor<0{floor=0}
+	discardPending:=false
+	for offset > floor && len(lines) < max {
 		readSize := int64(tailReadChunk)
-		if readSize > offset {
-			readSize = offset
+		if readSize > offset-floor {
+			readSize = offset-floor
 		}
 		offset -= readSize
 		chunk := make([]byte, readSize)
@@ -56,17 +66,19 @@ func tailLines(path string, max int) ([]string, error) {
 		for len(buf) > 0 && len(lines) < max {
 			i := bytes.LastIndexByte(buf, '\n')
 			if i < 0 {
-				pending = buf
+				if !discardPending && len(buf)<=maxLogLineBytes{pending=buf}else{discardPending=true}
 				break
 			}
-			line := stringsTrimCR(string(buf[i+1:]))
-			buf = buf[:i]
-			if line != "" {
-				lines = append(lines, line)
+			part:=buf[i+1:]
+			buf=buf[:i]
+			if !discardPending && len(part)<=maxLogLineBytes{
+				line:=stringsTrimCR(string(part))
+				if line!=""{lines=append(lines,line)}
 			}
+			discardPending=false
 		}
 	}
-	if len(pending) > 0 && len(lines) < max {
+	if offset==0 && !discardPending && len(pending) > 0 && len(lines) < max {
 		line := stringsTrimCR(string(pending))
 		if line != "" {
 			lines = append(lines, line)

@@ -40,7 +40,10 @@ func TestMinuteRollupExactBoundaries(t *testing.T) {
 	check(2,2,50)
 }
 
-func BenchmarkSeriesRawVsRollup(b *testing.B) {
+func BenchmarkSeriesRawVsRollup(b *testing.B) { benchmarkSeries(b,100000) }
+func BenchmarkSeriesMillion(b *testing.B) { benchmarkSeries(b,1000000) }
+
+func benchmarkSeries(b *testing.B,total int) {
 	ctx:=context.Background()
 	conn,err:=db.Open(filepath.Join(b.TempDir(),"benchmark.db")); if err!=nil {b.Fatal(err)}
 	defer conn.Close()
@@ -49,13 +52,13 @@ func BenchmarkSeriesRawVsRollup(b *testing.B) {
 		if _,err:=conn.Exec(string(raw));err!=nil {b.Fatal(err)}
 	}
 	// Repeat 100 clients across each minute to simulate busy proxy traffic.
-	_,err=conn.Exec(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<99999)
+	_,err=conn.Exec(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i<?)
 		INSERT INTO access_facts(ts,client_ip,bytes_sent)
-		SELECT strftime('%Y-%m-%dT%H:%M:%SZ','2026-01-01',printf('+%d seconds',i/20)),printf('8.8.8.%d',i%100),1024 FROM n`)
+		SELECT strftime('%Y-%m-%dT%H:%M:%SZ','2026-01-01',printf('+%d seconds',i/20)),printf('8.8.8.%d',i%100),1024 FROM n`,total-1)
 	if err!=nil {b.Fatal(err)}
 	s:=New(conn,nil,nil)
 	start:=time.Date(2026,1,1,0,0,0,0,time.UTC)
-	end:=start.Add(2*time.Hour)
+	end:=start.Add(time.Duration(total/20+60)*time.Second)
 	var wantN,wantIPs int;var wantBytes int64
 	rawQuery:=func(n,ips *int,bytes *int64)error {
 		return conn.QueryRowContext(ctx,"SELECT COUNT(*),COUNT(DISTINCT client_ip),COALESCE(SUM(bytes_sent),0) FROM access_facts WHERE ts>=? AND ts<?",start.Format(time.RFC3339),end.Format(time.RFC3339)).Scan(n,ips,bytes)

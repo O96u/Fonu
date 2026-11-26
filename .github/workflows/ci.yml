@@ -82,9 +82,11 @@ jobs:
       - run: go test ./...
       - name: Benchmark realtime access aggregation
         run: go test ./internal/ingest -run '^$' -bench '^BenchmarkRealtimeRing$' -benchtime=1s -benchmem
+      - name: Benchmark million access events
+        run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesMillion$' -benchtime=3x -benchmem
       - name: Benchmark analytics rollups (100k events)
         run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
-      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport ./internal/logstore ./internal/analytics
   security:
     runs-on: ubuntu-24.04
     steps:

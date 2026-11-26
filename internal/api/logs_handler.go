@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+ "time"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,12 +21,13 @@ type LogsHandler struct {
 	proxySvc *service.ProxyService
 	geo      *iplocate.Service
  historyGate chan struct{}
+ streamGate chan struct{}
  historyMu sync.Mutex
  historySummary historySummary
 }
 
 func NewLogsHandler(cfg config.Config, proxySvc *service.ProxyService, geo *iplocate.Service) *LogsHandler {
-	return &LogsHandler{cfg: cfg, proxySvc: proxySvc, geo: geo, historyGate: make(chan struct{},2)}
+	return &LogsHandler{cfg: cfg, proxySvc: proxySvc, geo: geo, historyGate: make(chan struct{},2),streamGate:make(chan struct{},16)}
 }
 
 type accessLogRow struct {
@@ -137,20 +139,16 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(r, w, http.StatusInternalServerError, "SSE 不可用")
-		return
-	}
+	if !h.acquireStream(w){return}
+	defer func(){<-h.streamGate}()
+	controller:=http.NewResponseController(w)
+	defer controller.SetWriteDeadline(time.Time{})
 	tail := queryInt(r, "tail", 100)
 	var filter logstore.LineFilter
 	if kind == "access" {
 		filter = logstore.AccessHostFilter(r.URL.Query()["host"])
 	}
-	_ = logstore.StreamFile(r.Context(), path, w, func() error {
-		flusher.Flush()
-		return nil
-	}, tail, filter)
+	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},controller.Flush,tail,filter)
 }
 
 func (h *LogsHandler) StreamAccessForHosts(w http.ResponseWriter, r *http.Request, hosts []string) {
@@ -166,18 +164,14 @@ func (h *LogsHandler) StreamAccessForEndpoints(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(r, w, http.StatusInternalServerError, "SSE 不可用")
-		return
-	}
+	if !h.acquireStream(w){return}
+	defer func(){<-h.streamGate}()
+	controller:=http.NewResponseController(w)
+	defer controller.SetWriteDeadline(time.Time{})
 	path := filepath.Join(h.cfg.LogsDir(), "access.log")
 	tail := queryInt(r, "tail", 100)
 	filter := logstore.AccessEndpointFilter(endpoints)
-	_ = logstore.StreamFile(r.Context(), path, w, func() error {
-		flusher.Flush()
-		return nil
-	}, tail, filter)
+	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},controller.Flush,tail,filter)
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {
@@ -190,4 +184,22 @@ func queryInt(r *http.Request, key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func (h *LogsHandler) acquireStream(w http.ResponseWriter)bool{
+ select{
+ case h.streamGate<-struct{}{}:return true
+ default:
+  w.Header().Set("Content-Type","application/json")
+  w.Header().Del("Connection")
+  w.Header().Set("Retry-After","5")
+  writeJSON(w,http.StatusTooManyRequests,map[string]string{"error":"实时日志连接过多，请稍后重试"})
+  return false
+ }
+}
+
+type deadlineWriter struct{w http.ResponseWriter;controller *http.ResponseController}
+func (d deadlineWriter) Write(p []byte)(int,error){
+ if err:=d.controller.SetWriteDeadline(time.Now().Add(10*time.Second));err!=nil&&err!=http.ErrNotSupported{return 0,err}
+ return d.w.Write(p)
 }
