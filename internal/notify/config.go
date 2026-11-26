@@ -7,6 +7,8 @@ const (
 	EventCertRenewSuccess   = "cert_renew_success"
 	EventCertRenewFailure   = "cert_renew_failure"
 	EventIPFrequentAccess   = "ip_frequent_access"
+ EventScan="suspected_scan"
+ EventCC="suspected_cc"
 	EventLoginFailure       = "login_failure"
 	EventNginxReloadFailure = "nginx_reload_failure"
 
@@ -36,6 +38,9 @@ const (
 	WebhookNtfy   WebhookProvider = "ntfy"
 	WebhookGotify WebhookProvider = "gotify"
 	WebhookCustom WebhookProvider = "custom"
+ WebhookWeCom WebhookProvider="wecom"
+ WebhookDingTalk WebhookProvider="dingtalk"
+ WebhookFeishu WebhookProvider="feishu"
 )
 
 type EmailConfig struct {
@@ -74,6 +79,8 @@ type Config struct {
 	OnCertRenewSuccess     bool `json:"on_cert_renew_success"`
 	OnCertRenewFailure     bool `json:"on_cert_renew_failure"`
 	OnIPFrequentAccess     bool `json:"on_ip_frequent_access"`
+ OnScan bool `json:"on_scan"`
+ OnCC bool `json:"on_cc"`
 	OnLoginFailure         bool `json:"on_login_failure"`
 	OnNginxReloadFailure   bool `json:"on_nginx_reload_failure"`
 	IPFrequentThreshold    int  `json:"ip_frequent_threshold"`
@@ -103,6 +110,8 @@ type SaveInput struct {
 	OnCertRenewSuccess     bool
 	OnCertRenewFailure     bool
 	OnIPFrequentAccess     bool
+ OnScan bool
+ OnCC bool
 	OnLoginFailure         bool
 	OnNginxReloadFailure   bool
 	IPFrequentThreshold    int

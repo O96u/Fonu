@@ -495,7 +495,7 @@ export interface SystemLogEntry {
 }
 
 export type NotifyType = '' | 'email' | 'webhook' | 'telegram'
-export type WebhookProvider = 'bark' | 'ntfy' | 'gotify' | 'custom'
+export type WebhookProvider = 'bark' | 'ntfy' | 'gotify' | 'wecom' | 'dingtalk' | 'feishu' | 'custom'
 
 export interface NotifyEmailConfig {
   host: string
@@ -533,6 +533,8 @@ export interface NotifyTestPayload {
   on_cert_renew_success: boolean
   on_cert_renew_failure: boolean
   on_ip_frequent_access: boolean
+  on_scan: boolean
+  on_cc: boolean
   on_login_failure: boolean
   on_nginx_reload_failure: boolean
   ip_frequent_threshold: number

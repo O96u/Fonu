@@ -11,6 +11,7 @@ import (
  "sync"
 
 	"github.com/fonu/fonu/internal/notify"
+ "github.com/fonu/fonu/internal/nginx"
 	"github.com/fonu/fonu/internal/service"
 	"github.com/fonu/fonu/internal/settings"
 	"github.com/fonu/fonu/internal/validate"
@@ -89,6 +90,8 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		settings.KeyNotifyOnCertExpiry:           true,
 		settings.KeyNotifyOnCertRenewSuccess:     true,
 		settings.KeyNotifyOnIPFrequentAccess:     true,
+ settings.KeyNotifyOnScan:true,
+ settings.KeyNotifyOnCC:true,
 		settings.KeyNotifyOnCertRenewFailure:     true,
 		settings.KeyNotifyOnLoginFailure:         true,
 		settings.KeyNotifyOnNginxReloadFailure:   true,
@@ -186,6 +189,8 @@ func isNotifySettingKey(key string) bool {
 		settings.KeyNotifyOnCertExpiry,
 		settings.KeyNotifyOnCertRenewSuccess,
 		settings.KeyNotifyOnIPFrequentAccess,
+ settings.KeyNotifyOnScan,
+ settings.KeyNotifyOnCC,
 		settings.KeyNotifyOnCertRenewFailure,
 		settings.KeyNotifyOnLoginFailure,
 		settings.KeyNotifyOnNginxReloadFailure,
@@ -264,12 +269,7 @@ func (h *SettingsHandler) validateSetting(key, value string) error {
 			}
 		}
 	case settings.KeyTrustedProxy:
-		if value != "" && value != "{}" {
-			var raw map[string]any
-			if err := json.Unmarshal([]byte(value), &raw); err != nil {
-				return err
-			}
-		}
+		if value!="" {var cfg nginx.TrustedProxyConfig;if err:=json.Unmarshal([]byte(value),&cfg);err!=nil{return fmt.Errorf("信任代理配置无效")};return cfg.Validate()}
 	}
 	return nil
 }

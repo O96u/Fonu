@@ -78,7 +78,7 @@ jobs:
           sudo apt-get install -y nginx
           command -v nginx
       - name: Test actual Nginx startup, reload and rejection
-        run: go test -v ./internal/nginx -run '^TestApply(WithNginxIfAvailable|HTTPSWithMultipleCertificates)$' -count=1
+        run: go test -v ./internal/nginx -run '^(TestApply(WithNginxIfAvailable|HTTPSWithMultipleCertificates)|TestTrustedProxyRealNginx)$' -count=1
       - run: go test ./...
       - name: Benchmark analytics rollups (100k events)
         run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem

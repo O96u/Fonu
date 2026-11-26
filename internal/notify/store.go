@@ -84,6 +84,8 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 		cfg.OnCertRenewSuccess = flag(s.settings, ctx, settings.KeyNotifyOnCertRenewSuccess, true)
 		cfg.OnCertRenewFailure = flag(s.settings, ctx, settings.KeyNotifyOnCertRenewFailure, true)
 		cfg.OnIPFrequentAccess = flag(s.settings, ctx, settings.KeyNotifyOnIPFrequentAccess, false)
+ cfg.OnScan=flag(s.settings,ctx,settings.KeyNotifyOnScan,false)
+ cfg.OnCC=flag(s.settings,ctx,settings.KeyNotifyOnCC,false)
 		cfg.OnLoginFailure = flag(s.settings, ctx, settings.KeyNotifyOnLoginFailure, false)
 		cfg.OnNginxReloadFailure = flag(s.settings, ctx, settings.KeyNotifyOnNginxReloadFailure, true)
 	} else {
@@ -168,6 +170,8 @@ func hasNotifyEventSettings(ctx context.Context, store *settings.Store) bool {
 		settings.KeyNotifyOnCertExpiry,
 		settings.KeyNotifyOnCertRenewSuccess,
 		settings.KeyNotifyOnIPFrequentAccess,
+ settings.KeyNotifyOnScan,
+ settings.KeyNotifyOnCC,
 		settings.KeyNotifyOnCertRenewFailure,
 		settings.KeyNotifyOnLoginFailure,
 		settings.KeyNotifyOnNginxReloadFailure,
@@ -185,10 +189,13 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	existing, err := s.Load(ctx)
  if err != nil{return err}
  in.Email.HasPassword=existing.Email.HasPassword || (strings.TrimSpace(in.SMTPPassword)!="" && in.SMTPPassword!=MaskedSecret)
- if strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret {if strings.TrimSpace(in.Webhook.Key)==""&&existing.Webhook.Key!=""&&existing.Webhook.Key!=MaskedSecret {in.Webhook.Key=existing.Webhook.Key}}
- in.Webhook.HasSecret=existing.Webhook.HasSecret || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
+ if strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret {if in.Webhook.Provider==existing.Webhook.Provider&&strings.TrimSpace(in.Webhook.Key)==""&&existing.Webhook.Key!=""&&existing.Webhook.Key!=MaskedSecret {in.Webhook.Key=existing.Webhook.Key}}
+ in.Webhook.HasSecret=(in.Webhook.Provider==existing.Webhook.Provider&&existing.Webhook.HasSecret) || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
  in.Telegram.HasBotToken=existing.Telegram.HasBotToken || (strings.TrimSpace(in.TelegramToken)!="" && in.TelegramToken!=MaskedSecret)
+ if in.Type==NotifyTypeWebhook&&in.Webhook.Provider!=existing.Webhook.Provider&&(isRobotProvider(in.Webhook.Provider)||isRobotProvider(existing.Webhook.Provider))&&(strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret)&&in.Webhook.Provider!=WebhookCustom&&in.Webhook.Provider!=WebhookNtfy{return fmt.Errorf("切换机器人渠道时请重新填写该渠道凭据")}
+ if in.Type==NotifyTypeWebhook&&isRobotProvider(in.Webhook.Provider)&&(strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret){runtime,err:=s.LoadRuntime(ctx);if err!=nil{return err};if _,err:=robotEndpoint(in.Webhook.Provider,runtime.WebhookSecret);err!=nil{return err}}
  values:=map[string]string{}
+ if in.Webhook.Provider!=existing.Webhook.Provider&&(isRobotProvider(existing.Webhook.Provider)||isRobotProvider(in.Webhook.Provider)){values[settings.KeyNotifyWebhookSecret]=""}
 	if err := validateSaveInput(in); err != nil {
 		return err
 	}
@@ -199,6 +206,8 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	values[settings.KeyNotifyOnCertExpiry] = strconv.FormatBool(in.OnCertExpiry)
 	values[settings.KeyNotifyOnCertRenewSuccess] = strconv.FormatBool(in.OnCertRenewSuccess)
 	values[settings.KeyNotifyOnIPFrequentAccess] = strconv.FormatBool(in.OnIPFrequentAccess)
+ values[settings.KeyNotifyOnScan]=strconv.FormatBool(in.OnScan)
+ values[settings.KeyNotifyOnCC]=strconv.FormatBool(in.OnCC)
 	values[settings.KeyNotifyOnCertRenewFailure] = strconv.FormatBool(in.OnCertRenewFailure)
 	values[settings.KeyNotifyOnLoginFailure] = strconv.FormatBool(in.OnLoginFailure)
 	values[settings.KeyNotifyOnNginxReloadFailure] = strconv.FormatBool(in.OnNginxReloadFailure)
@@ -345,6 +354,8 @@ func validateSaveInput(in SaveInput) error {
 			if strings.TrimSpace(in.Webhook.Key) == "" && !in.Webhook.HasSecret {
 				return fmt.Errorf("请填写 Gotify App Token")
 			}
+        case WebhookWeCom,WebhookDingTalk,WebhookFeishu:
+          if in.WebhookSecret==""||in.WebhookSecret==MaskedSecret {if !in.Webhook.HasSecret{return fmt.Errorf("请填写机器人 Webhook 地址")}}else if _,err:=robotEndpoint(in.Webhook.Provider,in.WebhookSecret);err!=nil{return err}
 		case WebhookCustom:
 			if strings.TrimSpace(in.Webhook.URL) == "" {
 				return fmt.Errorf("请填写 Webhook URL")
@@ -417,6 +428,8 @@ func ParseSaveInputFromMap(values map[string]string, existing Config) (SaveInput
 	}
 	in.OnCertRenewSuccess = boolFromMapOr(values, settings.KeyNotifyOnCertRenewSuccess, existing.OnCertRenewSuccess)
 	in.OnIPFrequentAccess = boolFromMapOr(values, settings.KeyNotifyOnIPFrequentAccess, existing.OnIPFrequentAccess)
+ in.OnScan=boolFromMapOr(values,settings.KeyNotifyOnScan,existing.OnScan)
+ in.OnCC=boolFromMapOr(values,settings.KeyNotifyOnCC,existing.OnCC)
 	in.OnCertRenewFailure = boolFromMapOr(values, settings.KeyNotifyOnCertRenewFailure, existing.OnCertRenewFailure)
 	in.OnLoginFailure = boolFromMapOr(values, settings.KeyNotifyOnLoginFailure, existing.OnLoginFailure)
 	in.OnNginxReloadFailure = boolFromMapOr(values, settings.KeyNotifyOnNginxReloadFailure, existing.OnNginxReloadFailure)
@@ -444,6 +457,8 @@ func mapHasNotifySavePayload(values map[string]string) bool {
 		settings.KeyNotifyOnCertExpiry,
 		settings.KeyNotifyOnCertRenewSuccess,
 		settings.KeyNotifyOnIPFrequentAccess,
+ settings.KeyNotifyOnScan,
+ settings.KeyNotifyOnCC,
 		settings.KeyNotifyOnCertRenewFailure,
 		settings.KeyNotifyOnLoginFailure,
 		settings.KeyNotifyOnNginxReloadFailure,

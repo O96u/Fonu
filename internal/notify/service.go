@@ -23,6 +23,13 @@ type Service struct {
 	accessHits    map[string][]time.Time
 	accessAlerted map[string]time.Time
 
+ securityMu sync.Mutex
+ securityState attackState
+ accessConfigMu sync.Mutex
+ accessConfig RuntimeConfig
+ accessConfigUntil time.Time
+ alertSlots chan struct{}
+
 	loginMu      sync.Mutex
 	loginHits    map[string][]time.Time
 	loginAlerted map[string]time.Time
@@ -41,6 +48,7 @@ func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logg
 		accessAlerted: map[string]time.Time{},
 		loginHits:     map[string][]time.Time{},
 		loginAlerted:  map[string]time.Time{},
+ alertSlots:make(chan struct{},4),
 	}
 }
 
@@ -122,7 +130,7 @@ func (s *Service) recordThresholdHit(
 		return
 	}
 
-	cfg, err := s.store.LoadRuntime(ctx)
+	cfg, err := s.cachedAccessConfig(ctx)
 	if err != nil {
 		return
 	}
@@ -136,6 +144,7 @@ func (s *Service) recordThresholdHit(
 	cutoff := now.Add(-window)
 
 	mu.Lock()
+ if len(hits)>=4096 {for key,values:=range hits{if len(values)==0||values[len(values)-1].Before(cutoff){delete(hits,key);delete(alerted,key)}};if _,ok:=hits[ip];!ok&&len(hits)>=4096{mu.Unlock();return}}
 	prev := hits[ip]
 	pruned := make([]time.Time, 0, len(prev)+1)
 	for _, at := range prev {
@@ -144,6 +153,7 @@ func (s *Service) recordThresholdHit(
 		}
 	}
 	pruned = append(pruned, now)
+ if len(pruned)>threshold{pruned=pruned[len(pruned)-threshold:]}
 	hits[ip] = pruned
 
 	count := len(pruned)
@@ -158,7 +168,7 @@ func (s *Service) recordThresholdHit(
 	if !shouldAlert {
 		return
 	}
-	s.Alert(ctx, event, title, messageFn(ip, windowSec, count, threshold))
+	s.enqueueAlert(event,title,messageFn(ip, windowSec, count, threshold))
 }
 
 func (s *Service) SendTest(ctx context.Context, in TestInput) error {
@@ -253,6 +263,8 @@ func (s *Service) enabledFor(cfg RuntimeConfig, event string) bool {
 		return cfg.OnCertRenewFailure
 	case EventIPFrequentAccess:
 		return cfg.OnIPFrequentAccess
+ case EventScan:return cfg.OnScan
+ case EventCC:return cfg.OnCC
 	case EventLoginFailure:
 		return cfg.OnLoginFailure
 	case EventNginxReloadFailure:

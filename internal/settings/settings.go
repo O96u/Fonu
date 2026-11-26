@@ -52,6 +52,8 @@ const (
 	KeyNotifyOnCertExpiry           = "notify_on_cert_expiry"
 	KeyNotifyOnCertRenewSuccess     = "notify_on_cert_renew_success"
 	KeyNotifyOnIPFrequentAccess     = "notify_on_ip_frequent_access"
+ KeyNotifyOnScan = "notify_on_scan"
+ KeyNotifyOnCC = "notify_on_cc"
 	KeyNotifyOnCertRenewFailure     = "notify_on_cert_renew_failure"
 	KeyNotifyOnLoginFailure         = "notify_on_login_failure"
 	KeyNotifyOnNginxReloadFailure   = "notify_on_nginx_reload_failure"

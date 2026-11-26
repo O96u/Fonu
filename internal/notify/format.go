@@ -80,6 +80,8 @@ func eventMetaFor(event string) eventMeta {
 		return eventMeta{"✅", "证书"}
 	case EventCertRenewFailure:
 		return eventMeta{"❌", "证书"}
+	case EventScan,EventCC:
+        return eventMeta{"🛡️","安全"}
 	case EventIPFrequentAccess:
 		return eventMeta{"🛡️", "安全"}
 	case EventLoginFailure:

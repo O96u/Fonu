@@ -90,6 +90,9 @@ func classifyEntry(status int, path, userAgent string, ipWindow *ipWindowState) 
 	return KindAccess, false
 }
 
+// IsProbe identifies explicit path or scanner signatures even on blocked requests.
+func IsProbe(path,ua string)bool{return matchesProbePath(strings.ToLower(path))||matchesScannerUA(strings.ToLower(ua))}
+
 func matchesProbePath(path string) bool {
 	for _, frag := range probePathFragments {
 		if strings.Contains(path, frag) {

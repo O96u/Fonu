@@ -11,6 +11,9 @@ export const WEBHOOK_PROVIDER_OPTIONS: { label: string; value: WebhookProvider }
   { label: 'Bark', value: 'bark' },
   { label: 'ntfy', value: 'ntfy' },
   { label: 'Gotify', value: 'gotify' },
+  { label: '企业微信', value: 'wecom' },
+  { label: '钉钉', value: 'dingtalk' },
+  { label: '飞书', value: 'feishu' },
   { label: '自定义 Webhook', value: 'custom' },
 ]
 

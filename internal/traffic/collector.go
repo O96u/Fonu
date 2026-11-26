@@ -225,7 +225,7 @@ func (c *Collector) ingestEntry(entry logstore.AccessEntry, trackLive bool) {
 	c.mu.Unlock()
 	// Notification may query settings or perform other work; never hold
 	// the traffic lock while it runs.
-	if trackLive&&c.notify!=nil&&entry.ClientIP!=""&&entry.ClientIP!="-"{c.notify.RecordAccessHit(context.Background(),entry.ClientIP)}
+	if trackLive&&c.notify!=nil&&entry.ClientIP!=""&&entry.ClientIP!="-"{if at,ok:=logstore.ParseAccessTime(entry.Time);ok&&now.Sub(at)<=60*time.Second&&at.Sub(now)<=5*time.Second{c.notify.RecordAccessHit(context.Background(),entry.ClientIP);c.notify.ObserveAttack(context.Background(),entry,now)}}
 }
 
 func (c *Collector) ensureHost(host string) *hostState {

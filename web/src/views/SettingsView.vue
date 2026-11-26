@@ -120,15 +120,17 @@
           <div class="form-switch-row">
             <div class="form-switch-row__text">
               <div class="form-switch-row__label">启用信任代理</div>
-              <div class="form-switch-row__hint">从请求头解析真实客户端 IP</div>
+              <div class="form-switch-row__hint">仅在 Fonu 前方存在可信 HTTP 代理时开启</div>
             </div>
             <n-switch v-model:value="trustedProxyEnabled" />
           </div>
+          <n-alert type="info" :bordered="false">直接公网访问、DDNS 或 Cloudflare 灰云保持关闭。橙云选择 Cloudflare；自建代理仅填写实际连接 Fonu 的代理 IP。不要信任整个公网或不受控制的内网段。</n-alert>
           <div v-if="trustedProxyEnabled" class="settings-fields settings-fields--compact">
             <div class="settings-field">
               <div class="settings-field__label">预设</div>
               <n-select v-model:value="trustedProxyPreset" :options="trustedProxyPresets" />
             </div>
+            <p v-if="trustedProxyPreset==='cloudflare'" class="field-hint">自动使用 Cloudflare 预置 IP 段及 CF-Connecting-IP 请求头。仅信任来自这些代理的请求头。</p>
             <template v-if="trustedProxyPreset === 'custom'">
               <div class="settings-field">
                 <div class="settings-field__label">信任 CIDR（每行一个）</div>
@@ -257,7 +259,7 @@
           <div v-else-if="notifyType === 'webhook'" class="settings-fields settings-fields--compact">
             <div class="settings-field">
               <div class="settings-field__label">Webhook 预设</div>
-              <n-select v-model:value="notifyWebhook.provider" :options="WEBHOOK_PROVIDER_OPTIONS" />
+              <n-select v-model:value="notifyWebhook.provider" :options="WEBHOOK_PROVIDER_OPTIONS" @update:value="notifyWebhookKey=''" />
             </div>
             <template v-if="notifyWebhook.provider === 'bark'">
               <div class="settings-field">
@@ -267,7 +269,7 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="Device Key"
-                :configured="notifyWebhook.has_secret"
+                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
                 placeholder="Bark Device Key"
               />
             </template>
@@ -283,9 +285,13 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="访问令牌（可选）"
-                :configured="notifyWebhook.has_secret"
+                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
                 placeholder="Bearer Token"
               />
+            </template>
+            <template v-else-if="['wecom','dingtalk','feishu'].includes(notifyWebhook.provider)">
+              <ConfiguredSecretField v-model="notifyWebhookKey" label="机器人 Webhook 地址" :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider" placeholder="粘贴完整 HTTPS Webhook 地址" />
+              <p class="field-hint">在群聊中添加自定义机器人，复制 Webhook。钉钉、飞书若采用关键词安全校验，请使用 Fonu；暂不支持加签。建议同时配置可信出口 IP（平台支持时）。</p>
             </template>
             <template v-else-if="notifyWebhook.provider === 'gotify'">
               <div class="settings-field">
@@ -295,7 +301,7 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="App Token"
-                :configured="notifyWebhook.has_secret"
+                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
                 placeholder="Gotify App Token"
               />
             </template>
@@ -514,16 +520,14 @@
         <div class="log-panel-head global-nginx-head">
           <div class="nginx-mode-toggle">
             <n-button
-              size="tiny"
-              quaternary
+              size="small"
               :type="globalNginxEditMode === 'auto' ? 'primary' : 'default'"
               @click="setGlobalNginxEditMode('auto')"
             >
               自动生成
             </n-button>
             <n-button
-              size="tiny"
-              quaternary
+              size="small"
               :type="globalNginxEditMode === 'custom' ? 'primary' : 'default'"
               @click="setGlobalNginxEditMode('custom')"
             >
@@ -533,19 +537,17 @@
           <div class="log-panel-actions"><n-select v-if="globalNginxEditMode==='custom' && globalNginxBackups.length" v-model:value="selectedNginxBackup" :options="globalNginxBackups.map(item=>({label:formatDate(item.created_at)+' · '+item.name,value:item.name}))" placeholder="选择历史版本" clearable size="small" style="width:230px" />
             <n-button
               v-if="globalNginxEditMode === 'custom'"
-              size="tiny"
-              quaternary
+              size="small"
               type="primary"
               :loading="globalNginxSaving"
               :disabled="!globalNginxDirty"
               @click="saveGlobalNginx"
             >
-              保存
+              保存配置
             </n-button>
             <n-button
               v-if="globalNginxEditMode === 'custom' && globalNginxBackups.length > 0"
-              size="tiny"
-              quaternary
+              size="small"
               :loading="globalNginxSaving"
               @click="confirmNginxRollback()"
             >
@@ -553,8 +555,7 @@
             </n-button>
             <n-button
               v-if="globalNginxEditMode === 'custom' && globalNginxServerMode === 'custom'"
-              size="tiny"
-              quaternary
+              size="small"
               :loading="globalNginxSaving"
               @click="resetGlobalNginxAuto"
             >
@@ -607,7 +608,6 @@
               </template>
   <div v-if="activeProvider==='zerossl'" class="acme-provider-block provider-edit-block">
                 <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.zerossl.label }}</span>
                   <AcmeApplyLink :url="ACME_APPLY_LINKS.zerossl.url" :link-text="ACME_APPLY_LINKS.zerossl.linkText" />
                 </div>
                 <ConfiguredSecretField
@@ -628,7 +628,6 @@
               
 <div v-if="activeProvider==='google'" class="acme-provider-block provider-edit-block">
                 <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.google.label }}</span>
                   <AcmeApplyLink :url="ACME_APPLY_LINKS.google.url" :link-text="ACME_APPLY_LINKS.google.linkText" />
                 </div>
                 <ConfiguredSecretField
@@ -648,7 +647,6 @@
               
 <div v-if="activeProvider==='sslcom'" class="acme-provider-block provider-edit-block">
                 <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.sslcom.label }}</span>
                   <AcmeApplyLink :url="ACME_APPLY_LINKS.sslcom.url" :link-text="ACME_APPLY_LINKS.sslcom.linkText" />
                 </div>
                 <ConfiguredSecretField
@@ -668,7 +666,6 @@
               
 <div v-if="activeProvider==='freessl'" class="acme-provider-block provider-edit-block">
                 <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.freessl.label }}</span>
                   <AcmeApplyLink :url="ACME_APPLY_LINKS.freessl.url" :link-text="ACME_APPLY_LINKS.freessl.linkText" />
                 </div>
                 <ConfiguredSecretField
@@ -699,7 +696,6 @@
               
 <div v-if="activeProvider==='actalis'" class="acme-provider-block provider-edit-block">
                 <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.actalis.label }}</span>
                   <AcmeApplyLink :url="ACME_APPLY_LINKS.actalis.url" :link-text="ACME_APPLY_LINKS.actalis.linkText" />
                 </div>
                 <ConfiguredSecretField
@@ -857,6 +853,8 @@ const notifyEventFlags = reactive<Record<string, boolean>>({
   on_cert_renew_success: true,
   on_cert_renew_failure: true,
   on_ip_frequent_access: false,
+  on_scan:false,
+  on_cc:false,
   on_login_failure: false,
   on_nginx_reload_failure: true,
 })
@@ -877,6 +875,7 @@ const notifyEmail = reactive({
   tls: true,
   has_password: false,
 })
+const savedWebhookProvider=ref<WebhookProvider>('bark')
 const notifyWebhook = reactive({
   provider: 'bark' as WebhookProvider,
   server: DEFAULT_BARK_SERVER,
@@ -1110,8 +1109,8 @@ function buildTrustedProxyJSON() {
     enabled: trustedProxyEnabled.value,
     preset: trustedProxyPreset.value,
     cidrs,
-    header: trustedProxyHeader.value,
-    recursive: trustedProxyHeader.value === 'X-Forwarded-For',
+    header: trustedProxyPreset.value==='cloudflare'?'CF-Connecting-IP':trustedProxyHeader.value,
+    recursive: trustedProxyPreset.value!=='cloudflare'&&trustedProxyHeader.value==='X-Forwarded-For',
   })
 }
 
@@ -1295,12 +1294,14 @@ function applyNotifySettings(settings: Record<string, string>) {
   try {
     const webhook = JSON.parse(settings.notify_webhook_json || '{}') as NotifyWebhookConfig
     notifyWebhook.provider = webhook.provider ?? 'bark'
+    savedWebhookProvider.value=notifyWebhook.provider
     notifyWebhook.server = webhook.server ?? (webhook.provider === 'ntfy' ? DEFAULT_NTFY_SERVER : DEFAULT_BARK_SERVER)
     notifyWebhook.topic = webhook.topic ?? ''
     notifyWebhook.url = webhook.url ?? ''
     notifyWebhook.has_secret = webhook.has_secret ?? false
   } catch {
     notifyWebhook.provider = 'bark'
+    savedWebhookProvider.value='bark'
     notifyWebhook.server = DEFAULT_BARK_SERVER
   }
 
@@ -1317,12 +1318,15 @@ function applyNotifySettings(settings: Record<string, string>) {
   if (!notifyType.value && settings.notify_webhook_url) {
     notifyType.value = 'webhook'
     notifyWebhook.provider = 'custom'
+    savedWebhookProvider.value='custom'
     notifyWebhook.url = settings.notify_webhook_url
   }
 
   const flagOn = (key: string) => settings[key] !== '0' && settings[key] !== 'false'
   const flagOptIn = (key: string) => settings[key] === '1' || settings[key] === 'true'
 
+  notifyEventFlags.on_scan=flagOptIn('notify_on_scan')
+  notifyEventFlags.on_cc=flagOptIn('notify_on_cc')
   const hasNewNotifyEvents =
     settings.notify_on_ddns_ip_change != null ||
     settings.notify_on_ddns_failure != null ||
@@ -1383,7 +1387,7 @@ function buildNotifyWebhookJSON(): string {
     key: '',
     topic: notifyWebhook.topic.trim(),
     url: notifyWebhook.url.trim(),
-    has_secret: notifyWebhook.has_secret || Boolean(notifyWebhookKey.value.trim()),
+    has_secret: (notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider) || Boolean(notifyWebhookKey.value.trim()),
   }
   return JSON.stringify(payload)
 }
@@ -1416,6 +1420,8 @@ function buildNotifyTestPayload(): NotifyTestPayload {
     on_cert_renew_success: notifyEventFlags.on_cert_renew_success,
     on_cert_renew_failure: notifyEventFlags.on_cert_renew_failure,
     on_ip_frequent_access: notifyEventFlags.on_ip_frequent_access,
+    on_scan:notifyEventFlags.on_scan,
+    on_cc:notifyEventFlags.on_cc,
     on_login_failure: notifyEventFlags.on_login_failure,
     on_nginx_reload_failure: notifyEventFlags.on_nginx_reload_failure,
     ip_frequent_threshold: notifyIPFrequentThreshold.value,
@@ -1423,7 +1429,7 @@ function buildNotifyTestPayload(): NotifyTestPayload {
     login_failure_threshold: notifyLoginFailureThreshold.value,
     login_failure_window_sec: notifyLoginFailureWindowSec.value,
     smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
-    webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret),
+    webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider),
     telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
   }
 }
@@ -1453,7 +1459,7 @@ function buildSavePayload() {
     notify_email_json: buildNotifyEmailJSON(),
     notify_smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
     notify_webhook_json: buildNotifyWebhookJSON(),
-    notify_webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret),
+    notify_webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider),
     notify_telegram_json: buildNotifyTelegramJSON(),
     notify_telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
     notify_on_ddns_ip_change: notifyEventFlags.on_ddns_ip_change ? '1' : '0',
@@ -1462,6 +1468,8 @@ function buildSavePayload() {
     notify_on_cert_renew_success: notifyEventFlags.on_cert_renew_success ? '1' : '0',
     notify_on_cert_renew_failure: notifyEventFlags.on_cert_renew_failure ? '1' : '0',
     notify_on_ip_frequent_access: notifyEventFlags.on_ip_frequent_access ? '1' : '0',
+    notify_on_scan:notifyEventFlags.on_scan?'1':'0',
+    notify_on_cc:notifyEventFlags.on_cc?'1':'0',
     notify_on_login_failure: notifyEventFlags.on_login_failure ? '1' : '0',
     notify_on_nginx_reload_failure: notifyEventFlags.on_nginx_reload_failure ? '1' : '0',
     notify_ip_frequent_threshold: String(notifyIPFrequentThreshold.value || 100),
@@ -2368,4 +2376,10 @@ onMounted(() => {
 @container(max-width:730px){.notify-form{grid-template-columns:minmax(0,1fr)}.notify-test-row{grid-column:auto}}
 @container(max-width:420px){.settings-navigation{gap:3px;padding:5px}.settings-nav-item{font-size:11px;min-height:57px}.settings-nav-item .n-icon{font-size:17px}.provider-row{gap:6px}.save-bar{padding:10px}.theme-cards{grid-template-columns:repeat(3,minmax(0,1fr))}.theme-card{flex-direction:column;min-height:56px}.theme-card__check{display:none}}
 .settings-load-error{display:flex;align-items:center;gap:10px;color:var(--fonu-error);margin-bottom:12px}
+.provider-editor .provider-edit-block {background:transparent;padding:0;gap:16px;display:flex;flex-direction:column;}
+.provider-edit-block .acme-provider-block__head {justify-content:flex-end;padding:4px 0 10px;border-bottom:1px solid var(--fonu-border);margin-bottom:4px;}
+.provider-modal-actions {padding-top:4px;}
+.global-nginx-head {padding:10px;border:1px solid var(--fonu-border);border-radius:8px;background:var(--fonu-bg);margin:12px 0 10px;}
+.log-panel-actions {display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
+.nginx-mode-toggle {gap:6px;}
 </style>
