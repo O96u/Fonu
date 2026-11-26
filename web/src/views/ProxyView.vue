@@ -2411,7 +2411,7 @@ onUnmounted(() => {
 }
 
 .proxy-entry-card__head:focus-within .proxy-entry-card__intro:focus-visible {
-  outline: 2px solid rgba(16, 185, 129, 0.45);
+  outline: 2px solid var(--fonu-brand);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -2520,12 +2520,12 @@ onUnmounted(() => {
 }
 
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent) {
-  color: #059669;
+  color: var(--fonu-brand-text);
 }
 
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) {
-  color: #047857;
-  background: rgba(16, 185, 129, 0.12);
+  color: var(--fonu-brand-text);
+  background: var(--fonu-brand-soft);
 }
 
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--danger) {
@@ -2716,7 +2716,7 @@ onUnmounted(() => {
 .proxy-table { width: 100%; }
 
 .proxy-table :deep(.proxy-row--active td) {
-  background: color-mix(in srgb, #10b981 8%, var(--fonu-surface, #fff));
+  background: color-mix(in srgb, var(--fonu-brand) 8%, var(--fonu-surface, #fff));
 }
 
 .proxy-table :deep(.proxy-row--disabled td) {
@@ -2740,7 +2740,7 @@ onUnmounted(() => {
 
 .proxy-table :deep(.proxy-row--active .n-data-table-td--fixed-right),
 .proxy-table :deep(.proxy-row--active .n-data-table-td--fixed-left) {
-  background: color-mix(in srgb, #10b981 8%, var(--fonu-surface, #fff));
+  background: color-mix(in srgb, var(--fonu-brand) 8%, var(--fonu-surface, #fff));
 }
 
 .proxy-enable-cell {
@@ -2774,7 +2774,7 @@ onUnmounted(() => {
   min-width: 0;
   font-size: 12px;
   font-family: var(--fonu-mono);
-  color: #2563eb;
+  color: var(--fonu-brand-text);
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2782,7 +2782,7 @@ onUnmounted(() => {
 }
 
 .proxy-table :deep(.domain-cell__link:hover) {
-  color: #1d4ed8;
+  color: var(--fonu-brand-text);
   text-decoration: underline;
   text-decoration-skip-ink: none;
   text-underline-offset: 2px;
@@ -2798,14 +2798,14 @@ onUnmounted(() => {
   padding: 0;
   border: none;
   background: none;
-  color: #2563eb;
+  color: var(--fonu-brand-text);
   cursor: pointer;
   border-radius: 4px;
 }
 
 .proxy-table :deep(.domain-cell__link-action:hover) {
-  color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.08);
+  color: var(--fonu-brand-text);
+  background: var(--fonu-brand-soft);
 }
 
 .proxy-table :deep(.domain-cell__more) {
@@ -2816,12 +2816,12 @@ onUnmounted(() => {
   background: none;
   font: inherit;
   font-size: 12px;
-  color: #2563eb;
+  color: var(--fonu-brand-text);
   cursor: pointer;
 }
 
 .proxy-table :deep(.domain-cell__more:hover) {
-  color: #1d4ed8;
+  color: var(--fonu-brand-text);
   text-decoration: underline;
   text-decoration-skip-ink: none;
   text-underline-offset: 2px;
@@ -2854,7 +2854,7 @@ onUnmounted(() => {
   min-width: 0;
   font-size: 12px;
   font-family: var(--fonu-mono);
-  color: #2563eb;
+  color: var(--fonu-brand-text);
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2862,7 +2862,7 @@ onUnmounted(() => {
 }
 
 .domain-cell__popover-links :deep(.domain-cell__link:hover) {
-  color: #1d4ed8;
+  color: var(--fonu-brand-text);
   text-decoration: underline;
   text-decoration-skip-ink: none;
   text-underline-offset: 2px;
@@ -2878,14 +2878,14 @@ onUnmounted(() => {
   padding: 0;
   border: none;
   background: none;
-  color: #2563eb;
+  color: var(--fonu-brand-text);
   cursor: pointer;
   border-radius: 4px;
 }
 
 .domain-cell__popover-links :deep(.domain-cell__link-action:hover) {
-  color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.08);
+  color: var(--fonu-brand-text);
+  background: var(--fonu-brand-soft);
 }
 
 .proxy-table :deep(.proto-tags) {
@@ -2943,7 +2943,7 @@ onUnmounted(() => {
 .proxy-detail-modal__conn.is-active {
   color: var(--fonu-brand-text);
   background: var(--fonu-brand-soft);
-  border-color: rgba(16, 185, 129, 0.25);
+  border-color: color-mix(in srgb,var(--fonu-brand) 25%,var(--fonu-border));
 }
 
 .proxy-detail__tabbar {
@@ -3339,7 +3339,7 @@ onUnmounted(() => {
   width: 300px;
   flex-shrink: 0;
   padding: var(--fonu-space-5);
-  background: #f8fafc;
+  background: var(--fonu-bg);
   border-left: 1px solid var(--fonu-border);
   font-size: 13px;
   color: var(--fonu-text-secondary);
@@ -3392,8 +3392,8 @@ onUnmounted(() => {
   margin-top: var(--fonu-space-5);
   padding: 12px;
   border-radius: 8px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: var(--fonu-brand-soft);
+  color: var(--fonu-brand-text);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -3405,8 +3405,8 @@ onUnmounted(() => {
 }
 
 .proxy-modal__tip--warn {
-  background: #fffbeb;
-  color: #b45309;
+  background: color-mix(in srgb,var(--fonu-warning) 10%,var(--fonu-surface));
+  color: var(--fonu-warning);
 }
 
 

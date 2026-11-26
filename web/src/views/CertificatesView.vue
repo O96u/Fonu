@@ -1056,7 +1056,7 @@ function renderDomainTags(row: CertificateRecord) {
   const visible = domains.slice(0, 2)
   const extra = domains.length - visible.length
   const tags: VNode[] = visible.map((domain) =>
-    h(NTag, { size: 'small', round: true, bordered: false, type: 'info' }, () => domain),
+    h('span', { class: 'cert-domain-tag', title: domain }, domain),
   )
   if (extra > 0) {
     tags.push(h(NTag, { size: 'small', round: true, bordered: false }, () => `+${extra}`))
@@ -2164,7 +2164,7 @@ html.dark .apply-log-box {
 }
 
 .apply-step--done {
-  color: #10b981;
+  color: var(--fonu-brand-text);
 }
 
 .apply-step__dot {
@@ -2181,9 +2181,9 @@ html.dark .apply-log-box {
 
 .apply-step--active .apply-step__dot,
 .apply-step--done .apply-step__dot {
-  background: #10b981;
-  border-color: #10b981;
-  color: #fff;
+  background: var(--fonu-action);
+  border-color: var(--fonu-action);
+  color: var(--fonu-on-brand);
 }
 
 .apply-step__line {
@@ -2195,7 +2195,7 @@ html.dark .apply-log-box {
 }
 
 .apply-step__line--done {
-  background: #10b981;
+  background: var(--fonu-brand);
 }
 
 .ca-cards {
@@ -2222,12 +2222,12 @@ html.dark .apply-log-box {
 }
 
 .ca-card:hover {
-  border-color: rgba(16, 185, 129, 0.45);
+  border-color: color-mix(in srgb,var(--fonu-brand) 45%,transparent);
 }
 
 .ca-card--active {
-  border-color: #10b981;
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.18);
+  border-color: var(--fonu-brand);
+  box-shadow: 0 0 0 1px color-mix(in srgb,var(--fonu-brand) 18%,transparent);
 }
 
 .ca-card__check {
@@ -2237,14 +2237,14 @@ html.dark .apply-log-box {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid #d1d5db;
-  background: #fff;
+  border: 2px solid var(--fonu-border);
+  background: var(--fonu-surface);
   box-sizing: border-box;
 }
 
 .ca-card--active .ca-card__check {
-  border-color: #10b981;
-  background: #10b981;
+  border-color: var(--fonu-brand);
+  background: var(--fonu-brand);
 }
 
 .ca-card--active .ca-card__check::after {
@@ -2321,7 +2321,7 @@ html.dark .apply-log-box {
 }
 
 .ca-card--active .ca-card__title {
-  color: #059669;
+  color: var(--fonu-brand-text);
 }
 
 .apply-auto-renew {
@@ -2406,12 +2406,12 @@ html.dark .apply-log-box {
 }
 
 .verify-option:hover {
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: color-mix(in srgb,var(--fonu-brand) 40%,transparent);
 }
 
 .verify-option--active {
-  border-color: #10b981;
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2);
+  border-color: var(--fonu-brand);
+  box-shadow: 0 0 0 1px color-mix(in srgb,var(--fonu-brand) 20%,transparent);
 }
 
 .provider-logo {
@@ -2469,9 +2469,9 @@ html.dark .apply-log-box {
 }
 
 .verify-option--active .verify-option__check {
-  border-color: #10b981;
-  background: #10b981;
-  box-shadow: inset 0 0 0 4px #fff;
+  border-color: var(--fonu-brand);
+  background: var(--fonu-brand);
+  box-shadow: inset 0 0 0 4px var(--fonu-surface);
 }
 
 .apply-done-step__hint {
@@ -2589,4 +2589,5 @@ html.dark .apply-log-box {
 .cert-dns-binding__value { font-size:12px; color:var(--fonu-text-secondary); overflow-wrap:anywhere; }
 .deployment-history { border-top:1px solid var(--fonu-border); padding-top:12px; }
 .deployment-history p { margin:0; font-size:12px; color:var(--fonu-text-secondary); }
+.cert-table :deep(.cert-domain-tag){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:999px;padding:3px 8px;font-size:12px;color:var(--fonu-brand-text);background:var(--fonu-brand-soft);vertical-align:middle}
 </style>

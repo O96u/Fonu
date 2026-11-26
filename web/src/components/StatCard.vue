@@ -75,24 +75,12 @@ withDefaults(
   flex-shrink: 0;
 }
 
-.stat-card__icon--brand {
-  background: var(--fonu-brand-soft);
-  color: var(--fonu-brand);
-}
-
-.stat-card__icon--blue {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-}
-
-.stat-card__icon--green {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-}
-
+.stat-card__icon--brand,
+.stat-card__icon--blue,
+.stat-card__icon--green,
 .stat-card__icon--teal {
-  background: rgba(20, 184, 166, 0.12);
-  color: #14b8a6;
+  background: var(--fonu-brand-soft);
+  color: var(--fonu-brand-text);
 }
 
 .stat-card__label {

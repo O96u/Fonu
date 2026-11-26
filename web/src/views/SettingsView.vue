@@ -1912,12 +1912,12 @@ onMounted(() => {
 }
 
 .theme-card:hover {
-  border-color: color-mix(in srgb, #10b981 40%, var(--fonu-border));
+  border-color: color-mix(in srgb, var(--fonu-brand) 40%, var(--fonu-border));
 }
 
 .theme-card--active {
-  border-color: #10b981;
-  background: color-mix(in srgb, #10b981 6%, var(--fonu-bg));
+  border-color: var(--fonu-brand-text);
+  background: color-mix(in srgb, var(--fonu-brand) 6%, var(--fonu-bg));
 }
 
 .theme-card__icon {
@@ -1926,7 +1926,7 @@ onMounted(() => {
 }
 
 .theme-card--active .theme-card__icon {
-  color: #10b981;
+  color: var(--fonu-brand-text);
 }
 
 .theme-card__text {
@@ -1939,7 +1939,7 @@ onMounted(() => {
   top: 8px;
   right: 8px;
   font-size: 16px;
-  color: #10b981;
+  color: var(--fonu-brand-text);
 }
 
 .field-hint--error {
@@ -2312,7 +2312,7 @@ onMounted(() => {
 }
 
 .data-action-card:hover:not(:disabled):not(.data-action-card--disabled) {
-  border-color: color-mix(in srgb, #10b981 35%, var(--fonu-border));
+  border-color: color-mix(in srgb, var(--fonu-brand) 35%, var(--fonu-border));
 }
 
 .data-action-card:disabled,
@@ -2324,7 +2324,7 @@ onMounted(() => {
 
 .data-action-card__icon {
   font-size: 18px;
-  color: #10b981;
+  color: var(--fonu-brand-text);
 }
 
 .data-action-card__title {

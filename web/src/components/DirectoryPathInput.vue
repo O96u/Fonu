@@ -156,7 +156,7 @@ function selectPath(path: string) {
 
 .dir-picker__current-icon {
   flex-shrink: 0;
-  color: #8b5cf6;
+  color: var(--fonu-brand-text);
 }
 
 .dir-picker__current-text {
@@ -200,7 +200,7 @@ function selectPath(path: string) {
 
 .dir-picker__item-icon {
   flex-shrink: 0;
-  color: #8b5cf6;
+  color: var(--fonu-brand-text);
 }
 
 .dir-picker__empty {
