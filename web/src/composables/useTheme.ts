@@ -55,7 +55,7 @@ const palette = computed(() => {
   const classic = preset.value === 'brand'
   const theme = previewTheme(preset.value, dark)
   const brandText = theme.brandText
-  const action = classic ? '#047857' : themeSurfaces[preset.value].light.brandText
+  const action = classic ? '#10b981' : themeSurfaces[preset.value].light.brandText
   return { ...surfaces[dark ? 'dark' : 'light'], ...theme, brand, brandText, action, hover: classic ? '#059669' : mix(brand, dark ? '#ffffff' : '#000000', .10), pressed: classic ? '#047857' : mix(brand, dark ? '#ffffff' : '#000000', .18), soft: brand + (dark ? '2e' : '1f'), onBrand: '#ffffff', chartSecondary: classic ? (dark ? '#60a5fa' : '#3b82f6') : theme.chartSecondary }
 })
 function mix(hex: string, other: string, amount: number) {
@@ -64,12 +64,12 @@ function mix(hex: string, other: string, amount: number) {
 const themeOverrides = computed<GlobalThemeOverrides>(() => {
   const p = palette.value
   return {
-    common: { primaryColor: p.action, primaryColorHover: mix(p.action, '#000000', .08), primaryColorPressed: mix(p.action, '#000000', .16), primaryColorSuppl: p.action, borderRadius: '8px', fontFamily: 'var(--fonu-font)', bodyColor: p.bg, cardColor: p.surface, modalColor: p.surface, popoverColor: p.surface, borderColor: p.border, dividerColor: p.border, textColor1: p.text, textColor2: p.secondary, textColor3: p.subtle, hoverColor: p.soft },
+    common: { primaryColor: p.action, primaryColorHover: themeAccent.value==='brand'?'#059669':mix(p.action, '#000000', .08), primaryColorPressed: themeAccent.value==='brand'?'#047857':mix(p.action, '#000000', .16), primaryColorSuppl: themeAccent.value==='brand'?'#34d399':p.action, borderRadius: '8px', fontFamily: 'var(--fonu-font)', bodyColor: p.bg, cardColor: p.surface, modalColor: p.surface, popoverColor: p.surface, borderColor: p.border, dividerColor: p.border, textColor1: p.text, textColor2: p.secondary, textColor3: p.subtle, hoverColor: p.soft },
     Card: { borderRadius: '12px', color: p.surface, borderColor: p.border },
     Button: { borderRadiusMedium: '8px', heightMedium: '36px', textColorPrimary: p.onBrand, textColorHoverPrimary: p.onBrand, textColorPressedPrimary: p.onBrand, textColorFocusPrimary: p.onBrand },
-    Input: { borderRadius: '6px', color: p.surface },
-    DataTable: { borderRadius: '8px', thColor: p.muted, tdColor: p.surface, borderColor: p.border },
-    Tabs: { tabGapMediumLine: '24px', tabPaddingMediumLine: '12px 4px' },
+    Input: { borderRadius: '8px', color: isDark.value?p.bg:p.surface },
+    DataTable: { borderRadius: '12px', thColor: themeAccent.value==='brand'?(isDark.value?p.bg:'#f9fafb'):p.muted, tdColor: p.surface, borderColor: p.border },
+    Tabs: { tabGapMediumLine: '32px', tabPaddingMediumLine: '12px 4px' },
     Layout: { color: p.bg, siderColor: p.chrome, headerColor: p.chrome },
     Menu: { itemColorActive: p.soft, itemTextColorActive: p.brandText, itemIconColorActive: p.brand, itemColorActiveHover: p.soft },
     Radio: { buttonBorderColorActive: p.brand, buttonTextColorActive: p.brandText, buttonColorActive: p.soft, buttonBoxShadowHover: 'none', buttonBoxShadowFocus: 'none' },

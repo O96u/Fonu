@@ -1,10 +1,10 @@
 <template>
   <n-alert v-if="status && status.state !== 'unknown' && status.state !== 'confirmed'" :type="kind" :title="title" style="margin-bottom: 16px">
-    <div v-if="status.last_error">{{ status.last_error }}</div>
-    <div v-if="status.desired_revision">目标版本：{{ status.desired_revision.slice(0, 12) }}</div>
-    <div v-if="status.confirmed_revision">已确认 worker 版本：{{ status.confirmed_revision.slice(0, 12) }}</div>
-    <div v-else-if="status.last_requested_revision">最近提交重载版本：{{ status.last_requested_revision.slice(0, 12) }}</div>
-    <details v-if="status.history?.length" class="apply-history">
+    <div v-if="status.last_error">{{ status.last_error }}</div><div v-if="compact && status.state==='failed'">上次配置应用未成功；请在全局设置中查看详情。</div>
+    <div v-if="!compact && status.desired_revision">目标版本：{{ status.desired_revision.slice(0, 12) }}</div>
+    <div v-if="!compact && status.confirmed_revision">已确认 worker 版本：{{ status.confirmed_revision.slice(0, 12) }}</div>
+    <div v-else-if="!compact && status.last_requested_revision">最近提交重载版本：{{ status.last_requested_revision.slice(0, 12) }}</div>
+    <details v-if="!compact && status.history?.length" class="apply-history">
       <summary>最近配置应用记录（{{ Math.min(status.history.length,5) }}）</summary>
       <div v-for="(item,index) in status.history.slice(0,5)" :key="item.created_at+'-'+index" class="apply-history__row">
         <span>{{ historyLabel(item.state) }}</span>

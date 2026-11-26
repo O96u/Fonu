@@ -2,6 +2,11 @@ package discovery
 
 import (
 	"strings"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 )
 
@@ -38,4 +43,13 @@ func TestSlugPlatform(t *testing.T) {
 	if got == "" {
 		t.Fatal("expected non-empty slug")
 	}
+}
+
+func TestProbeHTTPRecognizesTLSListener(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("<title>Secure service</title>")) }))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	upstream, title, _, _ := New().probeHTTP(context.Background(), u.Hostname(), port)
+	if upstream != srv.URL+"/" || title != "Secure service" { t.Fatalf("got %q %q", upstream, title) }
 }

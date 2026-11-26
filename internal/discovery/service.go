@@ -54,13 +54,14 @@ var commonPorts = []int{
 
 func New() *Service {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 内网探测需接受自签证书
 	return &Service{
 		client: &http.Client{
 			Timeout:   2 * time.Second,
 			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 2 {
+				if len(via) >= 2 || req.URL.Host != via[0].URL.Host {
 					return http.ErrUseLastResponse
 				}
 				return nil
@@ -163,6 +164,11 @@ func (s *Service) probeHTTP(ctx context.Context, host string, port int) (upstrea
 
 		rawBody := string(bodyBytes)
 		lowerBody := strings.ToLower(rawBody)
+		if scheme == "http" && resp.StatusCode == http.StatusBadRequest && strings.Contains(lowerBody, "plain http request was sent to https port") {
+			continue
+		}
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusBadRequest { continue }
+		if resp.Request != nil && resp.Request.URL.Scheme == "https" { url = fmt.Sprintf("https://%s/", joinHostPort(host, port)) }
 		title = extractTitle(lowerBody, rawBody)
 		server = strings.TrimSpace(resp.Header.Get("Server"))
 		return url, title, lowerBody, server

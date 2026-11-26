@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v2.0.0-beta.27] - 2026-11-26
+
+- 反代恢复基础配置、安全设置、Nginx 三页；域名文本直接同步草稿，保留 DDNS 选择；发现服务自动扫描、列表展示、默认不勾选、不自动填入示例域名。
+- 修复发现服务 HTTPS 端口误识别、安全设置双分割线及 Nginx 状态横幅挤压操作区；默认品牌色恢复 V1 的 #10B981。
+- 图标支持同源 HTML link icon 回退及短时重试，仍限制公网地址和图片类型，不放宽 SSRF 防护。
+
 ## [v2.0.0-beta.26] - 2026-11-26
 
 - Beta 25 反代修复的重新打包版本：修复编辑弹窗焦点与键盘输入、统一 Tab、调整多域名卡片布局、简化监听管理并补充请求防护。

@@ -1,12 +1,13 @@
 <template>
   <header class="service-page-header">
-    <div class="service-page-title"><h1>反向代理</h1><NginxApplyBanner compact/></div>
+    <div class="service-page-title"><h1>反向代理</h1></div>
     <div class="service-page-actions">
-      <n-button @click="openDiscoveryModal(defaultEntryGroup)"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
+      <n-button @click="openDiscoveryModal()"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="router.push({name:'settings',query:{tab:'advanced'}})">全局设置</n-button>
       <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
     </div>
   </header>
+  <NginxApplyBanner compact/>
 
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
@@ -256,8 +257,8 @@
         <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" role="tab" :aria-selected="formTab===tab.key" :tabindex="saving||nginxSaving?-1:0" :disabled="saving||nginxSaving" @keydown.enter.prevent="switchFormTab(tab.key)" @keydown.space.prevent="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count" aria-hidden="true"> {{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot" aria-hidden="true"/></n-tab>
       </n-tabs>
     </template>
-    <ProxyBasicEditor v-show="formTab==='basic'||formTab==='https'" :section="formTab==='https'?'https':'basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
-    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
+    <ProxyBasicEditor v-show="formTab==='basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
+    <ProxySecurityEditor v-if="formTab==='security'" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
     <template #footer>
@@ -526,8 +527,8 @@ const deleteBusy=ref(false)
 const deleteError=ref('')
 const discoveryError=ref('')
 const discoveryScanned=ref(false)
-type EditorTab='basic'|'https'|'security'|'advanced'|'nginx'
-const editorTabs:{key:EditorTab;label:string}[]=[{key:'basic',label:'基础配置'},{key:'https',label:'HTTPS / 监听'},{key:'security',label:'安全策略'},{key:'advanced',label:'高级设置'},{key:'nginx',label:'Nginx'}]
+type EditorTab='basic'|'security'|'nginx'
+const editorTabs:{key:EditorTab;label:string}[]=[{key:'basic',label:'基础配置'},{key:'security',label:'安全设置'},{key:'nginx',label:'Nginx'}]
 const formTab=ref<EditorTab>('basic')
 const saveError=ref('')
 const draftBaseline=ref('')
@@ -662,7 +663,6 @@ const canReorderEntries = computed(() => !hasFilters.value && !reordering.value 
   entryGroups.value.every(group => group.entryId != null))
 
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
-const defaultEntryGroup=computed(()=>entryGroups.value.find(g=>g.listen.https_enabled&&g.listen.listen_port===nginxHttpsPort.value))
 const ruleEntryNames = computed(() => {
   const names = new Map<number,string>()
   for (const group of entryGroups.value) for (const rule of group.rules) names.set(rule.id,entryGroupDisplayName(group))
@@ -756,6 +756,7 @@ function syncSecurityExpanded() {
   if (form.rate_limit_enabled || form.conn_limit_enabled) expanded.add('traffic')
   if (form.security_headers || form.safe_headers) expanded.add('headers')
   if (form.block_sensitive_paths || form.max_body_mb>0 || form.allowed_methods.length) expanded.add('request')
+  if (form.proxy_ssl_verify_off || form.proxy_host_upstream || form.tls_min_13_only) expanded.add('advanced')
   securityExpanded.value = expanded.size > 0 ? [...expanded] : ['ip']
 }
 
@@ -976,23 +977,15 @@ function confirmDeleteEntry(group: ProxyEntryGroup) {
   })
 }
 
-function suggestDiscoveryHostname(service: DiscoveredService): string {
-  const slug = (service.platform || service.name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug ? `${slug}.example.com` : ''
-}
-
 function buildDiscoveryRows(items: DiscoveredService[]): DiscoveryRow[] {
   return items
     .filter((service) => service.detected)
     .map((service, idx) => ({
       id: `${service.platform}-${service.port}-${idx}`,
-      selected: true,
+      selected: false,
       service,
       ruleName: service.name,
-      hostname: suggestDiscoveryHostname(service),
+      hostname: '',
     }))
 }
 
@@ -1005,6 +998,7 @@ function openDiscoveryModal(group?: ProxyEntryGroup) {
   discoveryError.value=''
   discoveryScanned.value=false
   showDiscoveryModal.value = true
+  void runDiscoveryScan()
 }
 
 function patchDiscoveryRow(id: string, patch: Partial<DiscoveryRow>) {
@@ -1061,10 +1055,19 @@ async function submitDiscovery() {
   discoveryAdding.value = true
   try {
     if(!Number.isInteger(discoveryListenPort.value)||discoveryListenPort.value<1||discoveryListenPort.value>65535)throw new Error('监听端口必须在 1–65535 范围内')
+    const seen = new Set<string>()
     const create = selected.map(row => {
+      const hosts=normalizeFrontendHostValues([row.hostname.trim()])
+      const host=hosts[0]
+      if (/(^|\.)example\.(com|net|org)(:\d+)?$/i.test(host)) throw new Error('请填写实际域名，不要使用示例域名')
+      const key=hostBindingKey(parseHostname(host),effectiveListenPort(host,discoveryListenPort.value))
+      if(seen.has(key))throw new Error(`前端域名 ${host} 重复`)
+      seen.add(key)
+      const conflict=findHostConflict(hosts,discoveryListenPort.value)
+      if(conflict)throw new Error(formatHostConflictMessage(conflict))
       const payload: ProxySavePayload = {
         upstream: row.service.upstream,
-        hosts: [row.hostname.trim()],
+        hosts,
         name: row.ruleName.trim() || defaultRuleNameForHost(row.hostname) || row.service.name,
         enabled: true,
       }
@@ -1076,6 +1079,7 @@ async function submitDiscovery() {
       return payload
     })
     const saved=await api.saveProxyBatch({ create })
+    if(saved.length!==create.length)throw new Error('服务端未返回完整的创建结果，请刷新规则列表核对后重试')
     await assignSavedRules(saved,discoveryBusinessGroup.value)
     message.success(`已添加 ${selected.length} 条规则`)
     showDiscoveryModal.value = false

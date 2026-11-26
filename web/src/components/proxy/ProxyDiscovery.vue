@@ -2,20 +2,21 @@
   <ProxyEditorFrame :show="showDiscoveryModal" title="发现内网服务" subtitle="扫描常见 Web 端口，批量创建独立代理规则" :icon="SearchOutline" :busy="discoveryLoading||discoveryAdding" wide @close="emit('update:showDiscoveryModal',false)">
     <div class="discovery-workspace">
       <section class="scan-card">
-        <div class="scan-title"><n-icon :component="SearchOutline"/><strong>扫描目标</strong></div>
+        
         <div class="scan-input"><ProxyDraftInput :value="discoveryHost" :disabled="discoveryLoading||discoveryAdding" label="扫描地址" placeholder="127.0.0.1 或内网 IP" @update:value="emit('update:discoveryHost',$event)" @enter="emit('scan')"/><n-button type="primary" :loading="discoveryLoading" :disabled="discoveryAdding" @click="emit('scan')">{{scanned?'重新扫描':'开始发现'}}</n-button></div>
-        <small>扫描由 Fonu 后端执行，仅识别支持的常见 HTTP / HTTPS 服务。重新扫描同一地址时保留已填写内容。</small>
+        <small>{{discoverySummary || "扫描常见 HTTP / HTTPS 端口，勾选服务后填写实际域名。"}}</small>
         <div v-if="discoveryLoading" class="scan-status"><n-spin size="small"/>正在扫描 {{discoveryScanHost}} …</div>
       </section>
       <div class="discovery-options"><label>监听端口<n-input-number :value="listenPort" :min="1" :max="65535" :disabled="discoveryAdding" @update:value="emit('update:listenPort',$event??0)"/></label><label>协议<n-select :value="httpsEnabled?'https':'http'" :options="[{label:'HTTPS',value:'https'},{label:'HTTP',value:'http'}]" :disabled="discoveryAdding" @update:value="emit('update:httpsEnabled',$event==='https')"/></label><label>业务分组<n-select :value="businessGroup" :options="businessOptions" :disabled="discoveryAdding" @update:value="emit('update:businessGroup',$event)"/></label></div>
       <n-alert v-if="error" type="error" :bordered="false">{{error}}</n-alert>
       <section class="scan-results">
-        <div class="result-heading"><div><strong>发现结果</strong><small>{{discoverySummary|| (scanned?'扫描完成':'填写目标后开始扫描')}}</small></div><n-checkbox v-if="discoveryRows.length" :checked="discoverySelectAllChecked" :indeterminate="discoverySelectAllIndeterminate" :disabled="discoveryLoading||discoveryAdding" @update:checked="emit('selectAll',$event)">全选</n-checkbox></div>
+        <div class="scan-table-head"><n-checkbox :checked="discoverySelectAllChecked" :indeterminate="discoverySelectAllIndeterminate" :disabled="discoveryLoading||discoveryAdding||!discoveryRows.length" aria-label="全选" @update:checked="emit('selectAll',$event)"/><strong>服务</strong><strong>规则名称</strong><strong>前端域名</strong></div>
         <n-empty v-if="!discoveryRows.length&&!discoveryLoading" :description="scanned?'未发现可添加的服务':'尚未扫描'"/>
-        <article v-for="row in discoveryRows" :key="row.id" class="scan-result" :class="{'scan-result--selected':row.selected}">
-          <div class="scan-result-head"><n-checkbox :checked="row.selected" :disabled="discoveryLoading||discoveryAdding" :aria-label="'选择 '+row.service.name" @update:checked="emit('patchRow',row.id,{selected:$event})"/><div class="scan-result-icon"><n-icon :component="ServerOutline"/></div><div class="scan-result-title"><strong>{{row.service.name}}</strong><small>{{row.service.upstream}}</small></div><n-tag size="small" :bordered="false" type="success">已发现</n-tag></div>
-          <div v-if="row.service.suggestion" class="scan-hint">{{row.service.suggestion}}</div>
-          <div class="scan-fields"><label>规则名称<ProxyDraftInput :value="row.ruleName" small :maxlength="100" label="规则名称" placeholder="服务名称" :disabled="!row.selected||discoveryLoading||discoveryAdding" @update:value="emit('patchRow',row.id,{ruleName:$event})"/></label><label>前端域名<ProxyDraftInput :value="row.hostname" small label="前端域名" placeholder="nas.example.com" :disabled="!row.selected||discoveryLoading||discoveryAdding" @update:value="emit('patchRow',row.id,{hostname:$event})"/></label></div>
+        <article v-for="row in discoveryRows" :key="row.id" class="scan-result">
+          <n-checkbox :checked="row.selected" :disabled="discoveryLoading||discoveryAdding" :aria-label="'选择 '+row.service.name" @update:checked="emit('patchRow',row.id,{selected:$event})"/>
+          <div class="scan-result-title"><small>{{row.service.upstream}}</small><strong>{{row.service.name}}</strong><small v-if="row.service.suggestion">{{row.service.suggestion}}</small></div>
+          <label><span class="scan-mobile-label">规则名称</span><ProxyDraftInput :value="row.ruleName" small :maxlength="100" label="规则名称" placeholder="服务名称" :disabled="!row.selected||discoveryLoading||discoveryAdding" @update:value="emit('patchRow',row.id,{ruleName:$event})"/></label>
+          <label><span class="scan-mobile-label">前端域名</span><ProxyDraftInput :value="row.hostname" small label="前端域名" placeholder="nas.example.com" :disabled="!row.selected||discoveryLoading||discoveryAdding" @update:value="emit('patchRow',row.id,{hostname:$event})"/></label>
         </article>
       </section>
     </div>
@@ -24,8 +25,8 @@
 </template>
 <script setup lang="ts">
 import {computed} from 'vue'
-import {NButton,NIcon,NCheckbox,NSpin,NEmpty,NSelect,NAlert,NTag,NInputNumber} from 'naive-ui'
-import {SearchOutline,ServerOutline} from '@vicons/ionicons5'
+import {NButton,NCheckbox,NSpin,NEmpty,NSelect,NAlert,NInputNumber} from 'naive-ui'
+import {SearchOutline} from '@vicons/ionicons5'
 import type {DiscoveredService} from '../../api/types'
 import ProxyEditorFrame from './ProxyEditorFrame.vue'
 import ProxyDraftInput from './ProxyDraftInput.vue'
@@ -36,6 +37,6 @@ const selectedCount=computed(()=>props.discoveryRows.filter(row=>row.selected).l
 const missingCount=computed(()=>props.discoveryRows.filter(row=>row.selected&&!row.hostname.trim()).length)
 </script>
 <style scoped>
-.discovery-workspace{display:grid;gap:14px}.scan-card{border:1px solid var(--fonu-border);border-radius:9px;padding:12px;background:var(--fonu-bg-muted);display:grid;gap:9px}.scan-title,.scan-input,.scan-status,.result-heading,.scan-result-head{display:flex;align-items:center;gap:9px}.scan-title :deep(.n-icon){color:var(--fonu-brand-text);font-size:18px}.scan-input :deep(.draft-field){flex:1;min-width:0}.scan-card small,.result-heading small,.scan-result-title small{display:block;color:var(--fonu-text-secondary);font-size:12px;overflow-wrap:anywhere}.scan-status{color:var(--fonu-brand-text);font-size:12px}.discovery-options,.scan-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.discovery-options label,.scan-fields label{display:grid;gap:5px;font-size:12px;color:var(--fonu-text-secondary);min-width:0}.scan-results{display:grid;gap:9px}.result-heading{justify-content:space-between;flex-wrap:wrap}.scan-result{border:1px solid var(--fonu-border);border-radius:8px;padding:11px;display:grid;gap:9px}.scan-result--selected{border-color:var(--fonu-brand);background:color-mix(in srgb,var(--fonu-brand-soft) 22%,var(--fonu-surface))}.scan-result-icon{display:grid;place-items:center;width:33px;height:33px;border-radius:7px;background:var(--fonu-bg-muted);color:var(--fonu-brand-text);flex-shrink:0;font-size:18px}.scan-result-title{flex:1;min-width:0;overflow-wrap:anywhere}.scan-hint{font-size:11px;color:var(--fonu-text-secondary)}.scan-count{flex:1 1 130px;font-size:12px;color:var(--fonu-text-secondary)}
-@container proxy-editor(max-width:520px){.discovery-options,.scan-fields{grid-template-columns:1fr}.scan-input{flex-wrap:wrap}.scan-input :deep(.draft-field){flex-basis:100%}}
+.discovery-workspace{display:grid;gap:12px;min-width:0}.scan-card{display:grid;gap:6px}.scan-input,.scan-status{display:flex;align-items:center;gap:8px}.scan-input :deep(.draft-field){flex:1;min-width:0}.scan-card small,.scan-result-title small{display:block;color:var(--fonu-text-secondary);font-size:12px;overflow-wrap:anywhere}.scan-status{color:var(--fonu-brand-text);font-size:12px}.discovery-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.discovery-options label{display:grid;gap:4px;font-size:12px;color:var(--fonu-text-secondary);min-width:0}.scan-results{border:1px solid var(--fonu-border);border-radius:8px;overflow:hidden;min-width:0}.scan-table-head,.scan-result{display:grid;grid-template-columns:24px minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr);align-items:center;gap:10px;padding:10px 12px}.scan-table-head{background:var(--fonu-bg-muted);font-size:12px;color:var(--fonu-text-secondary)}.scan-result{border-top:1px solid var(--fonu-border)}.scan-result-title,.scan-result label{min-width:0;overflow-wrap:anywhere}.scan-result-title strong{display:block;font-size:13px;margin:4px 0}.scan-mobile-label{display:none}.scan-count{flex:1 1 130px;font-size:12px;color:var(--fonu-text-secondary)}
+@container proxy-editor(max-width:600px){.discovery-options{grid-template-columns:repeat(2,minmax(0,1fr))}.scan-table-head{display:none}.scan-result{grid-template-columns:24px minmax(0,1fr);gap:7px}.scan-result label{grid-column:2}.scan-mobile-label{display:block;font-size:12px;margin-bottom:4px;color:var(--fonu-text-secondary)}.scan-input{flex-wrap:wrap}.scan-input :deep(.draft-field){flex-basis:100%}}
 </style>

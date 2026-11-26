@@ -12,6 +12,8 @@ import (
  "strings"
  "sync"
  "time"
+
+ "golang.org/x/net/html"
 )
 
 const faviconMax = 256 * 1024
@@ -59,26 +61,60 @@ func faviconURL(domain string, port int, https bool) (string,bool) {
  if (https && port!=443) || (!https && port!=80) { host=net.JoinHostPort(domain,strconv.Itoa(port)) }
  return (&url.URL{Scheme:scheme,Host:host,Path:"/favicon.ico"}).String(),true
 }
-func fetchFavicon(ctx context.Context, target string) faviconEntry {
- result := faviconEntry{expires:time.Now().Add(15*time.Minute)}
- transport := &http.Transport{DialContext:faviconDial,DisableKeepAlives:true, TLSHandshakeTimeout:2*time.Second}
- defer transport.CloseIdleConnections()
- client := &http.Client{Transport:transport,Timeout:4*time.Second,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
- req,err:=http.NewRequestWithContext(ctx,http.MethodGet,target,nil)
- if err!=nil{return result}
- req.Header.Set("Accept","image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg,image/gif,image/webp")
- resp,err:=client.Do(req)
- if err!=nil{return result}
- defer resp.Body.Close()
- if resp.StatusCode!=http.StatusOK{return result}
- data,err:=io.ReadAll(io.LimitReader(resp.Body,faviconMax+1))
- if err!=nil || len(data)==0 || len(data)>faviconMax{return result}
- mime:=http.DetectContentType(data)
- switch mime {
- case "image/png","image/jpeg","image/gif","image/webp","image/x-icon","image/vnd.microsoft.icon":
- default:return result
+// Only same-origin HTTP(S) redirects and icon links are followed. Every
+// connection continues to use the public-address-only, pinned dialer.
+func sameFaviconOrigin(a,b *url.URL) bool {
+ return a != nil && b != nil && a.Scheme == b.Scheme && strings.EqualFold(a.Host,b.Host) && b.User==nil && (b.Scheme=="http"||b.Scheme=="https")
+}
+func faviconCandidates(base *url.URL, data []byte) []string {
+ z:=html.NewTokenizer(strings.NewReader(string(data)))
+ var out []string
+ for len(out)<4 {
+  tt:=z.Next()
+  if tt==html.ErrorToken {break}
+  if tt!=html.StartTagToken && tt!=html.SelfClosingTagToken {continue}
+  t:=z.Token()
+  if t.Data!="link" {continue}
+  var rel,href string
+  for _,a:=range t.Attr {switch a.Key {case "rel":rel=a.Val;case "href":href=a.Val}}
+  icon:=false
+  for _,v:=range strings.Fields(strings.ToLower(rel)){if v=="icon"||v=="apple-touch-icon"||v=="apple-touch-icon-precomposed"{icon=true}}
+  if !icon||href==""{continue}
+  u,err:=base.Parse(href);if err!=nil||!sameFaviconOrigin(base,u){continue}
+  u.Fragment=""
+  out=append(out,u.String())
  }
- result.data,result.mime,result.expires=data,mime,time.Now().Add(24*time.Hour)
+ return out
+}
+func fetchFavicon(ctx context.Context, target string) faviconEntry {
+ result:=faviconEntry{expires:time.Now().Add(15*time.Minute)}
+ origin,err:=url.Parse(target);if err!=nil{return result}
+ transport:= &http.Transport{DialContext:faviconDial,DisableKeepAlives:true,TLSHandshakeTimeout:2*time.Second}
+ defer transport.CloseIdleConnections()
+ client:= &http.Client{Transport:transport,Timeout:3*time.Second,CheckRedirect:func(req *http.Request,via []*http.Request)error{
+  if len(via)>=3||!sameFaviconOrigin(origin,req.URL){return http.ErrUseLastResponse};return nil
+ }}
+ read:=func(addr string,accept string,max int)([]byte,*url.URL){
+  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,addr,nil);if err!=nil{return nil,nil}
+  req.Header.Set("Accept",accept)
+  resp,err:=client.Do(req);if err!=nil{return nil,nil}
+  defer resp.Body.Close()
+  if resp.StatusCode!=http.StatusOK{return nil,nil}
+  data,err:=io.ReadAll(io.LimitReader(resp.Body,int64(max+1)));if err!=nil||len(data)==0||len(data)>max{return nil,nil}
+  return data,resp.Request.URL
+ }
+ image:=func(addr string)bool{
+  data,_:=read(addr,"image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg,image/gif,image/webp",faviconMax)
+  if len(data)==0{return false}
+  mime:=http.DetectContentType(data)
+  switch mime{case "image/png","image/jpeg","image/gif","image/webp","image/x-icon","image/vnd.microsoft.icon":default:return false}
+  result.data,result.mime,result.expires=data,mime,time.Now().Add(24*time.Hour)
+  return true
+ }
+ if image(target){return result}
+ root:=*origin;root.Path="/";root.RawQuery=""
+ data,base:=read(root.String(),"text/html",256*1024)
+ if base!=nil{for _,candidate:=range faviconCandidates(base,data){if candidate!=target&&image(candidate){break}}}
  return result
 }
 func (h *ProxyHandler) Favicon(w http.ResponseWriter,r *http.Request) {
@@ -91,7 +127,7 @@ func (h *ProxyHandler) Favicon(w http.ResponseWriter,r *http.Request) {
  target,ok:=faviconURL(domain,port,rule.HTTPSEnabled)
  if !ok {http.NotFound(w,r);return}
  entry,ok:=cachedFavicon(r.Context(),target)
- if !ok {w.Header().Set("Retry-After","2");w.WriteHeader(http.StatusServiceUnavailable);return}
+ if !ok {w.Header().Set("Retry-After","2");w.Header().Set("Cache-Control","no-store");w.WriteHeader(http.StatusServiceUnavailable);return}
  if len(entry.data)==0 {w.Header().Set("Cache-Control","private, max-age=900");http.NotFound(w,r);return}
  w.Header().Set("Content-Type",entry.mime)
  w.Header().Set("X-Content-Type-Options","nosniff")
@@ -118,7 +154,7 @@ func cachedFavicon(ctx context.Context,target string)(faviconEntry,bool){
   done:=make(chan struct{})
   faviconCache.inflight[target]=done
   faviconCache.Unlock()
-  fetchCtx,cancel:=context.WithTimeout(context.Background(),4*time.Second)
+  fetchCtx,cancel:=context.WithTimeout(context.Background(),8*time.Second)
   entry:=fetchFavicon(fetchCtx,target)
   cancel()
   faviconCache.Lock()
