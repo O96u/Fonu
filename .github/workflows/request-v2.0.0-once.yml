@@ -1,0 +1,21 @@
+name: Request v2.0.0 release (one-time)
+on:
+  push:
+    branches: [v2]
+    paths:
+      - '.github/workflows/request-v2.0.0-once.yml'
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch verified replacement release
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/v2" --jq .object.sha)"
+          [[ "$current" == "$GITHUB_SHA" ]] || { echo 'v2 changed; refusing to dispatch a different commit'; exit 1; }
+          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref v2 -f tag=v2.0.0 -f publish=true

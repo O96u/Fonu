@@ -536,7 +536,7 @@ onUnmounted(pauseDashboard)
 .stats-row :deep(.stat-card){padding:6px 14px}
 .stat-desc{font-size:11px;color:var(--fonu-text-secondary);margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stat-ip-desc{white-space:normal;overflow-wrap:anywhere;line-height:1.4}
-.workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12px;align-items:start}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start}
 .workspace-main,.workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}.workspace-main{container-type:inline-size}
 .recent-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto minmax(44px,auto);align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--fonu-border);font-size:12px}.recent-row:last-child{border-bottom:0}.recent-service,.recent-client{min-width:0;display:grid;gap:2px}.recent-service strong,.recent-service small,.recent-client span,.recent-client small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-service small,.recent-client small,.recent-time{color:var(--fonu-text-secondary);font-size:11px}.recent-time{text-align:right}.recent-empty{padding:10px 0;margin:0}
 @container(max-width:460px){.recent-row{grid-template-columns:minmax(0,1fr) auto auto;gap:7px}.recent-client{grid-row:2;grid-column:1/3}.recent-time{grid-column:3;grid-row:2}}
@@ -549,8 +549,7 @@ onUnmounted(pauseDashboard)
 .notice-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--fonu-border)}
 .notice-row:last-child{border:0}.notice-row>a{color:var(--fonu-text);text-decoration:none;min-width:0}.notice-row small{display:block;color:var(--fonu-text-secondary);margin-top:3px}.notice-row>.n-icon{color:var(--fonu-warning);font-size:22px}
 .rank-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;container-type:inline-size}.rank-grid :deep(.fonu-card){min-width:0}.rank-row{display:grid;grid-template-columns:minmax(70px,1fr) minmax(45px,2fr) auto;gap:10px;align-items:center;padding:8px 0;font-size:12px}.rank-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-row strong{font-variant-numeric:tabular-nums;font-weight:600}.rank-track{height:7px;border-radius:5px;background:var(--fonu-bg-muted);overflow:hidden}.rank-track i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name{display:flex;align-items:center;gap:6px}.service-icon{display:grid;place-items:center;flex-shrink:0;width:25px;height:25px;background:var(--fonu-brand-soft);color:var(--fonu-brand-text);border-radius:7px}.muted{color:var(--fonu-text-muted);font-size:12px}.text-link{border:0;background:transparent;color:var(--fonu-brand-text);cursor:pointer;font-size:12px;text-decoration:none}
-@container(max-width:1120px){.workspace-grid{grid-template-columns:minmax(0,1fr)}}
-@container(max-width:820px){.stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-row :deep(.stat-card:nth-child(2)){border-right:0}.workspace-grid,.rank-grid{grid-template-columns:1fr}}
+@container(max-width:820px){.stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-row :deep(.stat-card:nth-child(2)){border-right:0}}
 @container(max-width:400px){.stats-row{grid-template-columns:1fr}.stats-row :deep(.stat-card){border-right:0}}
 .service-table-volume{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-variant-numeric:tabular-nums}.service-table-bar{width:70px;height:5px;background:var(--fonu-bg-muted);border-radius:5px;overflow:hidden}.service-table-bar i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -568,4 +567,32 @@ onUnmounted(pauseDashboard)
 .recent-placeholder > span { grid-column:1/-1; }
 @container(max-width:520px) { .recent-full .recent-row { min-height:64px; grid-template-columns:minmax(0,1fr) auto auto; } .recent-full .recent-client{grid-row:2;grid-column:1/3}.recent-full .recent-time{grid-column:3;grid-row:2} }
 .recent-status { justify-self:center; }
+/* Keep the overview's two-column hierarchy at every window size. Only the
+   internals become denser; rankings remain side by side in the main column. */
+.workspace-side { container-type:inline-size; }
+.workspace-main > *, .workspace-side > * { min-width:0; }
+@container (max-width:820px) {
+  .workspace-grid { gap:8px; }
+  .workspace-main,.workspace-side { gap:8px; }
+}
+@container (max-width:620px) {
+  .rank-grid { gap:8px; }
+  .traffic-panel :deep(.fonu-card__body) { padding:12px; }
+  .recent-full :deep(.fonu-card__header), .recent-full :deep(.fonu-card__body) { padding-inline:10px; }
+}
+@container (max-width:540px) {
+  .rank-card :deep(.fonu-card__header), .rank-card :deep(.fonu-card__body) { padding-inline:10px; }
+  .rank-card .rank-row { grid-template-columns:minmax(0,1fr) auto; gap:3px 6px; }
+  .rank-card .rank-track { grid-column:1/-1; grid-row:2; height:5px; }
+  .rank-card .rank-row > :last-child { grid-column:2; grid-row:1; }
+  .rank-empty-label { white-space:normal; text-align:center; max-width:100%; }
+}
+@container (max-width:245px) {
+  .quick-links { grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; }
+  .quick-links a { overflow-wrap:anywhere; text-align:center; }
+  .workspace-side :deep(.fonu-card__header), .workspace-side :deep(.fonu-card__body) { padding-inline:10px; }
+  .workspace-side :deep(.runtime-pair) { flex-wrap:wrap; gap:3px 6px; }
+  .workspace-side :deep(.runtime-pair strong) { margin-left:auto; overflow-wrap:anywhere; }
+  .notice-row > a { overflow-wrap:anywhere; }
+}
 </style>

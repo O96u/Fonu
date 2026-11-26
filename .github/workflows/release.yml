@@ -27,6 +27,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       publish: ${{ steps.version.outputs.publish }}
       tag: ${{ steps.version.outputs.tag }}
+      skip: ${{ steps.availability.outputs.skip }}
     steps:
       - name: Validate release tag
         id: version
@@ -57,6 +58,7 @@ jobs:
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
       - name: Check release tag availability
+        id: availability
         if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,6 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+              echo 'Release already published; skipping duplicate tag-triggered build'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo 'Release already exists'; exit 1
           fi
           if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null); then
@@ -76,6 +83,7 @@ jobs:
           fi
   test:
     needs: setup
+    if: needs.setup.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -132,6 +140,11 @@ jobs:
         env:
           FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
         run: node scripts/settings-workspace.browser.mjs
+      - name: Verify dashboard two-column layout in real Chromium
+        working-directory: web
+        env:
+          FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
+        run: node scripts/dashboard-workspace.browser.mjs
       - name: Upload workspace screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -162,6 +175,7 @@ jobs:
       - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport ./internal/logstore ./internal/analytics
   security:
     needs: setup
+    if: needs.setup.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -420,7 +434,7 @@ jobs:
               exit 1
             fi
           fi
-          flags=(--verify-tag --title "Fonu $VERSION")
+          flags=(--verify-tag --title "$tag")
           if [[ "$PRERELEASE" == true ]]; then
             flags+=(--prerelease --latest=false)
           else
