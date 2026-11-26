@@ -33,6 +33,10 @@ export interface ProxySecurityConfig {
   proxy_host_upstream?: boolean
   tls_min_13_only?: boolean
   security_headers?: boolean
+  safe_headers?: boolean
+  block_sensitive_paths?: boolean
+  max_body_mb?: number
+  allowed_methods?: string[]
 }
 
 export interface ProxyRule {
@@ -96,6 +100,10 @@ export interface ProxySecurityPayload {
   proxy_host_upstream?: boolean
   tls_min_13_only?: boolean
   security_headers?: boolean
+  safe_headers?: boolean
+  block_sensitive_paths?: boolean
+  max_body_mb?: number
+  allowed_methods?: string[]
 }
 
 export interface ProxySavePayload {

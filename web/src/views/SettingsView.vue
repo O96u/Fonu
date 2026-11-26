@@ -638,6 +638,7 @@
       <n-tab-pane name="advanced" tab="高级">
         <div class="settings-grid settings-grid--single">
       <FonuCard title="Nginx 全局配置" subtitle="http 块内自定义片段">
+        <NginxApplyBanner/>
         <p class="field-hint">
           仅作用于 <code>http {}</code> 内部、各反代 <code>server {}</code> 之前。单条规则的 server 块请在反代详情 → Nginx 中编辑。
         </p>
@@ -787,6 +788,7 @@ import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import FonuCard from '../components/FonuCard.vue'
 import SettingsVersionCard from '../components/SettingsVersionCard.vue'
 import NginxCodeEditor from '../components/NginxCodeEditor.vue'
+import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'

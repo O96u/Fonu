@@ -18,6 +18,10 @@ type securityRequest struct {
 	ProxyHostUpstream *bool                  `json:"proxy_host_upstream,omitempty"`
 	TLSMin13Only      *bool                  `json:"tls_min_13_only,omitempty"`
 	SecurityHeaders   *bool                  `json:"security_headers,omitempty"`
+	SafeHeaders *bool `json:"safe_headers,omitempty"`
+	BlockSensitivePaths *bool `json:"block_sensitive_paths,omitempty"`
+	MaxBodyMB *int `json:"max_body_mb,omitempty"`
+	AllowedMethods *[]string `json:"allowed_methods,omitempty"`
 }
 
 type basicAuthRequest struct {
@@ -42,6 +46,10 @@ func (req *proxyRequest) securityInput() proxy.SecurityInput {
 		ProxyHostUpstream: s.ProxyHostUpstream,
 		TLSMin13Only:      s.TLSMin13Only,
 		SecurityHeaders:   s.SecurityHeaders,
+		SafeHeaders: s.SafeHeaders,
+		BlockSensitivePaths: s.BlockSensitivePaths,
+		MaxBodyMB: s.MaxBodyMB,
+		AllowedMethods: s.AllowedMethods,
 	}
 	if s.IPBlacklistText != nil {
 		in.IPBlacklist = proxy.ParseIPListText(*s.IPBlacklistText)

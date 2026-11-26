@@ -15,7 +15,7 @@
         </div>
       </div>
     </div>
-    <div class="service-target"><span :title="rule.upstream">{{ rule.upstream }}</span><small v-if="rule.listen_port!==443 || !rule.https_enabled || rule.listen_ipv6 || !rule.listen_ipv4">{{ rule.listen_port }} · {{ rule.https_enabled?'HTTPS':'HTTP' }} · {{ rule.listen_ipv4?'IPv4':'' }}{{ rule.listen_ipv4&&rule.listen_ipv6?'/':'' }}{{ rule.listen_ipv6?'IPv6':'' }}</small></div>
+    <div class="service-target"><span :title="rule.upstream">{{ rule.upstream }}</span><small>{{ rule.listen_port }} · {{ rule.https_enabled?'HTTPS':'HTTP' }} · {{ rule.listen_ipv4?'IPv4':'' }}{{ rule.listen_ipv4&&rule.listen_ipv6?'/':'' }}{{ rule.listen_ipv6?'IPv6':'' }}</small></div>
     <button type="button" class="service-visitors" title="近期访问 IP 数（非实时 TCP 连接数）" @click="emit('detail')"><n-icon :component="PeopleOutline"/><span>{{ traffic?.connections??'—' }}</span></button>
     <div class="service-rate"><span>↑ {{ traffic?formatRate(traffic.upload_rate):'—' }}</span><span>↓ {{ traffic?formatRate(traffic.download_rate):'—' }}</span></div>
     <div class="service-total"><span>↑ {{ traffic?formatBytes(traffic.upload_total):'—' }}</span><span>↓ {{ traffic?formatBytes(traffic.download_total):'—' }}</span></div>
@@ -54,7 +54,7 @@ function selectAction(key:string|number){if(key==='delete')emit('delete');else i
 .service-actions{display:flex;align-items:center;justify-content:flex-end;gap:1px;flex-wrap:wrap}.service-actions :deep(.n-button){width:26px;padding:0}
 .domain-icon{color:var(--fonu-text-secondary);font-size:16px;flex-shrink:0}.host-popover{display:flex;align-items:center;gap:6px;overflow-wrap:anywhere;max-width:320px}
 .service-row--child{background:var(--fonu-surface)}.service-row--child .service-identity{padding-left:12px}
-.service-row--card{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:12px}.service-row--card .service-identity{grid-column:1}.service-row--card .service-status{grid-column:2;grid-row:1}.service-row--card .service-target{grid-column:1/-1}.service-row--card .service-visitors{grid-column:1}.service-row--card .service-security{grid-column:2;justify-content:flex-end}.service-row--card .service-rate{grid-column:1}.service-row--card .service-total{grid-column:2;text-align:right}.service-row--card .service-actions{grid-column:1/-1;border-top:1px solid var(--fonu-border);padding-top:6px}
+.service-row--card{grid-template-columns:minmax(0,1fr) minmax(0,auto);grid-template-rows:auto auto 1fr auto auto;gap:8px;padding:12px;min-height:216px}.service-row--card .service-identity{grid-column:1}.service-row--card .service-status{grid-column:2;grid-row:1}.service-row--card .service-target{grid-column:1/-1}.service-row--card .service-visitors{grid-column:1}.service-row--card .service-security{grid-column:2;justify-content:flex-end}.service-row--card .service-rate{grid-column:1}.service-row--card .service-total{grid-column:2;text-align:right}.service-row--card .service-actions{grid-column:1/-1;border-top:1px solid var(--fonu-border);padding-top:6px}
 @container proxy-workspace (max-width:960px){
  .service-row:not(.service-row--card){grid-template-columns:minmax(0,1fr) minmax(0,1fr) 48px;gap:7px;padding:10px}
  .service-row:not(.service-row--card) .service-identity{grid-column:1/3}.service-row:not(.service-row--card) .service-status{grid-column:3;grid-row:1}

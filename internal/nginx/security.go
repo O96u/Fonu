@@ -217,6 +217,22 @@ func writeErrorPages(b *strings.Builder, cfg config.Config) {
 
 func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rule, opts GenerateOptions) {
 	sec := rule.Security.Normalize()
+	if sec.MaxBodyMB > 0 && sec.MaxBodyMB <= 1048576 {
+		fmt.Fprintf(b, "        client_max_body_size %dm;\n", sec.MaxBodyMB)
+	}
+	if sec.BlockSensitivePaths {
+		b.WriteString("        if ($uri ~* \"(^|/)[.](env([./]|$)|git(/|$)|svn(/|$))\") { return 403; }\n")
+	}
+	if len(sec.AllowedMethods)>0 && proxy.ValidateSecurity(sec)==nil {
+		fmt.Fprintf(b, "        if ($request_method !~ \"^(%s)$\") { return 405; }\n", strings.Join(sec.AllowedMethods,"|"))
+	}
+	if sec.SafeHeaders {
+		// Location add_header overrides inherited server headers on older Nginx.
+		if rule.HTTPSEnabled && sec.SecurityHeaders {
+			b.WriteString("        add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n        add_header X-Frame-Options \"SAMEORIGIN\" always;\n")
+		}
+		b.WriteString("        add_header X-Content-Type-Options \"nosniff\" always;\n        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n")
+	}
 	writeLocationSecurityComments(b, rule, opts)
 
 	// Location-level access rules replace inherited http-level rules.

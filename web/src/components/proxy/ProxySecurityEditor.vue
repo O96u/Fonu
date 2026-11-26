@@ -23,7 +23,7 @@
                   </n-button>
                 </div>
                 <p class="security-header__note">
-                  IP 策略依赖「设置 → 信任代理」；白名单 IP 可豁免「仅中国大陆」限制。
+                  IP 策略依赖正确的客户端 IP；<n-button text type="primary" size="tiny" @click="emit('settings')">信任代理设置（新窗口）</n-button>。白名单 IP 可豁免「仅中国大陆」限制。
                 </p>
               </div>
 
@@ -78,7 +78,7 @@
                   </div>
                 </n-collapse-item>
 
-                <n-collapse-item title="认证" name="auth" v-if="section==='security'">
+                <n-collapse-item title="访问认证" name="auth" v-if="section==='security'">
                   <div class="security-panel">
                   <div class="security-option">
                     <div class="security-option__text">
@@ -153,7 +153,7 @@
                   </div>
                 </n-collapse-item>
 
-                <n-collapse-item v-if="section==='advanced'" title="上游与响应设置" name="advanced">
+                <n-collapse-item v-if="section==='advanced'" title="上游代理设置" name="advanced">
                   <div class="security-panel">
                   <div class="security-option">
                     <div class="security-option__text">
@@ -169,26 +169,27 @@
                     </div>
                     <n-switch :value="form.proxy_host_upstream" @update:value="emit('patch', { proxy_host_upstream: Boolean($event) })" size="small" />
                   </div>
-                  <div class="security-option">
-                    <div class="security-option__text">
-                      <div class="security-option__label">仅 TLS 1.3</div>
-                    </div>
-                    <n-switch :value="form.tls_min_13_only" @update:value="emit('patch', { tls_min_13_only: Boolean($event) })" size="small" :disabled="!form.https_enabled" />
                   </div>
-                  <div class="security-option">
-                    <div class="security-option__text">
-                      <div class="security-option__label">安全响应头</div>
-                      <div class="security-option__hint">HSTS、X-Frame-Options 等</div>
-                    </div>
-                    <n-switch :value="form.security_headers" @update:value="emit('patch', { security_headers: Boolean($event) })" size="small" :disabled="!form.https_enabled" />
+                </n-collapse-item>
+                <n-collapse-item v-if="section==='security'" title="请求防护" name="request">
+                  <div class="security-panel">
+                    <div class="security-option"><div class="security-option__text"><div class="security-option__label">敏感路径保护</div><div class="security-option__hint">阻止访问 .env、.git、.svn 等敏感路径；不影响 .well-known。</div></div><n-switch :value="form.block_sensitive_paths" @update:value="emit('patch',{block_sensitive_paths:$event})" size="small"/></div>
+                    <n-form-item label="允许的 HTTP 请求方法（留空不限制）"><n-select multiple clearable :value="form.allowed_methods" :options="methodOptions" @update:value="emit('patch',{allowed_methods:$event})" placeholder="默认允许所有方法"/></n-form-item>
+                    <div class="security-option__hint">WebDAV、API 等服务需要额外方法，请勿盲目限制。</div>
+                    <n-form-item label="请求体大小上限（MB，0 继承全局配置）"><n-input-number :value="form.max_body_mb" :min="0" :max="1048576" :precision="0" class="w-full" @update:value="emit('patch',{max_body_mb:$event??0})"/></n-form-item>
                   </div>
+                </n-collapse-item>
+                <n-collapse-item v-if="section==='security'" title="安全响应头" name="headers">
+                  <div class="security-panel">
+                    <div class="security-option"><div class="security-option__text"><div class="security-option__label">基础安全响应头</div><div class="security-option__hint">X-Content-Type-Options、Referrer-Policy，不强制 HTTPS。</div></div><n-switch :value="form.safe_headers" @update:value="emit('patch',{safe_headers:$event})" size="small"/></div>
+                    <div class="security-option"><div class="security-option__text"><div class="security-option__label">严格 HTTPS 与嵌入保护</div><div class="security-option__hint">兼容旧版安全响应头：HSTS（含子域名）、X-Frame-Options。可能影响 HTTP 子域名或嵌入页面，按需开启。</div></div><n-switch :value="form.security_headers" @update:value="emit('patch',{security_headers:$event})" size="small" :disabled="!form.https_enabled"/></div>
                   </div>
                 </n-collapse-item>
               </n-collapse>
               </div>
 </template>
 <script setup lang="ts">
-import { NButton,NIcon,NTag,NCollapse,NCollapseItem,NSwitch,NFormItem,NInputNumber } from 'naive-ui'
+import { NButton,NIcon,NTag,NCollapse,NCollapseItem,NSwitch,NFormItem,NInputNumber,NSelect } from 'naive-ui'
 import ProxyDraftInput from './ProxyDraftInput.vue'
 import { FlashOutline } from '@vicons/ionicons5'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../../constants/secretField'
@@ -204,7 +205,9 @@ const emit = defineEmits<{
   patch: [value: Partial<ProxySecurityDraft>]
   'update:securityExpanded': [value: string[]]
   preset: []
+  settings: []
 }>()
+const methodOptions=['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS','PROPFIND','PROPPATCH','MKCOL','COPY','MOVE','LOCK','UNLOCK','REPORT','SEARCH'].map(value=>({label:value,value}))
 function updateExpanded(value: string | number | (string | number)[] | null | undefined) {
   emit('update:securityExpanded', (value == null ? [] : Array.isArray(value) ? value : [value]).map(String))
 }
@@ -382,5 +385,5 @@ function updateExpanded(value: string | number | (string | number)[] | null | un
   align-items: center;
   gap: 8px;
 }
-.security-section{padding:0!important;min-width:0;text-align:left}.security-header{background:var(--fonu-bg-muted);border:1px solid var(--fonu-border);border-radius:8px;padding:12px}.security-option{flex-wrap:wrap;gap:8px}.security-option__text{min-width:0;flex:1 1 180px}.security-panel__fields{min-width:0}.security-collapse :deep(.n-collapse-item){padding:10px;border:1px solid var(--fonu-border);border-radius:8px;margin-top:10px}.security-collapse :deep(.n-collapse-item__header){padding:0!important}
+.security-section{padding:0!important;min-width:0;text-align:left}.security-header{background:var(--fonu-bg-muted);border:1px solid var(--fonu-border);border-radius:8px;padding:12px}.security-option{flex-wrap:wrap;gap:8px}.security-option__text{min-width:0;flex:1 1 180px}.security-panel__fields{min-width:0}.security-collapse :deep(.n-collapse-item__header){background:var(--fonu-surface)}.security-panel :deep(.n-select){width:100%;min-width:0}@container proxy-editor(max-width:520px){.security-fields-grid{grid-template-columns:1fr}}
 </style>

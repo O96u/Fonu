@@ -11,27 +11,28 @@
       <div class="filters">
         <n-input v-model:value="search" clearable placeholder="搜索服务名称、域名或目标地址…" size="small"><template #prefix><n-icon :component="SearchOutline"/></template></n-input>
         <n-select v-model:value="status" :options="statusOptions" size="small" class="status-filter"/>
-        <n-popover trigger="click" placement="bottom-end"><template #trigger><n-button size="small"><template #icon><n-icon :component="FilterOutline"/></template>筛选</n-button></template><div class="extra-filters"><small>监听入口</small><n-select v-model:value="entry" :options="entryOptions" size="small"/><small>协议</small><n-select v-model:value="protocol" :options="protocolOptions" size="small"/><n-button size="small" @click="resetFilters">清除筛选</n-button></div></n-popover>
+        <n-popover trigger="click" placement="bottom-end"><template #trigger><n-button size="small"><template #icon><n-icon :component="FilterOutline"/></template>筛选</n-button></template><div class="extra-filters"><small>监听端口</small><n-select v-model:value="entry" :options="entryOptions" size="small"/><small>协议</small><n-select v-model:value="protocol" :options="protocolOptions" size="small"/><n-button size="small" @click="resetFilters">清除筛选</n-button></div></n-popover>
         <n-button size="small" :loading="loading" title="刷新规则" aria-label="刷新规则" @click="emit('refresh')"><template #icon><n-icon :component="RefreshOutline"/></template></n-button>
       </div>
     </div>
     <div v-if="loading && !rules.length" class="workspace-empty"><n-spin/></div>
     <div v-else-if="!filtered.length" class="workspace-empty"><n-empty :description="rules.length?'没有匹配的代理服务':'暂无代理规则'"><template #extra><n-button size="small" @click="rules.length?resetFilters():emit('create')">{{rules.length?'清除筛选':'新增代理'}}</n-button></template></n-empty></div>
     <div v-else class="service-blocks" :class="{'service-blocks--cards':mode==='card'}">
-      <article v-for="block in paged" :key="block.key" class="service-block" :class="{'is-open':isOpen(block.key),'is-drag-target':dragTarget===block.key}" @dragover.prevent="dragTarget=block.key" @dragleave="dragTarget=null" @drop.prevent="dropBlock(block.rules.map(r=>r.id))">
+      <article v-for="block in paged" :key="block.key" class="service-block" :class="{'is-open':block.rules.length>1&&isOpen(block.key),'is-drag-target':dragTarget===block.key}" @dragover.prevent="dragTarget=block.key" @dragleave="dragTarget=null" @drop.prevent="dropBlock(block.rules.map(r=>r.id))">
         <div v-if="block.rules.length>1" class="service-summary" :class="{'service-summary--card':mode==='card'}">
           <button type="button" class="summary-identity" :aria-expanded="isOpen(block.key)" @click="toggle(block.key)">
             <n-icon :component="isOpen(block.key)?ChevronDownOutline:ChevronForwardOutline"/>
             <ServiceFavicon :rule-id="block.rules[0].id"/>
             <span><strong>{{block.name}}</strong><small>{{block.rules.length}} 条独立规则 · {{domainCount(block.rules)}} 个域名</small></span>
           </button>
+          <div v-if="mode==='card'" class="summary-listen"><span>{{block.rules.length}} 条独立代理规则</span><small>{{[...new Set(block.rules.map(r=>r.listen_port+' · '+(r.https_enabled?'HTTPS':'HTTP')))].join(' / ')}}</small></div>
           <div class="summary-metrics">
             <span title="各规则近期访问 IP 数相加，非全局去重"><n-icon :component="PeopleOutline"/> {{block.rules.every(r=>traffic[r.id])?sum(block.rules).connections:'—'}}</span>
             <span>↑ {{block.rules.every(r=>traffic[r.id])?formatRate(sum(block.rules).upload_rate):'—'}}<br/>↓ {{block.rules.every(r=>traffic[r.id])?formatRate(sum(block.rules).download_rate):'—'}}</span>
             <span title="累计上传与下载">↑ {{block.rules.every(r=>traffic[r.id])?formatBytes(sum(block.rules).upload_total):'—'}}<br/>↓ {{block.rules.every(r=>traffic[r.id])?formatBytes(sum(block.rules).download_total):'—'}}</span>
             <span class="summary-state">{{block.rules.filter(r=>r.enabled).length}} / {{block.rules.length}} 启用</span>
           </div>
-          <div class="summary-actions">
+          <div class="summary-actions"><n-button v-if="mode==='card'" size="small" quaternary @click="toggle(block.key)">{{isOpen(block.key)?'收起规则':'展开规则'}}</n-button>
             <n-dropdown trigger="click" :options="groupMenu(block.groupId)" @select="key=>assignBlock(block.rules.map(r=>r.id),key)"><n-button size="small" quaternary title="移动服务显示分组" aria-label="移动服务显示分组"><template #icon><n-icon :component="EllipsisHorizontalOutline"/></template></n-button></n-dropdown>
             <span v-if="canDrag" draggable="true" class="drag-handle" title="拖动服务排序" @dragstart.stop="startDrag($event,block.rules.map(r=>r.id))" @dragend="endDrag"><n-icon :component="ReorderThreeOutline"/></span>
           </div>
@@ -67,12 +68,12 @@ const groupId=ref(-1),search=ref(''),status=ref('all'),protocol=ref('all'),entry
 const opened=ref(new Set<string>()),showGroups=ref(false),newName=ref('')
 const statusOptions=[{label:'全部状态',value:'all'},{label:'已启用',value:'enabled'},{label:'已停用',value:'disabled'}]
 const protocolOptions=[{label:'全部协议',value:'all'},{label:'HTTPS',value:'https'},{label:'HTTP',value:'http'}]
-const entryOptions=computed(()=>[{label:'全部入口',value:-1},{label:'未绑定入口',value:0},...props.entries.map(e=>({label:e.name||e.listen_port+' · '+(e.https_enabled?'HTTPS':'HTTP'),value:e.id}))])
+const entryOptions=computed(()=>[{label:'全部端口',value:-1},...[...new Set(props.rules.map(r=>r.listen_port))].sort((a,b)=>a-b).map(port=>({label:String(port),value:port}))])
 const sizeOptions=[10,20,50].map(value=>({label:'每页 '+value+' 个',value}))
 const memberships=computed(()=>new Map(props.business.members.map(m=>[m.rule_id,m.group_id])))
 const counts=computed(()=>{const result=new Map<number,number>();for(const r of props.rules){const id=memberships.value.get(r.id)??0;result.set(id,(result.get(id)??0)+1)}return result})
 const blocks=computed(()=>buildServiceBlocks(props.rules,props.business))
-const filtered=computed(()=>{const q=search.value.trim().toLowerCase();return blocks.value.filter(b=>groupId.value===-1||b.groupId===groupId.value).map(b=>({...b,rules:b.rules.filter(r=>(!q||[props.ruleName(r),r.upstream,props.ruleHosts(r).join(' ')].join(' ').toLowerCase().includes(q))&&(status.value==='all'||r.enabled===(status.value==='enabled'))&&(protocol.value==='all'||r.https_enabled===(protocol.value==='https'))&&(entry.value===-1||(r.entry_id??0)===entry.value))})).filter(b=>b.rules.length)})
+const filtered=computed(()=>{const q=search.value.trim().toLowerCase();return blocks.value.filter(b=>groupId.value===-1||b.groupId===groupId.value).map(b=>({...b,rules:b.rules.filter(r=>(!q||[props.ruleName(r),r.upstream,props.ruleHosts(r).join(' ')].join(' ').toLowerCase().includes(q))&&(status.value==='all'||r.enabled===(status.value==='enabled'))&&(protocol.value==='all'||r.https_enabled===(protocol.value==='https'))&&(entry.value===-1||r.listen_port===entry.value))})).filter(b=>b.rules.length)})
 const filteredRuleCount=computed(()=>filtered.value.reduce((n,b)=>n+b.rules.length,0))
 const pageCount=computed(()=>Math.max(1,Math.ceil(filtered.value.length/pageSize.value)))
 const paged=computed(()=>filtered.value.slice((page.value-1)*pageSize.value,page.value*pageSize.value))
@@ -105,7 +106,7 @@ function dropBlock(ids:number[]){if(canDrag.value&&dragging.value.length){const 
 .view-switch button,.group-tabs button{border:0;border-radius:5px;cursor:pointer;font:inherit;font-size:12px;padding:6px 10px;background:transparent;color:var(--fonu-text-secondary);display:flex;align-items:center;gap:5px;max-width:100%;overflow-wrap:anywhere}
 .view-switch button[aria-pressed=true],.group-tabs button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);font-weight:600}.group-tabs button{background:var(--fonu-bg-muted)}.group-tabs button span{font-variant-numeric:tabular-nums;font-size:11px}
 .filters{display:flex;align-items:center;gap:7px;flex:1 1 330px;min-width:0;justify-content:flex-end}.filters :deep(.n-input){flex:1;min-width:100px}.status-filter{width:106px;flex-shrink:0}.extra-filters{display:grid;gap:7px;min-width:190px}
-.service-blocks{display:grid;gap:9px;min-width:0}.service-blocks--cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start}
+.service-blocks{display:grid;gap:9px;min-width:0}.service-blocks--cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:stretch}
 .service-block{background:var(--fonu-surface);border:1px solid var(--fonu-border);border-radius:var(--fonu-radius);min-width:0;overflow:hidden}.service-block.is-open{border-color:var(--fonu-brand)}.service-block.is-drag-target{outline:2px dashed var(--fonu-brand)}
 .service-summary{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:12px;background:var(--fonu-bg-muted);flex-wrap:wrap}.summary-identity{display:flex;align-items:center;gap:8px;min-width:0;border:0;padding:0;background:none;text-align:left;color:var(--fonu-text);cursor:pointer;flex:1 1 190px;font:inherit}.summary-identity strong,.summary-identity small{display:block;overflow-wrap:anywhere}.summary-identity small{font-size:11px;color:var(--fonu-text-secondary);margin-top:3px}.summary-identity :deep(.service-favicon){width:38px;height:38px}.summary-metrics{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--fonu-text-secondary);font-variant-numeric:tabular-nums}.summary-metrics span{display:inline-block}.summary-state{color:var(--fonu-text);font-weight:600}.summary-actions{display:flex;gap:3px;align-items:center}.service-summary--card .summary-metrics{width:100%;gap:10px}
 .child-header{display:grid;grid-template-columns:minmax(150px,1.5fr) minmax(120px,1.35fr) 54px minmax(86px,.75fr) minmax(78px,.7fr) minmax(45px,.5fr) 48px 112px;gap:8px;padding:8px 10px 8px 30px;font-size:11px;color:var(--fonu-text-secondary);background:var(--fonu-bg-muted);border-top:1px solid var(--fonu-border)}
@@ -113,6 +114,18 @@ function dropBlock(ids:number[]){if(canDrag.value&&dragging.value.length){const 
 .workspace-footer{justify-content:flex-end;padding:4px 0}.workspace-footer small{margin-right:auto}.page-size{width:110px}.workspace-empty{display:grid;place-items:center;min-height:150px;border:1px solid var(--fonu-border);border-radius:var(--fonu-radius)}
 .group-modal{width:min(540px,94vw);max-height:84vh;overflow:auto;background:var(--fonu-surface);border-radius:var(--fonu-radius);padding:16px;display:grid;gap:12px}.group-modal-head,.group-create,.group-manage-row{display:flex;align-items:center;gap:7px}.group-modal-head h3{flex:1;margin:0}.group-modal small{color:var(--fonu-text-secondary)}.group-manage-row{border-top:1px solid var(--fonu-border);padding:8px 0;flex-wrap:wrap}.group-manage-row>span{flex:1;overflow-wrap:anywhere}
 .service-blocks--cards .child-header{display:none}
+.service-blocks--cards .service-block{display:flex;flex-direction:column;min-height:240px}
+.service-blocks--cards .service-block.is-open{grid-column:1/-1}
+.service-blocks--cards .rule-line{flex:1}
+.service-blocks--cards .service-summary--card{flex:1;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 1fr auto;gap:8px;background:var(--fonu-surface)}
+.summary-listen{display:grid;gap:3px;font-size:12px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}
+.summary-listen small{font-size:10px}
+.service-summary--card .summary-metrics{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.service-summary--card .summary-metrics span:nth-child(3){grid-column:2;grid-row:2;text-align:right}
+.service-summary--card .summary-metrics span:nth-child(4){grid-column:2;grid-row:1;text-align:right}
+.service-summary--card .summary-actions{border-top:1px solid var(--fonu-border);padding-top:6px;justify-content:flex-end}
+.service-blocks--cards .service-block.is-open .service-summary{flex:0}
+.service-blocks--cards .service-block.is-open .rule-line{flex:0}
 @container proxy-workspace (max-width:960px){.child-header{display:none}.workspace-tools{align-items:stretch}.group-tabs,.filters{flex:1 1 100%}.summary-metrics{gap:9px}.service-summary{padding:9px}}
 @container proxy-workspace (max-width:480px){.filters{flex-wrap:wrap}.filters :deep(.n-input){flex:1 1 100%}.status-filter{flex:1}.workspace-footer{justify-content:flex-start}.summary-metrics{width:100%;font-size:11px}.group-tabs button{padding:5px 8px}.workspace-heading h2{font-size:17px}}
 </style>

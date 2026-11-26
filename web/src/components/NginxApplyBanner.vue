@@ -5,19 +5,19 @@
     <div v-if="status.confirmed_revision">已确认 worker 版本：{{ status.confirmed_revision.slice(0, 12) }}</div>
     <div v-else-if="status.last_requested_revision">最近提交重载版本：{{ status.last_requested_revision.slice(0, 12) }}</div>
     <details v-if="status.history?.length" class="apply-history">
-      <summary>最近发布记录（{{ status.history.length }}）</summary>
-      <div v-for="(item,index) in status.history" :key="item.created_at+'-'+index" class="apply-history__row">
+      <summary>最近配置应用记录（{{ Math.min(status.history.length,5) }}）</summary>
+      <div v-for="(item,index) in status.history.slice(0,5)" :key="item.created_at+'-'+index" class="apply-history__row">
         <span>{{ historyLabel(item.state) }}</span>
         <span>{{ item.revision?.slice(0,12) || '—' }}</span>
         <span>{{ formatDate(item.created_at) }}</span>
       </div>
     </details>
   </n-alert>
-  <details v-else-if="status?.state==='confirmed'" class="apply-compact" :class="{'apply-compact--inline':compact}">
-    <summary><span class="apply-dot"/>Nginx 配置已确认 <span class="apply-version">{{ status.confirmed_revision?.slice(0,8) }}</span><span class="apply-expand">发布记录</span></summary>
+  <details v-else-if="status?.state==='confirmed' && !compact" class="apply-compact" :class="{'apply-compact--inline':compact}">
+    <summary><span class="apply-dot"/>最近配置已应用 <span class="apply-version">{{ status.confirmed_revision?.slice(0,8) }}</span><span class="apply-expand">配置应用记录</span></summary>
     <div class="apply-history">
       <div v-for="(item,index) in status.history?.slice(0,5)" :key="item.created_at+'-'+index" class="apply-history__row"><span>{{ historyLabel(item.state) }}</span><span>{{ item.revision?.slice(0,12) || '—' }}</span><span>{{ formatDate(item.created_at) }}</span></div>
-      <div v-if="!status.history?.length">暂无发布记录</div>
+      <div v-if="!status.history?.length">暂无配置应用记录</div>
     </div>
   </details>
 </template>

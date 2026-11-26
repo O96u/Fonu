@@ -41,6 +41,10 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 			IPWhitelistMode: true,
 			IPWhitelist:     []string{"192.168.1.0/24"},
 			ChinaOnly:       true,
+			SafeHeaders: true,
+			BlockSensitivePaths: true,
+			MaxBodyMB: 128,
+			AllowedMethods: []string{"GET", "HEAD", "POST"},
 			BasicAuth: &proxy.BasicAuthConfig{
 				Enabled:      true,
 				Username:     "user",
@@ -62,6 +66,10 @@ func TestGenerateSecurityDirectives(t *testing.T) {
 	}
 	checks := []string{
 		"allow 10.0.0.0/8;",
+		"client_max_body_size 128m;",
+		"if ($uri ~*",
+		"if ($request_method !~ \"^(GET|HEAD|POST)$\")",
+		"add_header Referrer-Policy",
 		"allow 203.0.113.10;",
 		"deny 8.8.8.8;",
 		"limit_req_zone $binary_remote_addr zone=fonu_rule_7_req",

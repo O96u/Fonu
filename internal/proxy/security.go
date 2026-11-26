@@ -39,6 +39,10 @@ type SecurityConfig struct {
 	ProxyHostUpstream bool             `json:"proxy_host_upstream,omitempty"` // use $proxy_host instead of $http_host
 	TLSMin13Only      bool             `json:"tls_min_13_only,omitempty"`
 	SecurityHeaders   bool             `json:"security_headers,omitempty"`
+	SafeHeaders bool `json:"safe_headers,omitempty"`
+	BlockSensitivePaths bool `json:"block_sensitive_paths,omitempty"`
+	MaxBodyMB int `json:"max_body_mb,omitempty"`
+	AllowedMethods []string `json:"allowed_methods,omitempty"`
 }
 
 type SecurityInput struct {
@@ -53,6 +57,10 @@ type SecurityInput struct {
 	ProxyHostUpstream *bool
 	TLSMin13Only      *bool
 	SecurityHeaders   *bool
+	SafeHeaders *bool
+	BlockSensitivePaths *bool
+	MaxBodyMB *int
+	AllowedMethods *[]string
 }
 
 type BasicAuthInput struct {
@@ -218,6 +226,11 @@ func MergeSecurity(current SecurityConfig, in SecurityInput) (SecurityConfig, er
 		out.SecurityHeaders = *in.SecurityHeaders
 	}
 
+	if in.SafeHeaders != nil { out.SafeHeaders = *in.SafeHeaders }
+	if in.BlockSensitivePaths != nil { out.BlockSensitivePaths = *in.BlockSensitivePaths }
+	if in.MaxBodyMB != nil { out.MaxBodyMB = *in.MaxBodyMB }
+	if in.AllowedMethods != nil { out.AllowedMethods = append([]string(nil), (*in.AllowedMethods)...) }
+
 	if in.BasicAuth != nil {
 		if in.BasicAuth.Enabled != nil {
 			if out.BasicAuth == nil {
@@ -248,6 +261,14 @@ func MergeSecurity(current SecurityConfig, in SecurityInput) (SecurityConfig, er
 
 func ValidateSecurity(cfg SecurityConfig) error {
 	cfg = cfg.Normalize()
+	if cfg.MaxBodyMB < 0 || cfg.MaxBodyMB > 1048576 { return fmt.Errorf("请求体大小必须在 0–1048576 MB 范围内") }
+	if len(cfg.AllowedMethods)>16 { return fmt.Errorf("请求方法数量超限") }
+	for _, method := range cfg.AllowedMethods {
+		switch method {
+		case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK", "REPORT", "SEARCH":
+		default: return fmt.Errorf("不支持的 HTTP 请求方法")
+		}
+	}
 	if err := validate.IPOrCIDRList(cfg.IPBlacklist); err != nil {
 		return fmt.Errorf("IP 黑名单：%w", err)
 	}

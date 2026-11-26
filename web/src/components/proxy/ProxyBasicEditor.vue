@@ -17,14 +17,11 @@
       <div class="option-row"><div><strong>启用规则</strong><small>保存后应用该独立代理规则。</small></div><n-switch :value="form.enabled" @update:value="emit('patch',{enabled:$event})"/></div>
     </section>
     <section v-show="section==='https'" class="editor-section">
-      <div class="section-heading"><h3>监听与 HTTPS</h3><p>通常使用默认 HTTPS 入口；特殊端口可单独设置。</p></div>
-      <n-form-item label="监听入口"><n-select :value="entryId??0" :options="entryOptions" @update:value="emit('entry',$event)"/></n-form-item>
-      <div v-if="bindEntryListen" class="source-note"><n-icon :component="InformationCircleOutline"/><div><strong>{{form.listen_port}} · {{form.https_enabled?'HTTPS':'HTTP'}} · {{form.listen_ipv4?'IPv4':''}}{{form.listen_ipv4&&form.listen_ipv6?' / ':''}}{{form.listen_ipv6?'IPv6':''}}</strong><small>使用入口的网络配置。切换入口只影响当前规则；修改入口请在监听入口管理中操作。</small></div></div>
-      <template v-else>
+      <div class="section-heading"><h3>监听与 HTTPS</h3><p>直接配置本规则的监听端口和协议，系统自动匹配兼容的监听配置。</p></div>
         <div class="field-grid"><n-form-item label="监听端口" required><n-input-number :value="form.listen_port" :min="1" :max="65535" @update:value="emit('patch',{listen_port:$event??0})"/></n-form-item><n-form-item label="IP 协议"><div class="ip-options"><n-checkbox :checked="form.listen_ipv4" @update:checked="emit('patch',{listen_ipv4:$event})">IPv4</n-checkbox><n-checkbox :checked="form.listen_ipv6" @update:checked="emit('patch',{listen_ipv6:$event})">IPv6</n-checkbox></div></n-form-item></div>
         <div class="option-row"><div><strong>启用 HTTPS</strong><small>使用匹配前端域名的有效证书。</small></div><n-switch :value="form.https_enabled" @update:value="emit('patch',{https_enabled:$event})"/></div>
         <div class="option-row"><div><strong>HTTP 跳转 HTTPS</strong><small>将 HTTP 请求跳转至 HTTPS。</small></div><n-switch :value="form.http_redirect" :disabled="!form.https_enabled" @update:value="emit('patch',{http_redirect:$event})"/></div>
-      </template>
+      <div v-if="form.https_enabled" class="option-row"><div><strong>仅 TLS 1.3</strong><small>关闭时兼容 TLS 1.2；旧客户端可能不支持 TLS 1.3。</small></div><n-switch :value="form.tls_min_13_only" @update:value="emit('patch',{tls_min_13_only:$event})"/></div>
       <div v-if="form.https_enabled" class="section-tip"><n-icon :component="LockClosedOutline"/><span>证书根据域名自动匹配。缺少有效证书时，后端拒绝发布无效配置；请先在证书管理中申请或导入。</span></div>
     </section>
   </n-form>
@@ -36,9 +33,9 @@ import {NForm,NFormItem,NInputNumber,NSelect,NCheckbox,NSwitch,NButton,NIcon,typ
 import {CopyOutline,InformationCircleOutline,LockClosedOutline} from '@vicons/ionicons5'
 import type {ProxyRule} from '../../api/types'
 import type {DdnsHostSelectOption} from '../../utils/ddnsHosts'
-interface BasicDraft {name:string;hostsSelected:string[];listen_port:number;listen_ipv4:boolean;listen_ipv6:boolean;https_enabled:boolean;http_redirect:boolean;upstream:string;enabled:boolean}
-const props=defineProps<{section:'basic'|'https';form:BasicDraft;bindEntryListen:boolean;entryId:number|null;entryOptions:{label:string;value:number}[];businessGroup:number;businessOptions:{label:string;value:number}[];copySource:ProxyRule|null;ddnsHostsLoading:boolean;hostSelectOptions:SelectGroupOption[];filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean}>()
-const emit=defineEmits<{patch:[value:Partial<BasicDraft>];loadHosts:[];entry:[value:number];business:[value:number]}>()
+interface BasicDraft {name:string;hostsSelected:string[];listen_port:number;listen_ipv4:boolean;listen_ipv6:boolean;https_enabled:boolean;http_redirect:boolean;tls_min_13_only:boolean;upstream:string;enabled:boolean}
+const props=defineProps<{section:'basic'|'https';form:BasicDraft;businessGroup:number;businessOptions:{label:string;value:number}[];copySource:ProxyRule|null;ddnsHostsLoading:boolean;hostSelectOptions:SelectGroupOption[];filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean}>()
+const emit=defineEmits<{patch:[value:Partial<BasicDraft>];loadHosts:[];business:[value:number]}>()
 function updateHosts(value:unknown){emit('patch',{hostsSelected:Array.isArray(value)?value.map(String):[]})}
 const validTarget=computed(()=>{try{const u=new URL(props.form.upstream);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password}catch{return false}})
 function openTarget(){if(validTarget.value)window.open(props.form.upstream,'_blank','noopener,noreferrer')}

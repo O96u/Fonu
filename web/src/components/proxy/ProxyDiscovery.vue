@@ -7,7 +7,7 @@
         <small>扫描由 Fonu 后端执行，仅识别支持的常见 HTTP / HTTPS 服务。重新扫描同一地址时保留已填写内容。</small>
         <div v-if="discoveryLoading" class="scan-status"><n-spin size="small"/>正在扫描 {{discoveryScanHost}} …</div>
       </section>
-      <div class="discovery-options"><label>监听入口<n-select :value="discoveryTarget?.key??null" :options="entryOptions" placeholder="默认 HTTPS 入口" clearable :disabled="discoveryAdding" @update:value="emit('selectEntry',$event)"/></label><label>业务分组<n-select :value="businessGroup" :options="businessOptions" :disabled="discoveryAdding" @update:value="emit('update:businessGroup',$event)"/></label></div>
+      <div class="discovery-options"><label>监听端口<n-input-number :value="listenPort" :min="1" :max="65535" :disabled="discoveryAdding" @update:value="emit('update:listenPort',$event??0)"/></label><label>协议<n-select :value="httpsEnabled?'https':'http'" :options="[{label:'HTTPS',value:'https'},{label:'HTTP',value:'http'}]" :disabled="discoveryAdding" @update:value="emit('update:httpsEnabled',$event==='https')"/></label><label>业务分组<n-select :value="businessGroup" :options="businessOptions" :disabled="discoveryAdding" @update:value="emit('update:businessGroup',$event)"/></label></div>
       <n-alert v-if="error" type="error" :bordered="false">{{error}}</n-alert>
       <section class="scan-results">
         <div class="result-heading"><div><strong>发现结果</strong><small>{{discoverySummary|| (scanned?'扫描完成':'填写目标后开始扫描')}}</small></div><n-checkbox v-if="discoveryRows.length" :checked="discoverySelectAllChecked" :indeterminate="discoverySelectAllIndeterminate" :disabled="discoveryLoading||discoveryAdding" @update:checked="emit('selectAll',$event)">全选</n-checkbox></div>
@@ -24,15 +24,14 @@
 </template>
 <script setup lang="ts">
 import {computed} from 'vue'
-import {NButton,NIcon,NCheckbox,NSpin,NEmpty,NSelect,NAlert,NTag} from 'naive-ui'
+import {NButton,NIcon,NCheckbox,NSpin,NEmpty,NSelect,NAlert,NTag,NInputNumber} from 'naive-ui'
 import {SearchOutline,ServerOutline} from '@vicons/ionicons5'
 import type {DiscoveredService} from '../../api/types'
-import type {ProxyEntryGroup} from '../../utils/proxyEntries'
 import ProxyEditorFrame from './ProxyEditorFrame.vue'
 import ProxyDraftInput from './ProxyDraftInput.vue'
 interface DiscoveryRow{id:string;selected:boolean;service:DiscoveredService;ruleName:string;hostname:string}
-const props=defineProps<{showDiscoveryModal:boolean;discoveryHost:string;discoveryTarget:ProxyEntryGroup|null;entryOptions:{label:string;value:string}[];businessOptions:{label:string;value:number}[];businessGroup:number;discoveryLoading:boolean;discoveryScanHost:string;discoverySummary:string;discoveryRows:DiscoveryRow[];discoverySelectAllChecked:boolean;discoverySelectAllIndeterminate:boolean;discoveryAdding:boolean;hasSelectedDiscoveryRows:boolean;error:string;scanned:boolean}>()
-const emit=defineEmits<{'update:showDiscoveryModal':[value:boolean];'update:discoveryHost':[value:string];'update:businessGroup':[value:number];selectEntry:[value:string|null];scan:[];selectAll:[checked:boolean];patchRow:[id:string,patch:Partial<DiscoveryRow>];submit:[]}>()
+const props=defineProps<{showDiscoveryModal:boolean;discoveryHost:string;listenPort:number;httpsEnabled:boolean;businessOptions:{label:string;value:number}[];businessGroup:number;discoveryLoading:boolean;discoveryScanHost:string;discoverySummary:string;discoveryRows:DiscoveryRow[];discoverySelectAllChecked:boolean;discoverySelectAllIndeterminate:boolean;discoveryAdding:boolean;hasSelectedDiscoveryRows:boolean;error:string;scanned:boolean}>()
+const emit=defineEmits<{'update:showDiscoveryModal':[value:boolean];'update:discoveryHost':[value:string];'update:businessGroup':[value:number];'update:listenPort':[value:number];'update:httpsEnabled':[value:boolean];scan:[];selectAll:[checked:boolean];patchRow:[id:string,patch:Partial<DiscoveryRow>];submit:[]}>()
 const selectedCount=computed(()=>props.discoveryRows.filter(row=>row.selected).length)
 const missingCount=computed(()=>props.discoveryRows.filter(row=>row.selected&&!row.hostname.trim()).length)
 </script>

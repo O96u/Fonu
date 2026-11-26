@@ -3,8 +3,7 @@
     <div class="service-page-title"><h1>反向代理</h1><NginxApplyBanner compact/></div>
     <div class="service-page-actions">
       <n-button @click="openDiscoveryModal(defaultEntryGroup)"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
-      <n-button @click="showListenerManager=true">监听入口</n-button>
-      <n-button @click="router.push({name:'settings'})">全局设置</n-button>
+      <n-button @click="router.push({name:'settings',query:{tab:'advanced'}})">全局设置</n-button>
       <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
     </div>
   </header>
@@ -272,12 +271,12 @@
 
   <ProxyEditorFrame :show="showModal" :title="modalTitle" :subtitle="editing?'规则 #'+editing.id+' · 独立配置':copySource?'复制后为全新独立规则':'每个域名创建独立代理规则'" :icon="copySource?CopyOutline:editing?CreateOutline:AddOutline" :busy="saving||nginxSaving" wide @close="closeModal">
     <template #navigation>
-      <div class="editor-tabs" role="tablist" aria-label="代理配置">
-        <button v-for="tab in editorTabs" :key="tab.key" type="button" role="tab" :aria-selected="formTab===tab.key" :disabled="saving||nginxSaving" @click="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count">{{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot"/></button>
-      </div>
+      <n-tabs :value="formTab" type="line" animated @update:value="value=>switchFormTab(value as EditorTab)">
+        <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" :disabled="saving||nginxSaving">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count"> {{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot"/></n-tab>
+      </n-tabs>
     </template>
-    <ProxyBasicEditor v-show="formTab==='basic'||formTab==='https'" :section="formTab==='https'?'https':'basic'" :form="form" :bind-entry-listen="bindEntryListen" :entry-id="formEntryId" :entry-options="editorEntryOptions" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @entry="selectEditorEntry" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
-    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset"/>
+    <ProxyBasicEditor v-show="formTab==='basic'||formTab==='https'" :section="formTab==='https'?'https':'basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
+    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
     <template #footer>
@@ -302,11 +301,10 @@
   <ProxyDiscovery
     v-model:show-discovery-modal="showDiscoveryModal"
     v-model:discovery-host="discoveryHost"
-    :discovery-target="discoveryTarget"
+    v-model:listen-port="discoveryListenPort"
+    v-model:https-enabled="discoveryHttpsEnabled"
     :error="discoveryError"
     :scanned="discoveryScanned"
-    :entry-options="preferredEntryGroups.map(g=>({label:entryGroupDisplayName(g),value:g.key}))"
-    @select-entry="discoveryTarget=entryGroups.find(g=>g.key===$event)??null"
     :business-options="[{label:'未分组',value:0},...business.groups.map(g=>({label:g.name,value:g.id}))]"
     v-model:business-group="discoveryBusinessGroup"
     :discovery-loading="discoveryLoading"
@@ -341,6 +339,8 @@ import {
   NSpin,
   NSwitch,
   NTag,
+  NTabs,
+  NTab,
   useDialog,
   useMessage,
   type DataTableColumns,
@@ -447,7 +447,9 @@ const discoveryHost = ref('127.0.0.1')
 const discoveryScanHost = ref('127.0.0.1')
 const discoveryLoading = ref(false)
 const discoveryAdding = ref(false)
-const discoveryTarget = ref<ProxyEntryGroup | null>(null)
+const discoveryListenPort = ref(443)
+const discoveryHttpsEnabled = ref(true)
+watch(discoveryHttpsEnabled, (value,previous)=>{if(discoveryListenPort.value===defaultListenPort(previous))discoveryListenPort.value=defaultListenPort(value)})
 
 interface DiscoveryRow {
   id: string
@@ -643,20 +645,15 @@ const tableWrapRef = ref<HTMLElement | null>(null)
 const entryStackRef = ref<HTMLElement | null>(null)
 const expandedEntryKeys = ref<Set<string>>(new Set())
 const formEntryId = ref<number | null>(null)
-const bindEntryListen = computed(() => formEntryId.value != null)
 const editorBusinessOptions=computed(()=>[{label:'未分组',value:0},...business.value.groups.map(g=>({label:g.name,value:g.id}))])
-const editorEntryOptions=computed(()=>[{label:'自定义监听',value:0},...entries.value.map(e=>({label:(e.name?e.name+' · ':'')+e.listen_port+' · '+(e.https_enabled?'HTTPS':'HTTP'),value:e.id}))])
 function patchBasicDraft(patch:Partial<typeof form>){
-  const changeProtocol=patch.https_enabled!==undefined&&patch.https_enabled!==form.https_enabled&&!bindEntryListen.value
+  const changeProtocol=patch.https_enabled!==undefined&&patch.https_enabled!==form.https_enabled
   const standardPort=form.listen_port===nginxHttpPort.value||form.listen_port===nginxHttpsPort.value
   Object.assign(form,patch)
   if(changeProtocol&&standardPort)form.listen_port=defaultListenPort(form.https_enabled)
+  if(patch.https_enabled===false)form.http_redirect=false
 }
-function selectEditorEntry(id:number){
-  const entry=entries.value.find(e=>e.id===id)
-  formEntryId.value=entry?.id??null
-  if(entry)applyEntryListen(form,entry)
-}
+function openTrustSettings(){window.open(router.resolve({name:'settings',query:{tab:'security'}}).href,'_blank','noopener,noreferrer')}
 function serializeRuleDraft(){return JSON.stringify({form,entry:formEntryId.value,group:draftBusinessGroup.value})}
 const ruleDraftDirty=computed(()=>draftBaseline.value!==''&&serializeRuleDraft()!==draftBaseline.value)
 function initializeEditor(){++editorRequest;nginxLoadedFor.value=null;nginxDirty.value=false;nginxDraft.value='';nginxGenerated.value='';nginxLoading.value=false;nginxBackups.value=[];saveError.value='';draftBaseline.value=serializeRuleDraft()}
@@ -684,7 +681,6 @@ const canReorderEntries = computed(() => !hasFilters.value && !reordering.value 
 
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
 const defaultEntryGroup=computed(()=>entryGroups.value.find(g=>g.listen.https_enabled&&g.listen.listen_port===nginxHttpsPort.value))
-const preferredEntryGroups=computed(()=>[...entryGroups.value].sort((a,b)=>Number(b.key===defaultEntryGroup.value?.key)-Number(a.key===defaultEntryGroup.value?.key)))
 const ruleEntryNames = computed(() => {
   const names = new Map<number,string>()
   for (const group of entryGroups.value) for (const rule of group.rules) names.set(rule.id,entryGroupDisplayName(group))
@@ -729,9 +725,7 @@ function toggleAllEntries() {
 }
 function clearFilters() { search.value='';statusFilter.value=null;httpsFilter.value=null }
 function openQuickCreate() {
-  const group=defaultEntryGroup.value
-  if(group) openCreateWithEntry(group.listen,group.entryId)
-  else openCreateWithEntry({listen_port:nginxHttpsPort.value,https_enabled:true,http_redirect:true,listen_ipv4:true,listen_ipv6:false})
+  openCreateWithEntry({listen_port:nginxHttpsPort.value,https_enabled:true,http_redirect:true,listen_ipv4:true,listen_ipv6:false})
 }
 
 function entryGroupTraffic(group: ProxyEntryGroup) {
@@ -762,10 +756,8 @@ const activeSecurityFeatures = computed(() => {
   if (form.basic_auth_enabled) tags.push('Auth')
   if (form.rate_limit_enabled) tags.push('限流')
   if (form.conn_limit_enabled) tags.push('连接限制')
-  if (form.proxy_ssl_verify_off) tags.push('跳过 TLS 校验')
-  if (form.proxy_host_upstream) tags.push('目标 Host')
-  if (form.tls_min_13_only) tags.push('TLS 1.3')
-  if (form.security_headers) tags.push('响应头')
+  if (form.security_headers || form.safe_headers) tags.push('响应头')
+  if (form.block_sensitive_paths || form.max_body_mb>0 || form.allowed_methods.length) tags.push('请求防护')
   return tags
 })
 
@@ -780,14 +772,8 @@ function syncSecurityExpanded() {
   }
   if (form.basic_auth_enabled) expanded.add('auth')
   if (form.rate_limit_enabled || form.conn_limit_enabled) expanded.add('traffic')
-  if (
-    form.proxy_ssl_verify_off ||
-    form.proxy_host_upstream ||
-    form.tls_min_13_only ||
-    form.security_headers
-  ) {
-    expanded.add('advanced')
-  }
+  if (form.security_headers || form.safe_headers) expanded.add('headers')
+  if (form.block_sensitive_paths || form.max_body_mb>0 || form.allowed_methods.length) expanded.add('request')
   securityExpanded.value = expanded.size > 0 ? [...expanded] : ['ip']
 }
 
@@ -811,7 +797,8 @@ function securityFeatureLabels(rule: ProxyRule): string[] {
   if (sec.proxy_ssl_verify_off) tags.push('跳过 TLS 校验')
   if (sec.proxy_host_upstream) tags.push('目标 Host')
   if (sec.tls_min_13_only) tags.push('TLS 1.3')
-  if (sec.security_headers) tags.push('响应头')
+  if (sec.security_headers || sec.safe_headers) tags.push('响应头')
+  if (sec.block_sensitive_paths || sec.max_body_mb || sec.allowed_methods?.length) tags.push('请求防护')
   return tags
 }
 
@@ -1029,7 +1016,8 @@ function buildDiscoveryRows(items: DiscoveredService[]): DiscoveryRow[] {
 
 function openDiscoveryModal(group?: ProxyEntryGroup) {
   discoveryBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
-  discoveryTarget.value = group ?? null
+  discoveryHttpsEnabled.value = group?.listen.https_enabled ?? true
+  discoveryListenPort.value = group?.listen.listen_port ?? nginxHttpsPort.value
   discoveryHost.value = '127.0.0.1'
   discoveryRows.value = []
   discoveryError.value=''
@@ -1090,7 +1078,7 @@ async function submitDiscovery() {
 
   discoveryAdding.value = true
   try {
-    const group = discoveryTarget.value
+    if(!Number.isInteger(discoveryListenPort.value)||discoveryListenPort.value<1||discoveryListenPort.value>65535)throw new Error('监听端口必须在 1–65535 范围内')
     const create = selected.map(row => {
       const payload: ProxySavePayload = {
         upstream: row.service.upstream,
@@ -1098,21 +1086,11 @@ async function submitDiscovery() {
         name: row.ruleName.trim() || defaultRuleNameForHost(row.hostname) || row.service.name,
         enabled: true,
       }
-      if (group?.entryId) {
-        payload.entry_id = group.entryId
-      } else if (group) {
-        payload.listen_port = group.listen.listen_port
-        payload.listen_ipv4 = group.listen.listen_ipv4
-        payload.listen_ipv6 = group.listen.listen_ipv6
-        payload.https_enabled = group.listen.https_enabled
-        payload.http_redirect = group.listen.http_redirect
-      } else {
-        payload.listen_port=nginxHttpsPort.value
-        payload.https_enabled=true
-        payload.http_redirect=true
-        payload.listen_ipv4=true
-        payload.listen_ipv6=false
-      }
+      payload.listen_port=discoveryListenPort.value
+      payload.https_enabled=discoveryHttpsEnabled.value
+      payload.http_redirect=discoveryHttpsEnabled.value
+      payload.listen_ipv4=true
+      payload.listen_ipv6=false
       return payload
     })
     const saved=await api.saveProxyBatch({ create })
@@ -1585,7 +1563,7 @@ function formatHostConflictMessage(conflict: { host: string; port: number; rule:
   const status = conflict.rule.enabled ? '运行中' : '已停用'
   return (
     `域名 ${conflict.host}:${conflict.port} 已被规则「${label}」占用（${status}）。` +
-    `同一监听入口下每个域名只能对应一条规则：若要改反代目标请编辑占用该域名的那一行；` +
+    `同一监听端口下每个域名只能对应一条规则：若要改反代目标请编辑占用该域名的那一行；` +
     `若仅需修改名称或上游，请保持「前端域名」不变。`
   )
 }
@@ -1869,7 +1847,7 @@ async function load() {
 }
 
 function resetForm() {
-  form.listen_port = defaultListenPort(form.https_enabled)
+  form.listen_port = defaultListenPort(true)
   form.listen_ipv4 = true
   form.listen_ipv6 = false
   form.hostsSelected = []
@@ -1900,6 +1878,10 @@ function loadSecurityToForm(rule?: ProxyRule | null) {
   form.proxy_host_upstream = sec.proxy_host_upstream ?? false
   form.tls_min_13_only = sec.tls_min_13_only ?? false
   form.security_headers = sec.security_headers ?? false
+  form.safe_headers = sec.safe_headers ?? false
+  form.block_sensitive_paths = sec.block_sensitive_paths ?? false
+  form.max_body_mb = sec.max_body_mb ?? 0
+  form.allowed_methods = [...(sec.allowed_methods ?? [])]
 }
 
 function buildSecurityPayload() {
@@ -1912,6 +1894,10 @@ function buildSecurityPayload() {
     proxy_host_upstream: form.proxy_host_upstream,
     tls_min_13_only: form.tls_min_13_only,
     security_headers: form.security_headers,
+    safe_headers: form.safe_headers,
+    block_sensitive_paths: form.block_sensitive_paths,
+    max_body_mb: form.max_body_mb,
+    allowed_methods: form.allowed_methods,
     basic_auth: {
       enabled: form.basic_auth_enabled,
       username: form.basic_auth_username.trim(),
@@ -1930,14 +1916,11 @@ function buildSecurityPayload() {
 }
 
 function applySecurityPreset() {
-  if(!bindEntryListen.value){form.https_enabled=true;form.http_redirect=true}
-  form.rate_limit_enabled = true
-  form.rate_limit_rate = 10
-  form.rate_limit_burst = 20
-  form.security_headers = true
-  formTab.value = 'security'
-  securityExpanded.value = ['traffic', 'advanced']
-  message.success('已填入推荐安全配置；监听入口保持不变')
+  if(!form.rate_limit_enabled){form.rate_limit_enabled=true;form.rate_limit_rate=10;form.rate_limit_burst=20}
+  form.safe_headers=true
+  formTab.value='security'
+  securityExpanded.value=['traffic','headers']
+  message.success('已启用请求限流及基础安全响应头；其他配置保持不变')
 }
 
 function securityTags(rule: ProxyRule): string[] {
@@ -1947,6 +1930,8 @@ function securityTags(rule: ProxyRule): string[] {
   if ((sec.ip_blacklist?.length ?? 0) > 0 || sec.ip_whitelist_mode) tags.push('IP')
   if (sec.china_only) tags.push('CN')
   if (sec.rate_limit?.enabled || sec.conn_limit?.enabled) tags.push('Limit')
+  if(sec.block_sensitive_paths || sec.max_body_mb || sec.allowed_methods?.length) tags.push('防护')
+  if(sec.safe_headers || sec.security_headers) tags.push('响应头')
   return tags
 }
 
@@ -1961,15 +1946,11 @@ function buildPayload(): ProxySavePayload {
   const upstream = validateUpstreamInput(form.upstream)
   return {
     upstream,
-    ...(formEntryId.value
-      ? { entry_id: formEntryId.value }
-      : {
-          listen_port: form.listen_port,
-          listen_ipv4: form.listen_ipv4,
-          listen_ipv6: form.listen_ipv6,
-          https_enabled: form.https_enabled,
-          http_redirect: form.http_redirect,
-        }),
+    listen_port: form.listen_port,
+    listen_ipv4: form.listen_ipv4,
+    listen_ipv6: form.listen_ipv6,
+    https_enabled: form.https_enabled,
+    http_redirect: form.http_redirect,
     hosts,
     enabled: form.enabled,
     name: form.name.trim(),
@@ -2282,7 +2263,7 @@ async function save() {
     if (editing.value) {
       const saved=await api.saveProxyBatch({
         update_id: editing.value.id,
-        update: {...payloadForSingleHost(basePayload, hosts[0]),...(formEntryId.value===null&&editing.value.entry_id?{entry_id:0}:{})},
+        update: payloadForSingleHost(basePayload, hosts[0]),
         create: hosts.slice(1).map(host => payloadForSingleHost(basePayload, host)),
       })
       const currentId=editing.value.id

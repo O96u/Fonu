@@ -378,6 +378,16 @@ func (s *Store) Update(ctx context.Context, id int64, in UpdateInput) (Rule, err
 		}
 	}
 
+	// Explicit listener fields edit this rule only. Reuse or create a compatible entry.
+	if in.EntryID == nil && (in.ListenPort != nil || in.ListenIPv4 != nil || in.ListenIPv6 != nil || in.HTTPSEnabled != nil || in.HTTPRedirect != nil) {
+		if listenPort != current.ListenPort || listenIPv4 != current.ListenIPv4 || listenIPv6 != current.ListenIPv6 || httpsEnabled != current.HTTPSEnabled || httpRedirect != current.HTTPRedirect || entryID == nil {
+			entryID, err = s.findOrCreateEntryForListen(ctx, listenPort, listenIPv4, listenIPv6, httpsEnabled, httpRedirect)
+			if err != nil {
+				return Rule{}, err
+			}
+		}
+	}
+
 	security := current.Security
 	if in.Security != nil {
 		security, err = MergeSecurity(current.Security, *in.Security)

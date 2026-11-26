@@ -16,6 +16,10 @@ export const defaultSecurityForm = () => ({
   proxy_host_upstream: false,
   tls_min_13_only: false,
   security_headers: false,
+  safe_headers: false,
+  block_sensitive_paths: false,
+  max_body_mb: 0,
+  allowed_methods: [] as string[],
 })
 
 export type ProxySecurityDraft = ReturnType<typeof defaultSecurityForm>
