@@ -1,11 +1,12 @@
 <template>
+  <!-- Naive UI/vueuc focus trap resolves its modal root by DIV tag. Keep the modal body a div. -->
   <n-modal :show="show" :mask-closable="false" :close-on-esc="!busy" @update:show="value=>{if(!value&&!busy)emit('close')}" transform-origin="center">
-    <section class="editor-frame" :class="{'editor-frame--wide':wide}" role="dialog" :aria-label="title">
+    <div class="editor-frame" :class="{'editor-frame--wide':wide}" role="dialog" aria-modal="true" :aria-label="title">
       <header class="editor-head"><div class="editor-head-icon"><n-icon :component="icon"/></div><div class="editor-head-text"><h2>{{title}}</h2><p v-if="subtitle">{{subtitle}}</p></div><n-button quaternary size="small" :disabled="busy" aria-label="关闭" @click="emit('close')"><template #icon><n-icon :component="CloseOutline"/></template></n-button></header>
       <div v-if="$slots.navigation" class="editor-navigation"><slot name="navigation"/></div>
       <div class="editor-body" :aria-busy="busy"><slot/></div>
       <footer v-if="$slots.footer" class="editor-footer"><slot name="footer"/></footer>
-    </section>
+    </div>
   </n-modal>
 </template>
 <script setup lang="ts">
