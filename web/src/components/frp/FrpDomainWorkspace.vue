@@ -5,7 +5,7 @@
     <article v-for="domain in filtered" :key="domain" class="domain-row">
       <div class="domain-icon"><n-icon :component="GlobeOutline" /></div>
       <div class="domain-content"><strong :title="domain">{{ domain }}</strong><small>HTTP / HTTPS · Fonu Nginx</small></div>
-      <StatusBadge :kind="httpState === 'registered' && httpsState === 'registered' ? 'success' : httpState === 'failed' || httpsState === 'failed' ? 'error' : 'unknown'" :text="httpState === 'registered' && httpsState === 'registered' ? '网关已注册' : httpState === 'failed' || httpsState === 'failed' ? '网关异常' : '待确认'" />
+      <StatusBadge :kind="!enabled ? 'disabled' : httpState === 'registered' && httpsState === 'registered' ? 'success' : httpState === 'failed' || httpsState === 'failed' ? 'error' : 'unknown'" :text="!enabled ? '服务未启用' : httpState === 'registered' && httpsState === 'registered' ? '网关已注册' : httpState === 'failed' || httpsState === 'failed' ? '网关异常' : '待确认'" />
       <div class="domain-actions">
         <n-button size="tiny" quaternary @click="emit('copy', domain)">复制</n-button>
         <n-button v-if="!domain.startsWith('*.')" size="tiny" quaternary tag="a" :href="'https://' + domain" target="_blank" rel="noopener noreferrer">打开</n-button>
@@ -21,7 +21,7 @@ import { computed, ref } from 'vue'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { GlobeOutline } from '@vicons/ionicons5'
 import StatusBadge from '../StatusBadge.vue'
-const props = defineProps<{ domains: string[]; busy: boolean; httpState?: string; httpsState?: string }>()
+const props = defineProps<{ domains: string[]; busy: boolean; enabled: boolean; httpState?: string; httpsState?: string }>()
 const emit = defineEmits<{ edit: [domain:string]; remove:[domain:string]; copy:[domain:string] }>()
 const query = ref('')
 const filtered = computed(() => props.domains.filter(d => d.toLowerCase().includes(query.value.trim().toLowerCase())))

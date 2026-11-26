@@ -4,7 +4,6 @@
     description="通过 VPS + FRP，让你即使没有公网 IP，也能随时访问 NAS 上的服务。"
   >
     <template #actions>
-      <n-button quaternary @click="routeTab = 'connection'">连接设置</n-button>
       <n-button quaternary @click="showHelp = true">
         <template #icon><n-icon :component="HelpCircleOutline" /></template>
         使用说明
@@ -16,179 +15,48 @@
 
   <n-spin v-else :show="loading">
     <div class="frp-page">
-      <div class="top-grid">
-        <FonuCard class="status-card" title="连接状态" flush>
-          <div class="status-card__body">
-            <div class="status-hero" :class="statusHeroClass">
-              <div class="status-hero__main">
-                <div class="status-hero__icon-wrap">
-                  <n-icon :component="statusHeroIcon" />
-                </div>
-                <div>
-                  <div class="status-hero__title">{{ connectionTitle }}</div>
-                  <div class="status-hero__sub">{{ connectionSubtitle }}</div>
-                </div>
-              </div>
-              <div v-if="frpStatus.enabled" class="status-hero__aside">
-                <span
-                  class="status-hero__badge"
-                  :class="{ 'status-hero__badge--on': frpStatus.connected }"
-                >
-                  <span class="status-hero__badge-dot" />
-                  {{ frpStatus.connected ? "已连接" : frpStatus.process_running ? "连接待确认" : "未运行" }}
-                </span>
-                <div v-if="frpStatus.connected_at" class="status-hero__time">
-                  进程启动于 {{ connectedAtLabel }}
-                </div>
-              </div>
-            </div>
-
-            <div class="status-flow-panel">
-              <div class="status-flow">
-                <div class="status-flow__step">
-                  <n-icon :component="PersonOutline" />
-                  <span>外网用户</span>
-                </div>
-                <span class="status-flow__arrow">→</span>
-                <div class="status-flow__step status-flow__step--accent">
-                  <n-icon :component="CloudOutline" />
-                  <span>frps</span>
-                </div>
-                <span class="status-flow__arrow">→</span>
-                <div class="status-flow__step">
-                  <n-icon :component="DesktopOutline" />
-                  <span>frpc</span>
-                </div>
-                <span class="status-flow__arrow">→</span>
-                <div class="status-flow__step">
-                  <n-icon :component="ServerOutline" />
-                  <span>Fonu Nginx</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="status-metrics">
-              <div class="status-metric status-metric--endpoint">
-                <div class="status-metric__label">服务器地址</div>
-                <code
-                  class="status-metric__value"
-                  :title="displayServerEndpoint"
-                  >{{ displayServerEndpoint }}</code
-                >
-              </div>
-              <div class="status-metric">
-                <div class="status-metric__label">frpc 版本</div>
-                <div class="status-metric__value">
-                  {{ frpStatus.client_version || "—" }}
-                </div>
-              </div>
-              <div class="status-metric">
-                <div class="status-metric__label">进程启动时间</div>
-                <div class="status-metric__value">{{ connectedAtLabel }}</div>
-              </div>
-              <div class="status-metric">
-                <div class="status-metric__label">运行时长</div>
-                <div class="status-metric__value">{{ uptimeLabel }}</div>
-              </div>
-            </div>
-
-            <div class="status-overview">
-              <div class="status-overview__head">
-                <span>已配置服务</span>
-              </div>
-
-              <template v-if="frpStatus.enabled">
-                <div v-if="hasConfiguredRoutes" class="status-overview__groups">
-                  <div v-if="domainList.length" class="status-overview__group">
-                    <div class="status-overview__group-label">Web 域名</div>
-                    <div ref="domainChipsRef" class="status-overview__chips">
-                      <span
-                        v-for="domain in domainList.slice(
-                          0,
-                          domainVisibleCount,
-                        )"
-                        :key="domain"
-                        class="status-overview__chip"
-                      >
-                        {{ domain }}
-                      </span>
-                      <button
-                        v-if="domainHasMore"
-                        type="button"
-                        class="status-overview__more"
-                        @click="routeTab = 'web'"
-                      >
-                        查看更多
-                      </button>
-                    </div>
-                  </div>
-                  <div v-if="tcpProxies.length" class="status-overview__group">
-                    <div class="status-overview__group-label">端口隧道</div>
-                    <div ref="tcpChipsRef" class="status-overview__chips">
-                      <span
-                        v-for="item in tcpProxies.slice(0, tcpVisibleCount)"
-                        :key="item.id"
-                        class="status-overview__chip status-overview__chip--tcp"
-                        :class="{ 'status-overview__chip--off': !item.enabled }"
-                      >
-                        {{ tcpOverviewLabel(item) }}
-                      </span>
-                      <button
-                        v-if="tcpHasMore"
-                        type="button"
-                        class="status-overview__more"
-                        @click="routeTab = 'tcp'"
-                      >
-                        查看更多
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div v-else class="status-overview__empty">
-                  尚未配置 Web 域名或端口隧道
-                </div>
-              </template>
-
-              <div v-else class="status-overview__empty">
-                启用内网穿透后，这里将显示已配置的 Web 域名和端口隧道
-              </div>
-            </div>
-
-            <div class="status-footer">
-              <div class="status-tags">
-                <span
-                  class="status-tag"
-                  :class="{ 'status-tag--on': frpStatus.enabled }"
-                >
-                  {{ frpStatus.enabled ? "穿透已启用" : "穿透未启用" }}
-                </span>
-                <span
-                  class="status-tag"
-                  :class="{ 'status-tag--on': savedConfig?.tls_enabled }"
-                >
-                  {{ savedConfig?.tls_enabled ? "TLS 已开启" : "TLS 未开启" }}
-                </span>
-              </div>
-              <n-button
-                v-if="frpStatus.enabled"
-                quaternary
-                size="small"
-                :loading="restarting"
-                :disabled="busy"
-                data-testid="frp-restart"
-                @click="restartFrpc"
-              >
-                <template #icon
-                  ><n-icon :component="RefreshOutline"
-                /></template>
-                重启 FRP 服务
-              </n-button>
+      <FonuCard flush class="workspace-overview" data-testid="frp-overview">
+        <div class="overview-head">
+          <div class="overview-status" :class="statusHeroClass">
+            <div class="overview-icon"><n-icon :component="statusHeroIcon" /></div>
+            <div class="overview-copy">
+              <div class="overview-kicker">FRP 连接状态</div>
+              <div class="overview-title">{{ connectionTitle }}</div>
+              <div class="overview-sub">{{ connectionSubtitle }}</div>
             </div>
           </div>
-        </FonuCard>
-
-
-      </div>
+          <div class="overview-actions">
+            <span class="overview-tag" :class="{ 'overview-tag--on': savedConfig?.tls_enabled }">TLS {{ savedConfig?.tls_enabled ? "已开启" : "未开启" }}</span>
+            <span class="overview-tag" :class="{ 'overview-tag--on': frpStatus.process_running }">{{ frpStatus.process_running ? "客户端运行中" : "客户端未运行" }}</span>
+            <n-button v-if="frpStatus.enabled" size="small" :loading="restarting" :disabled="busy" data-testid="frp-restart" @click="restartFrpc">
+              <template #icon><n-icon :component="RefreshOutline" /></template>重启服务
+            </n-button>
+            <n-button v-else size="small" secondary type="primary" @click="routeTab = 'connection'">配置连接</n-button>
+          </div>
+        </div>
+        <div class="overview-grid">
+          <div class="overview-cell overview-server">
+            <div class="overview-label"><n-icon :component="CloudOutline" /> VPS 服务器</div>
+            <code class="overview-value endpoint-value" :title="displayServerEndpoint">{{ displayServerEndpoint }}</code>
+            <small>frpc {{ frpStatus.client_version || "—" }}</small>
+          </div>
+          <button type="button" class="overview-cell overview-link" @click="routeTab = 'web'">
+            <div class="overview-label"><n-icon :component="GlobeOutline" /> Web 域名<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
+            <strong class="overview-number">{{ domainCount }}</strong>
+            <small>{{ frpStatus.enabled ? ((httpGatewayOn ? 1 : 0) + (httpsGatewayOn ? 1 : 0)) + ' / 2 网关已注册' : "服务未启用" }}</small>
+          </button>
+          <button type="button" class="overview-cell overview-link" @click="routeTab = 'tcp'">
+            <div class="overview-label"><n-icon :component="SwapHorizontalOutline" /> 端口隧道<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
+            <strong class="overview-number">{{ tcpProxies.length }}</strong>
+            <small>{{ registeredTunnelCount }} 已注册 · {{ enabledTunnelCount }} 已配置启用</small>
+          </button>
+          <button type="button" class="overview-cell overview-link" @click="routeTab = 'logs'">
+            <div class="overview-label"><n-icon :component="DocumentTextOutline" /> 运行时长<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
+            <strong class="overview-value">{{ uptimeLabel }}</strong>
+            <small :title="connectedAtLabel">{{ frpStatus.connected_at ? '启动于 ' + connectedAtLabel : '暂无运行记录' }}</small>
+          </button>
+        </div>
+      </FonuCard>
 
       <FonuCard flush class="routes-card">
         <n-tabs
@@ -201,100 +69,72 @@
             <template #tab>
               <span class="routes-tab" data-testid="frp-tab-connection"><n-icon :component="SettingsOutline" />连接设置</span>
             </template>
-            <div class="routes-panel connection-panel">
-        <FonuCard
-          class="settings-card"
-          subtitle="配置与 VPS 上的 frps 连接信息，保存后将自动重连。"
-        >
-          <template #title>
-            <n-icon :component="SettingsOutline" class="card-title-icon" />
-            <span>连接设置</span>
-          </template>
-
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">启用内网穿透</div>
-            </div>
-            <n-switch v-model:value="frpForm.enabled" :disabled="busy" />
-          </div>
-
-          <div class="settings-fields">
-            <div class="settings-field-row">
-              <div class="settings-field settings-field--grow">
-                <div class="settings-field__label">
-                  服务器地址 <span class="required">*</span>
+            <div class="routes-panel connection-panel" data-testid="frp-connection-panel">
+              <section class="connection-form">
+                <div class="workspace-section-head">
+                  <div><h3>服务器连接</h3><p>配置 VPS 上的 frps，保存后自动应用。</p></div>
+                  <span v-if="connectionDirty" class="draft-label">未保存</span>
                 </div>
-                <n-input
-                  v-model:value="frpForm.server_addr"
-                  placeholder="127.0.0.1 或 frp.example.com"
-                  :disabled="!frpForm.enabled"
-                />
-                <p class="field-hint field-hint--inline">
-                  VPS 的公网 IP 或域名
-                </p>
-              </div>
-              <div class="settings-field settings-field--port">
-                <div class="settings-field__label">
-                  端口 <span class="required">*</span>
+                <div class="form-switch-row">
+                  <div class="form-switch-row__text">
+                    <div class="form-switch-row__label">启用内网穿透</div>
+                    <div class="form-switch-row__hint">关闭时保留配置和隧道，可提前编辑。</div>
+                  </div>
+                  <n-switch v-model:value="frpForm.enabled" :disabled="busy" />
                 </div>
-                <n-input-number
-                  v-model:value="frpForm.server_port"
-                  :min="1"
-                  :max="65535"
-                  class="settings-field__input-full"
-                  :disabled="!frpForm.enabled"
-                />
-              </div>
-            </div>
-            <div class="settings-field">
-              <div class="settings-field__label frp-secret-label">
-                <span>Token <span class="required">*</span></span>
-                <n-tag
-                  v-if="frpForm.has_auth_token"
-                  size="small"
-                  type="success"
-                  :bordered="false"
-                >
-                  {{ CONFIGURED_SECRET_TAG }}
-                </n-tag>
-              </div>
-              <n-input
-                v-model:value="frpForm.auth_token"
-                type="password"
-                show-password-on="click"
-                :disabled="!frpForm.enabled"
-                :placeholder="
-                  frpForm.has_auth_token
-                    ? CONFIGURED_SECRET_PLACEHOLDER
-                    : '与 frps 配置一致'
-                "
-              />
-              <p class="field-hint field-hint--inline">
-                与 frps 配置的 token 保持一致
-              </p>
-            </div>
-            <div class="form-switch-row">
-              <div class="form-switch-row__text">
-                <div class="form-switch-row__label">启用 TLS</div>
-                <div class="form-switch-row__hint">
-                  使用 TLS 连接到 frps，建议开启
+                <div class="settings-fields">
+                  <div class="settings-field-row">
+                    <div class="settings-field settings-field--grow">
+                      <div class="settings-field__label">服务器地址 <span class="required">*</span></div>
+                      <n-input v-model:value="frpForm.server_addr" placeholder="127.0.0.1 或 frp.example.com" :disabled="busy" />
+                      <p class="field-hint field-hint--inline">VPS 的 IP 或域名</p>
+                    </div>
+                    <div class="settings-field settings-field--port">
+                      <div class="settings-field__label">端口 <span class="required">*</span></div>
+                      <n-input-number v-model:value="frpForm.server_port" :min="1" :max="65535" class="settings-field__input-full" :disabled="busy" />
+                    </div>
+                  </div>
+                  <div class="settings-field">
+                    <div class="settings-field__label frp-secret-label">
+                      <span>认证 Token <span class="required">*</span></span>
+                      <n-tag v-if="frpForm.has_auth_token" size="small" type="success" :bordered="false">{{ CONFIGURED_SECRET_TAG }}</n-tag>
+                    </div>
+                    <n-input v-model:value="frpForm.auth_token" type="password" show-password-on="click" :disabled="busy" :placeholder="frpForm.has_auth_token ? CONFIGURED_SECRET_PLACEHOLDER : '与 frps 配置一致'" />
+                    <p class="field-hint field-hint--inline">留空保留已保存的 Token。</p>
+                  </div>
+                  <div class="form-switch-row">
+                    <div class="form-switch-row__text">
+                      <div class="form-switch-row__label">TLS 加密连接</div>
+                      <div class="form-switch-row__hint">建议开启，保护 frpc 与 frps 间的传输。</div>
+                    </div>
+                    <n-switch v-model:value="frpForm.tls_enabled" :disabled="busy" />
+                  </div>
                 </div>
-              </div>
-              <n-switch
-                v-model:value="frpForm.tls_enabled"
-                :disabled="!frpForm.enabled"
-              />
-            </div>
-          </div>
-
-          <p v-if="connectionDirty" class="field-hint">连接设置有未保存修改；隧道和域名操作不会自动提交这些修改。</p>
-          <div class="save-row">
-            <n-button type="primary" :loading="saving" @click="() => save()">
-              <template #icon><n-icon :component="LinkOutline" /></template>
-              {{ frpForm.enabled ? "保存并连接" : "保存并关闭" }}
-            </n-button>
-          </div>
-        </FonuCard>
+                <div class="save-row">
+                  <span class="save-hint">{{ connectionDirty ? '修改尚未应用' : '配置与运行状态独立显示' }}</span>
+                  <n-button type="primary" :loading="saving" :disabled="busy" @click="() => save()">
+                    <template #icon><n-icon :component="LinkOutline" /></template>
+                    {{ frpForm.enabled ? "保存并连接" : savedConfig?.enabled ? "保存并关闭" : "保存配置" }}
+                  </n-button>
+                </div>
+              </section>
+              <aside class="connection-aside">
+                <div class="aside-section">
+                  <h3>连接链路</h3>
+                  <div class="connection-path">
+                    <div><n-icon :component="PersonOutline" /><span>外网用户</span></div>
+                    <div><n-icon :component="CloudOutline" /><span>VPS · frps</span></div>
+                    <div><n-icon :component="DesktopOutline" /><span>本机 · frpc</span></div>
+                    <div><n-icon :component="ServerOutline" /><span>Fonu Nginx / 本地服务</span></div>
+                  </div>
+                  <p>Web 域名由 Nginx 分流，TCP/UDP 隧道直接转发至指定服务。</p>
+                </div>
+                <div class="aside-section aside-links">
+                  <h3>快捷操作</h3>
+                  <button type="button" @click="routeTab = 'advanced'"><n-icon :component="OptionsOutline" /><span>服务端配置<small>查看 / 下载 frps.toml</small></span><n-icon :component="ChevronForwardOutline" /></button>
+                  <button type="button" @click="routeTab = 'logs'"><n-icon :component="DocumentTextOutline" /><span>运行诊断<small>检查连接、登录和网关</small></span><n-icon :component="ChevronForwardOutline" /></button>
+                </div>
+              </aside>
             </div>
           </n-tab-pane>
           <n-tab-pane name="web">
@@ -367,27 +207,19 @@
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  class="gateway-item gateway-item--action"
-                  @click="openDomainEditor()"
-                >
+                <div class="gateway-item gateway-item--action">
                   <n-icon :component="LinkOutline" class="gateway-item__icon" />
                   <div class="gateway-item__body">
-                    <div class="gateway-item__title">已同步域名</div>
+                    <div class="gateway-item__title">已配置域名</div>
                     <div class="gateway-item__state gateway-item__state--count">
                       {{ domainCount }}
                     </div>
-                    <div class="gateway-item__hint">点击查看或编辑</div>
+                    <div class="gateway-item__hint">在下方列表管理</div>
                   </div>
-                  <n-icon
-                    :component="ChevronForwardOutline"
-                    class="gateway-item__chevron"
-                  />
-                </button>
+                </div>
               </div>
             </div>
-              <FrpDomainWorkspace :domains="domainList" :busy="busy" :http-state="frpStatus.http_gateway_state" :https-state="frpStatus.https_gateway_state" @edit="openDomainEditor" @remove="removeDomain" @copy="domain => copyText(domain, '已复制域名')" />
+              <FrpDomainWorkspace :domains="domainList" :busy="busy" :enabled="frpStatus.enabled" :http-state="frpStatus.http_gateway_state" :https-state="frpStatus.https_gateway_state" @edit="openDomainEditor" @remove="removeDomain" @copy="domain => copyText(domain, '已复制域名')" />
           </n-tab-pane>
 
           <n-tab-pane name="tcp">
@@ -695,7 +527,6 @@ import {
   reactive,
   ref,
   watch,
-  type Ref,
 } from "vue";
 import {
   NButton,
@@ -816,23 +647,13 @@ const frpStatus = ref<FRPStatus>({
 const logLines = ref<string[]>([]);
 const logPanelRef = ref<HTMLElement | null>(null);
 const logFullscreenRef = ref<HTMLElement | null>(null);
-const domainChipsRef = ref<HTMLElement | null>(null);
-const tcpChipsRef = ref<HTMLElement | null>(null);
-const domainVisibleCount = ref(0);
-const domainHasMore = ref(false);
-const tcpVisibleCount = ref(0);
-const tcpHasMore = ref(false);
-
-let overviewChipObserver: ResizeObserver | null = null;
-
 const domainList = computed(() => parseDomains());
 const busy = computed(() => saving.value || syncing.value || restarting.value);
 const connectionDirty = computed(() => !!savedConfig.value && (frpForm.enabled !== savedConfig.value.enabled || frpForm.server_addr.trim() !== savedConfig.value.server_addr || frpForm.server_port !== savedConfig.value.server_port || frpForm.tls_enabled !== savedConfig.value.tls_enabled || !!frpForm.auth_token.trim()));
 const filteredTunnels = computed(() => tcpProxies.value.filter(row => (protocolFilter.value === "all" || tunnelProtocolOf(row) === protocolFilter.value) && [row.name, row.local_ip, row.local_port, row.remote_port].join(" ").toLowerCase().includes(tunnelSearch.value.trim().toLowerCase())));
 const domainCount = computed(() => domainList.value.length);
-const hasConfiguredRoutes = computed(
-  () => domainList.value.length > 0 || tcpProxies.value.length > 0,
-);
+const enabledTunnelCount = computed(() => tcpProxies.value.filter(item => item.enabled).length);
+const registeredTunnelCount = computed(() => frpStatus.value.enabled && frpStatus.value.connected ? tcpProxies.value.filter(item => item.enabled && frpStatus.value.tunnel_states?.[item.id] === "registered").length : 0);
 const tcpRemotePorts = computed(() =>
   [
     ...new Set(
@@ -899,12 +720,6 @@ function tcpStatusBadge(row: FRPTCPProxy) {
 
 function tunnelProtocolOf(row: FRPTCPProxy): "tcp" | "udp" {
   return row.protocol === "udp" ? "udp" : "tcp";
-}
-
-function tcpOverviewLabel(row: FRPTCPProxy) {
-  const port = row.remote_port > 0 ? `:${row.remote_port}` : "";
-  const proto = tunnelProtocolOf(row).toUpperCase();
-  return `${proto} ${row.name}${port}`;
 }
 
 function tcpMappingLabel(row: FRPTCPProxy) {
@@ -1033,11 +848,11 @@ const connectionTitle = computed(() => {
 });
 
 const connectionSubtitle = computed(() => {
-  if (!frpStatus.value.enabled) return "内网穿透未开启";
+  if (!frpStatus.value.enabled) return "服务已关闭，仍可编辑域名和隧道。";
   if (frpStatus.value.connected) {
-    return "客户端已连接到 VPS；各隧道是否生效仍需单独确认。";
+    return "客户端已登录 VPS，隧道状态独立确认。";
   }
-  return "请检查服务器配置，或前往运行日志 Tab 排查";
+  return "检查服务器配置，或前往运行日志排查。";
 });
 
 const connectedAtLabel = computed(() => {
@@ -1268,7 +1083,7 @@ async function load() {
   pageError.value = "";
   try {
     applyData(await api.getFRP());
-    if (!savedConfig.value?.server_addr) routeTab.value = "connection";
+    if (!savedConfig.value?.server_addr || !savedConfig.value.enabled) routeTab.value = "connection";
   } catch (error) {
     pageError.value =
       error instanceof Error ? error.message : "请检查 Fonu 服务是否正常运行";
@@ -1470,63 +1285,6 @@ watch(logFullscreen, (open) => {
   if (open) scrollLogsToBottom();
 });
 
-async function fitOverviewChipLine(
-  container: HTMLElement | null,
-  total: number,
-  visible: Ref<number>,
-  hasMore: Ref<boolean>,
-) {
-  if (!container || total === 0) {
-    visible.value = 0;
-    hasMore.value = false;
-    return;
-  }
-  for (let count = Math.min(total, 8); count >= 0; count--) {
-    visible.value = count;
-    hasMore.value = count < total;
-    await nextTick();
-    if (container.scrollWidth <= container.clientWidth) return;
-  }
-  visible.value = 0;
-  hasMore.value = total > 0;
-}
-
-async function remeasureOverviewChips() {
-  await fitOverviewChipLine(
-    domainChipsRef.value,
-    domainList.value.length,
-    domainVisibleCount,
-    domainHasMore,
-  );
-  await fitOverviewChipLine(
-    tcpChipsRef.value,
-    tcpProxies.value.length,
-    tcpVisibleCount,
-    tcpHasMore,
-  );
-}
-
-function observeOverviewChipLines() {
-  overviewChipObserver?.disconnect();
-  if (!overviewChipObserver) {
-    overviewChipObserver = new ResizeObserver(() => {
-      void remeasureOverviewChips();
-    });
-  }
-  for (const el of [domainChipsRef.value, tcpChipsRef.value]) {
-    if (el) overviewChipObserver.observe(el);
-  }
-}
-
-watch(
-  [domainList, tcpProxies, domainChipsRef, tcpChipsRef, loading],
-  () => {
-    observeOverviewChipLines();
-    void remeasureOverviewChips();
-  },
-  { deep: true },
-);
-
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 let statusRequestRunning = false;
 let disposed = false;
@@ -1553,8 +1311,6 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true;
   if (statusTimer !== undefined) clearInterval(statusTimer);
-  overviewChipObserver?.disconnect();
-  overviewChipObserver = null;
 });
 </script>
 
@@ -1562,28 +1318,9 @@ onUnmounted(() => {
 .frp-page {
   display: flex;
   flex-direction: column;
-  gap: var(--fonu-space-5);
-}
-
-.top-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  gap: var(--fonu-space-5);
-  align-items: stretch;
-}
-
-.top-grid > .status-card,
-.top-grid > .settings-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.top-grid > .status-card :deep(.fonu-card__body),
-.top-grid > .settings-card :deep(.fonu-card__body) {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  gap: 14px;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .card-title-icon {
@@ -1627,127 +1364,6 @@ onUnmounted(() => {
   gap: 2px;
 }
 
-.status-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-  padding: var(--fonu-space-4) var(--fonu-space-5);
-}
-
-.status-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--fonu-space-3);
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--fonu-border);
-  background: var(--fonu-bg);
-}
-
-.status-hero--on {
-  border-color: color-mix(in srgb, #10b981 35%, var(--fonu-border));
-  background: color-mix(in srgb, #10b981 6%, var(--fonu-bg));
-}
-
-.status-hero--warn {
-  border-color: color-mix(in srgb, #f59e0b 35%, var(--fonu-border));
-  background: color-mix(in srgb, #f59e0b 6%, var(--fonu-bg));
-}
-
-.status-hero--off {
-  border-color: var(--fonu-border);
-  background: color-mix(in srgb, #94a3b8 6%, var(--fonu-bg));
-}
-
-.status-hero__main {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-
-.status-hero__icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--fonu-surface);
-  color: var(--fonu-text-secondary);
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.status-hero--on .status-hero__icon-wrap {
-  color: #10b981;
-}
-
-.status-hero--warn .status-hero__icon-wrap {
-  color: #f59e0b;
-}
-
-.status-hero__title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--fonu-text);
-  line-height: 1.2;
-}
-
-.status-hero__sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--fonu-text-muted);
-  line-height: 1.5;
-}
-
-.status-hero__aside {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.status-hero__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fonu-text-muted);
-  background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
-}
-
-.status-hero__badge--on {
-  color: #047857;
-  background: color-mix(in srgb, #10b981 10%, var(--fonu-surface));
-  border-color: color-mix(in srgb, #10b981 25%, var(--fonu-border));
-}
-
-.status-hero__badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #d1d5db;
-}
-
-.status-hero__badge--on .status-hero__badge-dot {
-  background: #10b981;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 20%, transparent);
-}
-
-.status-hero__time {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
 .routes-card :deep(.fonu-card__body) {
   padding: 0;
 }
@@ -1789,232 +1405,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.status-flow-panel {
-  padding: 14px 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, #3b82f6 4%, var(--fonu-bg));
-  border: 1px dashed color-mix(in srgb, #3b82f6 22%, var(--fonu-border));
-}
-
-.status-flow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-}
-
-.status-flow__step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-width: 64px;
-  max-width: 100%;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--fonu-surface);
-  border: 1px solid var(--fonu-border);
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-  white-space: nowrap;
-}
-
-.status-flow__step .n-icon {
-  font-size: 18px;
-  color: var(--fonu-text-muted);
-}
-
-.status-flow__step--accent {
-  color: #2563eb;
-  border-color: color-mix(in srgb, #3b82f6 30%, var(--fonu-border));
-}
-
-.status-flow__step--accent .n-icon {
-  color: #3b82f6;
-}
-
-.status-flow__arrow {
-  color: var(--fonu-text-muted);
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.status-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.status-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.status-tag {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-  background: var(--fonu-bg);
-  border: 1px solid var(--fonu-border);
-}
-
-.status-tag--on {
-  color: #047857;
-  background: color-mix(in srgb, #10b981 8%, var(--fonu-bg));
-  border-color: color-mix(in srgb, #10b981 25%, var(--fonu-border));
-}
-
-.status-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.status-metric {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--fonu-border);
-  background: var(--fonu-bg);
-  min-width: 0;
-}
-
-.status-metric__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
-
-.status-metric__value {
-  margin-top: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--fonu-text);
-  line-height: 1.35;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
-.status-metric--endpoint .status-metric__value {
-  display: block;
-  font-family: var(--fonu-mono);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.status-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1;
-  min-height: 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--fonu-border);
-  background: var(--fonu-bg);
-}
-
-.status-overview__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fonu-text-secondary);
-}
-
-.status-overview__groups {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1;
-  min-height: 0;
-}
-
-.status-overview__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.status-overview__group-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--fonu-text-muted);
-}
-
-.status-overview__chips {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  min-height: 28px;
-}
-
-.status-overview__chip {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  max-width: 100%;
-  padding: 3px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  white-space: nowrap;
-  color: #1d4ed8;
-  background: color-mix(in srgb, #3b82f6 8%, var(--fonu-bg));
-  border: 1px solid color-mix(in srgb, #3b82f6 18%, var(--fonu-border));
-}
-
-.status-overview__more {
-  flex-shrink: 0;
-  padding: 3px 8px;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 12px;
-  color: #2563eb;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.status-overview__more:hover {
-  color: #1d4ed8;
-}
-
-.status-overview__chip--tcp {
-  color: #047857;
-  background: color-mix(in srgb, #10b981 8%, var(--fonu-bg));
-  border-color: color-mix(in srgb, #10b981 18%, var(--fonu-border));
-}
-
-.status-overview__chip--off {
-  opacity: 0.55;
-}
-
-.status-overview__empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--fonu-text-muted);
-  text-align: center;
 }
 
 .section-desc {
@@ -2105,9 +1495,6 @@ onUnmounted(() => {
   color: var(--fonu-text-muted);
 }
 
-.settings-card .settings-fields {
-  flex: 1;
-}
 
 .save-row {
   display: flex;
@@ -2118,7 +1505,7 @@ onUnmounted(() => {
 
 .gateway-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--fonu-space-4);
   align-items: stretch;
 }
@@ -2127,8 +1514,8 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  min-height: 104px;
-  padding: 16px;
+  min-height: 0;
+  padding: 12px;
   border: 1px solid var(--fonu-border);
   border-radius: 12px;
   background: var(--fonu-bg);
@@ -2137,8 +1524,6 @@ onUnmounted(() => {
 
 .gateway-item--action {
   align-items: center;
-  cursor: pointer;
-  transition: border-color 0.15s;
   font: inherit;
   color: inherit;
   width: 100%;
@@ -2149,9 +1534,6 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.gateway-item--action:hover {
-  border-color: color-mix(in srgb, #3b82f6 35%, var(--fonu-border));
-}
 
 .gateway-dot {
   width: 8px;
@@ -2342,53 +1724,6 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-@media (max-width: 1280px) {
-  .top-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1080px) {
-  .gateway-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .settings-field-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .settings-field--port {
-    width: 100%;
-  }
-}
-@media (max-width: 760px) {
-  .frp-page { min-width: 0; }
-}
-.top-grid { gap:12px; align-items:start; }
-.top-grid > .settings-card { height:auto; }
-.status-card :deep(.fonu-card__header) { padding-bottom:12px; }
-.status-hero { border-radius:var(--fonu-radius); flex-wrap:wrap; }
-.status-hero--on { border-color:color-mix(in srgb,var(--fonu-success) 35%,var(--fonu-border)); background:color-mix(in srgb,var(--fonu-success) 6%,var(--fonu-bg)); }
-.status-hero--on .status-hero__icon-wrap,.status-hero__badge--on { color:var(--fonu-success); }
-.status-hero__badge--on { background:color-mix(in srgb,var(--fonu-success) 10%,var(--fonu-surface)); }
-.status-hero__badge--on .status-hero__badge-dot { background:var(--fonu-success); box-shadow:none; }
-.status-flow-panel { background:var(--fonu-bg-muted); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); }
-.status-metrics { gap:1px; background:var(--fonu-border); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); overflow:hidden; }
-.status-metric { border:0; border-radius:0; background:var(--fonu-surface); min-width:0; }
-@media(max-width:1000px) { .top-grid { grid-template-columns:minmax(0,1fr); } }
-@media(max-width:640px) { .status-hero__aside { align-items:flex-start; } .status-flow { flex-wrap:wrap; } }
-.top-grid { grid-template-columns: minmax(0, 1fr); }
-.top-grid > .status-card { height: auto; }
-.connection-panel .settings-card { max-width: 780px; }
-.frp-domain-rows { display: grid; gap: 0; padding-top: 0; }
-.frp-domain-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px 0; border-top: 1px solid var(--fonu-border); }
-.frp-domain-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.frp-domain-name .n-icon { flex-shrink: 0; }
-.frp-domain-name span { overflow-wrap: anywhere; min-width: 0; }
-@media (max-width: 800px) { .route-table { overflow-x: auto; } }
 .frp-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .frp-toolbar > .n-input { flex:1; min-width:160px; }
 .frp-toolbar > .n-select { width:124px; }
@@ -2398,4 +1733,90 @@ onUnmounted(() => {
 .frp-sync-list { display:flex; flex-direction:column; gap:10px; max-height:45vh; overflow:auto; overflow-wrap:anywhere; }
 @media (max-width: 1000px) { .layout-auto .frp-card-mode { display:block; } .layout-auto .frp-table-mode { display:none; } }
 @media (max-width: 540px) { .frp-toolbar > .n-input { flex-basis:100%; } .frp-toolbar > .n-select { flex:1; width:auto; min-width:100px; } }
+
+/* Compact FRP workspace: size by actual FPK content area, not monitor width. */
+.workspace-overview :deep(.fonu-card__body) { padding: 0; }
+.overview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; flex-wrap:wrap; }
+.overview-status { display:flex; align-items:center; gap:12px; flex:1; min-width: min(100%, 240px); }
+.overview-icon { width:44px; height:44px; flex-shrink:0; display:grid; place-items:center; border-radius:var(--fonu-radius); background:var(--fonu-bg-muted); color:var(--fonu-text-secondary); font-size:24px; }
+.status-hero--on .overview-icon { color:var(--fonu-success); background:color-mix(in srgb,var(--fonu-success) 10%,var(--fonu-surface)); }
+.status-hero--warn .overview-icon { color:#b7791f; background:color-mix(in srgb,#d97706 10%,var(--fonu-surface)); }
+.overview-copy { min-width:0; }
+.overview-kicker { color:var(--fonu-text-secondary); font-size:11px; line-height:1.4; }
+.overview-title { font-size:20px; font-weight:700; line-height:1.35; color:var(--fonu-text); overflow-wrap:anywhere; }
+.overview-sub { color:var(--fonu-text-secondary); font-size:12px; overflow-wrap:anywhere; }
+.overview-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px; }
+.overview-tag { font-size:11px; padding:3px 7px; color:var(--fonu-text-secondary); border:1px solid var(--fonu-border); border-radius:6px; white-space:nowrap; }
+.overview-tag--on { color:var(--fonu-success); border-color:color-mix(in srgb,var(--fonu-success) 25%,var(--fonu-border)); }
+.overview-grid { display:grid; grid-template-columns:1.5fr repeat(3,minmax(0,1fr)); border-top:1px solid var(--fonu-border); }
+.overview-cell { min-width:0; padding:12px 16px; display:grid; align-content:start; gap:4px; border:0; border-right:1px solid var(--fonu-border); color:var(--fonu-text); background:transparent; font:inherit; text-align:left; }
+.overview-cell:last-child { border-right:0; }
+.overview-link { cursor:pointer; }
+.overview-link:hover { background:var(--fonu-bg-muted); }
+.overview-link:focus-visible, .aside-links button:focus-visible { outline:2px solid var(--fonu-success); outline-offset:-2px; }
+.overview-label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--fonu-text-secondary); }
+.overview-label .n-icon { flex-shrink:0; font-size:15px; }
+.overview-chevron { margin-left:auto; }
+.overview-value { display:block; font-size:15px; line-height:1.5; font-weight:650; overflow-wrap:anywhere; }
+.endpoint-value { font-family:var(--fonu-mono); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.overview-number { font-size:23px; line-height:1.25; font-variant-numeric:tabular-nums; }
+.overview-cell small { color:var(--fonu-text-secondary); font-size:11px; overflow-wrap:anywhere; }
+.routes-panel { min-width:0; padding:16px; }
+.routes-tabs :deep(.n-tabs-nav) { padding-inline:16px; }
+.routes-tabs :deep(.n-tabs-tab) { padding-block:12px; }
+.routes-panel__head { align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+.routes-panel__head .section-desc { min-width:min(100%,220px); }
+.routes-panel__actions { flex-wrap:wrap; }
+.connection-panel { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(230px,1fr); gap:20px; align-items:start; }
+.connection-form { min-width:0; display:grid; gap:12px; }
+.workspace-section-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.workspace-section-head h3,.aside-section h3 { margin:0; font-size:15px; font-weight:650; color:var(--fonu-text); }
+.workspace-section-head p,.aside-section p { margin:4px 0 0; font-size:12px; color:var(--fonu-text-secondary); line-height:1.55; }
+.draft-label { flex-shrink:0; font-size:12px; color:#b7791f; }
+.connection-form .settings-fields { margin-top:0; gap:12px; }
+.connection-form .field-hint--inline { margin:4px 0 0; }
+.connection-form .settings-field__label { margin-bottom:6px; font-size:13px; }
+.form-switch-row { padding:10px 12px; gap:12px; }
+.form-switch-row :deep(.n-switch) { flex-shrink:0; }
+.save-row { padding-top:12px; border-top:1px solid var(--fonu-border); align-items:center; justify-content:space-between; gap:8px; }
+.save-hint { color:var(--fonu-text-secondary); font-size:12px; }
+.connection-aside { display:grid; gap:12px; min-width:0; border-left:1px solid var(--fonu-border); padding-left:20px; }
+.aside-section { display:grid; gap:10px; min-width:0; }
+.connection-path { display:grid; gap:0; }
+.connection-path > div { display:flex; align-items:center; gap:8px; min-height:32px; color:var(--fonu-text-secondary); font-size:12px; position:relative; }
+.connection-path > div:not(:last-child)::after { content:""; position:absolute; left:13px; top:29px; width:1px; height:6px; background:var(--fonu-border); }
+.connection-path .n-icon { display:grid; place-items:center; width:28px; height:28px; border:1px solid var(--fonu-border); border-radius:7px; flex-shrink:0; background:var(--fonu-bg-muted); font-size:16px; }
+.aside-links { border-top:1px solid var(--fonu-border); padding-top:12px; }
+.aside-links button { display:flex; align-items:center; gap:9px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); padding:9px; text-align:left; background:var(--fonu-surface); color:var(--fonu-text); font:inherit; cursor:pointer; }
+.aside-links button:hover { background:var(--fonu-bg-muted); }
+.aside-links button > span { flex:1; min-width:0; font-size:13px; }
+.aside-links small { display:block; font-size:11px; color:var(--fonu-text-secondary); }
+.aside-links .n-icon { flex-shrink:0; color:var(--fonu-text-secondary); }
+.gateway-grid { gap:10px; }
+.gateway-item { gap:8px; }
+.gateway-item__state--count { font-size:20px; }
+.frp-tunnel-workspace { min-width:0; }
+@container (max-width: 760px) {
+  .overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .overview-cell:nth-child(2) { border-right:0; }
+  .overview-cell:nth-child(-n+2) { border-bottom:1px solid var(--fonu-border); }
+  .connection-panel { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .connection-aside { border-left:0; border-top:1px solid var(--fonu-border); padding:14px 0 0; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .aside-links { border-top:0; padding-top:0; }
+  .gateway-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout-auto .frp-card-mode { display:block; }
+  .layout-auto .frp-table-mode { display:none; }
+}
+@container (max-width: 450px) {
+  .overview-head { padding:12px; }
+  .overview-cell { padding:10px 12px; }
+  .overview-actions { justify-content:flex-start; }
+  .routes-panel { padding:12px; }
+  .routes-tabs :deep(.n-tabs-nav) { padding-inline:12px; }
+  .settings-field-row { flex-direction:column; align-items:stretch; }
+  .settings-field--port { width:100%; }
+  .connection-aside { grid-template-columns:minmax(0,1fr); }
+  .gateway-grid { grid-template-columns:minmax(0,1fr); }
+  .save-row { flex-wrap:wrap; }
+}
 </style>
