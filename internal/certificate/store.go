@@ -144,6 +144,14 @@ func (s *Store) SetExport(ctx context.Context, domain string, cfg ExportConfig) 
 	return err
 }
 
+// SetDeploymentResult updates only status fields, preserving concurrent edits and encrypted credentials.
+func (s *Store) SetDeploymentResult(ctx context.Context,domain string,remote bool,at,detail string)error{
+	atPath,errorPath:="$.last_sync_at","$.last_error"
+	if remote{atPath,errorPath="$.ssh.last_sync_at","$.ssh.last_error"}
+	_,err:=s.db.ExecContext(ctx,"UPDATE certificates SET export_json = json_set(CASE WHEN export_json IS NULL OR export_json = '' THEN '{}' ELSE export_json END, ?, ?, ?, ?) WHERE domain = ?",atPath,at,errorPath,detail,domain)
+	return err
+}
+
 // UpdateMeta updates display name and export mapping for an existing certificate.
 func (s *Store) UpdateMeta(ctx context.Context, domain, name string, cfg ExportConfig) error {
 	raw, err := s.encodeExportConfig(cfg)

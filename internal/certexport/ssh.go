@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	certstore "github.com/fonu/fonu/internal/certificate"
@@ -79,13 +78,17 @@ func uploadPEMPairSFTP(client *sftp.Client, localDir, remoteDir string) error {
 	if err := client.MkdirAll(remoteDir); err != nil {
 		return fmt.Errorf("创建远程目录 %s：%w", remoteDir, err)
 	}
-	if err := uploadFileSFTP(client, filepath.Join(localDir, certFileName), path.Join(remoteDir, certFileName)); err != nil {
-		return err
-	}
-	if err := uploadFileSFTP(client, filepath.Join(localDir, keyFileName), path.Join(remoteDir, keyFileName)); err != nil {
-		return err
-	}
-	return nil
+	return publishPEMPair(localDir,remoteDir,path.Join,pairOps{
+		stat:client.Lstat,rename:client.Rename,remove:client.Remove,
+		write:func(name string,data []byte)error{
+			f,err:=client.OpenFile(name,os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+			if err!=nil{return err}
+			if err=f.Chmod(0600);err==nil{_,err=f.Write(data)}
+			closeErr:=f.Close();if err==nil{err=closeErr}
+			if err!=nil{_ = client.Remove(name)}
+			return err
+		},
+	})
 }
 
 func uploadFileSFTP(client *sftp.Client, localPath, remotePath string) error {

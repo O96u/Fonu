@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	certstore "github.com/fonu/fonu/internal/certificate"
@@ -13,6 +14,7 @@ import (
 )
 
 type Service struct {
+	deploymentMu sync.Mutex
 	cfg    config.Config
 	certs  *certstore.Store
 	logger *slog.Logger
@@ -88,6 +90,10 @@ func exportSyncEnabled(cfg certstore.ExportConfig) bool {
 }
 
 func (s *Service) syncRecord(ctx context.Context, rec certstore.Record, remove bool) error {
+	s.deploymentMu.Lock()
+	defer s.deploymentMu.Unlock()
+	if err:=ctx.Err();err!=nil{return err}
+	if !remove { latest,err:=s.certs.GetByDomain(ctx,rec.Domain);if err!=nil{return err};rec=latest }
 	cfg := rec.Export
 	if !exportSyncEnabled(cfg) {
 		if remove {
@@ -157,35 +163,16 @@ func displayName(rec certstore.Record) string {
 }
 
 func (s *Service) recordLocalSyncResult(ctx context.Context, domain string, err error) {
-	rec, getErr := s.certs.GetByDomain(ctx, domain)
-	if getErr != nil {
-		return
-	}
-	cfg := rec.Export
-	now := time.Now().UTC().Format(time.RFC3339)
-	cfg.LastSyncAt = now
-	if err != nil {
-		cfg.LastError = err.Error()
-	} else {
-		cfg.LastError = ""
-	}
-	_ = s.certs.SetExport(ctx, domain, cfg)
+	s.recordSyncResult(ctx,domain,false,err)
 }
-
 func (s *Service) recordSSHSyncResult(ctx context.Context, domain string, err error) {
-	rec, getErr := s.certs.GetByDomain(ctx, domain)
-	if getErr != nil {
-		return
+	s.recordSyncResult(ctx,domain,true,err)
+}
+func (s *Service) recordSyncResult(ctx context.Context, domain string, remote bool, err error) {
+	detail:="";if err!=nil{detail=err.Error()}
+	if e:=s.certs.SetDeploymentResult(ctx,domain,remote,time.Now().UTC().Format(time.RFC3339),detail);e!=nil{
+		s.logger.Warn("save deployment status failed","domain",domain,"error",e.Error())
 	}
-	cfg := rec.Export
-	now := time.Now().UTC().Format(time.RFC3339)
-	cfg.SSH.LastSyncAt = now
-	if err != nil {
-		cfg.SSH.LastError = err.Error()
-	} else {
-		cfg.SSH.LastError = ""
-	}
-	_ = s.certs.SetExport(ctx, domain, cfg)
 }
 
 func (s *Service) recordDeployment(ctx context.Context, domain, channel string, remove bool, err error) {
