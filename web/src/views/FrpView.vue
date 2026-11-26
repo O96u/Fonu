@@ -453,7 +453,7 @@
             <div class="routes-panel">
               <p class="section-desc">
                 在 VPS 部署 frps 后，将下方配置保存为
-                <code>frps.toml</code> 并启动。配置会随上方连接设置实时更新。
+                <code>frps.toml</code> 并启动。预览隐藏 Token；复制和下载将导出已保存的配置（含 Token）。
               </p>
 
               <div class="settings-field">
@@ -820,7 +820,6 @@ const tcpForm = reactive({
   remote_port: 0,
   enabled: true,
 });
-const frpsConfigSaved = ref("");
 const nginxHttpPort = ref(80);
 const nginxHttpsPort = ref(443);
 const frpStatus = ref<FRPStatus>({
@@ -1092,13 +1091,9 @@ token = "${token}"
 }
 
 function resolveFrpsTokenPreview() {
-  const typed = frpForm.auth_token.trim();
-  if (typed) return typed;
-  if (frpForm.has_auth_token && frpsConfigSaved.value) {
-    const match = frpsConfigSaved.value.match(/token\s*=\s*"([^"]*)"/);
-    if (match?.[1]) return match[1];
-  }
-  return "请填写 Token 后保存";
+  return frpForm.has_auth_token || frpForm.auth_token.trim()
+    ? "********"
+    : "请填写 Token 后保存";
 }
 
 function applyFrpsMeta(data: {
@@ -1106,7 +1101,6 @@ function applyFrpsMeta(data: {
   nginx_http_port?: number;
   nginx_https_port?: number;
 }) {
-  frpsConfigSaved.value = data.frps_config ?? "";
   if (data.nginx_http_port && data.nginx_http_port > 0)
     nginxHttpPort.value = data.nginx_http_port;
   if (data.nginx_https_port && data.nginx_https_port > 0)
@@ -1426,18 +1420,13 @@ async function fetchLogs() {
   }
 }
 
-function resolveFrpsConfigText() {
-  const typed = frpForm.auth_token.trim();
-  if (!typed && frpForm.has_auth_token && frpsConfigSaved.value) {
-    return frpsConfigSaved.value;
-  }
-  return frpsConfigPreview.value;
+async function resolveFrpsConfigText() {
+  return (await api.exportFRPSConfig()).config;
 }
 
 function ensureFrpsConfigReady() {
-  const typed = frpForm.auth_token.trim();
-  if (!typed && !frpForm.has_auth_token) {
-    message.warning("请先填写 Token 并保存");
+  if (frpForm.auth_token.trim() || !frpForm.has_auth_token) {
+    message.warning("请先保存当前 Token");
     return false;
   }
   return true;
@@ -1445,25 +1434,33 @@ function ensureFrpsConfigReady() {
 
 async function copyFrpsConfig() {
   if (!ensureFrpsConfigReady()) return;
-  if (await copyToClipboard(resolveFrpsConfigText())) {
-    message.success("已复制 frps 配置");
-  } else {
-    message.error("复制失败");
+  try {
+    if (await copyToClipboard(await resolveFrpsConfigText())) {
+      message.success("已复制 frps 配置，请妥善保管 Token");
+    } else {
+      message.error("复制失败");
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "导出失败");
   }
 }
 
-function downloadFrpsConfig() {
+async function downloadFrpsConfig() {
   if (!ensureFrpsConfigReady()) return;
-  const blob = new Blob([resolveFrpsConfigText()], {
-    type: "text/plain;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "frps.toml";
-  link.click();
-  URL.revokeObjectURL(url);
-  message.success("已下载 frps.toml");
+  try {
+    const blob = new Blob([await resolveFrpsConfigText()], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "frps.toml";
+    link.click();
+    URL.revokeObjectURL(url);
+    message.success("已下载 frps.toml，请妥善保管 Token");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "导出失败");
+  }
 }
 
 watch(routeTab, (tab) => {

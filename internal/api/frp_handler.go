@@ -37,10 +37,15 @@ type frpSaveRequest struct {
 }
 
 func (h *FRPHandler) buildResponse(ctx context.Context, cfg frp.Config) frpResponse {
-	frpsConfig, err := h.mgr.FRPSConfig(ctx)
-	if err != nil {
-		frpsConfig = ""
+	ports := make([]int, 0, len(cfg.TCPProxies))
+	seen := make(map[int]bool)
+	for _, tunnel := range cfg.TCPProxies {
+		if tunnel.Enabled && tunnel.RemotePort > 0 && !seen[tunnel.RemotePort] {
+			ports = append(ports, tunnel.RemotePort)
+			seen[tunnel.RemotePort] = true
+		}
 	}
+	frpsConfig := frp.BuildFRPSConfig(cfg.ServerPort, h.mgr.NginxHTTPPort(), h.mgr.NginxHTTPSPort(), "********", ports)
 	return frpResponse{
 		Config:         cfg,
 		Status:         h.mgr.Status(ctx),
@@ -92,6 +97,22 @@ func (h *FRPHandler) Put(w http.ResponseWriter, r *http.Request) {
 		"nginx_http_port":  resp.NginxHTTPPort,
 		"nginx_https_port": resp.NginxHTTPSPort,
 	})
+}
+
+// ExportConfig returns credentials only for an explicit, authenticated export.
+func (h *FRPHandler) ExportConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	cfg, err := h.mgr.Load(r.Context())
+	if err != nil || !cfg.HasAuthToken {
+		writeError(r, w, http.StatusBadRequest, "请先保存 FRP 认证 Token")
+		return
+	}
+	content, err := h.mgr.FRPSConfig(r.Context())
+	if err != nil {
+		writeError(r, w, http.StatusInternalServerError, "生成服务端配置失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"config": content})
 }
 
 func (h *FRPHandler) Status(w http.ResponseWriter, r *http.Request) {

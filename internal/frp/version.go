@@ -1,18 +1,22 @@
 package frp
 
 import (
+	"context"
 	"os/exec"
 	"strings"
+	"time"
 )
 
-const defaultClientVersion = "frpc v0.71.0"
+const defaultClientVersion = "未知"
 
 func ResolveClientVersion(bin string) string {
 	bin = strings.TrimSpace(bin)
 	if bin == "" {
 		return defaultClientVersion
 	}
-	out, err := exec.Command(bin, "--version").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "--version").Output()
 	if err != nil {
 		return defaultClientVersion
 	}

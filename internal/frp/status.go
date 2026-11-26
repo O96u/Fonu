@@ -134,14 +134,7 @@ func logIndicatesConnected(path string) (bool, string) {
 }
 
 func tailLines(path string, max int) []string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) > max {
-		lines = lines[len(lines)-max:]
-	}
+	lines, _ := ReadLogTail(path, max)
 	return lines
 }
 
