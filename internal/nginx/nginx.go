@@ -165,6 +165,7 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	opts.ChinaCIDRPathOverride = ""
 	opts.ChinaCIDRAvailable = chinaCIDRExists(m.cfg)
 
+	opts.certificateResolver=newCertificateResolver(m.cfg.CertsDir(),certs)
 	content, err := Generate(m.cfg, rules, certs, opts)
 	if err != nil {
 		return ApplyResult{}, err

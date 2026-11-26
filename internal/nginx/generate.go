@@ -11,6 +11,8 @@ import (
 )
 
 func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
+	if err:=validateGenerateSecurity(opts);err!=nil{return "",err}
+	if opts.certificateResolver==nil{opts.certificateResolver=newCertificateResolver(cfg.CertsDir(),certs)}
 	var b strings.Builder
 
 	b.WriteString(`worker_processes auto;
@@ -49,14 +51,14 @@ http {
 `)
 
 	writeRealIPDirectives(&b, opts.TrustedProxy)
-	writeGlobalAllowList(&b, opts.GlobalIPWhitelist)
 	writeGlobalDenyList(&b, opts.GlobalIPBlacklist)
+	writeGlobalAllowList(&b, opts.GlobalIPWhitelist)
 	writeLimitZones(&b, rules)
 	writeChinaGeoBlocks(&b, cfg, opts, rules)
 	writeChinaOnlyBypassGeo(&b, rules, opts)
 	if err := writeGlobalCustomInclude(&b, cfg, opts); err != nil { return "", err }
 
-	catchAllEndpoints := collectListenEndpoints(rules, cfg.CertsDir(), certs)
+	catchAllEndpoints := collectListenEndpointsWithResolver(rules, opts.certificateResolver)
 	if err := validateListenProtocols(catchAllEndpoints); err != nil { return "",err }
 
 	for _, rule := range rules {
@@ -85,6 +87,8 @@ http {
 }
 
 func GenerateRuleBlocks(cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
+	if err:=validateGenerateSecurity(opts);err!=nil{return "",err}
+	if opts.certificateResolver==nil{opts.certificateResolver=newCertificateResolver(cfg.CertsDir(),certs)}
 	var b strings.Builder
 	writeRulePreambleComments(&b, rule)
 	if err := writeRuleBlocks(&b, cfg, rule, certs, opts); err != nil {
@@ -153,7 +157,7 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 		wroteBlock := false
 		if rule.HTTPSEnabled {
 			for _, hostname := range group.Hostnames {
-				cert := findCertificateForHosts(cfg.CertsDir(), []string{hostname}, certs)
+				cert := opts.certificateResolver.find([]string{hostname})
 				if !appendSSLServerBlock(b, cfg, group.Port, hostname, cert, rule, opts) {
 					return HTTPSCoverageError(hostname, certs)
 				}

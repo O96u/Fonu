@@ -29,35 +29,59 @@ func HasCertificateForHosts(certsDir string, hostnames []string, certs []CertSou
 	return certUsable(findCertificateForHosts(certsDir, hostnames, certs))
 }
 
-func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSource) *certFiles {
-	if len(hostnames) == 0 { return nil }
-	// Prefer registered certificates, but trust the actual leaf certificate,
-	// never metadata or directory names alone.
-	for _, source := range certs {
-		if cert := certFromSource(source); certificateCovers(cert, hostnames) {
-			return cert
-		}
-		for _, domain := range source.Domains {
-			if cert := certAt(certsDir, storageDirName(domain)); certificateCovers(cert, hostnames) {
-				return cert
-			}
-		}
-	}
-	return scanCertDirectories(certsDir, hostnames)
+// A resolver lives for one generation/publication only. Each certificate/key
+// pair is parsed at most once; subsequent host matches use its actual SANs.
+type certificateResolver struct {
+	dir string
+	sources []CertSource
+	leaves map[certFiles]*x509.Certificate
+	disk []os.DirEntry
+	scanned bool
 }
-
-func certificateCovers(cert *certFiles, hosts []string) bool {
-	if len(hosts) == 0 || !certUsable(cert) { return false }
-	pair, err := tls.LoadX509KeyPair(cert.CertPath, cert.KeyPath)
-	if err != nil || len(pair.Certificate) == 0 { return false }
-	leaf, err := x509.ParseCertificate(pair.Certificate[0])
-	if err != nil { return false }
-	now := time.Now()
-	if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) { return false }
-	for _, host := range hosts {
-		if err := leaf.VerifyHostname(host); err != nil { return false }
+func newCertificateResolver(dir string,sources []CertSource)*certificateResolver{
+	return &certificateResolver{dir:dir,sources:sources,leaves:make(map[certFiles]*x509.Certificate)}
+}
+func (r *certificateResolver) find(hosts []string)*certFiles{
+	if len(hosts)==0{return nil}
+	for _,source:=range r.sources{
+		if cert:=certFromSource(source);r.covers(cert,hosts){return cert}
+		for _,domain:=range source.Domains{
+			if cert:=certAt(r.dir,storageDirName(domain));r.covers(cert,hosts){return cert}
+		}
 	}
+	if !r.scanned{r.disk,_=osReadDir(r.dir);r.scanned=true}
+	for _,entry:=range r.disk{
+		if !entry.IsDir(){continue}
+		if cert:=certAt(r.dir,entry.Name());r.covers(cert,hosts){return cert}
+	}
+	return nil
+}
+func(r *certificateResolver) covers(cert *certFiles,hosts []string)bool{
+	if len(hosts)==0||cert==nil{return false}
+	leaf,ok:=r.leaves[*cert]
+	if !ok{
+		leaf=loadCertificateLeaf(cert)
+		r.leaves[*cert]=leaf
+	}
+	if leaf==nil{return false}
+	now:=time.Now()
+	if now.Before(leaf.NotBefore)||!now.Before(leaf.NotAfter){return false}
+	for _,host:=range hosts{if leaf.VerifyHostname(host)!=nil{return false}}
 	return true
+}
+func loadCertificateLeaf(cert *certFiles)*x509.Certificate{
+	if !certUsable(cert){return nil}
+	pair,err:=tls.LoadX509KeyPair(cert.CertPath,cert.KeyPath)
+	if err!=nil||len(pair.Certificate)==0{return nil}
+	leaf,err:=x509.ParseCertificate(pair.Certificate[0])
+	if err!=nil{return nil}
+	return leaf
+}
+func findCertificateForHosts(certsDir string,hostnames []string,certs []CertSource)*certFiles{
+	return newCertificateResolver(certsDir,certs).find(hostnames)
+}
+func certificateCovers(cert *certFiles,hosts []string)bool{
+	return newCertificateResolver("",nil).covers(cert,hosts)
 }
 
 func storageDirName(domain string) string {
@@ -144,6 +168,7 @@ func HTTPSCoverageError(hostname string, certs []CertSource) error {
 }
 
 func ValidateHTTPSRules(rules []proxy.Rule, certs []CertSource, certsDir string) error {
+	resolver:=newCertificateResolver(certsDir,certs)
 	for _, rule := range rules {
 		if !rule.Enabled || !rule.HTTPSEnabled {
 			continue
@@ -153,7 +178,7 @@ func ValidateHTTPSRules(rules []proxy.Rule, certs []CertSource, certsDir string)
 				return fmt.Errorf("启用 HTTPS 的规则缺少前端域名")
 			}
 			for _, hostname := range group.Hostnames {
-				if !HasCertificateForHosts(certsDir, []string{hostname}, certs) {
+				if resolver.find([]string{hostname})==nil {
 					return HTTPSCoverageError(hostname, certs)
 				}
 			}

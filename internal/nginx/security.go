@@ -10,6 +10,7 @@ import (
 )
 
 type GenerateOptions struct {
+	certificateResolver *certificateResolver
 	TrustedProxy               TrustedProxyConfig
 	GlobalIPBlacklist          []string
 	GlobalIPWhitelist          []string

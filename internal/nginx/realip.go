@@ -2,7 +2,10 @@ package nginx
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
+
+	"github.com/fonu/fonu/internal/validate"
 )
 
 type TrustedProxyConfig struct {
@@ -96,4 +99,23 @@ func writeRealIPDirectives(b *strings.Builder, cfg TrustedProxyConfig) {
 	b.WriteString("\n    map $remote_addr $fonu_client_ip {\n")
 	b.WriteString("        default $remote_addr;\n")
 	b.WriteString("    }\n\n")
+}
+
+// Validate before emitting directives, including values loaded from old DBs
+// or imported backups. Never silently interpolate invalid trusted proxies.
+func validateGenerateSecurity(opts GenerateOptions)error{
+	for _,list:=range [][]string{opts.GlobalIPBlacklist,opts.GlobalIPWhitelist,opts.TrustedProxy.effectiveCIDRs()}{
+		if err:=validate.IPOrCIDRList(list);err!=nil{return fmt.Errorf("全局 IP 安全配置无效：%w",err)}
+	}
+	if opts.TrustedProxy.Enabled{
+		switch opts.TrustedProxy.effectiveHeader(){
+		case "CF-Connecting-IP","X-Real-IP","X-Forwarded-For":
+		default:return fmt.Errorf("不支持的真实 IP 请求头")
+		}
+		for _,cidr:=range opts.TrustedProxy.effectiveCIDRs(){
+			normalized,_:=validate.IPOrCIDR(cidr)
+			if normalized=="0.0.0.0/0"||normalized=="::/0"{return fmt.Errorf("信任代理不能信任全部公网地址")}
+		}
+	}
+	return nil
 }

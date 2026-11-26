@@ -18,6 +18,8 @@ import (
 // Custom snippets can include external files whose dependencies are unknown;
 // never skip their reload based on a partial digest.
 func configRevision(cfg config.Config, content string, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (string,bool) {
+	resolver:=opts.certificateResolver
+	if resolver==nil{resolver=newCertificateResolver(cfg.CertsDir(),certs)}
 	h := sha256.New()
 	fmt.Fprintln(h,content)
 	safe := opts.GlobalCustomMode != "custom" && !globalCustomShouldInclude(cfg,opts)
@@ -29,7 +31,7 @@ func configRevision(cfg config.Config, content string, rules []proxy.Rule, certs
 		if r.Security.BasicAuthEnabled(){paths[HtpasswdPath(cfg,r.ID)]=true}
 		if r.HTTPSEnabled{
 			for _,g:=range r.PortGroups(){for _,host:=range g.Hostnames{
-				c:=findCertificateForHosts(cfg.CertsDir(),[]string{host},certs)
+				c:=resolver.find([]string{host})
 				if c==nil{safe=false;continue}
 				paths[c.CertPath]=true;paths[c.KeyPath]=true
 			}}

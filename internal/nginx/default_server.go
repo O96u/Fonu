@@ -18,6 +18,9 @@ type listenEndpoint struct {
 }
 
 func collectListenEndpoints(rules []proxy.Rule, certsDir string, certs []CertSource) []listenEndpoint {
+	return collectListenEndpointsWithResolver(rules,newCertificateResolver(certsDir,certs))
+}
+func collectListenEndpointsWithResolver(rules []proxy.Rule,resolver *certificateResolver)[]listenEndpoint{
 	merged := map[string]*listenEndpoint{}
 	order := make([]string, 0)
 
@@ -31,7 +34,7 @@ func collectListenEndpoints(rules []proxy.Rule, certsDir string, certs []CertSou
 			}
 			useHTTPS := rule.HTTPSEnabled
 			var cert *certFiles
-			if useHTTPS { cert = findCertificateForHosts(certsDir, group.Hostnames[:1], certs) }
+			if useHTTPS { cert = resolver.find(group.Hostnames[:1]) }
 
 			key := fmt.Sprintf("%d|%t",group.Port,useHTTPS)
 			ep := merged[key]
