@@ -21,21 +21,19 @@
         </div>
       </div>
       <div class="history-filters">
-        <div class="filter-row">
+        <div class="filter-row compact-filters" :class="{ 'compact-filters--access': tab==='access' }" data-testid="log-filters">
           <n-input v-model:value="current.keyword" class="keyword" placeholder="关键词搜索" clearable />
-          <n-select v-model:value="current.range" :options="rangeOptions" class="range-select" />
+          <n-input v-model:value="current.service" class="service-filter" :placeholder="tab==='access'?'服务或域名':tab==='system'?'模块名称':tab==='frp'?'隧道或来源':'域名或来源'" clearable />
+          <n-input v-if="tab==='access'" v-model:value="current.ip" class="ip-filter" placeholder="客户端 IP" clearable />
+          <n-select v-model:value="current.range" :options="rangeOptions" class="range-select" data-testid="log-range-select" />
           <n-select v-if="tab==='access'" v-model:value="current.status" :options="statusOptions" placeholder="全部状态" clearable class="status-select"/>
           <n-select v-else v-model:value="current.level" :options="levelOptions" placeholder="全部级别" clearable class="status-select"/>
-          <n-button size="small" :loading="loading" @click="loadHistory">刷新</n-button>
+          <n-select v-if="tab==='access'" v-model:value="current.kind" :options="kindOptions" placeholder="访问类型" clearable class="kind-filter" />
+          <div class="filter-actions"><n-button size="small" :loading="loading" @click="loadHistory">刷新</n-button><n-button text size="small" @click="resetFilters">清除筛选</n-button></div>
         </div>
-        <div class="filter-row secondary-filters">
-          <n-input v-model:value="current.service" :placeholder="tab==='access'?'服务或域名':tab==='system'?'模块名称':tab==='frp'?'隧道或来源':'域名或来源'" clearable />
-          <template v-if="tab==='access'">
-            <n-input v-model:value="current.ip" placeholder="客户端 IP（精确匹配）" clearable/>
-            <n-select v-model:value="current.kind" :options="kindOptions" placeholder="全部访问类型" clearable />
-          </template>
-          <n-date-picker v-if="current.range==='custom'" v-model:value="current.custom" type="datetimerange" clearable />
-          <n-button text size="small" @click="resetFilters">清除筛选</n-button>
+        <div v-if="current.range==='custom'" class="custom-range-row">
+          <span>时间范围</span>
+          <n-date-picker v-model:value="current.custom" type="datetimerange" start-placeholder="开始日期和时间" end-placeholder="结束日期和时间" clearable data-testid="log-custom-range"/>
         </div>
         <p v-if="tab==='access' && current.kind" class="filter-note">拦截及扫描类型由日志字段推断，不代表已确认命中的具体规则。</p>
         <p v-if="current.range==='custom'" class="filter-note">自定义时间按当前浏览器时区输入，列表按 Fonu 设置的时区显示。</p>
@@ -48,7 +46,7 @@
         <n-data-table v-else-if="tab==='nginx'" class="log-table" :columns="errorColumns" :data="errorLogs" :loading="loading" :bordered="false" :scroll-x="600" :row-class-name="errorRowClassName" :row-props="row => detailRowProps('nginx',row)"/>
         <n-data-table v-else class="log-table" :columns="frpColumns" :data="frpLogs" :loading="loading" :bordered="false" :scroll-x="720" :row-class-name="frpRowClassName" :row-props="row => detailRowProps('frp',row)"/>
       </template>
-      <EmptyState v-else-if="!loading && !error" :title="hasFilters ? '没有匹配的日志' : '暂无日志'" :description="hasFilters ? '请调整时间范围或筛选条件。' : '当前日志文件及归档中暂无记录。'"/>
+      <EmptyState v-else-if="!loading && !error" :title="awaitingCustomRange ? '请选择时间范围' : hasFilters ? '没有匹配的日志' : '暂无日志'" :description="awaitingCustomRange ? '选择开始与结束时间并确认后自动查询。' : hasFilters ? '请调整时间范围或筛选条件。' : '当前日志文件及归档中暂无记录。'"/>
       <div class="history-footer">
         <span>{{ activeRows.length ? '第 '+(offset+1)+'–'+(offset+activeRows.length)+' 条匹配记录' : '暂无匹配记录' }}<small v-if="autoRefresh && offset>0">历史页暂停自动刷新</small></span>
         <div class="history-pagination"><n-select v-model:value="pageSize" :options="pageSizeOptions" size="small" style="width:106px"/><n-button size="small" :disabled="loading||offset===0" @click="previousPage">上一页</n-button><span>第 {{ Math.floor(offset/pageSize)+1 }} 页</span><n-button size="small" :disabled="loading||!hasMore" @click="nextPage">下一页</n-button></div>
@@ -127,6 +125,7 @@ function resolveTab(value:unknown):LogTab{
 }
 const tab=ref<LogTab>(resolveTab(route.query.tab))
 const current=computed(()=>filters[tab.value])
+const awaitingCustomRange=computed(()=>current.value.range==='custom'&&!current.value.custom)
 const sourceCards=[{key:'system' as const,label:'系统日志',icon:DesktopOutline},{key:'access' as const,label:'访问日志',icon:GlobeOutline},{key:'nginx' as const,label:'Nginx 日志',icon:AlertCircleOutline},{key:'frp' as const,label:'FRP 日志',icon:GitNetworkOutline}]
 const sourceDescriptions={system:'应用运行、DDNS、证书与维护记录（常规 HTTP INFO 噪声已排除）',access:'经 Nginx 的反代访问请求',nginx:'Nginx 错误、上游与 TLS 异常',frp:'frpc 连接、代理与隧道记录'}
 const rangeOptions=[{label:'全部留存时间',value:'all'},{label:'最近 24 小时',value:'24h'},{label:'最近 7 天',value:'7d'},{label:'最近 30 天',value:'30d'},{label:'自定义时间',value:'custom'}]
@@ -168,7 +167,7 @@ async function loadSummary(force=false){
 async function loadHistory(){
  if(disposed)return
  clearTimeout(debounce)
- if(current.value.range==='custom'&&!current.value.custom){loading.value=false;error.value='请选择自定义时间范围';return}
+ if(awaitingCustomRange.value){loading.value=false;error.value='';return}
  historyController?.abort()
  const ctl=new AbortController();historyController=ctl
  const id=++generation,source=tab.value
@@ -232,7 +231,7 @@ onMounted(()=>{
  timer=setInterval(()=>{
   if(disposed||document.hidden||route.name!=='logs')return
   if(Date.now()>=nextSummaryAt)void loadSummary()
-  if(autoRefresh.value&&offset.value===0&&!loading.value)void loadHistory()
+  if(autoRefresh.value&&offset.value===0&&!loading.value&&!awaitingCustomRange.value)void loadHistory()
  },10000)
 })
 onUnmounted(()=>{disposed=true;generation++;historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
@@ -695,6 +694,17 @@ function filterDetailIP() {
 .history-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 16px; border-top:1px solid var(--fonu-border); font-size:12px; color:var(--fonu-text-secondary); }
 .history-footer small { display:block; font-size:11px; }
 .history-pagination { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-@container(max-width:550px) { .history-filters,.history-footer {padding:10px} .filter-row > .n-select {flex:1 1 120px;width:auto} .filter-row > .keyword {flex-basis:100%} .history-pagination{gap:5px} }
+/* One compact row at normal FPK widths; wrap rather than overflow in narrow windows. */
+.compact-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.compact-filters > .n-input { flex:1 1 110px; min-width:100px; width:auto; }
+.compact-filters > .keyword { flex:2 1 150px; min-width:130px; }
+.compact-filters > .range-select { flex:0 1 144px; width:144px; min-width:130px; }
+.compact-filters > .status-select,.compact-filters > .kind-filter { flex:0 1 116px; width:116px; min-width:105px; }
+.filter-actions { display:flex; align-items:center; gap:10px; flex:0 0 auto; white-space:nowrap; }
+.custom-range-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--fonu-text-secondary); }
+.custom-range-row > .n-date-picker { flex:0 1 420px; width:100%; min-width:0; }
+@container(min-width:780px) { .compact-filters:not(.compact-filters--access) { flex-wrap:nowrap; } }
+@container(min-width:1080px) { .compact-filters--access { flex-wrap:nowrap; } }
+@container(max-width:550px) { .history-filters,.history-footer {padding:10px} .compact-filters > .n-select {flex:1 1 120px;width:auto} .compact-filters > .keyword {flex-basis:100%} .history-pagination{gap:5px} }
 </style>
 
