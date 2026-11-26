@@ -450,16 +450,18 @@ func (m *Manager) runNginxStart(ctx context.Context, args []string, prefix strin
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- cmd.Wait() }()
 
+	// A freshly written PID may precede the master's process title. Do not
+	// delete it during startup while ownership is still being established.
+	owned := func() bool { pid,err:=readPIDFile(m.cfg.NginxPIDFile); return err==nil&&m.ownsMaster(pid) }
 	deadline := time.Now().Add(nginxStartWait)
 	for time.Now().Before(deadline) {
-		if running, err := m.isRunning(); err == nil && running {
+		if owned() {
 			return nil
 		}
 		select {
 		case err := <-waitDone:
-			if running, checkErr := m.isRunning(); checkErr == nil && running {
-				return nil
-			}
+			if owned() { return nil }
+			if err==nil { continue } // daemon parent exited before master became visible
 			msg := strings.TrimSpace(stderr.String())
 			if msg == "" && err != nil {
 				msg = err.Error()
@@ -476,7 +478,7 @@ func (m *Manager) runNginxStart(ctx context.Context, args []string, prefix strin
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if running, err := m.isRunning(); err == nil && running {
+	if owned() {
 		return nil
 	}
 	msg := strings.TrimSpace(stderr.String())

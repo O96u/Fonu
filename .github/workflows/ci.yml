@@ -35,6 +35,16 @@ jobs:
         working-directory: web
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/
       - run: go vet ./...
+      - name: Install Nginx for real runtime integration
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          command -v nginx
+      - name: Test actual Nginx startup, reload and rejection
+        run: go test -v ./internal/nginx -run '^TestApplyWithNginxIfAvailable      - name: Benchmark analytics rollups (100k events)
+        run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns
+ -count=1
       - run: go test ./...
       - name: Benchmark analytics rollups (100k events)
         run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
