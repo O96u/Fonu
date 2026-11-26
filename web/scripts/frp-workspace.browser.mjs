@@ -8,7 +8,7 @@ const require = createRequire(resolve(process.env.FONU_UI_TEST_ROOT, 'package.js
 const { chromium } = require('playwright')
 const base = 'http://127.0.0.1:4174'
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', '4174', '--strictPort'], { stdio: 'inherit' })
-let browser
+let browser, page
 try {
   for (let i = 0; i < 80; i++) {
     try { if ((await fetch(base)).ok) break } catch {}
@@ -17,7 +17,7 @@ try {
   }
   await mkdir('ui-screenshots', { recursive: true })
   browser = await chromium.launch({ headless: true })
-  const page = await browser.newPage({ viewport: { width: 1440, height: 980 } })
+  page = await browser.newPage({ viewport: { width: 1440, height: 980 } })
   const errors = [], saves = []
   page.on('pageerror', err => errors.push(err.message))
   let cfg = {
@@ -60,22 +60,22 @@ try {
   await page.locator('.domain-row').first().waitFor()
   assert.equal(await page.locator('.domain-row').count(), 1)
   assert.equal(await page.locator('.domain-row a').getAttribute('href'), 'https://nas.example.com')
-  await page.getByRole('tab', { name: '连接设置' }).click()
+  await page.locator('.routes-tab').filter({ hasText: '连接设置' }).click()
   await page.getByPlaceholder('127.0.0.1 或 frp.example.com').fill('draft.example.com')
-  await page.getByRole('tab', { name: 'Web 穿透' }).click()
+  await page.locator('.routes-tab').filter({ hasText: 'Web 穿透' }).click()
   await page.getByRole('button', { name: '同步域名' }).click()
   await page.getByRole('button', { name: '导入 1 个域名' }).click()
   await page.locator('.domain-row').filter({ hasText: 'media.example.com' }).waitFor()
   assert.equal(saves.at(-1).server_addr, 'frp.example.com')
   assert.equal(saves.at(-1).auth_token, undefined)
-  await page.getByRole('tab', { name: '连接设置' }).click()
+  await page.locator('.routes-tab').filter({ hasText: '连接设置' }).click()
   assert.equal(await page.getByPlaceholder('127.0.0.1 或 frp.example.com').inputValue(), 'draft.example.com')
   const before = saves.length
-  await page.getByRole('button', { name: '重启 FRP 服务' }).click()
-  await page.waitForFunction(() => !document.querySelector('.status-footer .n-button--loading'))
+  await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/frp/restart') && r.request().method() === 'POST'), page.getByRole('button', { name: '重启 FRP 服务' }).click()])
+  await page.getByText('FRP 已重启', { exact: true }).waitFor()
   assert.equal(restartCount, 1)
   assert.equal(saves.length, before)
-  await page.getByRole('tab', { name: '端口穿透' }).click()
+  await page.locator('.routes-tab').filter({ hasText: '端口穿透' }).click()
   await page.locator('.frp-table-mode').waitFor({ state: 'visible' })
   await page.screenshot({ path: 'ui-screenshots/frp-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 520, height: 780 })
@@ -92,13 +92,16 @@ try {
   await page.screenshot({ path: 'ui-screenshots/frp-narrow.png', fullPage: true })
   const sizes = await page.locator('.tunnel-card').evaluateAll(els => els.map(el => ({ w: el.clientWidth, scroll: el.scrollWidth })))
   assert.ok(sizes.every(x => x.scroll <= x.w + 2), JSON.stringify(sizes))
-  await page.getByRole('tab', { name: '运行日志' }).click()
+  await page.locator('.routes-tab').filter({ hasText: '运行日志' }).click()
   await page.getByRole('button', { name: '开始检测' }).click()
   await page.getByText('TCP 可连接', { exact: true }).waitFor()
   await page.getByPlaceholder('搜索日志').fill('test warning')
   await page.waitForFunction(() => document.querySelector('.log-view--panel')?.textContent.includes('test warning') && !document.querySelector('.log-view--panel')?.textContent.includes('login success'))
   await page.screenshot({ path: 'ui-screenshots/frp-diagnostics.png', fullPage: true })
   assert.deepEqual(errors, [])
+} catch (error) {
+  if (page) await page.screenshot({ path: 'ui-screenshots/frp-test-failure.png', fullPage: true }).catch(() => {})
+  throw error
 } finally {
   await browser?.close()
   server.kill()
