@@ -125,6 +125,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("GET /api/settings", r.settingsHandler.Get)
 	protect("PUT /api/settings", r.settingsHandler.Put)
 	protect("POST /api/settings/notify/test", notifyHandler.Test)
+ protect("GET /api/settings/notify/history",notifyHandler.History)
 	if deps.ChinaCIDR != nil {
 		protect("GET /api/settings/china-cidr", r.chinaCIDRHandler.Status)
 		protect("POST /api/settings/china-cidr/refresh", r.chinaCIDRHandler.Refresh)

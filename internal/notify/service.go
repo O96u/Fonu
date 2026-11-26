@@ -29,6 +29,8 @@ type Service struct {
  accessConfig RuntimeConfig
  accessConfigUntil time.Time
  alertSlots chan struct{}
+ historyMu sync.Mutex
+ history []Delivery
 
 	loginMu      sync.Mutex
 	loginHits    map[string][]time.Time
@@ -52,29 +54,47 @@ func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logg
 	}
 }
 
-func (s *Service) Alert(ctx context.Context, event, title, message string) {
-	if s == nil || s.store == nil {
-		return
-	}
-	cfg, err := s.store.LoadRuntime(ctx)
-	if err != nil {
-		s.logger.Warn("notify load config failed", "event", event, "error", err.Error())
-		return
-	}
-	if cfg.Type == "" {
-		s.logger.Warn("notify skipped: no channel configured", "event", event)
-		return
-	}
-	if !s.enabledFor(cfg, event) {
-		s.logger.Debug("notify skipped: event disabled",
-			"event", event,
-			"type", string(cfg.Type),
-		)
-		return
-	}
-	if err := s.send(ctx, cfg, event, title, message); err != nil {
-		s.logger.Warn("notify send failed", "event", event, "type", string(cfg.Type), "error", err.Error())
-	}
+// Delivery records contain only event metadata, never message text or credentials.
+type Delivery struct{
+ At string `json:"at"`
+ Event string `json:"event"`
+ Channel string `json:"channel"`
+ State string `json:"state"`
+ Detail string `json:"detail"`
+}
+func(s *Service) record(event,channel,state,detail string){
+ row:=Delivery{At:time.Now().UTC().Format(time.RFC3339),Event:event,Channel:channel,State:state,Detail:detail}
+ s.historyMu.Lock()
+ if len(s.history)>=100{copy(s.history,s.history[1:]);s.history=s.history[:99]}
+ s.history=append(s.history,row);s.historyMu.Unlock()
+ s.logger.Info("notification delivery","event",event,"channel",channel,"state",state,"detail",detail)
+}
+func(s *Service) History()[]Delivery{
+ s.historyMu.Lock();defer s.historyMu.Unlock()
+ out:=make([]Delivery,len(s.history))
+ for i:=range s.history{out[i]=s.history[len(s.history)-1-i]}
+ return out
+}
+func(s *Service) InvalidateConfig(){
+ s.accessConfigMu.Lock();s.accessConfigUntil=time.Time{};s.accessConfigMu.Unlock()
+ // A new threshold or event toggle must not inherit old cooldown/count state.
+ s.accessMu.Lock();clear(s.accessHits);clear(s.accessAlerted);s.accessMu.Unlock()
+ s.loginMu.Lock();clear(s.loginHits);clear(s.loginAlerted);s.loginMu.Unlock()
+ s.securityMu.Lock();s.securityState=attackState{};s.securityMu.Unlock()
+}
+func(s *Service) Alert(ctx context.Context,event,title,message string){
+ if s==nil||s.store==nil{return}
+ // An event emitted just before a scheduled/manual context expires still deserves
+ // an independent bounded delivery attempt.
+ sendCtx,cancel:=context.WithTimeout(context.WithoutCancel(ctx),20*time.Second);defer cancel()
+ cfg,err:=s.store.LoadRuntime(sendCtx)
+ if err!=nil{s.record(event,"","failed","读取通知配置或解密凭证失败");return}
+ channel:=string(cfg.Type)
+ if cfg.Type==NotifyTypeWebhook{channel=string(cfg.Webhook.Provider)}
+ if cfg.Type==""{s.record(event,channel,"skipped","通知未启用");return}
+ if !s.enabledFor(cfg,event){s.record(event,channel,"skipped","事件未勾选或未识别");return}
+ if err:=s.send(sendCtx,cfg,event,title,message);err!=nil{s.record(event,channel,"failed","发送失败，请检查通道凭证、网络及服务端响应");s.logger.Warn("notify send failed","event",event,"type",channel,"error",err.Error());return}
+ s.record(event,channel,"sent","通道已确认接收")
 }
 
 func (s *Service) RecordAccessHit(ctx context.Context, ip string) {
@@ -183,9 +203,11 @@ func (s *Service) SendTest(ctx context.Context, in TestInput) error {
 		return fmt.Errorf("请先选择通知方式")
 	}
 	if err := s.send(ctx, runtime, "test", "测试通知", "配置验证通过，当前通知通道可正常使用。"); err != nil {
+ s.record("test",string(runtime.Type),"failed","测试通道发送失败")
 		s.logger.Warn("notify test send failed", "error", err.Error())
 		return err
 	}
+ s.record("test",string(runtime.Type),"sent","测试通道已确认接收")
 	return nil
 }
 
@@ -275,6 +297,6 @@ func (s *Service) enabledFor(cfg RuntimeConfig, event string) bool {
 	case EventNginxReloadFailure:
 		return cfg.OnNginxReloadFailure
 	default:
-		return true
+		return false
 	}
 }

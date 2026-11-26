@@ -46,93 +46,78 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 		Telegram: TelegramConfig{},
 	}
 	secrets := runtimeSecrets{}
+ values,err:=s.settings.List(ctx);if err!=nil{return cfg,secrets,err}
+ get:=func(key string)(string,error){return values[key],nil}
+ flagValue:=func(key string,fallback bool)bool{v:=strings.TrimSpace(values[key]);if v==""{return fallback};return v=="1"||strings.EqualFold(v,"true")}
+ intValue:=func(key string,fallback int)int{n,e:=strconv.Atoi(strings.TrimSpace(values[key]));if e!=nil||n<=0{return fallback};return n}
 
-	typeRaw, _ := s.settings.Get(ctx, settings.KeyNotifyType)
+	typeRaw, _ := get(settings.KeyNotifyType)
 	cfg.Type = NotifyType(strings.TrimSpace(typeRaw))
 
-	emailRaw, _ := s.settings.Get(ctx, settings.KeyNotifyEmailJSON)
+	emailRaw, _ := get(settings.KeyNotifyEmailJSON)
 	if emailRaw != "" {
-		_ = json.Unmarshal([]byte(emailRaw), &cfg.Email)
+		if err:=json.Unmarshal([]byte(emailRaw), &cfg.Email);err!=nil&&decrypt&&cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 	if cfg.Email.Port <= 0 {
 		cfg.Email.Port = 587
 	}
 
-	webhookRaw, _ := s.settings.Get(ctx, settings.KeyNotifyWebhookJSON)
+	webhookRaw, _ := get(settings.KeyNotifyWebhookJSON)
 	if webhookRaw != "" {
-		_ = json.Unmarshal([]byte(webhookRaw), &cfg.Webhook)
+		if err:=json.Unmarshal([]byte(webhookRaw), &cfg.Webhook);err!=nil&&decrypt&&cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 	if cfg.Webhook.Server == "" && cfg.Webhook.Provider == WebhookBark {
 		cfg.Webhook.Server = DefaultBarkServer
 	}
 
-	telegramRaw, _ := s.settings.Get(ctx, settings.KeyNotifyTelegramJSON)
+	telegramRaw, _ := get(settings.KeyNotifyTelegramJSON)
 	if telegramRaw != "" {
-		_ = json.Unmarshal([]byte(telegramRaw), &cfg.Telegram)
+		if err:=json.Unmarshal([]byte(telegramRaw), &cfg.Telegram);err!=nil&&decrypt&&cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 
-	cfg.IPFrequentThreshold = intSetting(s.settings, ctx, settings.KeyNotifyIPFrequentThreshold, DefaultIPFrequentThreshold)
-	cfg.IPFrequentWindowSec = intSetting(s.settings, ctx, settings.KeyNotifyIPFrequentWindowSec, DefaultIPFrequentWindowSec)
+	cfg.IPFrequentThreshold = intValue(settings.KeyNotifyIPFrequentThreshold, DefaultIPFrequentThreshold)
+	cfg.IPFrequentWindowSec = intValue(settings.KeyNotifyIPFrequentWindowSec, DefaultIPFrequentWindowSec)
 
-	cfg.LoginFailureThreshold = intSetting(s.settings, ctx, settings.KeyNotifyLoginFailureThreshold, DefaultLoginFailureThreshold)
-	cfg.LoginFailureWindowSec = intSetting(s.settings, ctx, settings.KeyNotifyLoginFailureWindowSec, DefaultLoginFailureWindowSec)
+	cfg.LoginFailureThreshold = intValue(settings.KeyNotifyLoginFailureThreshold, DefaultLoginFailureThreshold)
+	cfg.LoginFailureWindowSec = intValue(settings.KeyNotifyLoginFailureWindowSec, DefaultLoginFailureWindowSec)
 
-	if hasNotifyEventSettings(ctx, s.settings) {
-		cfg.OnDDNSIPChange = flag(s.settings, ctx, settings.KeyNotifyOnDDNSIPChange, true)
-		cfg.OnDDNSFailure = flag(s.settings, ctx, settings.KeyNotifyOnDDNSFailure, true)
-		cfg.OnCertExpiry = flag(s.settings, ctx, settings.KeyNotifyOnCertExpiry, true)
-		cfg.OnCertRenewSuccess = flag(s.settings, ctx, settings.KeyNotifyOnCertRenewSuccess, true)
-		cfg.OnCertRenewFailure = flag(s.settings, ctx, settings.KeyNotifyOnCertRenewFailure, true)
-		cfg.OnIPFrequentAccess = flag(s.settings, ctx, settings.KeyNotifyOnIPFrequentAccess, false)
- cfg.OnScan=flag(s.settings,ctx,settings.KeyNotifyOnScan,false)
- cfg.OnCC=flag(s.settings,ctx,settings.KeyNotifyOnCC,false)
-		cfg.OnLoginFailure = flag(s.settings, ctx, settings.KeyNotifyOnLoginFailure, false)
-		cfg.OnNginxReloadFailure = flag(s.settings, ctx, settings.KeyNotifyOnNginxReloadFailure, true)
-	} else {
-		legacyDDNS := flag(s.settings, ctx, settings.KeyNotifyOnDDNSError, true)
-		legacyCert := flag(s.settings, ctx, settings.KeyNotifyOnCertError, true)
-		cfg.OnDDNSFailure = legacyDDNS
-		cfg.OnCertExpiry = legacyCert
-		cfg.OnCertRenewFailure = legacyCert
-		cfg.OnDDNSIPChange = true
-		cfg.OnCertRenewSuccess = true
-		cfg.OnNginxReloadFailure = true
-		cfg.OnIPFrequentAccess = false
-		cfg.OnLoginFailure = false
-	}
+ cfg.OnDDNSIPChange=flagValue(settings.KeyNotifyOnDDNSIPChange,true)
+ cfg.OnDDNSFailure=flagValue(settings.KeyNotifyOnDDNSFailure,flagValue(settings.KeyNotifyOnDDNSError,true))
+ cfg.OnCertExpiry=flagValue(settings.KeyNotifyOnCertExpiry,flagValue(settings.KeyNotifyOnCertError,true))
+ cfg.OnCertRenewSuccess=flagValue(settings.KeyNotifyOnCertRenewSuccess,true)
+ cfg.OnCertRenewFailure=flagValue(settings.KeyNotifyOnCertRenewFailure,flagValue(settings.KeyNotifyOnCertError,true))
+ cfg.OnIPFrequentAccess=flagValue(settings.KeyNotifyOnIPFrequentAccess,false)
+ cfg.OnScan=flagValue(settings.KeyNotifyOnScan,false)
+ cfg.OnCC=flagValue(settings.KeyNotifyOnCC,false)
+ cfg.OnLoginFailure=flagValue(settings.KeyNotifyOnLoginFailure,false)
+ cfg.OnNginxReloadFailure=flagValue(settings.KeyNotifyOnNginxReloadFailure,true)
 
-	smtpEnc, _ := s.settings.Get(ctx, settings.KeyNotifySMTPPassword)
+	smtpEnc, _ := get(settings.KeyNotifySMTPPassword)
 	if smtpEnc != "" {
 		cfg.Email.HasPassword = true
-		if decrypt && s.secret != nil {
-			if plain, err := s.secret.Decrypt(smtpEnc); err == nil {
-				secrets.smtpPassword = plain
-			}
-		}
+		if decrypt {
+    if s.secret==nil{if cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(smtpEnc);err==nil{secrets.smtpPassword=plain}else if cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+  }
 	}
 
-	webhookEnc, _ := s.settings.Get(ctx, settings.KeyNotifyWebhookSecret)
+	webhookEnc, _ := get(settings.KeyNotifyWebhookSecret)
 	if webhookEnc != "" {
 		cfg.Webhook.HasSecret = true
-		if decrypt && s.secret != nil {
-			if plain, err := s.secret.Decrypt(webhookEnc); err == nil {
-				secrets.webhookSecret = plain
-			}
-		}
+		if decrypt {
+    if s.secret==nil{if cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(webhookEnc);err==nil{secrets.webhookSecret=plain}else if cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+  }
 	}
 
-	telegramEnc, _ := s.settings.Get(ctx, settings.KeyNotifyTelegramToken)
+	telegramEnc, _ := get(settings.KeyNotifyTelegramToken)
 	if telegramEnc != "" {
 		cfg.Telegram.HasBotToken = true
-		if decrypt && s.secret != nil {
-			if plain, err := s.secret.Decrypt(telegramEnc); err == nil {
-				secrets.telegramToken = plain
-			}
-		}
+		if decrypt {
+    if s.secret==nil{if cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(telegramEnc);err==nil{secrets.telegramToken=plain}else if cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+  }
 	}
 
-	if cfg.Type == "" {
-		legacyURL, _ := s.settings.Get(ctx, settings.KeyNotifyWebhookURL)
+	if _,explicit:=values[settings.KeyNotifyType];!explicit && cfg.Type == "" {
+		legacyURL, _ := get(settings.KeyNotifyWebhookURL)
 		if strings.TrimSpace(legacyURL) != "" {
 			cfg.Type = NotifyTypeWebhook
 			cfg.Webhook.Provider = WebhookCustom

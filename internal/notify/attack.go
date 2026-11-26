@@ -24,6 +24,7 @@ func(s *Service) enqueueAlert(event,title,detail string){
  select{case s.alertSlots<-struct{}{}:
   go func(){defer func(){<-s.alertSlots}();ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second);defer cancel();s.Alert(ctx,event,title,detail)}()
  default: // bounded concurrency: never delay log ingestion during an attack.
+ s.record(event,"","skipped","告警发送并发已满")
  }
 }
 func publicAttackIP(raw string)(string,bool){

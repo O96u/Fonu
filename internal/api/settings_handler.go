@@ -150,6 +150,7 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(r,w,http.StatusBadRequest,"保存设置失败："+saveErr.Error(),saveErr)
 		return
 	}
+ if hasNotify{h.notify.InvalidateConfig()}
 	values, err := h.store.List(r.Context())
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取设置失败", err)

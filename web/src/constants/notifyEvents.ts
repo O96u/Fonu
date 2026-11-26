@@ -62,7 +62,7 @@ export const NOTIFY_EVENT_GROUPS: NotifyEventGroup[] = [
       {
         key:'on_cc',
         label:'疑似 CC / 分布式高频访问',
-        hint:'60 秒内单入口达到 600 次请求且至少 10 个公网 IP，或 100 次限流；仅告警，不自动封禁。',
+        hint:'60 秒内单入口达到 600 次请求且至少 10 个公网 IP，或 1200 次请求（不限来源 IP 数），或 100 次限流；仅告警，不自动封禁。',
       },
       {
         key: 'on_login_failure',

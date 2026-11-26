@@ -411,7 +411,7 @@ func (s *Service) Delete(ctx context.Context, domain string) error {
 	return nil
 }
 
-func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstore.Record, error) {
+func (s *Service) Renew(ctx context.Context, domain string, ca string) (_ certstore.Record, renewErr error) {
 	if !s.operationMu.TryLock() { return certstore.Record{},fmt.Errorf("已有证书操作正在执行，请稍后重试") }
 	defer s.operationMu.Unlock()
 	if err:=ctx.Err();err!=nil {return certstore.Record{},err}
@@ -426,6 +426,7 @@ func (s *Service) Renew(ctx context.Context, domain string, ca string) (certstor
 	if existing.ACMECA == "imported" {
 		return certstore.Record{}, fmt.Errorf("手动导入的证书无法自动续签，请在编辑中更换证书或重新导入")
 	}
+ defer func(){if renewErr!=nil&&s.notify!=nil&&ctx.Err()==nil{s.notify.Alert(ctx,notify.EventCertRenewFailure,"证书续签失败",fmt.Sprintf("%s: %s",rootDomain,renewErr.Error()))}}()
 	if ca == "" {
 		ca = existing.ACMECA
 	}
@@ -675,7 +676,7 @@ func (s *Service) TickErr(ctx context.Context) error {
 		if rec.ExpiresAt == nil {
 			continue
 		}
-		if rec.ACMECA != "imported" && rec.DaysLeft <= threshold {
+		if rec.DaysLeft <= threshold {
 			s.maybeAlertCertExpiry(ctx, rec.Domain, rec.DaysLeft)
 		}
 		if rec.DaysLeft <= threshold {
@@ -685,10 +686,7 @@ func (s *Service) TickErr(ctx context.Context) error {
 			if _, err := s.Renew(ctx, rec.Domain, rec.ACMECA); err != nil {
 				failed++
 				s.logger.Error("certificate renew failed", "domain", rec.Domain, "error", err.Error())
-				if s.notify != nil {
-					s.notify.Alert(ctx, notify.EventCertRenewFailure, "证书续签失败",
-						fmt.Sprintf("%s: %s", rec.Domain, err.Error()))
-				}
+
 			}
 		}
 	}

@@ -389,9 +389,7 @@ func (s *Service) TickErr(ctx context.Context) error {
 			if errors.Is(err,ErrUpdateBusy){continue}
 			failed++
 			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
-			if s.notify != nil {
-				s.notify.Alert(ctx, notify.EventDDNSFailure, "DDNS 更新失败", cfg.RootDomain+": "+err.Error())
-			}
+
 		}
 	}
 	if enabled > 0 {
@@ -551,7 +549,7 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 	cfg.DomainRecords = records
 }
 
-func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
+func (s *Service) runUpdate(ctx context.Context, cfg Config) (runErr error) {
 	if !s.updateMu.TryLock() { return ErrUpdateBusy }
 	defer s.updateMu.Unlock()
 	if err := ctx.Err(); err != nil { return err }
@@ -559,6 +557,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	if err != nil { return err }
 	cfg = latest
 	if !cfg.Enabled || cfg.AcmeOnly { return fmt.Errorf("该 DDNS 配置未启用或仅用于证书申请") }
+ defer func(){if runErr!=nil&&s.notify!=nil&&ctx.Err()==nil{s.notify.Alert(ctx,notify.EventDDNSFailure,"DDNS 更新失败",cfg.RootDomain+": "+runErr.Error())}}()
 	prevIPv4 := cfg.LastIPv4
 	prevIPv6 := cfg.LastIPv6
 
@@ -722,6 +721,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 		overallStatus = "warning"
 		overallError = fmt.Sprintf("%d 个域名同步失败，其余正常", errCount)
 		lastErr = nil
+ if s.notify!=nil{s.notify.Alert(ctx,notify.EventDDNSFailure,"DDNS 部分更新失败",cfg.RootDomain+": "+overallError)}
 	case ipv4DetectFallback || ipv6DetectFallback:
 		overallStatus = "warning"
 		overallError = "公网 IP 在线探测失败，已使用上次成功的公网 IP 继续同步"
