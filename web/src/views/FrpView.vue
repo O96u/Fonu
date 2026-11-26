@@ -111,7 +111,7 @@
               </aside>
               <section class="dashboard-panel dash-logs">
                 <header class="dash-heading"><h3><n-icon :component="DocumentTextOutline" />最近日志</h3><n-button text type="primary" @click="routeTab = 'logs'">查看全部 <n-icon :component="ChevronForwardOutline" /></n-button></header>
-                <pre class="dash-log-preview">{{ logLines.slice(-5).join("\n") || (loadingLogs ? '正在加载日志…' : '暂无运行日志') }}</pre>
+                <pre class="fonu-log-console dash-log-preview">{{ logLines.slice(-5).join("\n") || (loadingLogs ? '正在加载日志…' : '暂无运行日志') }}</pre>
               </section>
             </div>
           </n-tab-pane>
@@ -399,7 +399,7 @@
               </div>
               <div class="frp-toolbar log-toolbar"><n-input v-model:value="logSearch" clearable placeholder="搜索日志" /><n-select v-model:value="logLevel" :options="[{label:'全部级别',value:'all'},{label:'警告',value:'warn'},{label:'错误',value:'error'}]" /><n-checkbox v-model:checked="logAuto">自动刷新</n-checkbox><n-checkbox v-model:checked="followLogs">跟随滚动</n-checkbox><n-button size="small" @click="copyText(logText, '已复制日志')">复制</n-button></div>
               <n-spin :show="loadingLogs">
-                <pre ref="logPanelRef" class="log-view log-view--panel">{{
+                <pre ref="logPanelRef" class="fonu-log-console log-view log-view--panel">{{
                   logText || "暂无日志"
                 }}</pre>
               </n-spin>
@@ -434,7 +434,7 @@
           </n-button>
         </div>
       </div>
-      <pre ref="logFullscreenRef" class="log-view log-view--fullscreen">{{
+      <pre ref="logFullscreenRef" class="fonu-log-console log-view log-view--fullscreen">{{
         logText || "暂无日志"
       }}</pre>
     </div>
@@ -1697,8 +1697,8 @@ onUnmounted(() => {
   margin: 0;
   padding: 14px;
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--fonu-bg-muted);
+  color: var(--fonu-text);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -1724,7 +1724,7 @@ onUnmounted(() => {
   z-index: 3000;
   display: flex;
   flex-direction: column;
-  background: #0f172a;
+  background: var(--fonu-bg-muted);
 }
 
 .frp-log-fullscreen__head {
@@ -1733,15 +1733,15 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background: #1e293b;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--fonu-surface);
+  border-bottom: 1px solid var(--fonu-border);
   flex-shrink: 0;
 }
 
 .frp-log-fullscreen__title {
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--fonu-text);
 }
 
 .frp-log-fullscreen__actions {
@@ -1920,7 +1920,7 @@ onUnmounted(() => {
 .dash-health { display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid var(--fonu-border); }
 .dash-health:last-child { border:0; }
 .dash-logs { grid-column:1 / span 2; }
-.dash-log-preview { margin:0; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; background:#202a38; color:#dbe6ed; padding:12px; border-radius:8px; font-size:12px; line-height:1.7; }
+.dash-log-preview { margin:0; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; background:var(--fonu-bg-muted); color:var(--fonu-text); padding:12px; border-radius:8px; font-size:12px; line-height:1.7; }
 @container (max-width: 1100px) {
   .hero-grid { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr); }
   .hero-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }

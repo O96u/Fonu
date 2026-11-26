@@ -67,7 +67,7 @@
           <div v-for="(event,index) in recentPreview" :key="event.at+'-'+index" class="recent-row">
             <div class="recent-service"><strong :title="event.service || event.domain">{{event.service || event.domain || '未识别服务'}}</strong><small :title="event.path">{{event.path || '/'}}</small></div>
             <div class="recent-client"><span :title="event.client_ip">{{event.client_ip || '—'}}</span><small>{{event.geo ? displayGeoLabel(event.geo) : '—'}}</small></div>
-            <n-tag size="small" :bordered="false" :type="httpStatusKind(event.status)==='success'?'success':httpStatusKind(event.status)==='warning'?'warning':'error'">{{event.status}}</n-tag>
+            <HttpStatusBadge :code="event.status" class="recent-status" />
             <small class="recent-time">{{formatRelativeTime(event.at) || formatLogTime(event.at,{timeZone:logTimeZone})}}</small>
           </div>
           <div v-for="n in Math.max(0, HOME_PREVIEW_LIMIT - recentPreview.length)" :key="'recent-empty-'+n" class="recent-row recent-placeholder" :aria-hidden="n > 1 ? 'true' : undefined"><span>{{ n === 1 ? (awarenessLoading ? '正在读取访问记录…' : recentPreview.length ? '暂无更多访问记录' : '当前统计范围暂无访问记录') : '—' }}</span></div>
@@ -122,7 +122,7 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatLogTime, formatRelativeTime } from '../utils/format'
 import { displayGeoLabel } from '../utils/geoDisplay'
-import { httpStatusKind } from '../utils/status'
+import HttpStatusBadge from '../components/HttpStatusBadge.vue'
 
 defineOptions({ name: 'DashboardView' })
 
@@ -362,9 +362,7 @@ const awarenessEventColumns: DataTableColumns<AwarenessEvent> = [
     key: 'status',
     width: 56,
     render: (r) => {
-      const kind = httpStatusKind(r.status)
-      const type = kind === 'success' ? 'success' : kind === 'warning' ? 'warning' : 'error'
-      return h(NTag, { size: 'tiny', bordered: false, type }, () => String(r.status))
+      return h(HttpStatusBadge, { code: r.status })
     },
   },
   {
@@ -561,4 +559,5 @@ onUnmounted(pauseDashboard)
 .recent-full .recent-placeholder { color:var(--fonu-text-muted); }
 .recent-placeholder > span { grid-column:1/-1; }
 @container(max-width:460px) { .recent-full .recent-row { min-height:64px; grid-template-columns:minmax(0,1fr) auto auto; } }
+.recent-status { justify-self:center; }
 </style>

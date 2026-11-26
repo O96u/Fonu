@@ -1,7 +1,7 @@
 <template>
   <div
     ref="root"
-    class="proxy-log-box"
+    class="proxy-log-box fonu-log-console"
     :class="{
       'proxy-log-box--embedded': embedded,
       'proxy-log-box--fullscreen': fullscreen,
@@ -20,7 +20,7 @@
           {{ item.parsed.method }}
         </span>
         <span class="proxy-log-entry__path" :title="pathTitle(item.parsed)">{{ item.parsed.path }}</span>
-        <span class="proxy-log-entry__status">{{ item.parsed.status }}</span>
+        <HttpStatusBadge :code="item.parsed.status" />
         <span class="proxy-log-entry__ms">{{ item.parsed.ms }}ms</span>
         <span class="proxy-log-entry__client mono">{{ item.parsed.client }}</span>
         <span v-if="!hideUpstream" class="proxy-log-entry__upstream mono" :title="item.parsed.upstream">
@@ -35,6 +35,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import HttpStatusBadge from './HttpStatusBadge.vue'
 import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatLogTime as formatLogTimeInZone } from '../utils/format'
 
@@ -69,9 +70,9 @@ const root = ref<HTMLElement | null>(null)
 const logTimeZone = useAppTimezone()
 
 const accessLineReWithPort =
-  /^(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+)\s+(\d+))?$/
+  /^(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+|-)\s+(\d+|-))?(?:\s+"(?:[^"\\]|\\.)*")?$/
 const accessLineReLegacy =
-  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+)\s+(\d+))?$/
+  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+|-)\s+(\d+|-))?(?:\s+"(?:[^"\\]|\\.)*")?$/
 
 function parseAccessLog(line: string): AccessLogEntry | null {
   let m = line.match(accessLineReWithPort)
@@ -287,7 +288,8 @@ defineExpose({ scrollToBottom })
 
 .proxy-log-line {
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
   padding: 6px 10px;
   color: var(--fonu-text-secondary);
 }
@@ -305,4 +307,10 @@ defineExpose({ scrollToBottom })
 }
 
 .mono { font-family: var(--fonu-mono); }
+.proxy-log-entry__method.is-get { color:var(--fonu-info); }
+.proxy-log-entry__method.is-post { color:var(--fonu-success); }
+.proxy-log-entry__method.is-put,.proxy-log-entry__method.is-patch { color:var(--fonu-warning); }
+.proxy-log-entry__method.is-delete { color:var(--fonu-error); }
+.proxy-log-entry:hover { background:var(--fonu-surface); }
+.proxy-log-entry__client { overflow-wrap:anywhere; }
 </style>

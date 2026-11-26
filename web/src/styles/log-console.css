@@ -1,0 +1,1 @@
+.fonu-log-console { background:var(--fonu-bg-muted); color:var(--fonu-text); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius-sm); font-family:var(--fonu-mono); font-size:12px; line-height:1.65; scrollbar-width:thin; scrollbar-color:var(--fonu-border) transparent; overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; min-width:0; }

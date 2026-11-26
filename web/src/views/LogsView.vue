@@ -1,12 +1,26 @@
 <template>
   <PageHeader
     title="日志中心"
-    description="系统日志记录 Fonu 全部运行输出；访问日志与 Nginx 错误日志来自反向代理；FRP 日志来自 frpc 客户端"
-  />
+    description="集中查看运行记录、访问请求与异常"
+  ><template #actions><n-button secondary @click="router.push({ name: 'settings' })">日志设置</n-button></template></PageHeader>
 
   <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
 
-  <FonuCard v-else flush class="logs-card" title="运行记录">
+  <div v-else class="log-workspace">
+    <div class="log-source-grid">
+      <button v-for="item in sourceCards" :key="item.key" type="button" class="log-source" :class="{ 'is-active': tab === item.key }" :aria-pressed="tab === item.key" @click="tab = item.key">
+        <span class="source-heading"><n-icon :component="item.icon" />{{ item.label }}<n-icon v-if="tab === item.key" :component="CheckmarkCircleOutline" class="source-check" /></span>
+        <strong>{{ loaded[item.key] ? item.count : '—' }}</strong>
+        <small>{{ errors[item.key] ? '读取失败' : loaded[item.key] ? '已读取记录 · 最近片段' : '点击查看日志' }}</small>
+      </button>
+    </div>
+    <FonuCard flush class="logs-card">
+      <div class="log-workspace-head">
+        <div><strong>{{ sourceCards.find(item => item.key === tab)?.label }}</strong><small>当前展示最近读取的日志片段，并非全部历史</small></div>
+        <div class="log-head-actions"><n-button size="small" :disabled="!activeRows.length" @click="exportLoaded">导出筛选结果</n-button><n-button size="small" :type="autoRefresh ? 'primary' : 'default'" secondary @click="autoRefresh = !autoRefresh">{{ autoRefresh ? '自动刷新已开启' : '自动刷新' }}</n-button></div>
+      </div>
+      <div v-if="errors[tab]" class="log-error"><span>{{ errors[tab] }}</span><n-button size="small" @click="loadCurrent">重试</n-button></div>
+      <div v-if="activeLoading && !loaded[tab]" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
     <n-tabs v-model:value="tab" type="line" animated class="logs-tabs">
       <n-tab-pane name="system" tab="系统日志">
         <LogToolbar
@@ -24,6 +38,7 @@
           :loading="loadingSystem"
           :bordered="false"
           :row-class-name="systemRowClassName"
+          :row-props="row => detailRowProps('system', row)"
         />
         <LogPagination
           v-if="filteredSystemLogs.length > 0"
@@ -31,8 +46,8 @@
           :item-count="filteredSystemLogs.length"
         />
         <EmptyState
-          v-if="!loadingSystem && systemLogs.length === 0"
-          title="暂无系统日志"
+          v-if="!loadingSystem && loaded['system'] && !errors['system'] && filteredSystemLogs.length === 0"
+          :title="systemLogs.length ? '没有匹配的日志' : '暂无系统日志'"
           description="应用启动、DDNS 更新、证书操作或 API 请求会记录在这里。"
         />
       </n-tab-pane>
@@ -45,9 +60,7 @@
           :show-domain="true"
           :show-status="true"
           :show-kind="true"
-          :auto-refresh="autoRefresh"
           @refresh="loadAccess"
-          @toggle-auto="autoRefresh = !autoRefresh"
         />
         <p v-if="accessFilterBanner" class="tab-hint access-filter-banner">
           {{ accessFilterBanner }}
@@ -67,6 +80,7 @@
           :bordered="false"
           :scroll-x="accessTableScrollX"
           :row-class-name="accessRowClassName"
+          :row-props="row => detailRowProps('access', row)"
         />
         <LogPagination
           v-if="filteredAccessLogs.length > 0"
@@ -74,15 +88,15 @@
           :item-count="filteredAccessLogs.length"
         />
         <EmptyState
-          v-if="!loadingAccess && accessLogs.length === 0"
-          :title="accessEmptyTitle"
-          :description="accessEmptyDescription"
+          v-if="!loadingAccess && loaded['access'] && !errors['access'] && filteredAccessLogs.length === 0"
+          :title="accessLogs.length ? '没有匹配的日志' : accessEmptyTitle"
+          :description="accessLogs.length ? '请调整或清除当前筛选条件。' : accessEmptyDescription"
         />
       </n-tab-pane>
 
       <n-tab-pane name="nginx" tab="Nginx 日志">
         <p class="tab-hint">Nginx 错误日志（error.log），记录 SSL 握手失败、上游连接异常、配置冲突等。</p>
-        <LogToolbar v-model:keyword="errorKeyword" @refresh="loadErrorLogs" />
+        <LogToolbar v-model:keyword="errorKeyword" v-model:level="errorLevel" :show-level="true" @refresh="loadErrorLogs" />
         <n-data-table
           v-if="filteredErrorLogs.length > 0"
           class="log-table"
@@ -91,6 +105,7 @@
           :loading="loadingError"
           :bordered="false"
           :row-class-name="errorRowClassName"
+          :row-props="row => detailRowProps('nginx', row)"
         />
         <LogPagination
           v-if="filteredErrorLogs.length > 0"
@@ -98,8 +113,8 @@
           :item-count="filteredErrorLogs.length"
         />
         <EmptyState
-          v-if="!loadingError && errorLogs.length === 0"
-          title="暂无 Nginx 错误日志"
+          v-if="!loadingError && loaded['nginx'] && !errors['nginx'] && filteredErrorLogs.length === 0"
+          :title="errorLogs.length ? '没有匹配的日志' : '暂无 Nginx 错误日志'"
           description="Nginx 出现 SSL、上游或配置相关错误时会记录在这里。"
         />
       </n-tab-pane>
@@ -108,7 +123,7 @@
         <p class="tab-hint">
           frpc 运行日志（frpc.log），记录连接 frps、代理启停与隧道状态变化。
         </p>
-        <LogToolbar v-model:keyword="frpKeyword" @refresh="loadFrpLogs" />
+        <LogToolbar v-model:keyword="frpKeyword" v-model:level="frpLevel" :show-level="true" @refresh="loadFrpLogs" />
         <n-data-table
           v-if="filteredFrpLogs.length > 0"
           class="log-table"
@@ -117,6 +132,7 @@
           :loading="loadingFrp"
           :bordered="false"
           :row-class-name="frpRowClassName"
+          :row-props="row => detailRowProps('frp', row)"
         />
         <LogPagination
           v-if="filteredFrpLogs.length > 0"
@@ -124,21 +140,35 @@
           :item-count="filteredFrpLogs.length"
         />
         <EmptyState
-          v-if="!loadingFrp && frpLogs.length === 0"
-          title="暂无 FRP 日志"
+          v-if="!loadingFrp && loaded['frp'] && !errors['frp'] && filteredFrpLogs.length === 0"
+          :title="frpLogs.length ? '没有匹配的日志' : '暂无 FRP 日志'"
           description="启用内网穿透并启动 frpc 后，连接与隧道相关输出会记录在这里。"
         />
       </n-tab-pane>
     </n-tabs>
-  </FonuCard>
+    </FonuCard>
+  </div>
+  <n-drawer v-model:show="showDetail" :width="'min(520px, 94vw)'">
+    <n-drawer-content title="日志详情" closable>
+      <template v-if="detail">
+        <div class="detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
+        <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
+        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button></div>
+      </template>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
-import { onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import {
   NButton,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
+  NIcon,
+  NSpin,
   NInput,
   NPagination,
   NSelect,
@@ -175,7 +205,10 @@ import {
   systemLevelTagType,
   systemModuleTagType,
 } from '../utils/logDisplay'
-import { httpStatusKind } from '../utils/status'
+import HttpStatusBadge from '../components/HttpStatusBadge.vue'
+import StatusBadge from '../components/StatusBadge.vue'
+import { copyToClipboard } from '../utils/clipboard'
+import { DesktopOutline, GlobeOutline, AlertCircleOutline, GitNetworkOutline, CheckmarkCircleOutline } from '@vicons/ionicons5'
 
 const PAGE_SIZE = 20
 const logTimeZone = useAppTimezone()
@@ -212,7 +245,7 @@ const LogToolbar = defineComponent({
     showStatus: Boolean,
     showKind: Boolean,
     showLevel: Boolean,
-    autoRefresh: Boolean,
+    autoRefresh: { type: Boolean, default: undefined },
   },
   emits: ['update:keyword', 'update:status', 'update:kind', 'update:level', 'refresh', 'toggle-auto'],
   setup(props, { emit }) {
@@ -231,7 +264,7 @@ const LogToolbar = defineComponent({
               placeholder: '状态码',
               clearable: true,
               style: 'width: 120px',
-              options: [200, 301, 400, 403, 404, 429, 500].map((c) => ({ label: String(c), value: c })),
+              options: [200, 201, 204, 301, 302, 304, 400, 401, 403, 404, 408, 429, 499, 500, 502, 503, 504].map((c) => ({ label: String(c), value: c })),
               'onUpdate:value': (v: number | null) => emit('update:status', v),
             })
           : null,
@@ -346,7 +379,9 @@ const accessStatus = ref<number | null>(null)
 const accessKind = ref(typeof route.query.kind === 'string' ? route.query.kind : '')
 const accessClientIP = ref(typeof route.query.ip === 'string' ? route.query.ip : '')
 const errorKeyword = ref('')
+const errorLevel = ref('')
 const frpKeyword = ref('')
+const frpLevel = ref('')
 const systemKeyword = ref('')
 const systemLevel = ref('')
 
@@ -405,23 +440,16 @@ const filteredAccessLogs = computed(() => {
 })
 
 const filteredErrorLogs = computed(() => {
-  if (!errorKeyword.value) return errorLogs.value
   const kw = errorKeyword.value.toLowerCase()
-  return errorLogs.value.filter((entry) => entry.raw.toLowerCase().includes(kw))
+  return errorLogs.value.filter(entry => entry.raw.toLowerCase().includes(kw) && levelMatches(nginxLevelTagType(entry.level), errorLevel.value))
 })
 
-const filteredFrpLogs = computed(() => {
-  if (!frpKeyword.value) return frpLogs.value
-  const kw = frpKeyword.value.toLowerCase()
-  return frpLogs.value.filter((entry) =>
-    `${entry.source} ${entry.message} ${entry.raw}`.toLowerCase().includes(kw),
-  )
-})
+const filteredFrpLogs = computed(() => frpLogs.value.filter(entry => entry.raw.toLowerCase().includes(frpKeyword.value.toLowerCase()) && levelMatches(frpLevelTagType(entry.level), frpLevel.value)))
 
 const filteredSystemLogs = computed(() => {
   return systemLogs.value.filter((log) => {
     const display = displaySystemLog(log)
-    if (systemLevel.value && log.level.toUpperCase() !== systemLevel.value) return false
+    if (!levelMatches(systemLevelTagType(display.displayLevel), systemLevel.value)) return false
     if (
       systemKeyword.value &&
       !`${display.displayModule} ${log.message}`.toLowerCase().includes(systemKeyword.value.toLowerCase())
@@ -432,6 +460,7 @@ const filteredSystemLogs = computed(() => {
   })
 })
 
+function levelMatches(type: string, level: string) { return !level || type === ({ INFO:'info', WARN:'warning', ERROR:'error' } as Record<string,string>)[level] }
 function paginate<T>(items: T[], page: number) {
   const start = (page - 1) * PAGE_SIZE
   return items.slice(start, start + PAGE_SIZE)
@@ -452,14 +481,7 @@ const methodTagType = (method: string) => {
   return map[method] ?? 'default'
 }
 
-const statusTagType = (code: number) => {
-  const kind = httpStatusKind(code)
-  if (kind === 'success') return 'success'
-  if (kind === 'warning') return 'warning'
-  if (kind === 'error') return 'error'
-  return 'info'
-}
-
+function levelBadge(type: string, text: string) { return h(StatusBadge, { kind: type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'unknown', text }) }
 const logTimeCell = (time: string) =>
   h('span', { class: 'log-time' }, formatLogTime(time, { timeZone: logTimeZone.value }))
 
@@ -520,7 +542,7 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     title: '状态',
     key: 'status',
     width: 68,
-    render: (row) => h(NTag, { size: 'small', bordered: false, type: statusTagType(row.status) }, () => String(row.status)),
+    render: (row) => h(HttpStatusBadge, { code: row.status }),
   },
   ]
 
@@ -572,11 +594,7 @@ const errorColumns: DataTableColumns<ParsedNginxError> = [
     key: 'level',
     width: 88,
     render: (row) =>
-      h(
-        NTag,
-        { size: 'small', bordered: false, type: nginxLevelTagType(row.level) },
-        () => (row.level === 'unknown' ? '未知' : row.level.toUpperCase()),
-      ),
+      levelBadge(nginxLevelTagType(row.level), row.level === 'unknown' ? '未知' : row.level.toUpperCase()),
   },
   {
     title: '消息',
@@ -593,11 +611,7 @@ const frpColumns: DataTableColumns<ParsedFrpLog> = [
     key: 'level',
     width: 88,
     render: (row) =>
-      h(
-        NTag,
-        { size: 'small', bordered: false, type: frpLevelTagType(row.level) },
-        () => (row.level === 'unknown' ? '未知' : row.level),
-      ),
+      levelBadge(frpLevelTagType(row.level), row.level === 'unknown' ? '未知' : row.level),
   },
   {
     title: '来源',
@@ -623,11 +637,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
     width: 80,
     render: (row) => {
       const display = displaySystemLog(row)
-      return h(
-        NTag,
-        { size: 'small', bordered: false, type: systemLevelTagType(display.displayLevel) },
-        () => display.displayLevel,
-      )
+      return levelBadge(systemLevelTagType(display.displayLevel), display.displayLevel)
     },
   },
   {
@@ -659,6 +669,53 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
   },
 ]
 
+const loaded = ref<Record<LogTab, boolean>>({ system:false, access:false, nginx:false, frp:false })
+const errors = ref<Record<LogTab, string>>({ system:'', access:'', nginx:'', frp:'' })
+const sourceCards = computed(() => [
+  { key:'system' as const, label:'系统日志', icon:DesktopOutline, count:systemLogs.value.length },
+  { key:'access' as const, label:'访问日志', icon:GlobeOutline, count:accessLogs.value.length },
+  { key:'nginx' as const, label:'Nginx 日志', icon:AlertCircleOutline, count:errorLogs.value.length },
+  { key:'frp' as const, label:'FRP 日志', icon:GitNetworkOutline, count:frpLogs.value.length },
+])
+const activeRows = computed(() => ({ system:filteredSystemLogs.value, access:filteredAccessLogs.value, nginx:filteredErrorLogs.value, frp:filteredFrpLogs.value })[tab.value])
+const activeLoading = computed(() => ({ system:loadingSystem.value, access:loadingAccess.value, nginx:loadingError.value, frp:loadingFrp.value })[tab.value])
+const showDetail = ref(false)
+const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string } | null>(null)
+function detailRowProps(kind: LogTab, row: unknown) {
+  const open = () => openDetail(kind, row)
+  return { tabindex:0, style:'cursor:pointer', onClick:open, onKeydown:(event:KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault();open() } } }
+}
+function openDetail(kind: LogTab, row: unknown) {
+  const fields: { label:string;value:string }[] = []
+  const add = (label:string, value:unknown) => fields.push({label,value:String(value ?? '')})
+  let raw = JSON.stringify(row,null,2), rawLabel = '记录字段（JSON）', ip:string|undefined
+  if (kind === 'access') {
+    const r = row as AccessLogEntry
+    add('访问时间', formatLogTime(r.time,{timeZone:logTimeZone.value}));add('服务',resolveAccessServiceLabel(r,proxyBindingIndex.value));add('域名',r.domain);add('端口',r.server_port);add('请求方法',r.method);add('路径',r.path);add('客户端 IP',r.client_ip);add('归属地',r.geo ? displayGeoLabel(r.geo) : '');add('HTTP 状态',r.status);add('响应耗时',formatMs(r.response_time));add('上游',r.upstream);add('拦截原因（推测）',r.block_reason);ip=r.client_ip
+  } else if (kind === 'system') {
+    const r = displaySystemLog(row as SystemLogEntry)
+    add('时间',formatLogTime(r.time,{timeZone:logTimeZone.value}));add('级别',r.displayLevel);add('模块',r.displayModule);add('消息',r.message)
+  } else {
+    const r = row as ParsedNginxError | ParsedFrpLog
+    add('时间',r.time ? formatLogTime(r.time,{timeZone:logTimeZone.value}) : '');add('级别',r.level);if ('source' in r) add('来源',r.source);add('消息',r.message);raw=r.raw;rawLabel='原始日志'
+  }
+  detail.value={fields,raw,rawLabel,ip};showDetail.value=true
+}
+async function copyDetail() {
+  if (!detail.value) return
+  if (await copyToClipboard(detail.value.raw)) message.success('已复制记录')
+  else message.error('复制失败')
+}
+function filterDetailIP() {
+  if (!detail.value?.ip) return
+  showDetail.value=false
+  void router.replace({name:'logs',query:{tab:'access',ip:detail.value.ip}})
+}
+function exportLoaded() {
+  const blob=new Blob([JSON.stringify(activeRows.value.map(row => 'raw' in row ? row.raw : row),null,2)],{type:'application/json;charset=utf-8'})
+  const url=URL.createObjectURL(blob), a=document.createElement('a')
+  a.href=url;a.download='fonu-'+tab.value+'-logs.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+}
 async function loadProxyRules() {
   try {
     proxyRules.value = asList(await api.listProxies())
@@ -667,165 +724,94 @@ async function loadProxyRules() {
   }
 }
 
+let accessGeneration = 0
+let accessRequestKey = ''
+let accessDebounce: ReturnType<typeof setTimeout> | undefined
+let disposed = false
 async function loadAccess() {
-  loadingAccess.value = true
+  const params = {limit:usesServerAccessFilter.value ? 200 : 100, keyword:accessKeyword.value.trim() || undefined, status:accessStatus.value || undefined, kind:accessKind.value.trim() || undefined, ip:accessClientIP.value.trim() || undefined}
+  const key=JSON.stringify(params)
+  if (loadingAccess.value && key === accessRequestKey) return
+  const generation=++accessGeneration
+  accessRequestKey=key
+  loadingAccess.value=true;errors.value.access=''
   try {
     await loadProxyRules()
-    accessLogs.value = asList(
-      await api.getAccessLogs({
-        limit: usesServerAccessFilter.value ? 200 : 100,
-        keyword: accessKeyword.value.trim() || undefined,
-        status: accessStatus.value || undefined,
-        kind: accessKind.value.trim() || undefined,
-        ip: accessClientIP.value.trim() || undefined,
-      }),
-    )
+    if (disposed || generation !== accessGeneration) return
+    const rows=asList(await api.getAccessLogs(params))
+    if (disposed || generation !== accessGeneration) return
+    accessLogs.value=rows;loaded.value.access=true
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载访问日志失败')
+    if (!disposed && generation === accessGeneration) errors.value.access=error instanceof Error ? error.message : '加载访问日志失败'
   } finally {
-    loadingAccess.value = false
+    if (generation === accessGeneration) loadingAccess.value=false
   }
 }
-
 async function loadErrorLogs() {
-  loadingError.value = true
-  try {
-    const errors = asList(await api.getErrorLogs({ limit: 100 }))
-    errorLogs.value = errors.map((line) => parseNginxErrorLine(line))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载错误日志失败')
-  } finally {
-    loadingError.value = false
-  }
+  if (loadingError.value) return
+  loadingError.value=true;errors.value.nginx=''
+  try { const rows=asList(await api.getErrorLogs({limit:100}));if (!disposed) {errorLogs.value=rows.map(parseNginxErrorLine);loaded.value.nginx=true} }
+  catch(error) {if (!disposed) errors.value.nginx=error instanceof Error ? error.message : '加载 Nginx 日志失败'}
+  finally {loadingError.value=false}
 }
-
 async function loadFrpLogs() {
-  loadingFrp.value = true
-  try {
-    const lines = asList(await api.getFRPLogs(200))
-    frpLogs.value = lines.map((line) => parseFrpLogLine(line))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载 FRP 日志失败')
-  } finally {
-    loadingFrp.value = false
-  }
+  if (loadingFrp.value) return
+  loadingFrp.value=true;errors.value.frp=''
+  try {const rows=asList(await api.getFRPLogs(200));if (!disposed) {frpLogs.value=rows.map(parseFrpLogLine);loaded.value.frp=true}}
+  catch(error) {if (!disposed) errors.value.frp=error instanceof Error ? error.message : '加载 FRP 日志失败'}
+  finally {loadingFrp.value=false}
 }
-
 async function loadSystemLogs() {
-  loadingSystem.value = true
-  try {
-    systemLogs.value = asList(await api.getSystemLogs({ limit: 100 }))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载系统日志失败')
-  } finally {
-    loadingSystem.value = false
-  }
+  if (loadingSystem.value) return
+  loadingSystem.value=true;errors.value.system=''
+  try {const rows=asList(await api.getSystemLogs({limit:100}));if (!disposed) {systemLogs.value=rows;loaded.value.system=true}}
+  catch(error) {if (!disposed) errors.value.system=error instanceof Error ? error.message : '加载系统日志失败'}
+  finally {loadingSystem.value=false}
 }
-
-async function loadAll() {
-  pageError.value = ''
-  try {
-    await Promise.all([loadErrorLogs(), loadSystemLogs()])
-    if (tab.value === 'access') await loadAccess()
-  } catch (error) {
-    pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
-  }
+function loadCurrent() {
+  if (disposed) return
+  if(tab.value==='access') void loadAccess()
+  else if(tab.value==='nginx') void loadErrorLogs()
+  else if(tab.value==='frp') void loadFrpLogs()
+  else void loadSystemLogs()
 }
-
-function pushAccessQueryPatch(patch: { kind?: string; ip?: string; tab?: string }) {
-  const query: Record<string, string | undefined> = { ...route.query } as Record<string, string>
-  query.tab = patch.tab ?? 'access'
-  if (patch.kind !== undefined) {
-    if (patch.kind) query.kind = patch.kind
-    else delete query.kind
-  }
-  void router.replace({ name: 'logs', query }).catch(() => {})
+function loadAll() {pageError.value='';loadCurrent()}
+function scheduleAccess() {
+  clearTimeout(accessDebounce)
+  accessDebounce=setTimeout(()=>{if(tab.value==='access' && !disposed) void loadAccess()},250)
 }
-
-watch([accessKeyword, accessStatus], () => {
-  accessPage.value = 1
-  if (tab.value === 'access' && usesServerAccessFilter.value) void loadAccess()
+watch([accessKeyword,accessStatus],()=>{accessPage.value=1;if(tab.value==='access' && usesServerAccessFilter.value) scheduleAccess()})
+watch(accessKind,kind=>{
+  accessPage.value=1
+  if(syncingRouteQuery)return
+  const query={...route.query,tab:'access',kind:kind || undefined}
+  if((route.query.kind || '')!==kind) void router.replace({name:'logs',query})
+},{flush:'sync'})
+watch([errorKeyword,errorLevel],()=>{errorPage.value=1})
+watch([frpKeyword,frpLevel],()=>{frpPage.value=1})
+watch([systemKeyword,systemLevel],()=>{systemPage.value=1})
+watch(filteredAccessLogs,rows=>{accessPage.value=Math.min(accessPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
+watch(filteredErrorLogs,rows=>{errorPage.value=Math.min(errorPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
+watch(filteredFrpLogs,rows=>{frpPage.value=Math.min(frpPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
+watch(filteredSystemLogs,rows=>{systemPage.value=Math.min(systemPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
+watch(autoRefresh,on=>{
+  if(refreshTimer)clearInterval(refreshTimer)
+  refreshTimer=on ? setInterval(()=>{if(!document.hidden && route.name==='logs' && !activeLoading.value)loadCurrent()},10000):null
 })
-
-watch(accessKind, (kind) => {
-  accessPage.value = 1
-  if (syncingRouteQuery) return
-  const inUrl = typeof route.query.kind === 'string' ? route.query.kind : ''
-  if (kind === inUrl) {
-    if (tab.value === 'access') void loadAccess()
-    return
-  }
-  pushAccessQueryPatch({ kind, tab: 'access' })
-})
-
-watch(accessClientIP, (ip) => {
-  accessPage.value = 1
-  if (syncingRouteQuery) return
-  const inUrl = typeof route.query.ip === 'string' ? route.query.ip : ''
-  if (ip === inUrl) {
-    if (tab.value === 'access') void loadAccess()
-    return
-  }
-  const query: Record<string, string | undefined> = { ...route.query, tab: 'access' } as Record<string, string>
-  if (ip) query.ip = ip
-  else delete query.ip
-  void router.replace({ name: 'logs', query }).catch(() => {})
-})
-
-watch(errorKeyword, () => {
-  errorPage.value = 1
-})
-
-watch(frpKeyword, () => {
-  frpPage.value = 1
-})
-
-watch([systemKeyword, systemLevel], () => {
-  systemPage.value = 1
-})
-
-watch(autoRefresh, (on) => {
-  if (refreshTimer) clearInterval(refreshTimer)
-  if (on) refreshTimer = setInterval(() => loadAccess(), 10000)
-})
-
-watch(
-  () =>
-    [
-      route.query.tab,
-      route.query.kind,
-      route.query.ip,
-      typeof route.query.keyword === 'string' ? route.query.keyword : '',
-    ] as const,
-  () => {
-    applyRouteQuery()
-    if (tab.value === 'access') void loadAccess()
-  },
-)
-
-watch(tab, (name) => {
-  if (name === 'access') {
-    if (route.query.tab !== 'access') {
-      void router.replace({ query: { ...route.query, tab: 'access' } }).catch(() => {})
-    }
-    void loadAccess()
-  } else if (name === 'nginx') loadErrorLogs()
-  else if (name === 'frp') loadFrpLogs()
-  else if (name === 'system') loadSystemLogs()
-})
-
-onBeforeRouteUpdate((to) => {
-  applyRouteQuery(to)
-  if (tab.value === 'access') void loadAccess()
-})
-
-onMounted(() => {
+watch(()=>route.fullPath,()=>{
+  if(route.name!=='logs')return
   applyRouteQuery()
-  void loadAll()
+  if(tab.value==='access') {accessPage.value=1;scheduleAccess()}
+  else loadCurrent()
 })
-onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
+watch(tab,name=>{
+  if(route.name!=='logs')return
+  if(resolveTab(route.query)!==name)void router.replace({name:'logs',query:{...route.query,tab:name}})
+  else if(name==='access')scheduleAccess()
+  else loadCurrent()
 })
+onMounted(()=>{applyRouteQuery();loadCurrent()})
+onUnmounted(()=>{disposed=true;accessGeneration++;clearTimeout(accessDebounce);if(refreshTimer)clearInterval(refreshTimer)})
 </script>
 
 <style scoped>
@@ -1015,4 +1001,27 @@ onUnmounted(() => {
 .logs-card :deep(.log-table .n-data-table-td) { padding-top:7px; padding-bottom:7px; font-size:12px; }
 .logs-card :deep(.log-table .n-data-table-tr.log-row--error .n-data-table-td) { background:color-mix(in srgb,var(--fonu-error) 7%,transparent); }
 .logs-card :deep(.log-table .n-data-table-tr.log-row--warn .n-data-table-td) { background:color-mix(in srgb,var(--fonu-warning) 7%,transparent); }
+
+.log-workspace { display:grid; gap:12px; min-width:0; container-type:inline-size; }
+.log-source-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.log-source { min-width:0; display:grid; gap:6px; padding:14px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-surface); text-align:left; color:var(--fonu-text); font:inherit; cursor:pointer; }
+.log-source.is-active { border-color:var(--fonu-brand); background:color-mix(in srgb,var(--fonu-brand-soft) 45%,var(--fonu-surface)); }
+.source-heading { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fonu-text-secondary); }
+.source-heading .n-icon { font-size:18px; color:var(--fonu-brand-text); }
+.source-check { margin-left:auto; }
+.log-source strong { font-size:23px; line-height:1.2; font-variant-numeric:tabular-nums; }
+.log-source small { font-size:11px; color:var(--fonu-text-secondary); }
+.log-workspace-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; flex-wrap:wrap; border-bottom:1px solid var(--fonu-border); }
+.log-workspace-head strong { font-size:16px; }
+.log-workspace-head small { display:block; margin-top:4px; font-size:12px; color:var(--fonu-text-secondary); }
+.log-head-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.log-error,.log-loading { display:flex; align-items:center; gap:10px; padding:12px 16px; color:var(--fonu-text-secondary); font-size:12px; }
+.log-error { color:var(--fonu-error); }
+.detail-fields { display:grid; gap:0; }
+.detail-fields > div { display:grid; grid-template-columns:105px minmax(0,1fr); gap:12px; padding:10px 0; border-bottom:1px solid var(--fonu-border); font-size:13px; }
+.detail-fields span { color:var(--fonu-text-secondary); }
+.detail-fields strong { font-weight:500; overflow-wrap:anywhere; }
+.detail-console { padding:12px; max-height:260px; margin:0; }
+.detail-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+@container(max-width:680px) { .log-source-grid {grid-template-columns:repeat(2,minmax(0,1fr))} .log-source{padding:10px} .logs-card :deep(.n-tabs-nav){padding-inline:12px} }
 </style>

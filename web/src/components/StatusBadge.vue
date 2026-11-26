@@ -1,6 +1,6 @@
 <template>
   <span class="status-badge" :class="[kind, { pill }]">
-    <span class="dot" />
+    <span v-if="dot" class="dot" />
     <span class="label">{{ label }}</span>
   </span>
 </template>
@@ -15,8 +15,9 @@ const props = withDefaults(
     text?: string
     kind?: StatusKind
     pill?: boolean
+    dot?: boolean
   }>(),
-  { pill: true },
+  { pill: true, dot: true },
 )
 
 const kind = computed(() => props.kind ?? statusKind(props.value))
@@ -30,7 +31,10 @@ const label = computed(() => props.text ?? statusLabel(props.value))
   gap: 6px;
   font-size: 12px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.2;
+  width: fit-content;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status-badge.pill {
@@ -79,9 +83,9 @@ const label = computed(() => props.text ?? statusLabel(props.value))
 .disabled .label { color: inherit; }
 .unknown .label { color: inherit; }
 
-.status-badge:not(.pill) .success .label { color: var(--fonu-success); }
-.status-badge:not(.pill) .warning .label { color: var(--fonu-warning); }
-.status-badge:not(.pill) .error .label { color: var(--fonu-error); }
-.status-badge:not(.pill) .disabled .label,
-.status-badge:not(.pill) .unknown .label { color: var(--fonu-text-secondary); }
+.status-badge:not(.pill).success .label { color: var(--fonu-success); }
+.status-badge:not(.pill).warning .label { color: var(--fonu-warning); }
+.status-badge:not(.pill).error .label { color: var(--fonu-error); }
+.status-badge:not(.pill).disabled .label,
+.status-badge:not(.pill).unknown .label { color: var(--fonu-text-secondary); }
 </style>

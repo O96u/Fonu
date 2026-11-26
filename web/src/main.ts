@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import './styles/log-console.css'
 import router from './router'
 
 performance.mark('fonu:entry')
