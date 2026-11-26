@@ -84,13 +84,13 @@
                   <div class="security-option">
                     <div class="security-option__text">
                       <div class="security-option__label">Basic Auth</div>
-                      <div class="security-option__hint">浏览器弹窗认证</div>
+                      <div class="security-option__hint">当前独立规则的浏览器弹窗认证，不与其他服务共享</div>
                     </div>
                     <n-switch :value="form.basic_auth_enabled" @update:value="emit('patch', { basic_auth_enabled: Boolean($event) })" size="small" />
                   </div>
                   <div v-if="form.basic_auth_enabled" class="security-fields-grid">
                     <n-form-item label="用户名">
-                      <ProxyDraftInput :value="form.basic_auth_username" @update:value="emit('patch', { basic_auth_username: $event })" placeholder="用户名" />
+                      <ProxyDraftInput label="代理认证用户名" autocomplete="off" :value="form.basic_auth_username" @update:value="emit('patch', { basic_auth_username: $event })" placeholder="用户名" />
                     </n-form-item>
                     <n-form-item>
                       <template #label>
@@ -109,7 +109,7 @@
                       <ProxyDraftInput
                         :value="form.basic_auth_password" @update:value="emit('patch', { basic_auth_password: $event })"
                         type="password"
-                        label="认证密码"
+                        label="认证密码" autocomplete="new-password"
                         :placeholder="
                           hasPassword
                             ? CONFIGURED_SECRET_PLACEHOLDER

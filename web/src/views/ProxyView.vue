@@ -254,11 +254,11 @@
   <ProxyEditorFrame :show="showModal" :title="modalTitle" :subtitle="editing?'规则 #'+editing.id+' · 独立配置':copySource?'复制后为全新独立规则':'每个域名创建独立代理规则'" :icon="copySource?CopyOutline:editing?CreateOutline:AddOutline" :busy="saving||nginxSaving" wide @close="closeModal">
     <template #navigation>
       <n-tabs :value="formTab" role="tablist" aria-label="代理配置" type="line" animated @update:value="value=>switchFormTab(value as EditorTab)">
-        <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" role="tab" :aria-selected="formTab===tab.key" :tabindex="saving||nginxSaving?-1:0" :disabled="saving||nginxSaving" @keydown.enter.prevent="switchFormTab(tab.key)" @keydown.space.prevent="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count" aria-hidden="true"> {{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot" aria-hidden="true"/></n-tab>
+        <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" role="tab" :aria-selected="formTab===tab.key" :tabindex="saving||nginxSaving?-1:0" :disabled="saving||nginxSaving" @keydown.enter.prevent="switchFormTab(tab.key)" @keydown.space.prevent="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot" aria-hidden="true"/></n-tab>
       </n-tabs>
     </template>
     <ProxyBasicEditor v-show="formTab==='basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
-    <ProxySecurityEditor v-if="formTab==='security'" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
+    <ProxySecurityEditor v-if="formTab==='security'" :key="editorSession" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
     <template #footer>
@@ -534,6 +534,7 @@ const saveError=ref('')
 const draftBaseline=ref('')
 const nginxLoadedFor=ref<number|null>(null)
 let editorRequest=0
+const editorSession=ref(0)
 const securityExpanded = ref<string[]>(['ip'])
 const editing = ref<ProxyRule | null>(null)
 const search = ref('')
@@ -639,8 +640,8 @@ function patchBasicDraft(patch:Partial<typeof form>){
 function openTrustSettings(){window.open(router.resolve({name:'settings',query:{tab:'security'}}).href,'_blank','noopener,noreferrer')}
 function serializeRuleDraft(){return JSON.stringify({form,entry:formEntryId.value,group:draftBusinessGroup.value})}
 const ruleDraftDirty=computed(()=>draftBaseline.value!==''&&serializeRuleDraft()!==draftBaseline.value)
-function initializeEditor(){++editorRequest;nginxLoadedFor.value=null;nginxDirty.value=false;nginxDraft.value='';nginxGenerated.value='';nginxLoading.value=false;nginxBackups.value=[];saveError.value='';draftBaseline.value=serializeRuleDraft()}
-function finishEditor(){++editorRequest;showModal.value=false;nginxLoadedFor.value=null;nginxDirty.value=false;draftBaseline.value='';copySource.value=null;saveError.value=''}
+function initializeEditor(){++editorRequest;editorSession.value++;nginxLoadedFor.value=null;nginxDirty.value=false;nginxDraft.value='';nginxGenerated.value='';nginxLoading.value=false;nginxBackups.value=[];saveError.value='';draftBaseline.value=serializeRuleDraft()}
+function finishEditor(){++editorRequest;showModal.value=false;form.basic_auth_password='';nginxLoadedFor.value=null;nginxDirty.value=false;draftBaseline.value='';copySource.value=null;saveError.value=''}
 
 const reordering = ref(false)
 const togglingRuleId = ref<number | null>(null)
@@ -1846,6 +1847,7 @@ function resetForm() {
 }
 
 function loadSecurityToForm(rule?: ProxyRule | null) {
+  Object.assign(form,defaultSecurityForm())
   const sec = rule?.security ?? {}
   form.ip_blacklist_text = (sec.ip_blacklist ?? []).join('\n')
   form.ip_blacklist_mode = (sec.ip_blacklist?.length ?? 0) > 0
@@ -1929,6 +1931,7 @@ function buildPayload(): ProxySavePayload {
   if (!form.listen_ipv4 && !form.listen_ipv6) {
     throw new Error('至少需要启用 IPv4 或 IPv6 监听')
   }
+  if(form.basic_auth_enabled&&(!editing.value?.security?.basic_auth?.has_password||hosts.length>1)&&!form.basic_auth_password.trim())throw new Error('启用访问认证的新增规则需要设置独立密码')
   const upstream = validateUpstreamInput(form.upstream)
   return {
     upstream,
@@ -1996,6 +1999,10 @@ function openDuplicate(rule: ProxyRule) {
     name: rule.name ?? '',
   })
   loadSecurityToForm(rule)
+  // A copy is a new independent rule. Never inherit credentials.
+  form.basic_auth_enabled=false
+  form.basic_auth_username=''
+  form.basic_auth_password=''
   syncSecurityExpanded()
   formTab.value = 'basic'
   initializeEditor()
@@ -2252,6 +2259,7 @@ async function save() {
         update: payloadForSingleHost(basePayload, hosts[0]),
         create: hosts.slice(1).map(host => payloadForSingleHost(basePayload, host)),
       })
+      if(saved.length!==hosts.length||!saved.some(r=>r.id===editing.value?.id))throw new Error('服务端未返回完整保存结果，请刷新后核对')
       const currentId=editing.value.id
       if(draftBusinessGroup.value!==ruleBusinessGroup(currentId)){
         if(!(await changeBusiness({action:'assign',id:draftBusinessGroup.value,rule_ids:saved.map(r=>r.id)})))message.warning('规则已保存，但业务分组关联失败')
@@ -2259,6 +2267,7 @@ async function save() {
       message.success(hosts.length > 1 ? `已保存 1 条并新增 ${hosts.length - 1} 条规则` : '规则已保存')
     } else {
       const saved=await api.saveProxyBatch({ create: hosts.map(host => payloadForSingleHost(basePayload, host)) })
+      if(saved.length!==hosts.length)throw new Error('服务端未返回完整创建结果，请刷新后核对')
       await assignSavedRules(saved,draftBusinessGroup.value)
       message.success(hosts.length > 1 ? `已创建 ${hosts.length} 条规则` : '规则已创建')
     }

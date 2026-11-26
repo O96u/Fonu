@@ -193,6 +193,8 @@ func (c SecurityConfig) WhitelistEnabled() bool {
 
 func MergeSecurity(current SecurityConfig, in SecurityInput) (SecurityConfig, error) {
 	out := current.Normalize()
+	// Never mutate a previously loaded rule's credential object through an aliased pointer.
+	if out.BasicAuth != nil { auth := *out.BasicAuth; out.BasicAuth = &auth }
 
 	if in.IPBlacklist != nil {
 		out.IPBlacklist = in.IPBlacklist

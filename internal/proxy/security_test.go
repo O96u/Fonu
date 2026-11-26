@@ -117,3 +117,14 @@ func TestRequestProtectionRoundTrip(t *testing.T) {
 	cleared, err := MergeSecurity(parsed, SecurityInput{AllowedMethods: &empty})
 	if err != nil || len(cleared.AllowedMethods)!=0 { t.Fatalf("clear methods: %+v %v", cleared, err) }
 }
+
+func TestMergeSecurityDoesNotShareAuthBetweenRules(t *testing.T) {
+ original := SecurityConfig{BasicAuth:&BasicAuthConfig{Enabled:true,Username:"first",PasswordHash:"hash"}}
+ off:=false
+ updated,err:=MergeSecurity(original,SecurityInput{BasicAuth:&BasicAuthInput{Enabled:&off,Username:strPtr("second")}})
+ if err!=nil {t.Fatal(err)}
+ if original.BasicAuth.Username!="first" || !original.BasicAuth.Enabled {t.Fatal("source credentials were mutated")}
+ if updated.BasicAuth.Username!="second" || updated.BasicAuth.Enabled {t.Fatal("updated credentials were not isolated")}
+ empty,err:=MergeSecurity(SecurityConfig{},SecurityInput{BasicAuth:&BasicAuthInput{Enabled:&off}})
+ if err!=nil||empty.BasicAuthEnabled()||empty.BasicAuth.Username!=""||empty.BasicAuth.PasswordHash!="" {t.Fatalf("unexpected inherited auth: %+v %v",empty,err)}
+}
