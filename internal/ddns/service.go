@@ -2,6 +2,7 @@ package ddns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -246,7 +247,12 @@ func (s *Service) Create(ctx context.Context, in SaveInput) (Config, error) {
 	return s.store.Create(ctx, in, tokenEnc)
 }
 
+var ErrUpdateBusy = errors.New("DDNS 更新正在执行，请稍后重试")
+
 func (s *Service) Update(ctx context.Context, id int64, in SaveInput) (Config, error) {
+	if !s.updateMu.TryLock(){return Config{},ErrUpdateBusy}
+	defer s.updateMu.Unlock()
+	if err:=ctx.Err();err!=nil{return Config{},err}
 	if err := validateSaveInput(in); err != nil {
 		return Config{}, err
 	}
@@ -272,6 +278,9 @@ func (s *Service) Update(ctx context.Context, id int64, in SaveInput) (Config, e
 }
 
 func (s *Service) Delete(ctx context.Context, id int64) error {
+	if !s.updateMu.TryLock(){return ErrUpdateBusy}
+	defer s.updateMu.Unlock()
+	if err:=ctx.Err();err!=nil{return err}
 	return s.store.Delete(ctx, id)
 }
 
@@ -376,6 +385,8 @@ func (s *Service) TickErr(ctx context.Context) error {
 		}
 		enabled++
 		if err := s.runUpdate(ctx, cfg); err != nil {
+			// An overlapping manual operation is not a DNS provider failure.
+			if errors.Is(err,ErrUpdateBusy){continue}
 			failed++
 			s.logger.Error("ddns update failed", "domain", cfg.RootDomain, "error", err.Error())
 			if s.notify != nil {
@@ -541,7 +552,7 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 }
 
 func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
-	if !s.updateMu.TryLock() { return fmt.Errorf("DDNS 更新正在执行，请稍后重试") }
+	if !s.updateMu.TryLock() { return ErrUpdateBusy }
 	defer s.updateMu.Unlock()
 	if err := ctx.Err(); err != nil { return err }
 	latest, err := s.store.GetByID(ctx, cfg.ID)

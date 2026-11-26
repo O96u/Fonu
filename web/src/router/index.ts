@@ -64,12 +64,27 @@ const router = createRouter({
 let lastStatus: Awaited<ReturnType<typeof api.authStatus>> | undefined
 let statusAt = 0
 let pending: ReturnType<typeof api.authStatus> | undefined
-export function invalidateRouteAuth() { lastStatus = undefined; statusAt = 0 }
+let authGeneration = 0
+export function invalidateRouteAuth() {
+  authGeneration++
+  lastStatus = undefined
+  statusAt = 0
+  pending = undefined
+}
 export function routeAuthStatus() {
   if (lastStatus && Date.now() - statusAt < 1500) return Promise.resolve(lastStatus)
-  if (!pending) pending = api.authStatus().then(status => {
-    lastStatus = status; statusAt = Date.now(); return status
-  }).finally(() => { pending = undefined })
+  if (!pending) {
+    const generation = authGeneration
+    const request = api.authStatus().then(status => {
+      if (generation !== authGeneration) return routeAuthStatus()
+      lastStatus = status
+      statusAt = Date.now()
+      return status
+    }).finally(() => {
+      if (pending === request) pending = undefined
+    })
+    pending = request
+  }
   return pending
 }
 

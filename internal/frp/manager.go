@@ -376,17 +376,36 @@ func (m *Manager) runFrpc(ctx context.Context, args []string, prefix string) err
 	ctx, cancel := context.WithTimeout(ctx, frpcCmdTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.cfg.FrpcBin, args...)
-	var stderr, stdout bytes.Buffer
+	var stderr, stdout commandOutput
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
+	// Bound Wait even if a subprocess inherits an output pipe.
+	cmd.WaitDelay = time.Second
 	if err := cmd.Run(); err != nil {
 		msg := frpcCommandError(stdout.String(), stderr.String(), err)
 		if ctx.Err() == context.DeadlineExceeded {
 			msg = "操作超时"
 		}
+		// Verification tools may echo config lines containing the token.
+		if strings.Contains(strings.ToLower(msg),"token") || strings.Contains(strings.ToLower(msg),"secret") {
+			msg="配置校验或认证失败，请检查 FRP 设置"
+		}
 		return fmt.Errorf("%s：%s", prefix, msg)
 	}
 	return nil
+}
+
+const maxCommandOutput = 16 << 10
+
+// commandOutput keeps diagnostic output bounded while consuming all bytes.
+type commandOutput struct { bytes.Buffer }
+func (b *commandOutput) Write(p []byte)(int,error){
+	n:=len(p)
+	if remaining:=maxCommandOutput-b.Len();remaining>0{
+		if len(p)>remaining{p=p[:remaining]}
+		_,_ = b.Buffer.Write(p)
+	}
+	return n,nil
 }
 
 const sessionMarker = "[FONU] frpc session started"
@@ -420,7 +439,11 @@ func (m *Manager) runFrpcStart(ctx context.Context, args []string, prefix string
 		removePIDFile(m.cfg.FrpPIDFile)
 		return ctx.Err()
 	case <-timer.C:
-		if !m.isRunningQuick() { return fmt.Errorf("%s：进程未保持运行", prefix) }
+		if !m.isRunningQuick() {
+			_ = cmd.Process.Kill()
+			removePIDFile(m.cfg.FrpPIDFile)
+			return fmt.Errorf("%s：进程未保持运行", prefix)
+		}
 		return nil
 	}
 }
@@ -447,7 +470,14 @@ func writePIDFile(path string, pid int) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", pid)), 0o644)
+	tmp,err:=os.CreateTemp(dir,".frpc-pid-*")
+	if err!=nil{return err}
+	defer os.Remove(tmp.Name())
+	_,err=fmt.Fprintf(tmp,"%d\n",pid)
+	if err==nil{err=tmp.Sync()}
+	closeErr:=tmp.Close();if err==nil{err=closeErr}
+	if err!=nil{return err}
+	return os.Rename(tmp.Name(),path)
 }
 
 func (m *Manager) isRunning() (bool, error) {

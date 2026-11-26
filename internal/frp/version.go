@@ -16,11 +16,14 @@ func ResolveClientVersion(bin string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "--version").Output()
-	if err != nil {
+	cmd:=exec.CommandContext(ctx,bin,"--version")
+	var out commandOutput
+	cmd.Stdout=&out
+	cmd.WaitDelay=time.Second
+	if err := cmd.Run(); err != nil {
 		return defaultClientVersion
 	}
-	line := strings.TrimSpace(string(out))
+	line := strings.TrimSpace(out.String())
 	if line == "" {
 		return defaultClientVersion
 	}

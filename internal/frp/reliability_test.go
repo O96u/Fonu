@@ -94,3 +94,12 @@ func TestApplyStartFailureRollsBackReplacement(t *testing.T) {
 	if err != nil || string(content) != "old config" { t.Fatalf("file not restored: %s, %v",content,err) }
 	if _, err := os.Stat(cfg.FrpPIDFile); !os.IsNotExist(err) { t.Fatalf("stale PID file: %v",err) }
 }
+
+func TestCommandOutputBounded(t *testing.T){
+	var output commandOutput
+	raw:=[]byte(strings.Repeat("x",maxCommandOutput*4))
+	n,err:=output.Write(raw)
+	if err!=nil||n!=len(raw)||output.Len()!=maxCommandOutput{t.Fatalf("output len=%d n=%d err=%v",output.Len(),n,err)}
+	n,err=output.Write(raw)
+	if err!=nil||n!=len(raw)||output.Len()!=maxCommandOutput{t.Fatal("output grew beyond limit")}
+}

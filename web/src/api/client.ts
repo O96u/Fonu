@@ -402,7 +402,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  getFRPStatus: () => request<FRPStatus>('/api/frp/status'),
+  getFRPStatus: (signal?: AbortSignal) => request<FRPStatus>('/api/frp/status', { signal }),
   diagnoseFRP: () => request<{ name: string; state: string; detail: string }[]>('/api/frp/diagnostics', { method: 'POST' }),
   restartFRP: () => request<{ message: string; status: FRPStatus }>('/api/frp/restart', { method: 'POST' }),
   exportFRPSConfig: () => request<{ config: string }>('/api/frp/export-config', { method: 'POST' }),
@@ -411,7 +411,7 @@ export const api = {
     request<FRPSaveResponse & { domains: string[] }>('/api/frp/sync-domains', {
       method: 'POST',
     }),
-  getFRPLogs: (limit = 200) => request<string[]>(`/api/frp/logs?limit=${limit}`),
+  getFRPLogs: (limit = 200, signal?: AbortSignal) => request<string[]>(`/api/frp/logs?limit=${limit}`, { signal }),
 
   getLogSummary: (signal?: AbortSignal, force=false) => request<{sources:Record<string,{count:number;error?:string}>;updated_at:string}>('/api/logs/summary'+(force?'?force=1':''),{signal}),
   getLogHistory: (params: Record<string,string|number|undefined>, signal?: AbortSignal) => {

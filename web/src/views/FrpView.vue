@@ -1257,16 +1257,21 @@ function scrollLogsToBottom() {
   });
 }
 
+let logsController: AbortController | undefined;
 async function fetchLogs(quiet = false) {
-  if (loadingLogs.value) return;
+  if (disposed || loadingLogs.value) return;
+  const controller = new AbortController();
+  logsController = controller;
   loadingLogs.value = true;
   try {
-    logLines.value = await api.getFRPLogs(300);
+    const lines = await api.getFRPLogs(300, controller.signal);
+    if (!disposed && !controller.signal.aborted) logLines.value = lines;
   } catch (error) {
-    if (!quiet) message.error(error instanceof Error ? error.message : "读取日志失败");
+    if (!disposed && !controller.signal.aborted && !quiet) message.error(error instanceof Error ? error.message : "读取日志失败");
   } finally {
+    logsController = undefined;
     loadingLogs.value = false;
-    if (followLogs.value) scrollLogsToBottom();
+    if (!disposed && followLogs.value) scrollLogsToBottom();
   }
 }
 
@@ -1323,16 +1328,20 @@ watch(logFullscreen, (open) => {
 
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 let statusRequestRunning = false;
+let statusController: AbortController | undefined;
 let disposed = false;
 async function refreshStatus() {
   if (disposed || statusRequestRunning || loading.value || saving.value || restarting.value || syncing.value || document.hidden) return;
   statusRequestRunning = true;
+  const controller = new AbortController();
+  statusController = controller;
   try {
-    const status = await api.getFRPStatus();
-    if (!disposed && !saving.value && !restarting.value && !syncing.value) frpStatus.value = status;
+    const status = await api.getFRPStatus(controller.signal);
+    if (!disposed && !controller.signal.aborted && !saving.value && !restarting.value && !syncing.value) frpStatus.value = status;
   } catch {
     // Keep the last known status on a transient network error.
   } finally {
+    statusController = undefined;
     statusRequestRunning = false;
   }
 }
@@ -1347,6 +1356,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   disposed = true;
+  statusController?.abort();
+  logsController?.abort();
   if (statusTimer !== undefined) clearInterval(statusTimer);
 });
 </script>
