@@ -410,27 +410,16 @@ func (s *Service) LastKnownPublicIPs(ctx context.Context) (ipv4, ipv6 string, ok
 	return s.latestStoredPublicIPs(ctx, false)
 }
 
-func (s *Service) latestStoredPublicIPs(ctx context.Context, enabledOnly bool) (ipv4, ipv6 string, ok bool) {
-	configs, err := s.store.List(ctx)
-	if err != nil || len(configs) == 0 {
-		return "", "", false
-	}
-	var latest *Config
-	for _, cfg := range configs {
-		if enabledOnly && !cfg.Enabled {
-			continue
-		}
-		if latest == nil || (cfg.LastUpdatedAt != nil && (latest.LastUpdatedAt == nil || cfg.LastUpdatedAt.After(*latest.LastUpdatedAt))) {
-			latest = &cfg
-		}
-	}
-	if latest == nil {
-		return "", "", false
-	}
-	if latest.LastIPv4 == "" && latest.LastIPv6 == "" {
-		return "", "", false
-	}
-	return latest.LastIPv4, latest.LastIPv6, true
+func (s *Service) latestStoredPublicIPs(ctx context.Context, enabledOnly bool)(ipv4,ipv6 string,ok bool){
+ configs,err:=s.store.List(ctx);if err!=nil{return "","",false}
+ var at4,at6 time.Time
+ for _,cfg:=range configs{
+  if cfg.AcmeOnly||(enabledOnly&&!cfg.Enabled){continue}
+  at:=time.Time{};if cfg.LastUpdatedAt!=nil{at=*cfg.LastUpdatedAt}
+  if cfg.IPv4Enabled&&publicip.IsPublicIPv4(cfg.LastIPv4)&&(ipv4==""||at.After(at4)){ipv4=cfg.LastIPv4;at4=at}
+  if cfg.IPv6Enabled&&publicip.IsPublicIPv6(cfg.LastIPv6)&&(ipv6==""||at.After(at6)){ipv6=cfg.LastIPv6;at6=at}
+ }
+ return ipv4,ipv6,ipv4!=""||ipv6!=""
 }
 
 func (s *Service) Summary(ctx context.Context) (status string, lastUpdated string, count int) {

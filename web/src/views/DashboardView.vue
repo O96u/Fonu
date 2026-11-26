@@ -8,7 +8,7 @@
       <div class="stats-row">
         <StatCard label="公网 IP" tone="blue">
           <template #icon><n-icon :component="GlobeOutline" /></template>
-          <template #extra><StatusBadge v-if="publicIPv4Label !== '-'" value="ok" text="已获取" /></template>
+          <template #extra><StatusBadge v-if="status?.public_ipv4 || status?.public_ipv6" value="ok" text="已获取" /></template>
           <template #value>
             <span class="stat-primary mono">{{ publicIPv4Label }}</span>
           </template>
@@ -55,13 +55,6 @@
         <p v-if="!servicePreview.length" class="rank-empty-label">{{ awarenessLoading ? '正在统计…' : '暂无已识别服务' }}</p>
       </FonuCard>
     </div>
-      </div>
-      <aside class="workspace-side">
-        <RuntimePanel/>
-        <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
-        <FonuCard title="待处理事项"><div v-for="notice in notices.slice(0, HOME_PREVIEW_LIMIT)" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p><p v-if="notices.length > HOME_PREVIEW_LIMIT" class="muted">另有 {{ notices.length - HOME_PREVIEW_LIMIT }} 项，请前往证书或反代管理查看。</p></FonuCard>
-      </aside>
-    </div>
         <FonuCard title="最近访问" class="recent-full" data-testid="dashboard-recent" subtitle="最近 5 条 · 当前统计范围">
           <template #header><router-link class="text-link" :to="{name:'logs',query:{tab:'access'}}">查看日志 →</router-link></template>
           <div v-for="(event,index) in recentPreview" :key="event.at+'-'+index" class="recent-row">
@@ -72,6 +65,14 @@
           </div>
           <div v-for="n in Math.max(0, HOME_PREVIEW_LIMIT - recentPreview.length)" :key="'recent-empty-'+n" class="recent-row recent-placeholder" :aria-hidden="n > 1 ? 'true' : undefined"><span>{{ n === 1 ? (awarenessLoading ? '正在读取访问记录…' : recentPreview.length ? '暂无更多访问记录' : '当前统计范围暂无访问记录') : '—' }}</span></div>
         </FonuCard>
+      </div>
+      <aside class="workspace-side">
+        <RuntimePanel/>
+        <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
+        <FonuCard title="待处理事项"><div v-for="notice in notices.slice(0, HOME_PREVIEW_LIMIT)" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p><p v-if="notices.length > HOME_PREVIEW_LIMIT" class="muted">另有 {{ notices.length - HOME_PREVIEW_LIMIT }} 项，请前往证书或反代管理查看。</p></FonuCard>
+      </aside>
+    </div>
+
 
   </template>
   <template v-else-if="activeTab === 'access'">
@@ -91,6 +92,7 @@ import { computed, defineAsyncComponent, h, onActivated, onDeactivated, onUnmoun
 import { NAlert, NDataTable, NIcon, NSpin, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import {
   EyeOutline,
+  SettingsOutline,
   GitNetworkOutline,
   GlobeOutline,
   ShieldCheckmarkOutline,
@@ -131,7 +133,7 @@ const router = useRouter()
 const tabs = [{key:'overview',label:'概览'},{key:'access',label:'访问分析'},{key:'security',label:'安全分析'}] as const
 const activeTab = computed(() => route.query.tab === 'services' ? 'access' : tabs.find(t => t.key === route.query.tab)?.key ?? 'overview')
 function selectTab(key: string) { void router.replace({name:'dashboard',query:key === 'overview' ? {} : {tab:key}}) }
-const quickEntries = [{route:'ddns',label:'DDNS',icon:GlobeOutline},{route:'certificates',label:'证书管理',icon:ShieldCheckmarkOutline},{route:'proxies',label:'反向代理',icon:GitNetworkOutline},{route:'frp',label:'内网穿透',icon:WifiOutline},{route:'logs',label:'日志中心',icon:EyeOutline},{route:'settings',label:'系统设置',icon:GitNetworkOutline}]
+const quickEntries = [{route:'ddns',label:'DDNS',icon:GlobeOutline},{route:'certificates',label:'证书管理',icon:ShieldCheckmarkOutline},{route:'proxies',label:'反向代理',icon:GitNetworkOutline},{route:'frp',label:'内网穿透',icon:WifiOutline},{route:'logs',label:'日志中心',icon:EyeOutline},{route:'settings',label:'系统设置',icon:SettingsOutline}]
 const message = useMessage()
 const logTimeZone = useAppTimezone()
 const status = ref<DashboardStatus | null>(null)
@@ -165,14 +167,13 @@ const certWildcard = computed(() => {
 const certDisplayName = computed(() => certWildcard.value || primaryCert.value?.domain || '')
 
 const publicIPv4Label = computed(() => status.value?.public_ipv4 || '-')
-const publicIPv6Label = computed(() => {
-  if (status.value?.public_ip_source === 'ddns' && !status.value?.public_ipv6) return '未获取'
-  return status.value?.public_ipv6 || '-'
-})
+const publicIPv6Label = computed(() => status.value?.public_ipv6 ? 'IPv6 '+status.value.public_ipv6 : status.value ? 'IPv6 未检测到' : 'IPv6 检测中')
 const publicIPSourceLabel = computed(() => {
   switch (status.value?.public_ip_source) {
     case 'ddns':
       return status.value?.public_ipv4 || status.value?.public_ipv6 ? 'DDNS' : 'DDNS 等待同步'
+    case 'mixed':
+      return 'DDNS / 出口探测'
     case 'detect':
       return '出口探测'
     default:
@@ -530,7 +531,7 @@ onUnmounted(pauseDashboard)
 .stats-row :deep(.stat-card){padding:6px 14px}
 .stat-desc{font-size:11px;color:var(--fonu-text-secondary);margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12px;align-items:start}
-.workspace-main,.workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.workspace-main,.workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}.workspace-main{container-type:inline-size}
 .recent-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto minmax(44px,auto);align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--fonu-border);font-size:12px}.recent-row:last-child{border-bottom:0}.recent-service,.recent-client{min-width:0;display:grid;gap:2px}.recent-service strong,.recent-service small,.recent-client span,.recent-client small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-service small,.recent-client small,.recent-time{color:var(--fonu-text-secondary);font-size:11px}.recent-time{text-align:right}.recent-empty{padding:10px 0;margin:0}
 @container(max-width:460px){.recent-row{grid-template-columns:minmax(0,1fr) auto auto;gap:7px}.recent-client{grid-row:2;grid-column:1/3}.recent-time{grid-column:3;grid-row:2}}
 .traffic-panel :deep(.fonu-card__body){padding:16px}
@@ -555,9 +556,9 @@ onUnmounted(pauseDashboard)
 .rank-card .service-name { min-width:0; }
 .rank-card .service-name > span:last-child { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .recent-full { width:100%; min-width:0; }
-.recent-full .recent-row { min-height:52px; box-sizing:border-box; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(60px,auto) minmax(80px,auto); }
+.recent-full .recent-row { min-height:44px; box-sizing:border-box; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(60px,auto) minmax(80px,auto); }
 .recent-full .recent-placeholder { color:var(--fonu-text-muted); }
 .recent-placeholder > span { grid-column:1/-1; }
-@container(max-width:460px) { .recent-full .recent-row { min-height:64px; grid-template-columns:minmax(0,1fr) auto auto; } }
+@container(max-width:520px) { .recent-full .recent-row { min-height:64px; grid-template-columns:minmax(0,1fr) auto auto; } .recent-full .recent-client{grid-row:2;grid-column:1/3}.recent-full .recent-time{grid-column:3;grid-row:2} }
 .recent-status { justify-self:center; }
 </style>

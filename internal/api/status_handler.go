@@ -34,6 +34,7 @@ type StatusHandler struct {
 	publicIPv6       string
 	publicIPSource   string
 	publicIPCachedAt time.Time
+ publicIPFlight chan struct{}
  runtimeMu sync.Mutex
  runtimeVersions map[string]string
  runtimeVersionAt time.Time
@@ -126,35 +127,45 @@ func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *StatusHandler) resolvePublicIPs(ctx context.Context) (ipv4, ipv6, source string) {
-	if ipv4, ipv6, ok := h.ddnsSvc.PublicIPs(ctx); ok {
-		return ipv4, ipv6, "ddns"
-	}
-	if ipv4, ipv6, ok := h.ddnsSvc.LastKnownPublicIPs(ctx); ok {
-		return ipv4, ipv6, "ddns"
-	}
-
-	const cacheTTL = 5 * time.Minute
-	h.publicIPMu.Lock()
-	if h.publicIPSource != "" && time.Since(h.publicIPCachedAt) < cacheTTL {
-		ipv4, ipv6, source = h.publicIPv4, h.publicIPv6, h.publicIPSource
-		h.publicIPMu.Unlock()
-		return ipv4, ipv6, source
-	}
-	h.publicIPMu.Unlock()
-
-	detectCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-	defer cancel()
-	ipv4, ipv6, err := publicip.Detect(detectCtx)
-	source = "detect"
-	if err != nil {
-		source = "none"
-	}
-	h.publicIPMu.Lock()
-	h.publicIPv4, h.publicIPv6, h.publicIPSource = ipv4, ipv6, source
-	h.publicIPCachedAt = time.Now()
-	h.publicIPMu.Unlock()
-	return ipv4, ipv6, source
+func(h *StatusHandler) resolvePublicIPs(ctx context.Context)(ipv4,ipv6,source string){
+ if h.ddnsSvc!=nil{
+  ipv4,ipv6,_=h.ddnsSvc.PublicIPs(ctx)
+  if ipv4==""||ipv6==""{v4,v6,_:=h.ddnsSvc.LastKnownPublicIPs(ctx);if ipv4==""{ipv4=v4};if ipv6==""{ipv6=v6}}
+ }
+ if ipv4!=""&&ipv6!=""{return ipv4,ipv6,"ddns"}
+ source="none";if ipv4!=""||ipv6!=""{source="ddns"}
+ // Prefer existing DDNS information; fill the missing family from a cached
+ // independent exit probe, with a short deadline for the dashboard.
+ detectCtx,cancel:=context.WithTimeout(ctx,1500*time.Millisecond);defer cancel()
+ v4,v6,_:=h.detectPublicIPs(detectCtx,false)
+ filled:=false
+ if ipv4==""&&v4!=""{ipv4=v4;filled=true}
+ if ipv6==""&&v6!=""{ipv6=v6;filled=true}
+ if filled{if source=="ddns"{source="mixed"}else{source="detect"}}
+ return
+}
+func(h *StatusHandler) detectPublicIPs(ctx context.Context,force bool)(v4,v6 string,checked time.Time){
+ h.publicIPMu.Lock()
+ if !force&&!h.publicIPCachedAt.IsZero()&&time.Since(h.publicIPCachedAt)<time.Minute{
+  v4,v6,checked=h.publicIPv4,h.publicIPv6,h.publicIPCachedAt;h.publicIPMu.Unlock();return
+ }
+ if flight:=h.publicIPFlight;flight!=nil{
+  h.publicIPMu.Unlock()
+  select{case <-flight:case <-ctx.Done():}
+  h.publicIPMu.Lock();v4,v6,checked=h.publicIPv4,h.publicIPv6,h.publicIPCachedAt;h.publicIPMu.Unlock();return
+ }
+ done:=make(chan struct{});h.publicIPFlight=done;h.publicIPMu.Unlock()
+ v4,v6,_=publicip.Detect(ctx)
+ h.publicIPMu.Lock()
+ h.publicIPv4,h.publicIPv6=v4,v6
+ checked=time.Now();h.publicIPCachedAt=checked
+ h.publicIPFlight=nil;close(done);h.publicIPMu.Unlock()
+ return
+}
+func(h *StatusHandler) PublicIP(w http.ResponseWriter,r *http.Request){
+ v4,v6,checked:=h.detectPublicIPs(r.Context(),r.URL.Query().Get("refresh")=="1")
+ w.Header().Set("Cache-Control","no-store")
+ writeJSON(w,http.StatusOK,map[string]string{"public_ipv4":v4,"public_ipv6":v6,"checked_at":checked.UTC().Format(time.RFC3339)})
 }
 
 func summarizeCertificates(records []certstore.Record) (status string, days int, count int, summary string) {

@@ -126,6 +126,9 @@ func readBinaryVersion(ctx context.Context,bin,arg string)string{
  cmd.Stdout=&output;cmd.Stderr=&output
  if err:=cmd.Run();err!=nil{return ""}
  line,_,_:=strings.Cut(strings.TrimSpace(string(output.data)),"\n")
+ line=strings.TrimSpace(line)
+ line=strings.TrimPrefix(line,"nginx version: ")
+ line=strings.TrimPrefix(line,"nginx/")
  return strings.TrimSpace(line)
 }
 func(h *StatusHandler) versions(ctx context.Context)map[string]string{

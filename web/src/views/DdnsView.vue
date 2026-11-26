@@ -29,19 +29,19 @@
             <n-icon :component="GlobeOutline" class="stat-card__icon stat-card__icon--blue" />
             <span>外网 IP 检测</span>
           </div>
-          <n-button size="small" quaternary :loading="refreshingIP" @click="refreshPublicIP">刷新检测</n-button>
+          <n-button size="small" quaternary :loading="refreshingIP" @click="refreshPublicIP(true)">刷新检测</n-button>
         </div>
         <div class="ip-lines">
           <div class="ip-line">
             <span class="ip-line__label">IPv4</span>
-            <code class="ip-line__value">{{ publicIPv4 || '-' }}</code>
+            <code class="ip-line__value">{{ publicIPv4 || (refreshingIP ? '检测中…' : '未检测到公网 IPv4') }}</code>
             <n-button v-if="publicIPv4" size="tiny" quaternary @click="copyText(publicIPv4)">
               <template #icon><n-icon :component="CopyOutline" /></template>
             </n-button>
           </div>
           <div class="ip-line">
             <span class="ip-line__label">IPv6</span>
-            <code class="ip-line__value ip-line__value--v6">{{ publicIPv6 || '-' }}</code>
+            <code class="ip-line__value ip-line__value--v6">{{ publicIPv6 || (refreshingIP ? '检测中…' : '未检测到公网 IPv6') }}</code>
             <n-button v-if="publicIPv6" size="tiny" quaternary @click="copyText(publicIPv6)">
               <template #icon><n-icon :component="CopyOutline" /></template>
             </n-button>
@@ -976,13 +976,14 @@ async function copyText(text: string) {
   }
 }
 
-async function refreshPublicIP() {
+async function refreshPublicIP(force=false) {
+  if(refreshingIP.value)return
   refreshingIP.value = true
   try {
-    const s = await api.getStatus()
+    const s = await api.getPublicIP(force)
     publicIPv4.value = s.public_ipv4 || ''
     publicIPv6.value = s.public_ipv6 || ''
-    ipCheckedAt.value = new Date().toISOString()
+    ipCheckedAt.value = s.checked_at || ''
   } catch (error) {
     message.error(error instanceof Error ? error.message : '刷新失败')
   } finally {
@@ -2150,6 +2151,7 @@ onMounted(init)
 .stats-row > .stat-card { min-height:0; padding:12px 16px; }
 .stat-card--ip .ip-lines { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:4px 24px; }
 .stat-card--ip .ip-line { min-width:0; flex:none; height:auto; }
+.stat-card--ip .ip-line__value{min-width:0;overflow-wrap:anywhere;white-space:normal;line-height:1.4}
 .ddns-summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); border-top:1px solid var(--fonu-border); }
 .ddns-summary__item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; color:var(--fonu-text); }
 .ddns-summary__item + .ddns-summary__item { border-left:1px solid var(--fonu-border); }
