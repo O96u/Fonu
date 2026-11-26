@@ -20,6 +20,7 @@ type Service struct {
 	serverGeo func(context.Context) ServerNode
 
 	overviewMu     sync.Mutex
+ overviewGate chan struct{}
 	overviewCache  map[string]overviewCacheItem
 	overviewFlight map[string]*overviewCall
 	eventGeo       func([]awareness.Event)
@@ -43,7 +44,7 @@ type overviewCall struct {
 }
 
 func New(db *sql.DB, settingsStore *settings.Store, ingestSvc *ingest.Service) *Service {
-	return &Service{db: db, settings: settingsStore, ingest: ingestSvc}
+	return &Service{db: db, settings: settingsStore, ingest: ingestSvc,overviewGate:make(chan struct{},2)}
 }
 
 type Overview struct {
@@ -178,7 +179,14 @@ func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, erro
 	s.overviewFlight[cacheKey] = call
 	s.overviewMu.Unlock()
 
-	ov, err := s.computeOverview(ctx, rangeKey, loc, tz, excludePrivate)
+	var ov Overview
+ var err error
+ select{
+ case s.overviewGate<-struct{}{}:
+  ov,err=s.computeOverview(ctx,rangeKey,loc,tz,excludePrivate)
+  <-s.overviewGate
+ case <-ctx.Done():err=ctx.Err()
+ }
 
 	s.overviewMu.Lock()
 	if err == nil {
@@ -323,7 +331,8 @@ func (s *Service) MetricsForStatus(ctx context.Context) (today, yesterday int, h
 	now := time.Now().In(loc)
 	start := startOfDay(now, loc).UTC().Format(time.RFC3339)
 	end := now.UTC().Format(time.RFC3339)
-	excludePrivate, _ := s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs)
+	excludePrivate:=false
+	if s.settings!=nil{excludePrivate,_=s.settings.GetBool(ctx,settings.KeyAnalyticsExcludePrivateIPs)}
 	ipFilter := ""
 	if excludePrivate {
 		ipFilter = privateIPSQL

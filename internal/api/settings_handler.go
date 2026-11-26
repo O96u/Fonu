@@ -124,21 +124,18 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		}
 		filtered[key] = value
 	}
-	for key:=range filtered {if isNotifySettingKey(key)&&(h.notify==nil||h.notify.Store()==nil){writeError(r,w,http.StatusServiceUnavailable,"通知服务尚未初始化");return}}
-	if h.notify != nil && h.notify.Store() != nil {
+	hasNotify:=false
+	for key:=range filtered{if isNotifySettingKey(key){hasNotify=true;break}}
+	if hasNotify&&(h.notify==nil||h.notify.Store()==nil){writeError(r,w,http.StatusServiceUnavailable,"通知服务尚未初始化");return}
+	if hasNotify {
 		existingNotify, loadErr := h.notify.Store().Load(r.Context())
         if loadErr!=nil {writeError(r,w,http.StatusInternalServerError,"读取通知设置失败");return}
 		if in, ok := notify.ParseSaveInputFromMap(filtered, existingNotify); ok {
-			if err := h.notify.Store().Save(r.Context(), in); err != nil {
-				writeError(r, w, http.StatusBadRequest, err.Error())
-				return
-			}
-			for key := range filtered {
-				if isNotifySettingKey(key) {
-					delete(filtered, key)
-				}
-			}
-		}
+			values,err:=h.notify.Store().PrepareSave(r.Context(),in)
+			if err!=nil{writeError(r,w,http.StatusBadRequest,err.Error());return}
+			for key:=range filtered{if isNotifySettingKey(key){delete(filtered,key)}}
+			for key,value:=range values{filtered[key]=value}
+		}else{writeError(r,w,http.StatusBadRequest,"通知设置格式无效");return}
 	}
 	_, trustedChanged := filtered[settings.KeyTrustedProxy]
 	_, blacklistChanged := filtered[settings.KeyGlobalIPBlacklist]

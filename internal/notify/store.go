@@ -185,29 +185,36 @@ func hasNotifyEventSettings(ctx context.Context, store *settings.Store) bool {
 	return false
 }
 
-func (s *Store) Save(ctx context.Context, in SaveInput) error {
+func (s *Store) Save(ctx context.Context,in SaveInput)error{
+ values,err:=s.PrepareSave(ctx,in)
+ if err!=nil{return err}
+ return s.settings.SetMany(ctx,values)
+}
+
+// PrepareSave validates and encrypts notification values without persisting them.
+func (s *Store) PrepareSave(ctx context.Context, in SaveInput) (map[string]string,error) {
 	existing, err := s.Load(ctx)
- if err != nil{return err}
+ if err != nil{return nil,err}
  in.Email.HasPassword=existing.Email.HasPassword || (strings.TrimSpace(in.SMTPPassword)!="" && in.SMTPPassword!=MaskedSecret)
  if strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret {if in.Webhook.Provider==existing.Webhook.Provider&&strings.TrimSpace(in.Webhook.Key)==""&&existing.Webhook.Key!=""&&existing.Webhook.Key!=MaskedSecret {in.Webhook.Key=existing.Webhook.Key}}
  in.Webhook.HasSecret=(in.Webhook.Provider==existing.Webhook.Provider&&existing.Webhook.HasSecret) || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
  in.Telegram.HasBotToken=existing.Telegram.HasBotToken || (strings.TrimSpace(in.TelegramToken)!="" && in.TelegramToken!=MaskedSecret)
  same:=sameWebhookIdentity(in.Webhook,existing.Webhook)
- runtime,err:=s.LoadRuntime(ctx);if err!=nil{return err}
+ runtime,err:=s.LoadRuntime(ctx);if err!=nil{return nil,err}
  input:=in.WebhookSecret
  if (input==""||input==MaskedSecret)&&in.Webhook.Key!=""&&in.Webhook.Key!=MaskedSecret{input=in.Webhook.Key}
  oldSecret:=webhookSecret(runtime)
  resolved,err:=resolveWebhookCredential(in.Webhook,input,existing.Webhook,oldSecret)
- if err!=nil{return err}
+ if err!=nil{return nil,err}
  in.Webhook.HasSecret=resolved!=""
  in.WebhookSecret=resolved
  in.Webhook.Key=""
- if in.Type==NotifyTypeWebhook {if err:=validateWebhookCredential(in.Webhook,resolved);err!=nil{return err}}
+ if in.Type==NotifyTypeWebhook {if err:=validateWebhookCredential(in.Webhook,resolved);err!=nil{return nil,err}}
  values:=map[string]string{}
  if !same || resolved==""{values[settings.KeyNotifyWebhookSecret]=""}
 
 	if err := validateSaveInput(in); err != nil {
-		return err
+		return nil,err
 	}
 
 	values[settings.KeyNotifyType] = string(in.Type)
@@ -246,7 +253,7 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	email.HasPassword = email.HasPassword || strings.TrimSpace(in.SMTPPassword) != "" && in.SMTPPassword != MaskedSecret
 	emailJSON, err := json.Marshal(email)
 	if err != nil {
-		return err
+		return nil,err
 	}
 	values[settings.KeyNotifyEmailJSON] = string(emailJSON)
 
@@ -263,14 +270,14 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
  storedWebhook.Key=""
  webhookJSON, err := json.Marshal(storedWebhook)
 	if err != nil {
-		return err
+		return nil,err
 	}
 	values[settings.KeyNotifyWebhookJSON] = string(webhookJSON)
 
 	telegram := in.Telegram
 	normalizedProxyURL, err := normalizeProxyURL(telegram.ProxyURL)
 	if err != nil {
-		return err
+		return nil,err
 	}
 	telegram.ProxyURL = normalizedProxyURL
 	if strings.TrimSpace(in.TelegramToken) != "" && in.TelegramToken != MaskedSecret {
@@ -278,7 +285,7 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	}
 	telegramJSON, err := json.Marshal(telegram)
 	if err != nil {
-		return err
+		return nil,err
 	}
 	values[settings.KeyNotifyTelegramJSON] = string(telegramJSON)
 
@@ -288,7 +295,7 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	}
 
 	if err := s.prepareSecret(values, settings.KeyNotifySMTPPassword, in.SMTPPassword, in.Email.HasPassword); err != nil {
-		return err
+		return nil,err
 	}
 
 	webhookPlain := secretValue
@@ -304,14 +311,14 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 		}
 	}
 	if err := s.prepareSecret(values, settings.KeyNotifyWebhookSecret, webhookPlain, webhook.HasSecret); err != nil {
-		return err
+		return nil,err
 	}
 
 	if err := s.prepareSecret(values, settings.KeyNotifyTelegramToken, in.TelegramToken, telegram.HasBotToken); err != nil {
-		return err
+		return nil,err
 	}
 
- return s.settings.SetMany(ctx,values)
+ return values,nil
 }
 
 func (s *Store) prepareSecret(values map[string]string, key, plain string, hasExisting bool) error {

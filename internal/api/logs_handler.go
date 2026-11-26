@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+ "errors"
  "time"
 	"path/filepath"
 	"strconv"
@@ -148,7 +149,7 @@ func (h *LogsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	if kind == "access" {
 		filter = logstore.AccessHostFilter(r.URL.Query()["host"])
 	}
-	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},controller.Flush,tail,filter)
+	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},func()error{err:=controller.Flush();_ = controller.SetWriteDeadline(time.Time{});return err},tail,filter)
 }
 
 func (h *LogsHandler) StreamAccessForHosts(w http.ResponseWriter, r *http.Request, hosts []string) {
@@ -171,7 +172,7 @@ func (h *LogsHandler) StreamAccessForEndpoints(w http.ResponseWriter, r *http.Re
 	path := filepath.Join(h.cfg.LogsDir(), "access.log")
 	tail := queryInt(r, "tail", 100)
 	filter := logstore.AccessEndpointFilter(endpoints)
-	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},controller.Flush,tail,filter)
+	_ = logstore.StreamFile(r.Context(), path, deadlineWriter{w:w,controller:controller},func()error{err:=controller.Flush();_ = controller.SetWriteDeadline(time.Time{});return err},tail,filter)
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {
@@ -200,6 +201,6 @@ func (h *LogsHandler) acquireStream(w http.ResponseWriter)bool{
 
 type deadlineWriter struct{w http.ResponseWriter;controller *http.ResponseController}
 func (d deadlineWriter) Write(p []byte)(int,error){
- if err:=d.controller.SetWriteDeadline(time.Now().Add(10*time.Second));err!=nil&&err!=http.ErrNotSupported{return 0,err}
+ if err:=d.controller.SetWriteDeadline(time.Now().Add(10*time.Second));err!=nil&&!errors.Is(err,http.ErrNotSupported){return 0,err}
  return d.w.Write(p)
 }
