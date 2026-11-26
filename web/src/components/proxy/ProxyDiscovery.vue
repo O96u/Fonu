@@ -1,8 +1,8 @@
 <template>
-  <ProxyEditorFrame :show="showDiscoveryModal" title="发现内网服务" subtitle="扫描常见 Web 端口，批量创建独立代理规则" :icon="RadarOutline" :busy="discoveryLoading||discoveryAdding" wide @close="emit('update:showDiscoveryModal',false)">
+  <ProxyEditorFrame :show="showDiscoveryModal" title="发现内网服务" subtitle="扫描常见 Web 端口，批量创建独立代理规则" :icon="SearchOutline" :busy="discoveryLoading||discoveryAdding" wide @close="emit('update:showDiscoveryModal',false)">
     <div class="discovery-workspace">
       <section class="scan-card">
-        <div class="scan-title"><n-icon :component="RadarOutline"/><strong>扫描目标</strong></div>
+        <div class="scan-title"><n-icon :component="SearchOutline"/><strong>扫描目标</strong></div>
         <div class="scan-input"><n-input :value="discoveryHost" :disabled="discoveryLoading||discoveryAdding" placeholder="127.0.0.1 或内网 IP" @update:value="emit('update:discoveryHost',$event)" @keydown.enter.prevent="emit('scan')"/><n-button type="primary" :loading="discoveryLoading" :disabled="discoveryAdding" @click="emit('scan')">{{scanned?'重新扫描':'开始发现'}}</n-button></div>
         <small>扫描由 Fonu 后端执行，仅识别支持的常见 HTTP / HTTPS 服务。重新扫描同一地址时保留已填写内容。</small>
         <div v-if="discoveryLoading" class="scan-status"><n-spin size="small"/>正在扫描 {{discoveryScanHost}} …</div>
@@ -25,7 +25,7 @@
 <script setup lang="ts">
 import {computed} from 'vue'
 import {NButton,NIcon,NInput,NCheckbox,NSpin,NEmpty,NSelect,NAlert,NTag} from 'naive-ui'
-import {RadarOutline,ServerOutline} from '@vicons/ionicons5'
+import {SearchOutline,ServerOutline} from '@vicons/ionicons5'
 import type {DiscoveredService} from '../../api/types'
 import type {ProxyEntryGroup} from '../../utils/proxyEntries'
 import ProxyEditorFrame from './ProxyEditorFrame.vue'
