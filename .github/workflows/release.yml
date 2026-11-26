@@ -3,10 +3,20 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v2.0.1-beta.1, v2.0.1-rc.01, v2.0.1)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish Release (unchecked = test and build FPK artifacts only)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
   setup:
@@ -15,24 +25,55 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       ref: ${{ steps.version.outputs.ref }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      publish: ${{ steps.version.outputs.publish }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Validate release tag
         id: version
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
+          publish=true
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            tag="$INPUT_TAG"
+            publish="$INPUT_PUBLISH"
+            [[ "$GITHUB_REF" == refs/heads/v2 ]] || { echo 'Select v2 as the source branch'; exit 1; }
+          fi
           if [[ "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
             prerelease=false
-          elif [[ "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+-rc[.][0-9]+$ ]]; then
+          elif [[ "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+-(beta|rc)[.][0-9]+$ ]]; then
             prerelease=true
           else
-            echo "::error::Unsupported release tag: $tag (use vX.Y.Z or vX.Y.Z-rc.N)"
+            echo "::error::Unsupported release tag: $tag (use vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N)"
             exit 1
           fi
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+          echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      - name: Check release tag availability
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists'; exit 1
+          fi
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null); then
+            if [[ "$existing" != "$GITHUB_SHA" ]]; then
+              # Annotated tags are resolved by git in the publish job.
+              if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+                echo 'Existing tag does not match the selected commit'; exit 1
+              fi
+            fi
+          fi
   test:
     needs: setup
     runs-on: ubuntu-24.04
@@ -247,7 +288,7 @@ jobs:
           if-no-files-found: error
   docker:
     needs: [setup, test, security, fpk]
-    if: needs.setup.outputs.prerelease == 'false'
+    if: needs.setup.outputs.prerelease == 'false' && needs.setup.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -266,12 +307,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.setup.outputs.ref }}
 
       - name: Resolve version
         id: version
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ needs.setup.outputs.tag }}
         run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Hub
@@ -305,7 +346,7 @@ jobs:
 
   docker-manifest:
     needs: [setup, docker]
-    if: needs.setup.outputs.prerelease == 'false'
+    if: needs.setup.outputs.prerelease == 'false' && needs.setup.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -313,7 +354,7 @@ jobs:
       - name: Resolve version
         id: version
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ needs.setup.outputs.tag }}
         run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Hub
@@ -341,7 +382,7 @@ jobs:
             "${IMAGE}:${VERSION}-arm64"
   publish:
     needs: [setup, test, security, fpk, docker-manifest]
-    if: ${{ always() && needs.setup.result == 'success' && needs.test.result == 'success' && needs.security.result == 'success' && needs.fpk.result == 'success' && (needs.setup.outputs.prerelease == 'true' || needs.docker-manifest.result == 'success') }}
+    if: ${{ always() && needs.setup.result == 'success' && needs.setup.outputs.publish == 'true' && needs.test.result == 'success' && needs.security.result == 'success' && needs.fpk.result == 'success' && (needs.setup.outputs.prerelease == 'true' || needs.docker-manifest.result == 'success') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -349,6 +390,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.setup.outputs.version }}
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
+      TAG: ${{ needs.setup.outputs.tag }}
+      SOURCE_SHA: ${{ needs.setup.outputs.ref }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -366,7 +409,14 @@ jobs:
             done
           done
           (cd assets && sha256sum *.fpk > SHA256SUMS.txt)
-          tag="$GITHUB_REF_NAME"
+          tag="$TAG"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$tag:refs/tags/$tag"
+            [[ "$(git rev-list -n 1 "$tag")" == "$SOURCE_SHA" ]] || { echo 'Tag points to another commit'; exit 1; }
+          else
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"
+          fi
           flags=(--verify-tag --title "Fonu $VERSION")
           if [[ "$PRERELEASE" == true ]]; then
             flags+=(--prerelease --latest=false)
