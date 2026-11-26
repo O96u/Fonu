@@ -802,13 +802,13 @@ import {
   NAlert,
   NButton,
   NCheckbox,
-  NCollapse,
   NDataTable,
   NEmpty,
   NForm,
   NFormItem,
   NIcon,
   NInput,
+  NInputNumber,
   NModal,
   NPopover,
   NSelect,
@@ -866,7 +866,6 @@ import ProxyDiscovery from '../components/proxy/ProxyDiscovery.vue'
 import ProxySecurityEditor from '../components/proxy/ProxySecurityEditor.vue'
 import { defaultSecurityForm } from '../composables/proxy/securityDraft'
 import StatusBadge from '../components/StatusBadge.vue'
-import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../constants/secretField'
 import { copyToClipboard } from '../utils/clipboard'
 import {
   collectDdnsHostOptions,

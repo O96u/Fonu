@@ -203,8 +203,8 @@ const emit = defineEmits<{
   'update:securityExpanded': [value: string[]]
   preset: []
 }>()
-function updateExpanded(value: string | number | (string | number)[]) {
-  emit('update:securityExpanded', (Array.isArray(value) ? value : [value]).map(String))
+function updateExpanded(value: string | number | (string | number)[] | null | undefined) {
+  emit('update:securityExpanded', (value == null ? [] : Array.isArray(value) ? value : [value]).map(String))
 }
 </script>
 <style scoped>
