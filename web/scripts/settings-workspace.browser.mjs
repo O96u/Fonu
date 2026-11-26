@@ -24,7 +24,7 @@ try {
   if(!url.pathname.startsWith('/api/'))return route.continue()
   let data={}
   if(url.pathname==='/api/auth/status')data={initialized:true,authenticated:true,username:'admin'}
-  else if(url.pathname==='/api/version')data={version:'2.0.0-beta.38'}
+  else if(url.pathname==='/api/version')data={version:'2.0.0-beta.42'}
   else if(url.pathname==='/api/settings'){
    if(route.request().method()==='PUT'){
     const body=route.request().postDataJSON();writes.push(body)
@@ -40,6 +40,25 @@ try {
  await page.addInitScript(()=>{localStorage.setItem('fonu-theme','system');localStorage.setItem('fonu-nav-collapsed','true')})
  await page.goto(base+'/settings')
  const save=page.getByTestId('settings-save-bar').getByRole('button',{name:'保存设置',exact:true})
+ // Wait for the specific PUT and durable clean state, not overlapping transient toasts.
+ const saveBar=page.getByTestId('settings-save-bar')
+ async function saveAndWait(expectedStatus=200){
+  const count=writes.length
+  const [response]=await Promise.all([
+   page.waitForResponse(r=>new URL(r.url()).pathname==='/api/settings'&&r.request().method()==='PUT'),
+   save.click(),
+  ])
+  assert.equal(response.status(),expectedStatus)
+  assert.equal(writes.length,count+1)
+  if(expectedStatus===200){
+   await saveBar.getByText('当前配置已保存',{exact:true}).waitFor()
+   await page.waitForFunction(()=>document.querySelector('[data-testid="settings-save-bar"] button:last-child')?.disabled===true)
+  }else{
+   await saveBar.getByText('当前分类有未保存修改',{exact:true}).waitFor()
+   await page.waitForFunction(()=>document.querySelector('[data-testid="settings-save-bar"] button:last-child')?.disabled===false)
+  }
+ }
+
  await save.waitFor()
  await page.waitForFunction(()=>document.querySelector('[data-testid="settings-save-bar"] button:last-child')?.disabled)
  await page.screenshot({path:'ui-screenshots/settings-general-desktop.png',fullPage:true})
@@ -50,8 +69,7 @@ try {
  await email.fill('invalid-email')
  await page.getByTestId('settings-tab-general').click()
  assert.equal(await ddns.inputValue(),'15')
- await save.click()
- await page.getByText('当前分类已保存',{exact:true}).waitFor()
+ await saveAndWait()
  assert.deepEqual(writes.at(-1),{ddns_check_interval_minutes:'15'})
  await page.getByTestId('settings-tab-acme').click()
  assert.equal(await email.inputValue(),'invalid-email')
@@ -65,11 +83,10 @@ try {
  await page.getByTestId('settings-tab-logs').click()
  const retention=page.locator('.settings-field').filter({hasText:'统计保留天数'}).locator('input')
  await retention.fill('45');await retention.blur();fail=true
- await save.click()
+ await saveAndWait(400)
  await page.getByText('模拟保存失败',{exact:true}).waitFor()
  assert.equal(await retention.inputValue(),'45')
- fail=false;await save.click()
- await page.getByText('当前分类已保存',{exact:true}).waitFor()
+ fail=false;await saveAndWait()
  assert.deepEqual(writes.at(-1),{analytics_retention_days:'45'})
  await page.getByTestId('settings-tab-backup').click()
  assert.equal(await page.getByTestId('settings-save-bar').count(),0)
@@ -79,8 +96,7 @@ try {
  assert.equal(await page.getByPlaceholder('-1001234567890').inputValue(),'123')
  await page.getByTestId('notify-enabled').click()
  assert.equal(await page.getByTestId('notify-enabled').getAttribute('aria-checked'),'false')
- await save.click()
- await page.getByText('当前分类已保存',{exact:true}).waitFor()
+ await saveAndWait()
  assert.equal(writes.at(-1).notify_type,'')
  assert.equal(JSON.parse(writes.at(-1).notify_webhook_json).preferred_type,'telegram')
  await page.getByTestId('notify-enabled').click()
