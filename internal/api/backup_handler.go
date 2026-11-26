@@ -73,12 +73,40 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = os.Remove(tmpPath)
-	clearSessionCookie(w)
-	writeJSON(w, http.StatusOK, map[string]string{
+ h.restored(w)
+}
+
+func(h *BackupHandler)restored(w http.ResponseWriter){
+ clearSessionCookie(w)
+ writeJSON(w,http.StatusOK,map[string]string{
 		"message": "备份已恢复，请重新登录。",
 	})
 	if flusher, ok := w.(http.Flusher); ok {
 		flusher.Flush()
 	}
 	h.svc.NotifyRestored()
+}
+
+func(h *BackupHandler)ListLocal(w http.ResponseWriter,r *http.Request){
+ w.Header().Set("Cache-Control","no-store")
+ rows,err:=h.svc.ListLocal();if err!=nil{writeError(r,w,500,"读取本地备份失败");return};writeJSON(w,200,rows)
+}
+func(h *BackupHandler)CreateLocal(w http.ResponseWriter,r *http.Request){
+ w.Header().Set("Cache-Control","no-store")
+ row,err:=h.svc.CreateLocal(r.Context());if err!=nil{writeError(r,w,400,"创建备份失败，请检查磁盘空间或备份数量");return};writeJSON(w,201,row)
+}
+func(h *BackupHandler)DownloadLocal(w http.ResponseWriter,r *http.Request){
+ w.Header().Set("Cache-Control","no-store")
+ f,err:=h.svc.OpenLocal(r.PathValue("name"));if err!=nil{writeError(r,w,404,"备份不存在");return};defer f.Close()
+ info,err:=f.Stat();if err!=nil{writeError(r,w,500,"读取失败");return}
+ w.Header().Set("Content-Type","application/gzip")
+ w.Header().Set("Content-Disposition","attachment; filename="+info.Name())
+ http.ServeContent(w,r,info.Name(),info.ModTime(),f)
+}
+func(h *BackupHandler)DeleteLocal(w http.ResponseWriter,r *http.Request){
+ if err:=h.svc.DeleteLocal(r.PathValue("name"));err!=nil{writeError(r,w,400,"删除备份失败");return};writeJSON(w,200,map[string]string{"message":"已删除"})
+}
+func(h *BackupHandler)RestoreLocal(w http.ResponseWriter,r *http.Request){
+ w.Header().Set("Cache-Control","no-store")
+ if err:=h.svc.RestoreLocal(r.Context(),r.PathValue("name"));err!=nil{writeError(r,w,400,"恢复失败：备份无效、密钥不匹配或已有待恢复任务");return};h.restored(w)
 }

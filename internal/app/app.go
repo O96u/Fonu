@@ -192,6 +192,11 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		chinaHours = 24
 	}
 	sched := scheduler.New(
+ scheduler.Job{Name:"local_backup",Interval:time.Minute,Timeout:10*time.Minute,RunErr:func(ctx context.Context)error{
+ enabled,err:=settingsStore.GetBool(ctx,settings.KeyLocalBackupEnabled);if err!=nil||!enabled{return err}
+ keep,err:=settingsStore.GetInt(ctx,settings.KeyLocalBackupKeep);if err!=nil{return err}
+ return backupSvc.AutoBackup(ctx,keep)
+ }},
 		scheduler.Job{Name: "session_cleanup", Interval: time.Hour, Timeout: 30*time.Second, Run: authSvc.CleanupSessions},
         scheduler.Job{Name:"log_archive_retention",Interval:time.Hour,Timeout:30*time.Second,RunErr:func(ctx context.Context)error{
           days,err:=settingsStore.GetInt(ctx,settings.KeyLogRetentionDays);if err!=nil{return err};if days<1||days>365{return fmt.Errorf("invalid log retention days")}

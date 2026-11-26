@@ -12,6 +12,8 @@ const (
 	KeyTimezone                     = "timezone"
 	KeyLogRetentionDays             = "log_retention_days"
 	KeyDDNSCheckInterval            = "ddns_check_interval_minutes"
+ KeyLocalBackupEnabled = "local_backup_enabled"
+ KeyLocalBackupKeep = "local_backup_keep"
 	KeyCertRenewThreshold           = "cert_renew_threshold_days"
 	KeyRootDomain                   = "root_domain"
 	KeyACMEEmail                    = "acme_email"
@@ -104,6 +106,8 @@ var Defaults = map[string]string{
 	KeyTimezone:                     "Asia/Shanghai",
 	KeyLogRetentionDays:             "30",
 	KeyDDNSCheckInterval:            "5",
+ KeyLocalBackupEnabled:"false",
+ KeyLocalBackupKeep:"7",
 	KeyCertRenewThreshold:           "30",
 	KeyACMECA:                       "letsencrypt",
 	KeyChinaCIDRUpdateHours:         "24",

@@ -82,7 +82,9 @@ func PrepareRestore(path string) error {
 	return nil
 }
 
-func Snapshot(src, dst string) error {
+func Snapshot(src, dst string) error {return SnapshotContext(context.Background(),src,dst)}
+
+func SnapshotContext(ctx context.Context,src,dst string)error{
 	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -93,7 +95,7 @@ func Snapshot(src, dst string) error {
 	defer conn.Close()
 	conn.SetMaxOpenConns(1)
 	dest := strings.ReplaceAll(filepath.ToSlash(dst), "'", "''")
-	_, err = conn.Exec(fmt.Sprintf("VACUUM INTO '%s'", dest))
+	_, err = conn.ExecContext(ctx,fmt.Sprintf("VACUUM INTO '%s'", dest))
 	return err
 }
 

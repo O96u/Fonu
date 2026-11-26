@@ -53,6 +53,8 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		settings.KeyTimezone:                     true,
 		settings.KeyLogRetentionDays:             true,
 		settings.KeyDDNSCheckInterval:            true,
+ settings.KeyLocalBackupEnabled:true,
+ settings.KeyLocalBackupKeep:true,
 		settings.KeyCertRenewThreshold:           true,
 		settings.KeyRootDomain:                   true,
 		settings.KeyACMEEmail:                    true,
@@ -205,6 +207,10 @@ func isNotifySettingKey(key string) bool {
 
 func (h *SettingsHandler) validateSetting(key, value string) error {
 	switch key {
+ case settings.KeyLocalBackupEnabled:
+  if value!="true"&&value!="false"{return fmt.Errorf("本地备份开关无效")}
+ case settings.KeyLocalBackupKeep:
+  n,err:=strconv.Atoi(value);if err!=nil||n<1||n>30{return fmt.Errorf("自动备份保留数量必须为 1–30")}
  case settings.KeyTheme:
   if value!="system"&&value!="light"&&value!="dark"{return fmt.Errorf("无效的主题模式")}
  case settings.KeyTimezone:

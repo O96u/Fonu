@@ -44,8 +44,12 @@ func (s *Service) NotifyRestored() {
 func (s *Service) Export(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tmpDir := filepath.Join(s.dataDir, "backups")
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+ return s.exportLocked(ctx)
+}
+
+func(s *Service) exportLocked(ctx context.Context)(string,error){
+ tmpDir := filepath.Join(s.dataDir, "backups")
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return "", err
 	}
 	name := fmt.Sprintf("fonu-backup-%s-*.tar.gz", time.Now().Format("20060102-His"))
@@ -95,7 +99,11 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 func (s *Service) Restore(ctx context.Context, archivePath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	file, err := os.Open(archivePath)
+ return s.restoreLocked(ctx,archivePath)
+}
+
+func(s *Service) restoreLocked(ctx context.Context,archivePath string)error{
+ file, err := os.Open(archivePath)
 	if err != nil {
 		return err
 	}
@@ -263,17 +271,12 @@ func addDatabaseSnapshot(ctx context.Context, tw *tar.Writer, dataDir string) er
 		return err
 	}
 	src := filepath.Join(dataDir, "fonu.db")
-	if _, err := os.Stat(src); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
+	if _, err := os.Stat(src); err != nil {return err}
 	tmp, err := os.MkdirTemp("", "fonu-export-*")
 	if err != nil { return err }
 	defer os.RemoveAll(tmp)
 	tmpPath := filepath.Join(tmp,"fonu.db")
-	if err := db.Snapshot(src, tmpPath); err != nil {
+	if err := db.SnapshotContext(ctx,src, tmpPath); err != nil {
 		return err
 	}
 	info, err := os.Stat(tmpPath)
