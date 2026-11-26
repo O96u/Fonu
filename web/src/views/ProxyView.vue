@@ -39,158 +39,28 @@
             class="proxy-entry-stack"
             :class="{ 'proxy-entry-stack--sortable': canReorderEntries }"
           >
-            <section
+            <ProxyEntryGroup
               v-for="group in entryGroups"
               :key="group.key"
-              class="proxy-entry-card"
-              :data-entry-id="group.entryId"
-              :class="{ 'proxy-entry-card--collapsed': isEntryCollapsed(group.key) }"
+              :group="group"
+              :collapsed="isEntryCollapsed(group.key)"
+              :sortable="canReorderEntries"
+              :preview="entryGroupRuleNames(group,ruleName)"
+              :traffic="entryGroupTraffic(group)"
+              @toggle="toggleEntryCollapsed(group.key)"
+              @create="openCreateWithEntry(group.listen,group.entryId)"
+              @discover="openDiscoveryModal(group)"
+              @edit="openEntryEdit(group)"
+              @duplicate="duplicateEntry(group)"
+              @delete="confirmDeleteEntry(group)"
             >
-              <header class="proxy-entry-card__head">
-                <span
-                  v-if="canReorderEntries"
-                  class="proxy-entry-drag-handle"
-                  title="拖动排序"
-                  @click.stop
-                >
-                  <n-icon :component="ReorderThreeOutline" />
-                </span>
-                <button
-                  type="button"
-                  class="proxy-entry-card__toggle"
-                  @click="toggleEntryCollapsed(group.key)"
-                >
-                  <n-icon :component="isEntryCollapsed(group.key) ? ChevronForwardOutline : ChevronDownOutline" />
-                </button>
-                <div
-                  class="proxy-entry-card__intro"
-                  role="button"
-                  tabindex="0"
-                  @click="toggleEntryCollapsed(group.key)"
-                  @keydown.enter.prevent="toggleEntryCollapsed(group.key)"
-                  @keydown.space.prevent="toggleEntryCollapsed(group.key)"
-                >
-                  <div class="proxy-entry-card__title-row">
-                    <span class="proxy-entry-card__name">{{ entryGroupDisplayName(group) }}</span>
-                    <n-tag size="small" round :bordered="false" type="info">{{ group.listen.listen_port }}</n-tag>
-                    <n-tag size="small" round :bordered="false" :type="group.listen.https_enabled ? 'success' : 'default'">
-                      {{ group.listen.https_enabled ? 'HTTPS' : 'HTTP' }}
-                    </n-tag>
-                    <n-tag v-if="group.listen.listen_ipv4" size="small" round :bordered="false">IPv4</n-tag>
-                    <n-tag v-if="group.listen.listen_ipv6" size="small" round :bordered="false">IPv6</n-tag>
-                    <span class="proxy-entry-card__count">{{ group.rules.length }} 条规则</span>
-                    <span v-if="group.enabledCount > 0" class="proxy-entry-card__running">{{ group.enabledCount }} 运行</span>
-                  </div>
-                  <div v-if="group.portHasMixedEntries" class="proxy-entry-card__warn">
-                    同端口存在不同监听配置，建议统一
-                  </div>
-                  <div v-if="isEntryCollapsed(group.key) && group.rules.length > 0" class="proxy-entry-card__preview">
-                    {{ entryGroupRuleNames(group, ruleName) }}
-                  </div>
-                </div>
-                <div class="proxy-entry-card__stats">
-                  <span class="proxy-entry-card__stat" :title="'当前连接 ' + entryGroupTraffic(group).connections">
-                    <n-icon :component="PeopleOutline" />
-                    {{ entryGroupTraffic(group).connections }}
-                  </span>
-                  <span class="proxy-entry-card__stat" title="当前上传">
-                    <n-icon :component="ArrowUpOutline" />
-                    {{ formatRateIdle(entryGroupTraffic(group).uploadRate) }}
-                  </span>
-                  <span class="proxy-entry-card__stat" title="当前下载">
-                    <n-icon :component="ArrowDownOutline" />
-                    {{ formatRateIdle(entryGroupTraffic(group).downloadRate) }}
-                  </span>
-                </div>
-                <div class="proxy-entry-card__actions" @click.stop>
-                  <n-space :size="4" align="center">
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-button
-                          size="small"
-                          quaternary
-                          circle
-                          class="proxy-entry-card__action-btn proxy-entry-card__action-btn--accent"
-                          @click="openCreateWithEntry(group.listen, group.entryId)"
-                        >
-                          <template #icon><n-icon :component="AddOutline" :size="16" /></template>
-                        </n-button>
-                      </template>
-                      新增规则
-                    </n-tooltip>
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-button
-                          size="small"
-                          quaternary
-                          circle
-                          class="proxy-entry-card__action-btn"
-                          @click="openDiscoveryModal(group)"
-                        >
-                          <template #icon><n-icon :component="GlobeOutline" :size="16" /></template>
-                        </n-button>
-                      </template>
-                      发现内网服务
-                    </n-tooltip>
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-button
-                          size="small"
-                          quaternary
-                          circle
-                          class="proxy-entry-card__action-btn"
-                          :disabled="!group.entryId"
-                          @click="openEntryEdit(group)"
-                        >
-                          <template #icon><n-icon :component="CreateOutline" :size="16" /></template>
-                        </n-button>
-                      </template>
-                      编辑
-                    </n-tooltip>
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-button
-                          size="small"
-                          quaternary
-                          circle
-                          class="proxy-entry-card__action-btn"
-                          :disabled="!group.entryId"
-                          @click="duplicateEntry(group)"
-                        >
-                          <template #icon><n-icon :component="CopyOutline" :size="16" /></template>
-                        </n-button>
-                      </template>
-                      复制
-                    </n-tooltip>
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-button
-                          size="small"
-                          quaternary
-                          circle
-                          type="error"
-                          class="proxy-entry-card__action-btn proxy-entry-card__action-btn--danger"
-                          :disabled="!group.entryId"
-                          @click="confirmDeleteEntry(group)"
-                        >
-                          <template #icon><n-icon :component="TrashOutline" :size="16" /></template>
-                        </n-button>
-                      </template>
-                      删除
-                    </n-tooltip>
-                  </n-space>
-                </div>
-              </header>
               <div v-show="!isEntryCollapsed(group.key)" class="proxy-entry-card__body" :data-entry-key="group.key">
-                <n-data-table
+                <ProxyRuleTable
                   v-if="group.rules.length > 0"
-                  class="proxy-table proxy-table--nested"
-                  :class="{ 'proxy-table--sortable': canReorderInGroups && group.rules.length > 1 }"
+                  nested
+                  :sortable="canReorderInGroups && group.rules.length > 1"
                   :columns="entryGroupColumnsFor(group)"
                   :data="group.rules"
-                  :bordered="false"
-                  size="small"
-                  :row-key="(r: ProxyRule) => r.id"
                   :row-props="rowProps"
                 />
                 <div v-else class="proxy-entry-card__empty">
@@ -200,21 +70,18 @@
                   </n-button>
                 </div>
               </div>
-            </section>
+            </ProxyEntryGroup>
           </div>
         </template>
 
         <template v-else-if="tableRules.length > 0">
           <div ref="tableWrapRef" class="proxy-table-wrap">
-            <n-data-table
-              class="proxy-table"
-              :class="{ 'proxy-table--sortable': canReorderGlobally }"
+            <ProxyRuleTable
+              
+              :sortable="canReorderGlobally"
               :columns="columns"
               :data="tableRules"
-              :bordered="false"
-              size="small"
               :scroll-x="canReorderGlobally ? 1460 : 1420"
-              :row-key="(r: ProxyRule) => r.id"
               :row-props="rowProps"
             />
           </div>
@@ -246,11 +113,11 @@
           <h3 class="proxy-detail-modal__title">{{ ruleName(selectedRule) }}</h3>
           <StatusBadge
             :value="selectedRule.enabled ? 'ok' : 'disabled'"
-            :text="selectedRule.enabled ? '运行中' : '已停止'"
+            :text="selectedRule.enabled ? '已启用' : '已停用'"
           />
           <span class="proxy-detail-modal__conn" :class="{ 'is-active': (selectedTraffic?.connections ?? 0) > 0 }">
             <n-icon :component="PeopleOutline" />
-            {{ selectedTraffic?.connections ?? 0 }} 连接
+            {{ selectedTraffic?.connections ?? 0 }} 近期访问 IP
           </span>
         </div>
         <n-space :size="4" align="center">
@@ -548,7 +415,6 @@ import {
   NAlert,
   NButton,
   NCheckbox,
-  NDataTable,
   NEmpty,
   NForm,
   NFormItem,
@@ -612,6 +478,8 @@ import ProxySecurityEditor from '../components/proxy/ProxySecurityEditor.vue'
 import ProxyBasicEditor from '../components/proxy/ProxyBasicEditor.vue'
 import ProxyNginxEditor from '../components/proxy/ProxyNginxEditor.vue'
 import ProxyOverviewPanel from '../components/proxy/ProxyOverviewPanel.vue'
+import ProxyEntryGroup from '../components/proxy/ProxyEntryGroup.vue'
+import ProxyRuleTable from '../components/proxy/ProxyRuleTable.vue'
 import { defaultSecurityForm } from '../composables/proxy/securityDraft'
 import StatusBadge from '../components/StatusBadge.vue'
 import { copyToClipboard } from '../utils/clipboard'
