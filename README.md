@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://github.com/O96u/Fonu/releases"><img src="https://img.shields.io/github/v/release/O96u/Fonu?include_prereleases&style=flat-square&label=Release" alt="Release" /></a>
-  <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/pulls/muxui/fonu?style=flat-square&logo=docker&label=Docker" alt="Docker Hub" /></a>
+  <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/badge/Docker%20Hub-muxui%2Ffonu-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/平台-fnOS-10b981?style=flat-square" alt="fnOS" />
   <img src="https://img.shields.io/badge/架构-amd64%20%7C%20arm64-64748b?style=flat-square" alt="amd64 arm64" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="GPL-3.0" /></a>
@@ -13,7 +13,7 @@
 
 Fonu 集成反向代理、DDNS、HTTPS 证书、内网穿透及访问分析，让 NAS 公网访问和日常维护集中在一个 Web 管理界面中。
 
-[下载发行版](https://github.com/O96u/Fonu/releases) · [更新日志](CHANGELOG.md) · [旧版源码](https://github.com/O96u/Fonu/tree/v1)
+<p align="center"><a href="https://github.com/O96u/Fonu/releases">下载发行版</a> · <a href="CHANGELOG.md">更新日志</a> · <a href="https://github.com/O96u/Fonu/tree/v1">旧版源码</a></p>
 
 ## 功能特性
 
@@ -115,14 +115,42 @@ docker run -d \
 
 ## 本地开发
 
+推荐 Linux / WSL2 环境，准备 Go 1.27（以 go.mod 为准）、Node.js 22、pnpm 10、Nginx；测试 FRP 时另需 frpc。
+
 ```bash
+git clone -b v2 https://github.com/O96u/Fonu.git
+cd Fonu
 corepack enable
-(cd web && bash scripts/install-deps.sh && pnpm run build)
+cd web
+pnpm install --frozen-lockfile
+pnpm run build
+cd ..
 mkdir -p cmd/fonu/web/dist
 cp -a web/dist/. cmd/fonu/web/dist/
-go test ./...
-go run ./cmd/fonu
 ```
+
+终端一：在仓库根目录启动后端，使用独立开发数据目录和非特权端口。
+
+```bash
+FONU_DATA_DIR="$PWD/.data-dev" FONU_LISTEN=127.0.0.1:6893 \
+  FONU_NGINX_HTTP_PORT=18080 FONU_NGINX_HTTPS_PORT=9443 \
+  go run ./cmd/fonu
+```
+
+终端二：启动前端热更新。
+
+```bash
+cd web
+pnpm run dev -- --host 127.0.0.1
+```
+
+访问 http://localhost:5173 开发界面，API 由 Vite 转发至 6893。后端代码修改后重启 Go 进程；前端无需反复打包。仅测试整合部署时重新执行前端 build 并复制 dist，再访问 http://127.0.0.1:6893。
+
+```bash
+go test ./...
+```
+
+日常提交不触发发布。需要测试包或发版时使用 Actions 中的 Release 手动入口，或推送新版本 Tag。
 
 ## 开源协议
 
