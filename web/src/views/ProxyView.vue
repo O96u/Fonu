@@ -414,21 +414,13 @@ import Sortable from 'sortablejs'
 import {
   NAlert,
   NButton,
-  NCheckbox,
-  NEmpty,
-  NForm,
-  NFormItem,
   NIcon,
-  NInput,
-  NInputNumber,
   NModal,
   NPopover,
-  NSelect,
   NSpace,
   NSpin,
   NSwitch,
   NTag,
-  NTooltip,
   useDialog,
   useMessage,
   type DataTableColumns,
@@ -436,17 +428,11 @@ import {
 } from 'naive-ui'
 import {
   AddOutline,
-  ArrowDownOutline,
-  ArrowUpOutline,
-  ChevronDownOutline,
-  ChevronForwardOutline,
   CloseOutline,
   CopyOutline,
   CreateOutline,
   OpenOutline,
   ReorderThreeOutline,
-  GlobeOutline,
-  HelpCircleOutline,
   InformationCircleOutline,
   PeopleOutline,
   TrashOutline,
@@ -490,7 +476,7 @@ import {
   validateUpstreamInput,
   type DdnsHostSelectOption,
 } from '../utils/ddnsHosts'
-import { formatBytes, formatRate, formatRateIdle, formatRelativeTime } from '../utils/format'
+import { formatBytes, formatRate, formatRateIdle } from '../utils/format'
 import {
   formHostsList,
   mergeHostSelectOptions,

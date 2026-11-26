@@ -23,7 +23,7 @@
                 </template>
                 <div class="field-stack">
                   <n-select
-                    :value="form.hostsSelected" @update:value="emit('patch', { hostsSelected: $event.map(String) })"
+                    :value="form.hostsSelected" @update:value="updateHosts"
                     multiple
                     filterable
                     tag
@@ -140,6 +140,7 @@ defineProps<{
   filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean
 }>()
 const emit=defineEmits<{patch:[value:Partial<BasicDraft>];loadHosts:[]}>()
+function updateHosts(value:unknown){emit('patch',{hostsSelected:Array.isArray(value)?value.map(String):[]})}
 </script>
 <style scoped>
 .listen-row--readonly {
