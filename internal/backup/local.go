@@ -44,7 +44,7 @@ func(s *Service)listLocked()([]LocalBackup,error){
  sort.Slice(out,func(i,j int)bool{if out[i].CreatedAt.Equal(out[j].CreatedAt){return out[i].Name>out[j].Name};return out[i].CreatedAt.After(out[j].CreatedAt)})
  return out,nil
 }
-func(s *Service) ListLocal()([]LocalBackup,error){s.mu.Lock();defer s.mu.Unlock();return s.listLocked()}
+func(s *Service) ListLocal()([]LocalBackup,error){if !s.mu.TryLock(){return nil,ErrBusy};defer s.mu.Unlock();return s.listLocked()}
 func(s *Service)localPath(name string)(string,error){
  if !localName.MatchString(name){return "",os.ErrNotExist}
  dir,err:=s.localDir();if err!=nil{return "",err}
@@ -54,7 +54,7 @@ func(s *Service)localPath(name string)(string,error){
  return path,nil
 }
 func(s *Service)CreateLocal(ctx context.Context)(LocalBackup,error){
- s.mu.Lock();defer s.mu.Unlock()
+ if !s.mu.TryLock(){return LocalBackup{},ErrBusy};defer s.mu.Unlock()
  rows,err:=s.listLocked();if err!=nil{return LocalBackup{},err}
  n:=0;for _,row:=range rows{if row.Kind=="manual"{n++}}
  if n>=maxManualBackups{return LocalBackup{},fmt.Errorf("手动备份已达 30 份，请删除旧备份后再创建")}
@@ -77,7 +77,7 @@ func(s *Service)createLocked(ctx context.Context,kind string)(LocalBackup,error)
 // archives are pruned, and only after a valid replacement has been written.
 func(s *Service)AutoBackup(ctx context.Context,keep int)error{
  if keep<1||keep>30{return fmt.Errorf("自动备份保留数量无效")}
- s.mu.Lock();defer s.mu.Unlock()
+ if !s.mu.TryLock(){return nil};defer s.mu.Unlock()
  rows,err:=s.listLocked();if err!=nil{return err}
  for _,row:=range rows{if row.Kind=="auto"&&time.Since(row.CreatedAt)<24*time.Hour{return nil}}
  if _,err:=s.createLocked(ctx,"auto");err!=nil{return err}
@@ -91,11 +91,11 @@ func(s *Service)AutoBackup(ctx context.Context,keep int)error{
  return nil
 }
 func(s *Service) OpenLocal(name string)(*os.File,error){
- s.mu.Lock();defer s.mu.Unlock()
+ if !s.mu.TryLock(){return nil,ErrBusy};defer s.mu.Unlock()
  path,err:=s.localPath(name);if err!=nil{return nil,err}
  f,err:=os.Open(path);if err!=nil{return nil,err}
  info,err:=f.Stat();if err!=nil||!info.Mode().IsRegular(){f.Close();return nil,os.ErrNotExist}
  return f,nil
 }
-func(s *Service) DeleteLocal(name string)error{s.mu.Lock();defer s.mu.Unlock();path,err:=s.localPath(name);if err!=nil{return err};return os.Remove(path)}
-func(s *Service) RestoreLocal(ctx context.Context,name string)error{s.mu.Lock();defer s.mu.Unlock();path,err:=s.localPath(name);if err!=nil{return err};return s.restoreLocked(ctx,path)}
+func(s *Service) DeleteLocal(name string)error{if !s.mu.TryLock(){return ErrBusy};defer s.mu.Unlock();path,err:=s.localPath(name);if err!=nil{return err};return os.Remove(path)}
+func(s *Service) RestoreLocal(ctx context.Context,name string)error{if !s.mu.TryLock(){return ErrBusy};defer s.mu.Unlock();path,err:=s.localPath(name);if err!=nil{return err};return s.restoreLocked(ctx,path)}

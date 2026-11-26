@@ -18,8 +18,8 @@ async function refresh(){
  catch(e){if(alive&&!c.signal.aborted)error.value=e instanceof Error?e.message:'读取备份失败'}
 }
 async function create(){if(busy.value||props.disabled)return;busy.value=true;try{await api.createLocalBackup();page.value=1;await refresh();message.success('本地备份已创建')}catch(e){message.error(e instanceof Error?e.message:'创建失败')}finally{busy.value=false}}
-function remove(name:string){dialog.warning({title:'删除本地备份',content:'删除 '+name+' 后无法找回，是否继续？',positiveText:'删除',negativeText:'取消',onPositiveClick:async()=>{busy.value=true;try{await api.deleteLocalBackup(name);await refresh();message.success('备份已删除')}catch(e){message.error(e instanceof Error?e.message:'删除失败')}finally{busy.value=false}}})}
-function restore(name:string){dialog.warning({title:'恢复本地备份',content:'将校验并在重启时覆盖当前数据库、证书、密钥与 Nginx 配置，完成后需要重新登录。建议先创建当前备份。',positiveText:'确认恢复',negativeText:'取消',onPositiveClick:()=>emit('restore',name)})}
+function remove(name:string){if(busy.value||props.disabled)return;dialog.warning({title:'删除本地备份',content:'删除 '+name+' 后无法找回，是否继续？',positiveText:'删除',negativeText:'取消',onPositiveClick:async()=>{busy.value=true;try{await api.deleteLocalBackup(name);await refresh();message.success('备份已删除')}catch(e){message.error(e instanceof Error?e.message:'删除失败')}finally{busy.value=false}}})}
+function restore(name:string){if(busy.value||props.disabled)return;dialog.warning({title:'恢复本地备份',content:'将校验并在重启时覆盖当前数据库、证书、密钥与 Nginx 配置，完成后需要重新登录。建议先创建当前备份。',positiveText:'确认恢复',negativeText:'取消',onPositiveClick:()=>emit('restore',name)})}
 onMounted(refresh)
 onUnmounted(()=>{alive=false;ctl?.abort()})
 </script>

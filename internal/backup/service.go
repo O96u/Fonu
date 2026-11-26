@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+ "errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 )
 
 const pendingDirName = "restore-pending"
+var ErrBusy=errors.New("备份或恢复任务正在执行，请稍后重试")
 
 type Service struct {
 	mu sync.Mutex
@@ -42,8 +44,8 @@ func (s *Service) NotifyRestored() {
 }
 
 func (s *Service) Export(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if !s.mu.TryLock(){return "",ErrBusy}
+ defer s.mu.Unlock()
  return s.exportLocked(ctx)
 }
 
@@ -98,8 +100,8 @@ func(s *Service) exportLocked(ctx context.Context)(string,error){
 }
 
 func (s *Service) Restore(ctx context.Context, archivePath string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if !s.mu.TryLock(){return ErrBusy}
+ defer s.mu.Unlock()
  return s.restoreLocked(ctx,archivePath)
 }
 

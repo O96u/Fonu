@@ -48,6 +48,7 @@ export function asList<T>(value: T[] | null | undefined): T[] {
 
 const REQUEST_TIMEOUT_MS = 30_000
 const CERT_REQUEST_TIMEOUT_MS = 10 * 60_000
+const BACKUP_REQUEST_TIMEOUT_MS=10*60_000+5000
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
@@ -60,7 +61,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error(
-        timeoutMs > REQUEST_TIMEOUT_MS
+        path.startsWith('/api/backup/') ? '备份操作超时，请检查备份列表或系统日志' : timeoutMs > REQUEST_TIMEOUT_MS
           ? '证书操作超时，请稍后在证书列表查看状态，或在「日志 → 实时日志」查看 Nginx 输出'
           : '请求超时，请检查 Fonu 服务或 Nginx 状态',
       )
@@ -467,9 +468,9 @@ export const api = {
   },
 
   listLocalBackups: (signal?:AbortSignal) => request<{name:string;kind:'manual'|'auto';size:number;created_at:string}[]>('/api/backup/local',{signal}),
-  createLocalBackup: () => request<{name:string}>('/api/backup/local',{method:'POST'}),
+  createLocalBackup: () => request<{name:string}>('/api/backup/local',{method:'POST'},BACKUP_REQUEST_TIMEOUT_MS),
   deleteLocalBackup: (name:string) => request<{message:string}>('/api/backup/local/'+encodeURIComponent(name),{method:'DELETE'}),
-  restoreLocalBackup: (name:string) => request<{message:string}>('/api/backup/local/'+encodeURIComponent(name)+'/restore',{method:'POST'}),
+  restoreLocalBackup: (name:string) => request<{message:string}>('/api/backup/local/'+encodeURIComponent(name)+'/restore',{method:'POST'},BACKUP_REQUEST_TIMEOUT_MS),
   async exportBackup() {
     const filename = `fonu-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`
     const url = `/api/backup/export?t=${Date.now()}`
