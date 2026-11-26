@@ -291,113 +291,18 @@
       </div>
 
       <div class="proxy-detail__scroll">
-        <div v-show="detailTab === 'overview'" class="proxy-detail__pane proxy-detail__pane--overview">
-            <div class="overview-strip">
-              <div class="overview-strip__item">
-                <span class="overview-strip__label">域名</span>
-                <span class="overview-strip__value" :title="ruleHosts(selectedRule).join('、')">
-                  {{ ruleHosts(selectedRule).join('、') }}
-                </span>
-              </div>
-              <div class="overview-strip__item">
-                <span class="overview-strip__label">监听</span>
-                <span class="overview-strip__value">{{ listenLabel(selectedRule) }}</span>
-              </div>
-              <div class="overview-strip__item overview-strip__item--wide">
-                <span class="overview-strip__label">目标</span>
-                <span class="overview-strip__value mono" :title="selectedRule.upstream">{{ selectedRule.upstream }}</span>
-              </div>
-              <div class="overview-strip__item">
-                <span class="overview-strip__label">协议</span>
-                <span class="overview-strip__value">
-                  <n-tag size="small" :type="selectedRule.https_enabled ? 'success' : 'default'" :bordered="false" round>
-                    {{ selectedRule.https_enabled ? 'HTTPS' : 'HTTP' }}
-                  </n-tag>
-                </span>
-              </div>
-            </div>
-
-            <div class="overview-security">
-              <span class="overview-security__label">安全策略</span>
-              <div v-if="selectedSecurityFeatures.length" class="overview-security__tags">
-                <n-tag
-                  v-for="tag in selectedSecurityFeatures"
-                  :key="tag"
-                  size="small"
-                  round
-                  :bordered="false"
-                >
-                  {{ tag }}
-                </n-tag>
-              </div>
-              <span v-else class="overview-security__empty">未启用</span>
-            </div>
-
-            <div class="overview-main">
-              <section class="overview-card overview-card--chart">
-                <div class="overview-card__head">
-                  <h4>实时流量 <span class="overview-card__sub">最近 5 分钟</span></h4>
-                  <span class="live-badge"><span class="live-badge__dot" />实时</span>
-                </div>
-                <div class="traffic-live-legend traffic-live-legend--compact">
-                  <span class="traffic-live-legend__item traffic-live-legend__item--up">
-                    <span class="traffic-live-legend__dot" />
-                    上传 {{ formatRate(selectedTraffic?.upload_rate ?? 0) }}
-                  </span>
-                  <span class="traffic-live-legend__item traffic-live-legend__item--down">
-                    <span class="traffic-live-legend__dot" />
-                    下载 {{ formatRate(selectedTraffic?.download_rate ?? 0) }}
-                  </span>
-                </div>
-                <MiniTrafficChart
-                  class="overview-chart"
-                  :labels="trafficChart.labels"
-                  :upload="trafficChart.upload"
-                  :download="trafficChart.download"
-                />
-              </section>
-
-              <aside class="overview-side">
-                <section class="overview-metrics">
-                  <div class="overview-metric">
-                    <div class="overview-metric__label">总上传</div>
-                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.upload_total ?? 0) }}</div>
-                  </div>
-                  <div class="overview-metric">
-                    <div class="overview-metric__label">总下载</div>
-                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.download_total ?? 0) }}</div>
-                  </div>
-                  <div class="overview-metric">
-                    <div class="overview-metric__label">当前上传</div>
-                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.upload_rate ?? 0) }}</div>
-                  </div>
-                  <div class="overview-metric">
-                    <div class="overview-metric__label">当前下载</div>
-                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.download_rate ?? 0) }}</div>
-                  </div>
-                </section>
-
-                <section class="overview-card overview-card--clients">
-                  <div class="overview-card__head">
-                    <h4>
-                      最近访问
-                      <span class="overview-card__sub">65 秒内 · {{ clientRows.length }} 个</span>
-                    </h4>
-                    <n-button size="tiny" quaternary :loading="clientsLoading" @click="loadClients">刷新</n-button>
-                  </div>
-                  <div class="overview-client-list">
-                    <template v-if="clientRows.length > 0">
-                      <div v-for="row in clientRows" :key="row.ip" class="overview-client-row">
-                        <span class="mono">{{ row.ip }}</span>
-                        <span class="overview-client-row__time">{{ formatRelativeTime(row.last_seen) }}</span>
-                      </div>
-                    </template>
-                    <p v-else class="overview-empty">暂无访问记录</p>
-                  </div>
-                </section>
-              </aside>
-            </div>
-        </div>
+        <ProxyOverviewPanel
+          v-show="detailTab === 'overview'"
+          :selected-rule="selectedRule"
+          :hosts="ruleHosts(selectedRule)"
+          :listen="listenLabel(selectedRule)"
+          :selected-security-features="selectedSecurityFeatures"
+          :selected-traffic="selectedTraffic"
+          :traffic-chart="trafficChart"
+          :client-rows="clientRows"
+          :clients-loading="clientsLoading"
+          @refresh-clients="loadClients"
+        />
 
         <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
@@ -504,120 +409,18 @@
         </div>
 
         <div class="proxy-modal__scroll">
-          <n-form v-show="formTab === 'basic'" label-placement="top" class="proxy-modal__pane">
-              <n-form-item label="名称">
-                <n-input
-                  v-model:value="form.name"
-                  maxlength="100"
-                  show-count
-                  placeholder="选填；留空保存时默认使用对应前端域名"
-                />
-              </n-form-item>
-
-              <n-form-item required>
-                <template #label>
-                  <span class="form-label">
-                    前端域名
-                    <n-tooltip trigger="hover">
-                      <template #trigger>
-                        <n-icon :component="HelpCircleOutline" class="form-label__help" />
-                      </template>
-                      每行一个域名；如需单独端口可写 example.com:6893
-                    </n-tooltip>
-                  </span>
-                </template>
-                <div class="field-stack">
-                  <n-select
-                    v-model:value="form.hostsSelected"
-                    multiple
-                    filterable
-                    tag
-                    :loading="ddnsHostsLoading"
-                    :options="hostSelectOptions"
-                    :filter="filterDdnsHostOption"
-                    placeholder="输入域名后回车，或从 DDNS 列表选择（可多选）"
-                    class="hosts-select"
-                    @focus="loadDdnsHostOptions"
-                  />
-                  <p class="field-hint">
-                    可自定义填写，不必在 Fonu 配置 DDNS；每选一个域名各生成一条规则（共用下方目标地址），表格中各占一行。
-                    <template v-if="ddnsHostOptionsEmpty && !ddnsHostsLoading">
-                      <span class="field-hint__sep"> </span>
-                      <router-link class="field-hint__link" :to="{ name: 'ddns' }">在 Fonu 管理 DDNS</router-link>
-                      可选。
-                    </template>
-                  </p>
-                </div>
-              </n-form-item>
-
-              <div v-if="!bindEntryListen" class="listen-row">
-                <div class="listen-col listen-col--port">
-                  <div class="listen-col__label">监听端口 <span class="required-mark">*</span></div>
-                  <div class="listen-col__control">
-                    <n-input-number v-model:value="form.listen_port" :min="1" :max="65535" class="port-input" />
-                  </div>
-                </div>
-                <div class="listen-col listen-col--protocol">
-                  <div class="listen-col__label">监听协议</div>
-                  <div class="listen-col__control">
-                    <div class="listen-types">
-                      <n-checkbox v-model:checked="form.listen_ipv4">IPv4</n-checkbox>
-                      <n-checkbox v-model:checked="form.listen_ipv6">IPv6</n-checkbox>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="listen-row listen-row--readonly">
-                <div class="listen-col listen-col--port">
-                  <div class="listen-col__label">监听入口</div>
-                  <div class="listen-col__control">
-                    <n-tag size="small" round :bordered="false">
-                      {{ entryGroupDisplayName({ key: '', name: '', listen: form, rules: [], enabledCount: 0, portHasMixedEntries: false }) }}
-                    </n-tag>
-                  </div>
-                </div>
-              </div>
-
-              <n-form-item label="目标地址" required>
-                <div class="field-stack">
-                  <n-input v-model:value="form.upstream" placeholder="例如：http://192.168.1.100:5173" />
-                  <p class="field-hint">仅支持 http:// 或 https:// 开头的内网地址。</p>
-                </div>
-              </n-form-item>
-
-              <div v-if="!bindEntryListen" class="form-switch-list form-switch-list--compact">
-                <div class="form-switch-row">
-                  <div class="form-switch-row__text">
-                    <div class="form-switch-row__label">启用 HTTPS</div>
-                    <div class="form-switch-row__hint">为前端域名启用 HTTPS 访问</div>
-                  </div>
-                  <n-switch v-model:value="form.https_enabled" />
-                </div>
-                <div class="form-switch-row">
-                  <div class="form-switch-row__text">
-                    <div class="form-switch-row__label">HTTP 跳转 HTTPS</div>
-                    <div class="form-switch-row__hint">将 HTTP 请求自动跳转为 HTTPS</div>
-                  </div>
-                  <n-switch v-model:value="form.http_redirect" :disabled="!form.https_enabled" />
-                </div>
-                <div class="form-switch-row">
-                  <div class="form-switch-row__text">
-                    <div class="form-switch-row__label">启用规则</div>
-                    <div class="form-switch-row__hint">保存后立即开始转发请求</div>
-                  </div>
-                  <n-switch v-model:value="form.enabled" />
-                </div>
-              </div>
-              <div v-else-if="editing" class="form-switch-list form-switch-list--compact">
-                <div class="form-switch-row">
-                  <div class="form-switch-row__text">
-                    <div class="form-switch-row__label">启用规则</div>
-                    <div class="form-switch-row__hint">保存后立即开始转发请求</div>
-                  </div>
-                  <n-switch v-model:value="form.enabled" />
-                </div>
-              </div>
-            </n-form>
+          <ProxyBasicEditor
+            v-show="formTab === 'basic'"
+            :form="form"
+            :bind-entry-listen="bindEntryListen"
+            :editing="!!editing"
+            :ddns-hosts-loading="ddnsHostsLoading"
+            :ddns-host-options-empty="ddnsHostOptionsEmpty"
+            :host-select-options="hostSelectOptions"
+            :filter-ddns-host-option="filterDdnsHostOption"
+            @patch="Object.assign(form,$event)"
+            @load-hosts="loadDdnsHostOptions"
+          />
 
           <div v-show="formTab === 'security'" class="proxy-modal__pane proxy-modal__pane--security">
             <ProxySecurityEditor
@@ -630,80 +433,23 @@
             />
           </div>
 
-          <div v-show="formTab === 'nginx'" class="proxy-modal__pane proxy-modal__pane--nginx">
-            <template v-if="!editing">
-              <n-empty description="请先保存规则后再配置 Nginx">
-                <template #extra>
-                  <n-button type="primary" @click="switchFormTab('basic')">去填写基础配置</n-button>
-                </template>
-              </n-empty>
-            </template>
-            <template v-else>
-              <n-alert v-if="nginxEditMode === 'custom'" type="info" :bordered="false" class="nginx-pane-alert">
-                手动模式下，修改基础/安全设置后需先保存规则，再在此处同步 Nginx 文本。
-              </n-alert>
-              <div class="log-panel-head">
-                <div class="nginx-mode-toggle">
-                  <n-button
-                    size="tiny"
-                    quaternary
-                    :type="nginxEditMode === 'auto' ? 'primary' : 'default'"
-                    @click="setNginxEditMode('auto')"
-                  >
-                    自动生成
-                  </n-button>
-                  <n-button
-                    size="tiny"
-                    quaternary
-                    :type="nginxEditMode === 'custom' ? 'primary' : 'default'"
-                    @click="setNginxEditMode('custom')"
-                  >
-                    手动编辑
-                  </n-button>
-                </div>
-                <div class="log-panel-actions">
-                  <n-button
-                    v-if="nginxEditMode === 'custom'"
-                    size="tiny"
-                    quaternary
-                    type="primary"
-                    :loading="nginxSaving"
-                    :disabled="!nginxDirty"
-                    @click="saveRuleNginx"
-                  >
-                    保存 Nginx
-                  </n-button>
-                  <n-button
-                    v-if="nginxEditMode === 'custom' && nginxBackups.length > 0"
-                    size="tiny"
-                    quaternary
-                    :loading="nginxSaving"
-                    @click="rollbackRuleNginx()"
-                  >
-                    回滚
-                  </n-button>
-                  <n-button
-                    v-if="nginxEditMode === 'custom' && nginxServerMode === 'custom'"
-                    size="tiny"
-                    quaternary
-                    :loading="nginxSaving"
-                    @click="resetRuleNginxAuto"
-                  >
-                    恢复自动生成
-                  </n-button>
-                </div>
-              </div>
-              <n-spin :show="nginxLoading" class="nginx-editor-spin nginx-editor-spin--modal">
-                <NginxCodeEditor
-                  v-model="nginxDraft"
-                  embedded
-                  :readonly="nginxEditMode === 'auto'"
-                  placeholder="server { ... }"
-                  @update:model-value="onNginxDraftInput"
-                />
-              </n-spin>
-            </template>
-          </div>
+          <ProxyNginxEditor
+            v-show="formTab === 'nginx'"
+            :editing="!!editing"
+            :nginx-edit-mode="nginxEditMode"
+            :nginx-server-mode="nginxServerMode"
+            :nginx-draft="nginxDraft"
+            :nginx-dirty="nginxDirty"
+            :nginx-saving="nginxSaving"
+            :nginx-loading="nginxLoading"
+            :nginx-backups="nginxBackups"
+            @basic="switchFormTab('basic')"
+            @mode="setNginxEditMode"
+            @save="saveRuleNginx"
+            @rollback="rollbackRuleNginx()"
+            @reset="resetRuleNginxAuto"
+            @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"
+          />
         </div>
 
         <div class="modal-footer">
@@ -856,7 +602,6 @@ import FonuCard from '../components/FonuCard.vue'
 import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
 
 import LoadError from '../components/LoadError.vue'
-import MiniTrafficChart from '../components/MiniTrafficChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
@@ -864,6 +609,9 @@ import ProxyToolbar from '../components/proxy/ProxyToolbar.vue'
 import ProxyEntryEditor from '../components/proxy/ProxyEntryEditor.vue'
 import ProxyDiscovery from '../components/proxy/ProxyDiscovery.vue'
 import ProxySecurityEditor from '../components/proxy/ProxySecurityEditor.vue'
+import ProxyBasicEditor from '../components/proxy/ProxyBasicEditor.vue'
+import ProxyNginxEditor from '../components/proxy/ProxyNginxEditor.vue'
+import ProxyOverviewPanel from '../components/proxy/ProxyOverviewPanel.vue'
 import { defaultSecurityForm } from '../composables/proxy/securityDraft'
 import StatusBadge from '../components/StatusBadge.vue'
 import { copyToClipboard } from '../utils/clipboard'
@@ -3260,13 +3008,9 @@ onUnmounted(() => {
   padding: var(--fonu-space-5) var(--fonu-space-4);
 }
 
-.listen-row--readonly {
-  padding: 8px 0 4px;
-}
 
-.listen-row--readonly .listen-col__label {
-  margin-bottom: 6px;
-}
+
+
 
 .proxy-drag-handle {
   display: inline-flex;
@@ -3574,232 +3318,69 @@ onUnmounted(() => {
   gap: var(--fonu-space-4);
 }
 
-.overview-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
-  gap: 12px 16px;
-  padding: 12px 14px;
-  background: var(--fonu-bg);
-  border: 1px solid var(--fonu-border);
-  border-radius: 10px;
-  flex-shrink: 0;
-}
 
-.overview-security {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 10px 14px;
-  background: var(--fonu-bg);
-  border: 1px solid var(--fonu-border);
-  border-radius: 10px;
-  flex-shrink: 0;
-}
 
-.overview-security__label {
-  font-size: 11px;
-  color: var(--fonu-text-muted);
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-}
 
-.overview-security__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
 
-.overview-security__empty {
-  font-size: 13px;
-  color: var(--fonu-text-muted);
-}
 
-.overview-strip__item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
 
-.overview-strip__label {
-  font-size: 11px;
-  color: var(--fonu-text-muted);
-  letter-spacing: 0.02em;
-}
 
-.overview-strip__value {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fonu-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.overview-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: var(--fonu-space-4);
-  flex: 0 0 auto;
-  align-items: stretch;
-}
 
-.overview-side {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  min-height: 100%;
-}
 
-.overview-card {
-  border: 1px solid var(--fonu-border);
-  border-radius: 10px;
-  background: var(--fonu-surface);
-  padding: 14px 16px;
-}
 
-.overview-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fonu-space-3);
-  margin-bottom: 10px;
-}
 
-.overview-card__head h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
 
-.overview-card__sub {
-  margin-left: 6px;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--fonu-text-muted);
-}
 
-.overview-card--chart {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
 
-.overview-chart {
-  flex: none;
-  height: 200px;
-  overflow: hidden;
-}
 
-.overview-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: 1fr 1fr;
-  gap: 10px;
-  flex-shrink: 0;
-}
 
-.overview-metric {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--fonu-bg);
-  border: 1px solid var(--fonu-border);
-}
 
-.overview-metric__label {
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-}
 
-.overview-metric__value {
-  margin-top: 4px;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.2;
-  color: var(--fonu-text);
-}
 
-.overview-card--clients {
-  flex: 1 1 auto;
-  min-height: 112px;
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding-bottom: 12px;
-  overflow: hidden;
-}
 
-.overview-client-list {
-  flex: 1 1 auto;
-  min-height: 48px;
-  overflow-y: auto;
-  margin: 0 -2px;
-  padding: 0 2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
-}
 
-.overview-client-list:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) var(--fonu-bg-muted);
-}
 
-.overview-client-list::-webkit-scrollbar {
-  width: 6px;
-}
 
-.overview-client-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-  border-radius: 4px;
-}
 
-.overview-client-list:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
-}
 
-.overview-client-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fonu-space-3);
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-}
 
-.overview-client-row + .overview-client-row {
-  margin-top: 2px;
-}
 
-.overview-client-row:hover {
-  background: var(--fonu-bg);
-}
 
-.overview-client-row__time {
-  flex-shrink: 0;
-  color: var(--fonu-text-muted);
-  font-size: 11px;
-}
 
-.overview-empty {
-  margin: 0;
-  flex: 1;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  color: var(--fonu-text-muted);
-}
 
-.traffic-live-legend--compact {
-  margin-bottom: 6px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .proxy-detail__pane--logs,
 .proxy-detail__pane--nginx {
@@ -3840,56 +3421,24 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #10b981;
-  font-weight: 500;
-}
 
-.live-badge__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10b981;
-  animation: live-pulse 1.5s ease-in-out infinite;
-}
+
+
 
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
 
-.traffic-live-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--fonu-text-secondary);
-}
 
-.traffic-live-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 
-.traffic-live-legend__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
 
-.traffic-live-legend__item--up .traffic-live-legend__dot {
-  background: #10b981;
-}
 
-.traffic-live-legend__item--down .traffic-live-legend__dot {
-  background: #3b82f6;
-}
+
+
+
+
+
 
 .log-panel-head {
   display: flex;
@@ -3944,11 +3493,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.listen-types {
-  display: flex;
-  align-items: center;
-  gap: var(--fonu-space-5);
-}
+
 
 .proxy-modal {
   display: flex;
@@ -4100,9 +3645,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.form-switch-list--compact {
-  margin-bottom: 0;
-}
+
 
 .proxy-security-tags {
   display: flex;
@@ -4184,24 +3727,11 @@ onUnmounted(() => {
   color: #b45309;
 }
 
-.form-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
-.form-label__help {
-  font-size: 14px;
-  color: var(--fonu-text-muted);
-  cursor: help;
-}
 
-.field-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-}
+
+
+
 
 .proxy-secret-label {
   display: inline-flex;
@@ -4209,126 +3739,50 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.field-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-  line-height: 1.5;
-}
 
-.field-hint__link {
-  color: var(--fonu-primary);
-  text-decoration: none;
-}
 
-.field-hint__link:hover {
-  text-decoration: underline;
-}
 
-.hosts-select {
-  width: 100%;
-}
 
-.hosts-select :deep(.n-base-select-group-header) {
-  padding-top: 10px;
-  padding-bottom: 4px;
-}
 
-.hosts-select :deep(.ddns-host-group-label__task) {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fonu-text);
-}
 
-.hosts-select :deep(.ddns-host-group-label__dash) {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fonu-text);
-}
 
-.hosts-select :deep(.ddns-host-group-label__provider) {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--fonu-text-muted);
-}
+
+
+
+
+
+
+
+
 
 .proxy-modal__pane :deep(.n-form-item .n-form-item-blank) {
   display: block;
   width: 100%;
 }
 
-.listen-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 24px;
-  margin-bottom: var(--fonu-space-5);
-}
 
-.listen-col {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-.listen-col--port {
-  width: 168px;
-  flex-shrink: 0;
-}
 
-.listen-col--protocol {
-  flex-shrink: 0;
-}
 
-.listen-col__label {
-  font-size: 14px;
-  line-height: 1.25;
-  color: var(--fonu-text);
-}
 
-.required-mark {
-  color: #d03050;
-}
 
-.listen-col__control {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-}
 
-.port-input {
-  width: 100%;
-}
 
-.form-switch-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: var(--fonu-space-4);
-}
 
-.form-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fonu-space-4);
-  padding: 12px 14px;
-  border: 1px solid var(--fonu-border);
-  border-radius: 10px;
-  background: var(--fonu-bg);
-}
 
-.form-switch-row__label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--fonu-text);
-}
 
-.form-switch-row__hint {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--fonu-text-muted);
-  line-height: 1.5;
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 .modal-title {
   margin: 0;
