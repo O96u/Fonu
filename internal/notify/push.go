@@ -20,7 +20,9 @@ func SendWebhook(ctx context.Context, client *http.Client, cfg RuntimeConfig, co
 		return sendNtfy(ctx, client, cfg, content.PushTitle, content.PlainBody)
 	case WebhookGotify:
 		return sendGotify(ctx, client, cfg, content.PushTitle, content.PlainBody)
-	case WebhookWeCom,WebhookDingTalk,WebhookFeishu:
+	case WebhookWeComApp,WebhookFeishuApp:
+        return sendApplication(ctx,client,cfg,content)
+ case WebhookWeCom,WebhookDingTalk,WebhookFeishu:
         return sendRobot(ctx,client,cfg,content)
 	case WebhookCustom:
 		return sendCustomWebhook(ctx, client, cfg, content)

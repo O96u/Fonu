@@ -192,10 +192,20 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
  if strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret {if in.Webhook.Provider==existing.Webhook.Provider&&strings.TrimSpace(in.Webhook.Key)==""&&existing.Webhook.Key!=""&&existing.Webhook.Key!=MaskedSecret {in.Webhook.Key=existing.Webhook.Key}}
  in.Webhook.HasSecret=(in.Webhook.Provider==existing.Webhook.Provider&&existing.Webhook.HasSecret) || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
  in.Telegram.HasBotToken=existing.Telegram.HasBotToken || (strings.TrimSpace(in.TelegramToken)!="" && in.TelegramToken!=MaskedSecret)
- if in.Type==NotifyTypeWebhook&&in.Webhook.Provider!=existing.Webhook.Provider&&(isRobotProvider(in.Webhook.Provider)||isRobotProvider(existing.Webhook.Provider))&&(strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret)&&in.Webhook.Provider!=WebhookCustom&&in.Webhook.Provider!=WebhookNtfy{return fmt.Errorf("切换机器人渠道时请重新填写该渠道凭据")}
- if in.Type==NotifyTypeWebhook&&isRobotProvider(in.Webhook.Provider)&&(strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret){runtime,err:=s.LoadRuntime(ctx);if err!=nil{return err};if _,err:=robotEndpoint(in.Webhook.Provider,runtime.WebhookSecret);err!=nil{return err}}
+ same:=sameWebhookIdentity(in.Webhook,existing.Webhook)
+ runtime,err:=s.LoadRuntime(ctx);if err!=nil{return err}
+ input:=in.WebhookSecret
+ if (input==""||input==MaskedSecret)&&in.Webhook.Key!=""&&in.Webhook.Key!=MaskedSecret{input=in.Webhook.Key}
+ oldSecret:=webhookSecret(runtime)
+ resolved,err:=resolveWebhookCredential(in.Webhook,input,existing.Webhook,oldSecret)
+ if err!=nil{return err}
+ in.Webhook.HasSecret=resolved!=""
+ in.WebhookSecret=resolved
+ in.Webhook.Key=""
+ if in.Type==NotifyTypeWebhook {if err:=validateWebhookCredential(in.Webhook,resolved);err!=nil{return err}}
  values:=map[string]string{}
- if in.Webhook.Provider!=existing.Webhook.Provider&&(isRobotProvider(existing.Webhook.Provider)||isRobotProvider(in.Webhook.Provider)){values[settings.KeyNotifyWebhookSecret]=""}
+ if !same || resolved==""{values[settings.KeyNotifyWebhookSecret]=""}
+
 	if err := validateSaveInput(in); err != nil {
 		return err
 	}
@@ -354,8 +364,8 @@ func validateSaveInput(in SaveInput) error {
 			if strings.TrimSpace(in.Webhook.Key) == "" && !in.Webhook.HasSecret {
 				return fmt.Errorf("请填写 Gotify App Token")
 			}
-        case WebhookWeCom,WebhookDingTalk,WebhookFeishu:
-          if in.WebhookSecret==""||in.WebhookSecret==MaskedSecret {if !in.Webhook.HasSecret{return fmt.Errorf("请填写机器人 Webhook 地址")}}else if _,err:=robotEndpoint(in.Webhook.Provider,in.WebhookSecret);err!=nil{return err}
+        case WebhookWeCom,WebhookDingTalk,WebhookFeishu,WebhookWeComApp,WebhookFeishuApp:
+          return validateWebhookCredential(in.Webhook,in.WebhookSecret)
 		case WebhookCustom:
 			if strings.TrimSpace(in.Webhook.URL) == "" {
 				return fmt.Errorf("请填写 Webhook URL")

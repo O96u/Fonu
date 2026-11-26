@@ -25,12 +25,14 @@ func robotEndpoint(p WebhookProvider,secret string)(string,error){
  return u.String(),nil
 }
 func sendRobot(ctx context.Context,client *http.Client,cfg RuntimeConfig,content AlertContent)error{
- endpoint,err:=robotEndpoint(cfg.Webhook.Provider,webhookSecret(cfg));if err!=nil{return err}
+ primary,signature:=splitRobotCredential(webhookSecret(cfg))
+ endpoint,err:=robotEndpoint(cfg.Webhook.Provider,primary);if err!=nil{return err}
  message:=content.PlainBody
  // Ensure UTF-8 and bounded message length for group robots.
  if len(message)>1800{end:=1800;for end>0&&(message[end]&0xc0)==0x80{end--};message=message[:end]+"…"}
  var payload map[string]any
  if cfg.Webhook.Provider==WebhookFeishu{payload=map[string]any{"msg_type":"text","content":map[string]string{"text":message}}}else{payload=map[string]any{"msgtype":"text","text":map[string]string{"content":message}}}
+ if cfg.Webhook.Signed {if signature==""{return fmt.Errorf("请填写机器人签名密钥")};endpoint=signRobot(cfg.Webhook.Provider,endpoint,signature,payload,time.Now())}
  body,err:=json.Marshal(payload);if err!=nil{return err}
  req,err:=http.NewRequestWithContext(ctx,http.MethodPost,endpoint,bytes.NewReader(body));if err!=nil{return fmt.Errorf("机器人请求构造失败")}
  req.Header.Set("Content-Type","application/json")

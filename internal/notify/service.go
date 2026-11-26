@@ -195,7 +195,7 @@ func (s *Service) resolveTestRuntime(ctx context.Context, in TestInput) (Runtime
 		webhookSecret = key
 	}
 
-	needStored := smtpPassword == "" || smtpPassword == MaskedSecret ||
+	needStored := in.Type==NotifyTypeWebhook || smtpPassword == "" || smtpPassword == MaskedSecret ||
 		webhookSecret == "" || webhookSecret == MaskedSecret ||
 		telegramToken == "" || telegramToken == MaskedSecret
 
@@ -207,15 +207,17 @@ func (s *Service) resolveTestRuntime(ctx context.Context, in TestInput) (Runtime
 		if (smtpPassword == "" || smtpPassword == MaskedSecret) && in.Email.HasPassword {
 			smtpPassword = stored.SMTPPassword
 		}
-		if (webhookSecret == "" || webhookSecret == MaskedSecret) && in.Webhook.HasSecret {
-			webhookSecret = stored.WebhookSecret
-		}
+		if in.Type==NotifyTypeWebhook {
+            webhookSecret,err=resolveWebhookCredential(in.Webhook,webhookSecret,stored.Webhook,webhookSecretFromRuntime(stored))
+            if err!=nil{return RuntimeConfig{},err}
+        }
 		if (telegramToken == "" || telegramToken == MaskedSecret) && in.Telegram.HasBotToken {
 			telegramToken = stored.TelegramToken
 		}
 	}
 
-	return in.Config.Runtime(smtpPassword, webhookSecret, telegramToken), nil
+	if in.Type==NotifyTypeWebhook {if err:=validateWebhookCredential(in.Webhook,webhookSecret);err!=nil{return RuntimeConfig{},err}}
+ return in.Config.Runtime(smtpPassword, webhookSecret, telegramToken), nil
 }
 
 func (s *Service) Store() *Store {

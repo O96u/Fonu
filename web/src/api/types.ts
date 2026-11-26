@@ -495,7 +495,7 @@ export interface SystemLogEntry {
 }
 
 export type NotifyType = '' | 'email' | 'webhook' | 'telegram'
-export type WebhookProvider = 'bark' | 'ntfy' | 'gotify' | 'wecom' | 'dingtalk' | 'feishu' | 'custom'
+export type WebhookProvider = 'bark' | 'ntfy' | 'gotify' | 'wecom' | 'dingtalk' | 'feishu' | 'wecom_app' | 'feishu_app' | 'custom'
 
 export interface NotifyEmailConfig {
   host: string
@@ -508,6 +508,13 @@ export interface NotifyEmailConfig {
 }
 
 export interface NotifyWebhookConfig {
+  app_id?: string
+  agent_id?: string
+  recipient?: string
+  recipient_type?: string
+  api_base?: string
+  signed?: boolean
+  preferred_type?: NotifyType
   provider: WebhookProvider
   server: string
   key: string

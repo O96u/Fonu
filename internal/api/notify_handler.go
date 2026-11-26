@@ -20,7 +20,8 @@ func (h *NotifyHandler) Test(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "通知服务未初始化")
 		return
 	}
-	var req notify.TestInput
+	r.Body=http.MaxBytesReader(w,r.Body,1<<20)
+ var req notify.TestInput
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(r, w, http.StatusBadRequest, "请求格式无效")
 		return

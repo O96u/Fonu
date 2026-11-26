@@ -15,7 +15,7 @@ try {
  page=await browser.newPage({viewport:{width:1440,height:980}})
  const errors=[]
  page.on('pageerror',err=>errors.push(err.message))
- const saved={theme:'system',timezone:'Asia/Shanghai',ddns_check_interval_minutes:'5',log_retention_days:'30',analytics_retention_days:'30',notify_type:'',acme_email:'',zerossl_eab_kid:'********',zerossl_eab_hmac_key:'********'}
+ const saved={theme:'system',timezone:'Asia/Shanghai',ddns_check_interval_minutes:'5',log_retention_days:'30',analytics_retention_days:'30',notify_type:'telegram',notify_telegram_json:JSON.stringify({chat_id:'123',proxy_url:'',has_bot_token:true}),acme_email:'',zerossl_eab_kid:'********',zerossl_eab_hmac_key:'********'}
  const writes=[]
  let fail=false
  await page.route('**/*',async route=>{
@@ -73,6 +73,27 @@ try {
  assert.deepEqual(writes.at(-1),{analytics_retention_days:'45'})
  await page.getByTestId('settings-tab-backup').click()
  assert.equal(await page.getByTestId('settings-save-bar').count(),0)
+ await page.getByTestId('settings-tab-notify').click()
+ assert.equal(await page.locator('.notify-channel-choice').count(),9)
+ assert.equal(await page.getByTestId('notify-channel-telegram').getAttribute('aria-pressed'),'true')
+ assert.equal(await page.getByPlaceholder('-1001234567890').inputValue(),'123')
+ await page.getByTestId('notify-enabled').click()
+ assert.equal(await page.getByTestId('notify-enabled').getAttribute('aria-checked'),'false')
+ await save.click()
+ await page.getByText('当前分类已保存',{exact:true}).waitFor()
+ assert.equal(writes.at(-1).notify_type,'')
+ assert.equal(JSON.parse(writes.at(-1).notify_webhook_json).preferred_type,'telegram')
+ await page.getByTestId('notify-enabled').click()
+ await page.getByTestId('notify-channel-wecom').click()
+ await page.getByText('自建应用',{exact:true}).click()
+ await page.getByPlaceholder('1000002').waitFor()
+ await page.getByPlaceholder('应用标识').fill('corp-test')
+ await page.getByPlaceholder('1000002').fill('1000002')
+ await page.getByPlaceholder('zhangsan|lisi').fill('test-user')
+ await page.getByPlaceholder('请输入应用密钥').fill('test-secret')
+ await page.screenshot({path:'ui-screenshots/settings-wecom-app.png',fullPage:true})
+ await page.getByRole('button',{name:'取消修改',exact:true}).click()
+ assert.equal(await page.getByTestId('notify-channel-telegram').getAttribute('aria-pressed'),'true')
  await page.setViewportSize({width:520,height:750})
  await page.getByTestId('settings-tab-general').click()
  await page.screenshot({path:'ui-screenshots/settings-narrow.png',fullPage:true})

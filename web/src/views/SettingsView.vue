@@ -211,15 +211,17 @@
         <div v-else-if="settingsTab==='notify'" class="settings-grid settings-grid--single"><FonuCard title="通知" subtitle="告警通道与事件（仅可启用一种方式）">
         <div class="security-form notify-form"><div class="notify-channel">
           <div class="settings-field">
-            <div class="settings-field__label">通知方式</div>
-            <n-radio-group v-model:value="notifyType" class="notify-type-group">
-              <n-radio v-for="item in NOTIFY_TYPE_OPTIONS" :key="item.value || 'off'" :value="item.value">
-                {{ item.label }}
-              </n-radio>
-            </n-radio-group>
+            <div class="settings-field__label">通知渠道</div><p class="field-hint">选择一种通知方式</p>
+            <div class="notify-channel-grid">
+              <button v-for="item in channelOptions" :key="item.key" type="button" class="notify-channel-choice" :class="{'is-active':selectedChannel===item.key}" :aria-pressed="selectedChannel===item.key" :data-testid="'notify-channel-'+item.key" @click="selectChannel(item.key)">
+                <span class="notify-channel-icon" :style="{color:item.color}"><n-icon :component="item.icon" /></span><span>{{item.label}}</span>
+              </button>
+            </div>
           </div>
-
-          <div v-if="notifyType === 'email'" class="settings-fields settings-fields--compact">
+          <div class="form-switch-row"><div class="form-switch-row__text"><div class="form-switch-row__label">启用通知</div><div class="form-switch-row__hint">关闭后保留配置，不再推送告警</div></div><n-switch v-model:value="notifyEnabled" data-testid="notify-enabled" /></div>
+          <div class="notify-config-panel">
+          <h3>{{channelOptions.find(item=>item.key===selectedChannel)?.label}} 配置</h3>
+          <div v-if="selectedNotifyType === 'email'" class="settings-fields settings-fields--compact">
             <div class="settings-field notify-smtp-endpoint">
               <div class="notify-smtp-endpoint__col">
                 <div class="settings-field__label">SMTP 主机</div>
@@ -256,11 +258,7 @@
             </div>
           </div>
 
-          <div v-else-if="notifyType === 'webhook'" class="settings-fields settings-fields--compact">
-            <div class="settings-field">
-              <div class="settings-field__label">Webhook 预设</div>
-              <n-select v-model:value="notifyWebhook.provider" :options="WEBHOOK_PROVIDER_OPTIONS" @update:value="notifyWebhookKey=''" />
-            </div>
+          <div v-else-if="selectedNotifyType === 'webhook'" class="settings-fields settings-fields--compact">
             <template v-if="notifyWebhook.provider === 'bark'">
               <div class="settings-field">
                 <div class="settings-field__label">Bark 服务地址</div>
@@ -289,9 +287,25 @@
                 placeholder="Bearer Token"
               />
             </template>
-            <template v-else-if="['wecom','dingtalk','feishu'].includes(notifyWebhook.provider)">
-              <ConfiguredSecretField v-model="notifyWebhookKey" label="机器人 Webhook 地址" :configured="hasSavedWebhookSecret" placeholder="粘贴完整 HTTPS Webhook 地址" />
-              <p class="field-hint">在群聊中添加自定义机器人，复制 Webhook。钉钉、飞书若采用关键词安全校验，请使用 Fonu；暂不支持加签。建议同时配置可信出口 IP（平台支持时）。</p>
+            <template v-else-if="['wecom','dingtalk','feishu','wecom_app','feishu_app'].includes(notifyWebhook.provider)">
+              <div v-if="selectedChannel==='wecom'||selectedChannel==='feishu'" class="settings-field">
+                <div class="settings-field__label">接入模式</div>
+                <n-radio-group :value="isAppMode?'app':'webhook'" @update:value="changeNotifyMode"><n-radio value="webhook">群机器人 Webhook</n-radio><n-radio value="app">自建应用</n-radio></n-radio-group>
+              </div>
+              <template v-if="isAppMode">
+                <div class="settings-field"><div class="settings-field__label">{{selectedChannel==='wecom'?'企业 ID（CorpID）':'App ID'}}</div><n-input v-model:value="notifyWebhook.app_id" placeholder="应用标识" /></div>
+                <div v-if="selectedChannel==='wecom'" class="settings-field"><div class="settings-field__label">应用 AgentId</div><n-input v-model:value="notifyWebhook.agent_id" placeholder="1000002"/></div>
+                <ConfiguredSecretField v-model="notifyWebhookKey" label="应用 Secret" :configured="hasSavedWebhookSecret" placeholder="请输入应用密钥" />
+                <div v-if="selectedChannel==='feishu'" class="settings-field"><div class="settings-field__label">接收对象</div><n-radio-group v-model:value="notifyWebhook.recipient_type"><n-radio value="open_id">指定用户</n-radio><n-radio value="chat_id">指定群聊</n-radio></n-radio-group></div>
+                <div class="settings-field"><div class="settings-field__label">{{selectedChannel==='wecom'?'接收成员 UserID（多个用 | 分隔）':notifyWebhook.recipient_type==='chat_id'?'群聊 Chat ID':'用户 Open ID'}}</div><n-input v-model:value="notifyWebhook.recipient" :placeholder="selectedChannel==='wecom'?'zhangsan|lisi':notifyWebhook.recipient_type==='chat_id'?'oc_xxxxx':'ou_xxxxx'"/></div>
+                <div v-if="selectedChannel==='wecom'" class="settings-field"><div class="settings-field__label">API 转发代理（可选）</div><n-input v-model:value="notifyWebhook.api_base" placeholder="https://qyapi.weixin.qq.com"/><p class="field-hint">仅填写你信任的 HTTPS 企业微信 API 转发服务，它将接触应用密钥。</p></div>
+                <p class="field-hint">应用须已启用消息发送权限，接收对象须在应用可见范围内。仅主动通知，不接收回调或远程命令。</p>
+              </template>
+              <template v-else>
+                <ConfiguredSecretField v-model="notifyWebhookKey" label="机器人 Webhook 地址" :configured="hasSavedWebhookSecret" placeholder="粘贴完整 HTTPS Webhook 地址" />
+                <template v-if="selectedChannel!=='wecom'"><div class="form-switch-row"><div class="form-switch-row__text">启用签名校验</div><n-switch v-model:value="notifyWebhook.signed"/></div><ConfiguredSecretField v-if="notifyWebhook.signed" v-model="notifySignature" label="签名密钥" :configured="hasSavedSignature" placeholder="机器人安全设置中的签名密钥" /></template>
+                <p class="field-hint">群机器人仅向指定群发送消息。使用关键词校验时可设置 Fonu。</p>
+              </template>
             </template>
             <template v-else-if="notifyWebhook.provider === 'gotify'">
               <div class="settings-field">
@@ -314,7 +328,7 @@
             </template>
           </div>
 
-          <div v-else-if="notifyType === 'telegram'" class="settings-fields settings-fields--compact">
+          <div v-else-if="selectedNotifyType === 'telegram'" class="settings-fields settings-fields--compact">
             <ConfiguredSecretField
               v-model="notifyTelegramToken"
               label="Bot Token"
@@ -332,7 +346,8 @@
             </div>
           </div>
 
-          </div><div v-if="notifyType" class="notify-events">
+          <div class="notify-test-row"><n-button :loading="notifyTesting" :disabled="!notifyEnabled" @click="testNotify">测试通知</n-button><p class="field-hint">使用当前表单配置发送测试消息，无需先保存</p></div>
+          </div></div><div class="notify-events" :class="{'notify-events-disabled':!notifyEnabled}">
             <div class="notify-events__title">告警事件</div>
             <div v-for="group in NOTIFY_EVENT_GROUPS" :key="group.title" class="notify-event-group">
               <div class="notify-event-group__title">{{ group.title }}</div>
@@ -375,10 +390,7 @@
             </div>
           </div>
 
-          <div v-if="notifyType" class="notify-test-row">
-            <n-button :loading="notifyTesting" @click="testNotify">测试通知</n-button>
-            <p class="field-hint">使用当前表单配置发送测试消息，无需先保存</p>
-          </div>
+
         </div>
       </FonuCard></div>
         <div v-else-if="settingsTab==='acme'" class="settings-grid settings-grid--single"><FonuCard title="续签策略" subtitle="自动检查与续签">
@@ -739,6 +751,7 @@ import {
   type UploadCustomRequestOptions,
 } from 'naive-ui'
 import {
+  MailOutline, ChatbubbleEllipsesOutline, PaperPlaneOutline, SendOutline, NotificationsCircleOutline, LinkOutline, TerminalOutline,
   CheckmarkCircle,
   CloudUploadOutline,
   DesktopOutline,
@@ -778,8 +791,6 @@ import {
   DEFAULT_BARK_SERVER,
   DEFAULT_NTFY_SERVER,
   MASKED_SECRET,
-  NOTIFY_TYPE_OPTIONS,
-  WEBHOOK_PROVIDER_OPTIONS,
 } from '../constants/notifyProviders'
 import { invalidateAppTimezoneCache } from '../composables/useAppTimezone'
 import { useTheme, themePresets } from '../composables/useTheme'
@@ -846,6 +857,25 @@ const currentDirty=computed(()=>Boolean(dirtyGroups.value[settingsTab.value]))
 const anyDirty=computed(()=>Object.values(dirtyGroups.value).some(Boolean)||globalNginxDirty.value||usernameChanged.value||!!usernameForm.password||!!passwordForm.old_password||!!passwordForm.new_password||!!passwordForm.confirm_password)
 function switchTab(tab:string){if(saving.value||restoring.value)return;settingsTab.value=tab;void router.replace({name:'settings',query:{...route.query,tab}})}
 const notifyType = ref<NotifyType>('')
+const selectedNotifyType=ref<NotifyType>('webhook')
+const notifyEnabled=computed({get:()=>Boolean(notifyType.value),set:(on:boolean)=>{notifyType.value=on?selectedNotifyType.value:''}})
+const channelOptions=[
+ {key:'wecom',label:'企业微信',icon:ChatbubbleEllipsesOutline,color:'#1484ef'},
+ {key:'dingtalk',label:'钉钉',icon:SendOutline,color:'#1688ff'},
+ {key:'feishu',label:'飞书',icon:PaperPlaneOutline,color:'#16a6a0'},
+ {key:'telegram',label:'Telegram',icon:PaperPlaneOutline,color:'#229ed9'},
+ {key:'bark',label:'Bark',icon:NotificationsCircleOutline,color:'#64748b'},
+ {key:'ntfy',label:'ntfy',icon:TerminalOutline,color:'#30998c'},
+ {key:'gotify',label:'Gotify',icon:NotificationsOutline,color:'#48a1c7'},
+ {key:'email',label:'邮件 SMTP',icon:MailOutline,color:'var(--fonu-text-secondary)'},
+ {key:'custom',label:'自定义 Webhook',icon:LinkOutline,color:'var(--fonu-text-secondary)'},
+] as const
+type ChannelKey=typeof channelOptions[number]['key']
+const notifySignature=ref('')
+const savedWebhookAppID=ref('')
+const savedWebhookAPIBase=ref('')
+const savedWebhookSigned=ref(false)
+
 const notifyEventFlags = reactive<Record<string, boolean>>({
   on_ddns_ip_change: true,
   on_ddns_failure: true,
@@ -878,12 +908,34 @@ const notifyEmail = reactive({
 const savedWebhookProvider=ref<WebhookProvider>('bark')
 const notifyWebhook = reactive({
   provider: 'bark' as WebhookProvider,
+  app_id:'',agent_id:'',recipient:'',recipient_type:'open_id',api_base:'',signed:false,
   server: DEFAULT_BARK_SERVER,
   topic: '',
   url: '',
   has_secret: false,
 })
-const hasSavedWebhookSecret = computed(() => notifyWebhook.has_secret && notifyWebhook.provider === savedWebhookProvider.value)
+const isAppMode=computed(()=>notifyWebhook.provider==='wecom_app'||notifyWebhook.provider==='feishu_app')
+const selectedChannel=computed<ChannelKey>(()=>selectedNotifyType.value==='email'?'email':selectedNotifyType.value==='telegram'?'telegram':notifyWebhook.provider==='wecom_app'?'wecom':notifyWebhook.provider==='feishu_app'?'feishu':notifyWebhook.provider)
+const hasSavedWebhookSecret = computed(() => notifyWebhook.has_secret && notifyWebhook.provider === savedWebhookProvider.value && (!isAppMode.value||(notifyWebhook.app_id.trim()===savedWebhookAppID.value && notifyWebhook.api_base.trim()===savedWebhookAPIBase.value)))
+const hasSavedSignature=computed(()=>hasSavedWebhookSecret.value&&savedWebhookSigned.value)
+function setWebhookProvider(provider:WebhookProvider){
+ if(notifyWebhook.provider===provider)return
+ notifyWebhook.provider=provider;notifyWebhookKey.value='';notifySignature.value=''
+ Object.assign(notifyWebhook,{app_id:'',agent_id:'',recipient:'',recipient_type:'open_id',api_base:'',signed:false,server:provider==='bark'?DEFAULT_BARK_SERVER:provider==='ntfy'?DEFAULT_NTFY_SERVER:'',topic:'',url:''})
+}
+function selectChannel(key:ChannelKey){
+ if(key===selectedChannel.value)return
+ const enabled=notifyEnabled.value
+ selectedNotifyType.value=key==='email'||key==='telegram'?key:'webhook'
+ if(selectedNotifyType.value==='webhook' && !(key==='wecom'&&notifyWebhook.provider==='wecom_app') && !(key==='feishu'&&notifyWebhook.provider==='feishu_app'))setWebhookProvider(key as WebhookProvider)
+ if(enabled)notifyType.value=selectedNotifyType.value
+}
+function changeNotifyMode(mode:string){const platform=selectedChannel.value;if(platform==='wecom'||platform==='feishu')setWebhookProvider((mode==='app'?platform+'_app':platform) as WebhookProvider)}
+function buildWebhookSecret(){
+ const primary=resolveSecretInput(notifyWebhookKey.value,hasSavedWebhookSecret.value)
+ if(notifyWebhook.signed && !isAppMode.value && (notifyWebhook.provider==='feishu'||notifyWebhook.provider==='dingtalk'))return 'fonu-robot-v1:'+JSON.stringify({primary,signature:resolveSecretInput(notifySignature.value,hasSavedSignature.value)})
+ return primary
+}
 const notifyTelegram = reactive({
   chat_id: '',
   proxy_url: '',
@@ -1277,6 +1329,7 @@ function applyNotifySettings(settings: Record<string, string>) {
   notifyType.value = (settings.notify_type as NotifyType) || ''
   notifySMTPPassword.value = ''
   notifyWebhookKey.value = ''
+  notifySignature.value=''
   notifyTelegramToken.value = ''
 
   try {
@@ -1296,14 +1349,20 @@ function applyNotifySettings(settings: Record<string, string>) {
     const webhook = JSON.parse(settings.notify_webhook_json || '{}') as NotifyWebhookConfig
     notifyWebhook.provider = webhook.provider ?? 'bark'
     savedWebhookProvider.value=notifyWebhook.provider
+    Object.assign(notifyWebhook,{app_id:webhook.app_id??'',agent_id:webhook.agent_id??'',recipient:webhook.recipient??'',recipient_type:webhook.recipient_type??'open_id',api_base:webhook.api_base??'',signed:webhook.signed??false})
+    savedWebhookAppID.value=notifyWebhook.app_id.trim()
+    savedWebhookAPIBase.value=notifyWebhook.api_base.trim()
+    savedWebhookSigned.value=notifyWebhook.signed
+    selectedNotifyType.value=notifyType.value||webhook.preferred_type||'webhook'
     notifyWebhook.server = webhook.server ?? (webhook.provider === 'ntfy' ? DEFAULT_NTFY_SERVER : DEFAULT_BARK_SERVER)
     notifyWebhook.topic = webhook.topic ?? ''
     notifyWebhook.url = webhook.url ?? ''
     notifyWebhook.has_secret = webhook.has_secret ?? false
   } catch {
-    notifyWebhook.provider = 'bark'
+    Object.assign(notifyWebhook,{provider:'bark',app_id:'',agent_id:'',recipient:'',recipient_type:'open_id',api_base:'',signed:false,has_secret:false,server:DEFAULT_BARK_SERVER,topic:'',url:''})
     savedWebhookProvider.value='bark'
-    notifyWebhook.server = DEFAULT_BARK_SERVER
+    savedWebhookAppID.value='';savedWebhookAPIBase.value='';savedWebhookSigned.value=false
+    selectedNotifyType.value=notifyType.value||'webhook'
   }
 
   try {
@@ -1316,11 +1375,12 @@ function applyNotifySettings(settings: Record<string, string>) {
     notifyTelegram.proxy_url = ''
   }
 
-  if (!notifyType.value && settings.notify_webhook_url) {
+  if (settings.notify_type === undefined && settings.notify_webhook_url) {
     notifyType.value = 'webhook'
     notifyWebhook.provider = 'custom'
     savedWebhookProvider.value='custom'
     notifyWebhook.url = settings.notify_webhook_url
+    selectedNotifyType.value='webhook'
   }
 
   const flagOn = (key: string) => settings[key] !== '0' && settings[key] !== 'false'
@@ -1384,6 +1444,7 @@ function buildNotifyEmailJSON(): string {
 function buildNotifyWebhookJSON(): string {
   const payload: NotifyWebhookConfig = {
     provider: notifyWebhook.provider,
+    app_id:notifyWebhook.app_id.trim(),agent_id:notifyWebhook.agent_id.trim(),recipient:notifyWebhook.recipient.trim(),recipient_type:notifyWebhook.recipient_type,api_base:notifyWebhook.api_base.trim(),signed:notifyWebhook.signed,preferred_type:selectedNotifyType.value,
     server: notifyWebhook.server.trim(),
     key: '',
     topic: notifyWebhook.topic.trim(),
@@ -1430,7 +1491,7 @@ function buildNotifyTestPayload(): NotifyTestPayload {
     login_failure_threshold: notifyLoginFailureThreshold.value,
     login_failure_window_sec: notifyLoginFailureWindowSec.value,
     smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
-    webhook_secret: resolveSecretInput(notifyWebhookKey.value, hasSavedWebhookSecret.value),
+    webhook_secret: buildWebhookSecret(),
     telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
   }
 }
@@ -1460,7 +1521,7 @@ function buildSavePayload() {
     notify_email_json: buildNotifyEmailJSON(),
     notify_smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
     notify_webhook_json: buildNotifyWebhookJSON(),
-    notify_webhook_secret: resolveSecretInput(notifyWebhookKey.value, hasSavedWebhookSecret.value),
+    notify_webhook_secret: buildWebhookSecret(),
     notify_telegram_json: buildNotifyTelegramJSON(),
     notify_telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
     notify_on_ddns_ip_change: notifyEventFlags.on_ddns_ip_change ? '1' : '0',
@@ -2383,4 +2444,12 @@ onMounted(() => {
 .global-nginx-head {padding:10px;border:1px solid var(--fonu-border);border-radius:8px;background:var(--fonu-bg);margin:12px 0 10px;}
 .log-panel-actions {display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
 .nginx-mode-toggle {gap:6px;}
+.notify-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+.notify-channel-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:72px;padding:8px 4px;border:1px solid var(--fonu-border);background:var(--fonu-surface);border-radius:8px;color:var(--fonu-text);font:inherit;font-size:12px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+.notify-channel-choice.is-active{background:var(--fonu-brand-soft);border-color:var(--fonu-brand);color:var(--fonu-brand-text)}
+.notify-channel-icon{font-size:23px;display:flex}
+.notify-config-panel{display:grid;gap:12px;border:1px solid var(--fonu-border);border-radius:8px;padding:12px;min-width:0;background:var(--fonu-surface)}
+.notify-config-panel h3{font-size:15px;margin:0}
+.notify-config-panel .notify-test-row{display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin:0}
+.notify-events-disabled{opacity:.7}
 </style>

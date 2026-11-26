@@ -41,6 +41,8 @@ const (
  WebhookWeCom WebhookProvider="wecom"
  WebhookDingTalk WebhookProvider="dingtalk"
  WebhookFeishu WebhookProvider="feishu"
+ WebhookWeComApp WebhookProvider="wecom_app"
+ WebhookFeishuApp WebhookProvider="feishu_app"
 )
 
 type EmailConfig struct {
@@ -54,6 +56,13 @@ type EmailConfig struct {
 }
 
 type WebhookConfig struct {
+ AppID string `json:"app_id,omitempty"`
+ AgentID string `json:"agent_id,omitempty"`
+ Recipient string `json:"recipient,omitempty"`
+ RecipientType string `json:"recipient_type,omitempty"`
+ APIBase string `json:"api_base,omitempty"`
+ Signed bool `json:"signed,omitempty"`
+ PreferredType NotifyType `json:"preferred_type,omitempty"`
 	Provider  WebhookProvider `json:"provider"`
 	Server    string          `json:"server"`
 	Key       string          `json:"key"`
