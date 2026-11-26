@@ -1,13 +1,18 @@
 <template>
-  <PageHeader title="系统设置" description="配置界面、域名策略与系统维护" />
-
+  <PageHeader title="系统设置" description="管理应用配置与运行环境">
+    <template #actions><n-button secondary :type="settingsTab==='version'?'primary':'default'" :disabled="saving || restoring" @click="switchTab('version')"><template #icon><n-icon :component="InformationCircleOutline" /></template>关于 Fonu</n-button></template>
+  </PageHeader>
   <LoadError v-if="pageError" :message="pageError" @retry="load" />
-
   <n-spin v-else :show="loading">
-    <n-tabs v-model:value="settingsTab" type="line" animated class="settings-tabs workspace-settings">
-      <n-tab-pane name="general" tab="常规">
-        <div class="settings-grid">
-      <FonuCard title="外观" subtitle="界面主题与时区">
+    <div class="settings-workspace">
+      <nav class="settings-navigation" aria-label="设置分类">
+        <button v-for="item in categories" :key="item.key" type="button" class="settings-nav-item" :class="{'is-active':settingsTab===item.key}" :aria-current="settingsTab===item.key?'page':undefined" :disabled="saving || restoring" :data-testid="'settings-tab-'+item.key" @click="switchTab(item.key)">
+          <n-icon :component="item.icon" /><span>{{ item.label }}</span><span v-if="dirtyGroups[item.key]" class="dirty-dot" title="未保存修改" />
+        </button>
+      </nav>
+      <div class="settings-category-head"><div><h2>{{ categoryTitle }}</h2><p>{{ categoryDescription }}</p></div><StatusBadge v-if="currentCanSave" :kind="currentDirty?'warning':'success'" :text="currentDirty?'未保存修改':'配置已保存'"/></div>
+      <fieldset class="settings-content" :disabled="saving || restoring">
+        <div v-if="settingsTab==='general'" class="settings-grid settings-grid--single"><FonuCard title="外观" subtitle="界面主题与时区">
         <div class="settings-block">
           <div class="settings-block__label">主题模式</div>
           <div class="theme-cards">
@@ -16,13 +21,13 @@
               :key="item.value"
               type="button"
               class="theme-card"
-              :class="{ 'theme-card--active': themeMode === item.value }"
+              :class="{ 'theme-card--active': form.theme === item.value }"
               @click="selectTheme(item.value)"
             >
               <n-icon :component="item.icon" class="theme-card__icon" />
               <span class="theme-card__text">{{ item.label }}</span>
               <n-icon
-                v-if="themeMode === item.value"
+                v-if="form.theme === item.value"
                 :component="CheckmarkCircle"
                 class="theme-card__check"
               />
@@ -50,9 +55,7 @@
           <n-select v-model:value="form.timezone" :options="timezoneOptions" />
           <p class="field-hint">影响日志、证书到期时间等显示</p>
         </div>
-      </FonuCard>
-
-      <FonuCard title="自动任务" subtitle="DDNS 与日志维护">
+      </FonuCard><FonuCard title="自动任务" subtitle="公网 IP 检查">
         <div class="settings-fields">
           <div class="settings-field">
             <div class="settings-field__row">
@@ -61,265 +64,150 @@
             </div>
             <p class="field-hint">每隔 N 分钟检查公网 IP 是否变化并更新 DNS</p>
           </div>
-          <div class="settings-field">
-            <div class="settings-field__row">
-              <span class="settings-field__label">日志保留天数</span>
-              <n-input-number v-model:value="logRetention" :min="1" :max="365" class="settings-field__input" />
-            </div>
-            <p class="field-hint">超过保留天数的日志将被自动清理</p>
-          </div>
-        </div>
-      </FonuCard>
 
-      <FonuCard title="访问统计" subtitle="SQLite 入库与仪表盘口径">
-        <div class="settings-fields">
-          <div class="settings-field">
-            <div class="settings-field__row">
-              <span class="settings-field__label">统计保留天数</span>
-              <n-input-number v-model:value="analyticsRetention" :min="1" :max="365" class="settings-field__input" />
-            </div>
-            <p class="field-hint">超过保留天数的 access_facts 记录将被自动清理（默认 30 天）</p>
-          </div>
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">UV 排除内网 IP</div>
-              <div class="form-switch-row__hint">独立 IP 统计不包含内网/本机地址</div>
-            </div>
-            <n-switch v-model:value="analyticsExcludePrivate" />
-          </div>
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">跳过历史 access.log 导入</div>
-              <div class="form-switch-row__hint">开启后仅从升级后新产生的访问开始统计</div>
-            </div>
-            <n-switch v-model:value="analyticsSkipBackfill" />
-          </div>
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">远程 IP 归属地补齐</div>
-              <div class="form-switch-row__hint">需出站访问外网 API，默认关闭；离线 ip2region 优先</div>
-            </div>
-            <n-switch v-model:value="analyticsGeoRemote" />
-          </div>
-          <div v-if="analyticsGeoRemote" class="settings-field">
-            <div class="settings-field__label">远程批量查询 URL</div>
-            <n-input v-model:value="analyticsGeoRemoteURL" placeholder="http://ip-api.com/batch?..." />
-          </div>
         </div>
-      </FonuCard>
-
-      <FonuCard title="数据" subtitle="备份与恢复">
-        <div class="data-actions">
-          <button type="button" class="data-action-card" :disabled="exporting" @click="exportBackup">
-            <n-icon :component="DownloadOutline" class="data-action-card__icon" />
-            <div class="data-action-card__title">导出配置</div>
-            <div class="data-action-card__hint">下载数据库、证书与 Nginx 配置</div>
-          </button>
-          <n-upload
-            class="data-upload"
-            :show-file-list="false"
-            accept=".tar.gz,.tgz"
-            :custom-request="restoreRequest"
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='account'" class="settings-grid settings-grid--single"><FonuCard title="管理员账户" subtitle="修改登录用户名与密码" class="settings-card settings-card--security">
+        <div class="security-form">
+          <div class="settings-fields">
+            <div class="settings-field">
+              <div class="settings-field__label">登录用户名</div>
+              <n-input v-model:value="usernameForm.new_username" placeholder="用户名" />
+            </div>
+            <div class="settings-field">
+              <div class="settings-field__label">当前密码</div>
+              <n-input
+                v-model:value="usernameForm.password"
+                type="password"
+                show-password-on="click"
+                placeholder="修改用户名时需验证"
+              />
+            </div>
+          </div>
+          <n-button
+            type="primary"
+            class="password-btn"
+            :loading="changingUsername"
+            :disabled="!usernameChanged || changingPassword || changingUsername"
+            @click="changeUsername"
           >
-            <div
-              class="data-action-card"
-              :class="{ 'data-action-card--disabled': restoring }"
-              role="button"
-              tabindex="0"
-            >
-              <n-icon :component="CloudUploadOutline" class="data-action-card__icon" />
-              <div class="data-action-card__title">恢复配置</div>
-              <div class="data-action-card__hint">从备份文件还原系统配置</div>
+            保存用户名
+          </n-button>
+          <div class="settings-fields settings-fields--password">
+            <div class="settings-field">
+              <div class="settings-field__label">当前密码</div>
+              <n-input v-model:value="passwordForm.old_password" type="password" show-password-on="click" />
             </div>
-          </n-upload>
+            <div class="settings-field">
+              <div class="settings-field__label">新密码</div>
+              <n-input v-model:value="passwordForm.new_password" type="password" show-password-on="click" />
+            </div>
+            <div class="settings-field">
+              <div class="settings-field__label">确认新密码</div>
+              <n-input v-model:value="passwordForm.confirm_password" type="password" show-password-on="click" />
+            </div>
+          </div>
+          <n-button type="primary" class="password-btn" :loading="changingPassword" :disabled="changingUsername || changingPassword" @click="changePassword">
+            修改管理员密码
+          </n-button>
         </div>
-        <p class="field-hint data-note">恢复前会先确认。完成后会退出登录，请使用备份中的账号重新登录。</p>
-      </FonuCard>
-        </div>
-      </n-tab-pane>
-
-      <n-tab-pane name="acme" tab="ACME 证书">
-        <div class="settings-grid settings-grid--single">
-          <FonuCard title="续签策略" subtitle="自动检查与续签">
-            <div class="settings-fields">
-              <div class="settings-field">
-                <div class="settings-field__row">
-                  <span class="settings-field__label">证书续签检查（天）</span>
-                  <n-input-number v-model:value="certThreshold" :min="1" :max="90" class="settings-field__input" />
-                </div>
-                <p class="field-hint">当证书剩余有效期少于此天数时自动续签</p>
-              </div>
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='security'" class="settings-grid settings-grid--single"><FonuCard title="反代安全" subtitle="全局 IP 策略与真实客户端 IP">
+        <div class="security-form proxy-security-form">
+          <p class="field-hint proxy-security-form__intro">
+            IP 黑白名单、仅中国大陆等策略依赖正确识别客户端 IP。若域名经 CDN/多层反代，请在此配置信任代理。
+          </p>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">启用信任代理</div>
+              <div class="form-switch-row__hint">从请求头解析真实客户端 IP</div>
             </div>
-          </FonuCard>
-
-          <FonuCard title="DNS-01 验证" subtitle="传播检查与超时（高级）">
-            <div class="settings-fields">
-              <div class="settings-field">
-                <div class="settings-field__row">
-                  <span class="settings-field__label">DNS 传播超时（秒）</span>
-                  <n-input-number v-model:value="acmeDnsPropagationTimeout" :min="30" :max="900" class="settings-field__input" />
-                </div>
-                <p class="field-hint">等待 TXT 记录在全球 DNS 生效的最长时间，默认 180</p>
-              </div>
-              <div class="settings-switches settings-switches--col">
-                <div class="settings-switch">
-                  <span>跳过权威 NS 传播检查</span>
-                  <n-switch v-model:value="acmeDnsDisableAuthNS" />
-                </div>
-                <div class="settings-switch">
-                  <span>忽略传播结果（仅等待后提交验证）</span>
-                  <n-switch v-model:value="acmeDnsIgnorePropagation" />
-                </div>
-              </div>
+            <n-switch v-model:value="trustedProxyEnabled" />
+          </div>
+          <div v-if="trustedProxyEnabled" class="settings-fields settings-fields--compact">
+            <div class="settings-field">
+              <div class="settings-field__label">预设</div>
+              <n-select v-model:value="trustedProxyPreset" :options="trustedProxyPresets" />
             </div>
-          </FonuCard>
-
-          <FonuCard title="ACME 账户" subtitle="申请与续签所需凭据">
-            <div class="settings-fields">
+            <template v-if="trustedProxyPreset === 'custom'">
               <div class="settings-field">
-                <div class="settings-field__label">ACME 邮箱</div>
+                <div class="settings-field__label">信任 CIDR（每行一个）</div>
+                <n-input v-model:value="trustedProxyCIDRs" type="textarea" :rows="3" placeholder="203.0.113.0/24" />
+              </div>
+              <div class="settings-field">
+                <div class="settings-field__label">IP 头字段</div>
+                <n-select v-model:value="trustedProxyHeader" :options="trustedProxyHeaders" />
+              </div>
+            </template>
+          </div>
+          <div class="ip-policy-grid">
+            <div class="settings-field ip-policy-field">
+              <div class="settings-field__label">全局 IP 黑名单</div>
+              <div class="ip-policy-field__input">
                 <n-input
-                  v-model:value="acmeEmail"
-                  placeholder="admin@example.com"
-                  :status="acmeEmailInputStatus"
-                />
-                <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册；首次可在「申请证书」中填写并保存</p>
-              </div>
-
-              <div class="acme-provider-block">
-                <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.zerossl.label }}</span>
-                  <AcmeApplyLink :url="ACME_APPLY_LINKS.zerossl.url" :link-text="ACME_APPLY_LINKS.zerossl.linkText" />
-                </div>
-                <ConfiguredSecretField
-                  v-model="zerosslEabKid"
-                  label="EAB Kid"
-                  :configured="zerosslEabKidHasKey"
-                  placeholder="Developer 页面生成的 Kid"
-                />
-                <ConfiguredSecretField
-                  v-model="zerosslEabHmac"
-                  label="EAB Hmac"
-                  :configured="zerosslEabHmacHasKey"
-                  placeholder="与 Kid 配对"
-                />
-                <p class="field-hint">申请 ZeroSSL 证书时必填</p>
-              </div>
-
-              <div class="acme-provider-block">
-                <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.google.label }}</span>
-                  <AcmeApplyLink :url="ACME_APPLY_LINKS.google.url" :link-text="ACME_APPLY_LINKS.google.linkText" />
-                </div>
-                <ConfiguredSecretField
-                  v-model="googleEabKid"
-                  label="EAB Kid"
-                  :configured="googleEabKidHasKey"
-                  placeholder="Certificate Manager 申请的 Kid"
-                />
-                <ConfiguredSecretField
-                  v-model="googleEabHmac"
-                  label="EAB Hmac"
-                  :configured="googleEabHmacHasKey"
-                  placeholder="与 Kid 配对"
+                  v-model:value="globalIPBlacklistText"
+                  type="textarea"
+                  :rows="6"
+                  placeholder="1.2.3.4&#10;5.6.7.0/24"
                 />
               </div>
-
-              <div class="acme-provider-block">
-                <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.sslcom.label }}</span>
-                  <AcmeApplyLink :url="ACME_APPLY_LINKS.sslcom.url" :link-text="ACME_APPLY_LINKS.sslcom.linkText" />
-                </div>
-                <ConfiguredSecretField
-                  v-model="sslcomEabKid"
-                  label="EAB Kid"
-                  :configured="sslcomEabKidHasKey"
-                  placeholder="控制台 ACME 凭据"
-                />
-                <ConfiguredSecretField
-                  v-model="sslcomEabHmac"
-                  label="EAB Hmac"
-                  :configured="sslcomEabHmacHasKey"
-                  placeholder="与 Kid 配对"
-                />
-              </div>
-
-              <div class="acme-provider-block">
-                <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.freessl.label }}</span>
-                  <AcmeApplyLink :url="ACME_APPLY_LINKS.freessl.url" :link-text="ACME_APPLY_LINKS.freessl.linkText" />
-                </div>
-                <ConfiguredSecretField
-                  v-model="freesslEabKid"
-                  label="EAB Kid"
-                  :configured="freesslEabKidHasKey"
-                  placeholder="EAB 管理页生成"
-                />
-                <ConfiguredSecretField
-                  v-model="freesslEabHmac"
-                  label="EAB Hmac"
-                  :configured="freesslEabHmacHasKey"
-                  placeholder="与 Kid 配对"
-                />
-                <ConfiguredSecretField
-                  v-model="freesslAutomationToken"
-                  label="Automation Token"
-                  :configured="freesslAutomationTokenHasKey"
-                  placeholder="freessl.cn 自动化 Token，可自动获取 EAB"
-                />
-                <div class="settings-field">
-                  <div class="settings-field__label">ACME 地址（可选）</div>
-                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空默认 https://acme.litessl.com/acme/v2/directory" />
-                  <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处；填写 Automation Token 时可自动拼接旧版路径</p>
-                </div>
-              </div>
-
-              <div class="acme-provider-block">
-                <div class="acme-provider-block__head">
-                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.actalis.label }}</span>
-                  <AcmeApplyLink :url="ACME_APPLY_LINKS.actalis.url" :link-text="ACME_APPLY_LINKS.actalis.linkText" />
-                </div>
-                <ConfiguredSecretField
-                  v-model="actalisEabKid"
-                  label="EAB Kid"
-                  :configured="actalisEabKidHasKey"
-                  placeholder="客户区 ACME Credentials"
-                />
-                <ConfiguredSecretField
-                  v-model="actalisEabHmac"
-                  label="EAB Hmac"
-                  :configured="actalisEabHmacHasKey"
-                  placeholder="与 Kid 配对"
-                />
-                <p class="field-hint">免费套餐为单域名 90 天证书，不支持通配符</p>
-              </div>
-              <div class="settings-field">
-                <div class="settings-field__label">自定义 ACME Directory URL</div>
-                <n-input v-model:value="customAcmeDirectoryUrl" placeholder="https://acme.example.com/directory" />
-                <p class="field-hint">任意 ACME v2 服务器（内网 step-ca、Vault、EJBCA 或其他新 CA），申请时选择「自定义 ACME」</p>
-              </div>
-              <ConfiguredSecretField
-                v-model="customAcmeEabKid"
-                label="自定义 ACME EAB Kid（可选）"
-                :configured="customAcmeEabKidHasKey"
-                placeholder="服务器要求 EAB 时填写"
-              />
-              <ConfiguredSecretField
-                v-model="customAcmeEabHmac"
-                label="自定义 ACME EAB Hmac（可选）"
-                :configured="customAcmeEabHmacHasKey"
-                placeholder="与 Kid 配对"
-              />
-              <p class="field-hint">提示：同一 Fonu 实例内多组域名证书可共用同一组 EAB 凭据；多个 Fonu 实例之间不可共用同一组 EAB 凭据</p>
+              <p class="field-hint">每行一个，优先于所有规则拦截</p>
             </div>
-          </FonuCard>
+            <div class="settings-field ip-policy-field">
+              <div class="settings-field__label">全局 IP 白名单</div>
+              <div class="ip-policy-field__input">
+                <n-input
+                  v-model:value="globalIPWhitelistText"
+                  type="textarea"
+                  :rows="6"
+                  placeholder="203.0.113.10&#10;203.0.113.0/24"
+                />
+              </div>
+              <p class="field-hint">内网段已默认放行（已预填），可在下方追加额外 IP，每行一个</p>
+            </div>
+          </div>
+          <div class="china-cidr-panel">
+            <div class="settings-field__row china-cidr-panel__head">
+              <span class="settings-field__label">中国 IP 段</span>
+              <StatusBadge :kind="chinaCIDRBadgeKind" :text="chinaCIDRBadgeText" />
+              <n-button
+                size="small"
+                :loading="refreshingCIDR || chinaCIDR.updating"
+                :disabled="chinaCIDR.updating && !refreshingCIDR"
+                @click="refreshChinaCIDR"
+              >
+                {{ refreshingCIDR || chinaCIDR.updating ? '更新中…' : '立即更新' }}
+              </n-button>
+            </div>
+            <p class="field-hint">
+              <template v-if="chinaCIDR.ready">
+                上次更新：{{ formatDate(chinaCIDR.updated_at) }}（{{ formatRelativeTime(chinaCIDR.updated_at) }}） · IPv4
+                {{ chinaCIDR.entry_count_v4 }} 条 · IPv6 {{ chinaCIDR.entry_count_v6 }} 条
+              </template>
+              <template v-else-if="chinaCIDR.updated_at">
+                上次更新：{{ formatDate(chinaCIDR.updated_at) }} · IPv4 {{ chinaCIDR.entry_count_v4 }} 条 · IPv6
+                {{ chinaCIDR.entry_count_v6 }} 条（当前不可用，请重新更新）
+              </template>
+              <template v-else-if="refreshingCIDR || chinaCIDR.updating">
+                正在下载 IPv4 / IPv6 段并校验 Nginx 配置，通常需要 10–60 秒…
+              </template>
+              <template v-else>尚未下载中国 IP 段，启用「仅中国大陆」前请先更新</template>
+            </p>
+            <p v-if="chinaCIDR.last_error && !refreshingCIDR && !chinaCIDR.updating" class="field-hint field-hint--error">
+              {{ chinaCIDR.last_error }}
+            </p>
+          </div>
+          <div class="settings-field">
+            <div class="settings-field__row">
+              <span class="settings-field__label">更新间隔（小时）</span>
+              <n-input-number v-model:value="chinaCIDRHours" :min="1" :max="168" class="settings-field__input" />
+            </div>
+            <p class="field-hint">自动检查并更新中国 IP 段库的间隔</p>
+          </div>
         </div>
-      </n-tab-pane>
-
-      <n-tab-pane name="notify" tab="通知">
-        <div class="settings-grid settings-grid--single">
-      <FonuCard title="通知" subtitle="告警通道与事件（仅可启用一种方式）">
-        <div class="security-form notify-form">
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='notify'" class="settings-grid settings-grid--single"><FonuCard title="通知" subtitle="告警通道与事件（仅可启用一种方式）">
+        <div class="security-form notify-form"><div class="notify-channel">
           <div class="settings-field">
             <div class="settings-field__label">通知方式</div>
             <n-radio-group v-model:value="notifyType" class="notify-type-group">
@@ -438,7 +326,7 @@
             </div>
           </div>
 
-          <div v-if="notifyType" class="notify-events">
+          </div><div v-if="notifyType" class="notify-events">
             <div class="notify-events__title">告警事件</div>
             <div v-for="group in NOTIFY_EVENT_GROUPS" :key="group.title" class="notify-event-group">
               <div class="notify-event-group__title">{{ group.title }}</div>
@@ -486,158 +374,130 @@
             <p class="field-hint">使用当前表单配置发送测试消息，无需先保存</p>
           </div>
         </div>
-      </FonuCard>
-        </div>
-      </n-tab-pane>
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='acme'" class="settings-grid settings-grid--single"><FonuCard title="续签策略" subtitle="自动检查与续签">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__row">
+                  <span class="settings-field__label">证书续签检查（天）</span>
+                  <n-input-number v-model:value="certThreshold" :min="1" :max="90" class="settings-field__input" />
+                </div>
+                <p class="field-hint">当证书剩余有效期少于此天数时自动续签</p>
+              </div>
+            </div>
+          </FonuCard><FonuCard title="DNS-01 验证" subtitle="传播检查与超时（高级）">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__row">
+                  <span class="settings-field__label">DNS 传播超时（秒）</span>
+                  <n-input-number v-model:value="acmeDnsPropagationTimeout" :min="30" :max="900" class="settings-field__input" />
+                </div>
+                <p class="field-hint">等待 TXT 记录在全球 DNS 生效的最长时间，默认 180</p>
+              </div>
+              <div class="settings-switches settings-switches--col">
+                <div class="settings-switch">
+                  <span>跳过权威 NS 传播检查</span>
+                  <n-switch v-model:value="acmeDnsDisableAuthNS" />
+                </div>
+                <div class="settings-switch">
+                  <span>忽略传播结果（仅等待后提交验证）</span>
+                  <n-switch v-model:value="acmeDnsIgnorePropagation" />
+                </div>
+              </div>
+            </div>
+          </FonuCard><FonuCard title="ACME 账户" subtitle="申请与续签所需凭据">
+            <div class="settings-fields">
+              <div class="settings-field">
+                <div class="settings-field__label">ACME 邮箱</div>
+                <n-input
+                  v-model:value="acmeEmail"
+                  placeholder="admin@example.com"
+                  :status="acmeEmailInputStatus"
+                />
+                <p class="field-hint">用于 Let's Encrypt / ZeroSSL / Buypass 账户注册；首次可在「申请证书」中填写并保存</p>
+              </div>
 
-      <n-tab-pane name="security" tab="安全">
-        <div class="settings-grid">
-      <FonuCard title="反代安全" subtitle="全局 IP 策略与真实客户端 IP">
-        <div class="security-form proxy-security-form">
-          <p class="field-hint proxy-security-form__intro">
-            IP 黑白名单、仅中国大陆等策略依赖正确识别客户端 IP。若域名经 CDN/多层反代，请在此配置信任代理。
-          </p>
-          <div class="form-switch-row">
-            <div class="form-switch-row__text">
-              <div class="form-switch-row__label">启用信任代理</div>
-              <div class="form-switch-row__hint">从请求头解析真实客户端 IP</div>
+              <div class="provider-list">
+  <div class="provider-row"><span><strong>Let's Encrypt</strong><small>无需 EAB 凭据</small></span><StatusBadge kind="success" text="可使用" /></div>
+  <div v-for="item in acmeProviders" :key="item.key" class="provider-row">
+    <span><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span>
+    <StatusBadge :kind="item.draft?'warning':item.ready?'success':'disabled'" :text="item.draft?'待保存':item.ready?'已配置':'未配置'" />
+    <n-button size="small" :disabled="saving" @click="activeProvider=item.key">{{ item.ready?'编辑':'配置' }}</n-button>
+  </div>
+</div>
+<p class="field-hint">提示：同一 Fonu 实例内多组域名证书可共用同一组 EAB 凭据；多个 Fonu 实例之间不可共用同一组 EAB 凭据</p>
             </div>
-            <n-switch v-model:value="trustedProxyEnabled" />
-          </div>
-          <div v-if="trustedProxyEnabled" class="settings-fields settings-fields--compact">
-            <div class="settings-field">
-              <div class="settings-field__label">预设</div>
-              <n-select v-model:value="trustedProxyPreset" :options="trustedProxyPresets" />
+          </FonuCard></div>
+        <div v-else-if="settingsTab==='logs'" class="settings-grid settings-grid--single"><FonuCard title="日志保留" subtitle="日志文件留存策略"><div class="settings-fields">          <div class="settings-field">
+            <div class="settings-field__row">
+              <span class="settings-field__label">日志保留天数</span>
+              <n-input-number v-model:value="logRetention" :min="1" :max="365" class="settings-field__input" />
             </div>
-            <template v-if="trustedProxyPreset === 'custom'">
-              <div class="settings-field">
-                <div class="settings-field__label">信任 CIDR（每行一个）</div>
-                <n-input v-model:value="trustedProxyCIDRs" type="textarea" :rows="3" placeholder="203.0.113.0/24" />
-              </div>
-              <div class="settings-field">
-                <div class="settings-field__label">IP 头字段</div>
-                <n-select v-model:value="trustedProxyHeader" :options="trustedProxyHeaders" />
-              </div>
-            </template>
-          </div>
-          <div class="ip-policy-grid">
-            <div class="settings-field ip-policy-field">
-              <div class="settings-field__label">全局 IP 黑名单</div>
-              <div class="ip-policy-field__input">
-                <n-input
-                  v-model:value="globalIPBlacklistText"
-                  type="textarea"
-                  :rows="6"
-                  placeholder="1.2.3.4&#10;5.6.7.0/24"
-                />
-              </div>
-              <p class="field-hint">每行一个，优先于所有规则拦截</p>
-            </div>
-            <div class="settings-field ip-policy-field">
-              <div class="settings-field__label">全局 IP 白名单</div>
-              <div class="ip-policy-field__input">
-                <n-input
-                  v-model:value="globalIPWhitelistText"
-                  type="textarea"
-                  :rows="6"
-                  placeholder="203.0.113.10&#10;203.0.113.0/24"
-                />
-              </div>
-              <p class="field-hint">内网段已默认放行（已预填），可在下方追加额外 IP，每行一个</p>
-            </div>
-          </div>
-          <div class="china-cidr-panel">
-            <div class="settings-field__row china-cidr-panel__head">
-              <span class="settings-field__label">中国 IP 段</span>
-              <StatusBadge :kind="chinaCIDRBadgeKind" :text="chinaCIDRBadgeText" />
-              <n-button
-                size="small"
-                :loading="refreshingCIDR || chinaCIDR.updating"
-                :disabled="chinaCIDR.updating && !refreshingCIDR"
-                @click="refreshChinaCIDR"
-              >
-                {{ refreshingCIDR || chinaCIDR.updating ? '更新中…' : '立即更新' }}
-              </n-button>
-            </div>
-            <p class="field-hint">
-              <template v-if="chinaCIDR.ready">
-                上次更新：{{ formatDate(chinaCIDR.updated_at) }}（{{ formatRelativeTime(chinaCIDR.updated_at) }}） · IPv4
-                {{ chinaCIDR.entry_count_v4 }} 条 · IPv6 {{ chinaCIDR.entry_count_v6 }} 条
-              </template>
-              <template v-else-if="chinaCIDR.updated_at">
-                上次更新：{{ formatDate(chinaCIDR.updated_at) }} · IPv4 {{ chinaCIDR.entry_count_v4 }} 条 · IPv6
-                {{ chinaCIDR.entry_count_v6 }} 条（当前不可用，请重新更新）
-              </template>
-              <template v-else-if="refreshingCIDR || chinaCIDR.updating">
-                正在下载 IPv4 / IPv6 段并校验 Nginx 配置，通常需要 10–60 秒…
-              </template>
-              <template v-else>尚未下载中国 IP 段，启用「仅中国大陆」前请先更新</template>
-            </p>
-            <p v-if="chinaCIDR.last_error && !refreshingCIDR && !chinaCIDR.updating" class="field-hint field-hint--error">
-              {{ chinaCIDR.last_error }}
-            </p>
-          </div>
+            <p class="field-hint">按天清理已轮转的日志归档，不删除正在写入的日志；系统日志另受最多 10 份归档的限制。</p>
+          </div></div></FonuCard><FonuCard title="访问统计" subtitle="SQLite 入库与仪表盘口径">
+        <div class="settings-fields">
           <div class="settings-field">
             <div class="settings-field__row">
-              <span class="settings-field__label">更新间隔（小时）</span>
-              <n-input-number v-model:value="chinaCIDRHours" :min="1" :max="168" class="settings-field__input" />
+              <span class="settings-field__label">统计保留天数</span>
+              <n-input-number v-model:value="analyticsRetention" :min="1" :max="365" class="settings-field__input" />
             </div>
-            <p class="field-hint">自动检查并更新中国 IP 段库的间隔</p>
+            <p class="field-hint">超过保留天数的 access_facts 记录将被自动清理（默认 30 天）</p>
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">UV 排除内网 IP</div>
+              <div class="form-switch-row__hint">独立 IP 统计不包含内网/本机地址</div>
+            </div>
+            <n-switch v-model:value="analyticsExcludePrivate" />
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">跳过历史 access.log 导入</div>
+              <div class="form-switch-row__hint">仅影响首次历史导入；不会删除已经入库的记录</div>
+            </div>
+            <n-switch v-model:value="analyticsSkipBackfill" />
+          </div>
+          <div class="form-switch-row">
+            <div class="form-switch-row__text">
+              <div class="form-switch-row__label">远程 IP 归属地补齐</div>
+              <div class="form-switch-row__hint">需出站访问外网 API，默认关闭；离线 ip2region 优先</div>
+            </div>
+            <n-switch v-model:value="analyticsGeoRemote" />
+          </div>
+          <div v-if="analyticsGeoRemote" class="settings-field">
+            <div class="settings-field__label">远程批量查询 URL</div>
+            <n-input v-model:value="analyticsGeoRemoteURL" placeholder="http://ip-api.com/batch?..." />
           </div>
         </div>
-      </FonuCard>
-
-      <FonuCard title="管理员账户" subtitle="修改登录用户名与密码" class="settings-card settings-card--security">
-        <div class="security-form">
-          <div class="settings-fields">
-            <div class="settings-field">
-              <div class="settings-field__label">登录用户名</div>
-              <n-input v-model:value="usernameForm.new_username" placeholder="用户名" />
-            </div>
-            <div class="settings-field">
-              <div class="settings-field__label">当前密码</div>
-              <n-input
-                v-model:value="usernameForm.password"
-                type="password"
-                show-password-on="click"
-                placeholder="修改用户名时需验证"
-              />
-            </div>
-          </div>
-          <n-button
-            type="primary"
-            class="password-btn"
-            :loading="changingUsername"
-            :disabled="!usernameChanged"
-            @click="changeUsername"
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='backup'" class="settings-grid settings-grid--single"><FonuCard title="备份与恢复" subtitle="导出系统配置或恢复已有备份">
+        <div class="data-actions">
+          <button type="button" class="data-action-card" :disabled="exporting" @click="exportBackup">
+            <n-icon :component="DownloadOutline" class="data-action-card__icon" />
+            <div class="data-action-card__title">导出配置</div>
+            <div class="data-action-card__hint">下载数据库、证书、密钥与 Nginx 配置</div>
+          </button>
+          <n-upload
+            class="data-upload"
+            :show-file-list="false" :disabled="restoring || exporting"
+            accept=".tar.gz,.tgz"
+            :custom-request="restoreRequest"
           >
-            保存用户名
-          </n-button>
-          <div class="settings-fields settings-fields--password">
-            <div class="settings-field">
-              <div class="settings-field__label">当前密码</div>
-              <n-input v-model:value="passwordForm.old_password" type="password" show-password-on="click" />
+            <div
+              class="data-action-card"
+              :class="{ 'data-action-card--disabled': restoring }"
+              role="button"
+              tabindex="0"
+            >
+              <n-icon :component="CloudUploadOutline" class="data-action-card__icon" />
+              <div class="data-action-card__title">恢复配置</div>
+              <div class="data-action-card__hint">从备份文件还原系统配置</div>
             </div>
-            <div class="settings-field">
-              <div class="settings-field__label">新密码</div>
-              <n-input v-model:value="passwordForm.new_password" type="password" show-password-on="click" />
-            </div>
-            <div class="settings-field">
-              <div class="settings-field__label">确认新密码</div>
-              <n-input v-model:value="passwordForm.confirm_password" type="password" show-password-on="click" />
-            </div>
-          </div>
-          <n-button type="primary" class="password-btn" :loading="changingPassword" @click="changePassword">
-            修改管理员密码
-          </n-button>
+          </n-upload>
         </div>
-      </FonuCard>
-        </div>
-      </n-tab-pane>
-
-      <n-tab-pane name="advanced" tab="高级">
-        <div class="settings-grid settings-grid--single">
-      <FonuCard title="Nginx 全局配置" subtitle="http 块内自定义片段">
+        <n-alert type="warning" :bordered="false" class="backup-warning">备份包含账号数据和敏感凭据，请妥善保管，不要上传到不受信任的服务。</n-alert><p class="field-hint data-note">恢复前会先确认。完成后会退出登录，请使用备份中的账号重新登录。</p>
+      </FonuCard></div>
+        <div v-else-if="settingsTab==='advanced'" class="settings-grid settings-grid--single"><FonuCard title="Nginx 全局配置" subtitle="http 块内自定义片段"><div v-if="nginxLoadError" class="settings-load-error"><span>{{ nginxLoadError }}</span><n-button size="small" @click="loadGlobalNginx">重试</n-button></div><n-spin :show="nginxLoading"><fieldset :disabled="!nginxLoaded || globalNginxSaving" class="settings-content">
         <NginxApplyBanner/>
         <p class="field-hint">
           仅作用于 <code>http {}</code> 内部、各反代 <code>server {}</code> 之前。单条规则的 server 块请在反代详情 → Nginx 中编辑。
@@ -670,7 +530,7 @@
               手动编辑
             </n-button>
           </div>
-          <div class="log-panel-actions">
+          <div class="log-panel-actions"><n-select v-if="globalNginxEditMode==='custom' && globalNginxBackups.length" v-model:value="selectedNginxBackup" :options="globalNginxBackups.map(item=>({label:formatDate(item.created_at)+' · '+item.name,value:item.name}))" placeholder="选择历史版本" clearable size="small" style="width:230px" />
             <n-button
               v-if="globalNginxEditMode === 'custom'"
               size="tiny"
@@ -687,7 +547,7 @@
               size="tiny"
               quaternary
               :loading="globalNginxSaving"
-              @click="rollbackGlobalNginx()"
+              @click="confirmNginxRollback()"
             >
               回滚
             </n-button>
@@ -715,35 +575,156 @@
           <code>client_max_body_size</code>。
         </p>
         <n-alert type="warning" :bordered="false" class="global-nginx-warn">
-          小白勿碰。若保存后 Nginx 启动失败，请点「恢复自动生成」或「回滚」还原配置。
-        </n-alert>
-      </FonuCard>
-        </div>
-      </n-tab-pane>
-
-      <n-tab-pane name="version" tab="更新日志">
-        <div class="settings-grid settings-grid--single">
-          <SettingsVersionCard />
-        </div>
-      </n-tab-pane>
-    </n-tabs>
-
-    <div v-if="settingsTab !== 'version'" class="save-bar">
-      <n-button type="primary" size="large" :loading="saving" @click="save">保存设置</n-button>
+          手动配置会影响所有反向代理。保存前请确认指令有效；如需恢复，可选择自动生成或历史版本。
+        </n-alert></fieldset></n-spin>
+      </FonuCard></div>
+        <div v-else class="settings-grid settings-grid--single"><SettingsVersionCard /></div>
+      </fieldset>
+      <div v-if="currentCanSave" class="save-bar" data-testid="settings-save-bar">
+        <div><strong>{{ currentDirty?'当前分类有未保存修改':'当前配置已保存' }}</strong><small>仅保存当前分类，其他分类草稿保持不变。</small></div>
+        <div class="save-bar-actions"><n-button :disabled="!currentDirty || saving" @click="discardCurrent">取消修改</n-button><n-button type="primary" :loading="saving" :disabled="!currentDirty || saving || loading" @click="save">保存设置</n-button></div>
+      </div>
     </div>
   </n-spin>
+  <n-modal :show="!!activeProvider" :mask-closable="false" @update:show="value => { if (!value) activeProvider = '' }" preset="card" :title="providerTitle" style="width:600px;max-height:calc(100dvh - 24px);display:flex;flex-direction:column" class="provider-modal">
+  <div class="provider-editor"><template v-if="activeProvider==='custom'"><div class="settings-field">
+                <div class="settings-field__label">自定义 ACME Directory URL</div>
+                <n-input v-model:value="customAcmeDirectoryUrl" placeholder="https://acme.example.com/directory" />
+                <p class="field-hint">任意 ACME v2 服务器（内网 step-ca、Vault、EJBCA 或其他新 CA），申请时选择「自定义 ACME」</p>
+              </div>
+              <ConfiguredSecretField
+                v-model="customAcmeEabKid"
+                label="自定义 ACME EAB Kid（可选）"
+                :configured="customAcmeEabKidHasKey"
+                placeholder="服务器要求 EAB 时填写"
+              />
+              <ConfiguredSecretField
+                v-model="customAcmeEabHmac"
+                label="自定义 ACME EAB Hmac（可选）"
+                :configured="customAcmeEabHmacHasKey"
+                placeholder="与 Kid 配对"
+              />
+              </template>
+  <div v-if="activeProvider==='zerossl'" class="acme-provider-block provider-edit-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.zerossl.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.zerossl.url" :link-text="ACME_APPLY_LINKS.zerossl.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="zerosslEabKid"
+                  label="EAB Kid"
+                  :configured="zerosslEabKidHasKey"
+                  placeholder="Developer 页面生成的 Kid"
+                />
+                <ConfiguredSecretField
+                  v-model="zerosslEabHmac"
+                  label="EAB Hmac"
+                  :configured="zerosslEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <p class="field-hint">申请 ZeroSSL 证书时必填</p>
+              </div>
 
-  <n-modal :show="restoring" :mask-closable="false" :close-on-esc="false" preset="card" :title="restoreTitle" :closable="false" style="width: 420px">
-    <div class="restore-progress">
-      <n-spin size="small" />
-      <p>{{ restoreDetail }}</p>
-    </div>
-  </n-modal>
+              
+<div v-if="activeProvider==='google'" class="acme-provider-block provider-edit-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.google.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.google.url" :link-text="ACME_APPLY_LINKS.google.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="googleEabKid"
+                  label="EAB Kid"
+                  :configured="googleEabKidHasKey"
+                  placeholder="Certificate Manager 申请的 Kid"
+                />
+                <ConfiguredSecretField
+                  v-model="googleEabHmac"
+                  label="EAB Hmac"
+                  :configured="googleEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+              </div>
+
+              
+<div v-if="activeProvider==='sslcom'" class="acme-provider-block provider-edit-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.sslcom.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.sslcom.url" :link-text="ACME_APPLY_LINKS.sslcom.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="sslcomEabKid"
+                  label="EAB Kid"
+                  :configured="sslcomEabKidHasKey"
+                  placeholder="控制台 ACME 凭据"
+                />
+                <ConfiguredSecretField
+                  v-model="sslcomEabHmac"
+                  label="EAB Hmac"
+                  :configured="sslcomEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+              </div>
+
+              
+<div v-if="activeProvider==='freessl'" class="acme-provider-block provider-edit-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.freessl.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.freessl.url" :link-text="ACME_APPLY_LINKS.freessl.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="freesslEabKid"
+                  label="EAB Kid"
+                  :configured="freesslEabKidHasKey"
+                  placeholder="EAB 管理页生成"
+                />
+                <ConfiguredSecretField
+                  v-model="freesslEabHmac"
+                  label="EAB Hmac"
+                  :configured="freesslEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <ConfiguredSecretField
+                  v-model="freesslAutomationToken"
+                  label="Automation Token"
+                  :configured="freesslAutomationTokenHasKey"
+                  placeholder="freessl.cn 自动化 Token，可自动获取 EAB"
+                />
+                <div class="settings-field">
+                  <div class="settings-field__label">ACME 地址（可选）</div>
+                  <n-input v-model:value="freesslDirectoryUrl" placeholder="留空默认 https://acme.litessl.com/acme/v2/directory" />
+                  <p class="field-hint">若分配了专属 Directory URL（含路径），粘贴到此处；填写 Automation Token 时可自动拼接旧版路径</p>
+                </div>
+              </div>
+
+              
+<div v-if="activeProvider==='actalis'" class="acme-provider-block provider-edit-block">
+                <div class="acme-provider-block__head">
+                  <span class="acme-provider-block__title">{{ ACME_APPLY_LINKS.actalis.label }}</span>
+                  <AcmeApplyLink :url="ACME_APPLY_LINKS.actalis.url" :link-text="ACME_APPLY_LINKS.actalis.linkText" />
+                </div>
+                <ConfiguredSecretField
+                  v-model="actalisEabKid"
+                  label="EAB Kid"
+                  :configured="actalisEabKidHasKey"
+                  placeholder="客户区 ACME Credentials"
+                />
+                <ConfiguredSecretField
+                  v-model="actalisEabHmac"
+                  label="EAB Hmac"
+                  :configured="actalisEabHmacHasKey"
+                  placeholder="与 Kid 配对"
+                />
+                <p class="field-hint">免费套餐为单域名 90 天证书，不支持通配符</p>
+              </div>
+              
+  <p class="field-hint">关闭后保留本次输入；在 ACME 证书分类中保存后生效。留空保留已保存的密钥。</p></div>
+  <template #footer><div class="provider-modal-actions"><n-button @click="activeProvider=''">完成编辑</n-button></div></template>
+</n-modal>
+  <n-modal :show="restoring" :mask-closable="false" :close-on-esc="false" preset="card" :title="restoreTitle" :closable="false" style="width:420px"><div class="restore-progress"><n-spin size="small" /><p>{{ restoreDetail }}</p></div></n-modal>
 </template>
-
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import {
   NAlert,
   NButton,
@@ -756,8 +737,6 @@ import {
   NSelect,
   NSpin,
   NSwitch,
-  NTabPane,
-  NTabs,
   NUpload,
   useDialog,
   useMessage,
@@ -770,6 +749,7 @@ import {
   DownloadOutline,
   MoonOutline,
   SunnyOutline,
+  SettingsOutline, ShieldCheckmarkOutline, ShieldOutline, NotificationsOutline, LockClosedOutline, StatsChartOutline, ServerOutline, CodeSlashOutline, InformationCircleOutline,
 } from '@vicons/ionicons5'
 import { api } from '../api/client'
 import type {
@@ -816,7 +796,24 @@ const dialog = useDialog()
 const router = useRouter()
 const route = useRoute()
 
-const SETTINGS_TAB_NAMES = new Set(['general', 'acme', 'notify', 'security', 'advanced', 'version'])
+const categories = [
+ {key:'general',label:'常规设置',icon:SettingsOutline,description:'界面外观、时区与自动任务'},
+ {key:'account',label:'账户安全',icon:ShieldCheckmarkOutline,description:'管理员用户名与密码'},
+ {key:'security',label:'反代安全',icon:ShieldOutline,description:'信任代理、访问策略与中国 IP 段库'},
+ {key:'notify',label:'通知管理',icon:NotificationsOutline,description:'通知通道、告警事件与测试'},
+ {key:'acme',label:'ACME 证书',icon:LockClosedOutline,description:'自动续签、DNS 验证及 CA 凭据'},
+ {key:'logs',label:'日志与统计',icon:StatsChartOutline,description:'数据保留、访问统计与 IP 归属地'},
+ {key:'backup',label:'备份与恢复',icon:ServerOutline,description:'系统配置导出与恢复'},
+ {key:'advanced',label:'高级配置',icon:CodeSlashOutline,description:'全局 Nginx 配置及历史回滚'},
+] as const
+type SettingsGroup='general'|'security'|'notify'|'acme'|'logs'
+const saveGroups:SettingsGroup[]=['general','security','notify','acme','logs']
+const SETTINGS_TAB_NAMES = new Set<string>([...categories.map(c=>c.key),'version'])
+const activeProvider=ref('')
+const selectedNginxBackup=ref<string|null>(null)
+const savedSettings=ref<Record<string,string>>({})
+const baseline=ref<Partial<Record<SettingsGroup,Record<string,string>>>>({})
+const initialized=ref(false)
 const { setThemeMode, themeMode, themeAccent, setThemeAccent, isDark } = useTheme()
 const saving = ref(false)
 const loading = ref(false)
@@ -845,6 +842,13 @@ const form = reactive({
 
 const passwordForm = reactive({ old_password: '', new_password: '', confirm_password: '' })
 const settingsTab = ref('general')
+const categoryTitle=computed(()=>categories.find(c=>c.key===settingsTab.value)?.label || '关于 Fonu')
+const categoryDescription=computed(()=>categories.find(c=>c.key===settingsTab.value)?.description || '版本信息与更新日志')
+const currentCanSave=computed(()=>saveGroups.includes(settingsTab.value as SettingsGroup))
+const dirtyGroups=computed<Record<string,boolean>>(()=>Object.fromEntries(saveGroups.map(group=>[group,initialized.value && JSON.stringify(groupPayload(group))!==JSON.stringify(baseline.value[group]) ])))
+const currentDirty=computed(()=>Boolean(dirtyGroups.value[settingsTab.value]))
+const anyDirty=computed(()=>Object.values(dirtyGroups.value).some(Boolean)||globalNginxDirty.value||usernameChanged.value||!!usernameForm.password||!!passwordForm.old_password||!!passwordForm.new_password||!!passwordForm.confirm_password)
+function switchTab(tab:string){if(saving.value||restoring.value)return;settingsTab.value=tab;void router.replace({name:'settings',query:{...route.query,tab}})}
 const notifyType = ref<NotifyType>('')
 const notifyEventFlags = reactive<Record<string, boolean>>({
   on_ddns_ip_change: true,
@@ -932,6 +936,15 @@ const customAcmeEabKid = ref('')
 const customAcmeEabKidHasKey = ref(false)
 const customAcmeEabHmac = ref('')
 const customAcmeEabHmacHasKey = ref(false)
+const acmeProviders=computed(()=>[
+ {key:'zerossl',label:'ZeroSSL',hint:'EAB Kid / Hmac',ready:zerosslEabKidHasKey.value&&zerosslEabHmacHasKey.value,draft:!!(zerosslEabKid.value||zerosslEabHmac.value)},
+ {key:'google',label:'Google Trust Services',hint:'EAB Kid / Hmac',ready:googleEabKidHasKey.value&&googleEabHmacHasKey.value,draft:!!(googleEabKid.value||googleEabHmac.value)},
+ {key:'sslcom',label:'SSL.com',hint:'EAB Kid / Hmac',ready:sslcomEabKidHasKey.value&&sslcomEabHmacHasKey.value,draft:!!(sslcomEabKid.value||sslcomEabHmac.value)},
+ {key:'freessl',label:'FreeSSL',hint:'EAB 或 Automation Token',ready:freesslAutomationTokenHasKey.value||(freesslEabKidHasKey.value&&freesslEabHmacHasKey.value),draft:!!(freesslEabKid.value||freesslEabHmac.value||freesslAutomationToken.value)||freesslDirectoryUrl.value!==String(savedSettings.value.freessl_directory_url??'')},
+ {key:'actalis',label:'Actalis',hint:'EAB Kid / Hmac',ready:actalisEabKidHasKey.value&&actalisEabHmacHasKey.value,draft:!!(actalisEabKid.value||actalisEabHmac.value)},
+ {key:'custom',label:'自定义 ACME',hint:'Directory URL / 可选 EAB',ready:!!savedSettings.value.custom_acme_directory_url,draft:!!(customAcmeEabKid.value||customAcmeEabHmac.value)||customAcmeDirectoryUrl.value!==String(savedSettings.value.custom_acme_directory_url??'')},
+])
+const providerTitle=computed(()=>acmeProviders.value.find(item=>item.key===activeProvider.value)?.label || 'ACME 凭据')
 const trustedProxyEnabled = ref(false)
 const trustedProxyPreset = ref('cloudflare')
 const trustedProxyCIDRs = ref('')
@@ -942,12 +955,14 @@ const chinaCIDRHours = ref(24)
 const refreshingCIDR = ref(false)
 const chinaCIDR = ref<ChinaCIDRStatus>({ entry_count_v4: 0, entry_count_v6: 0 })
 let chinaCIDRPollTimer: ReturnType<typeof setInterval> | undefined
+let chinaCIDRLoading=false
 
 const globalNginxFramework = ref('')
 const globalNginxGeneratedSnippet = ref('')
 const globalNginxDraft = ref('')
 const globalNginxEditMode = ref<'auto' | 'custom'>('auto')
 const globalNginxServerMode = ref<'auto' | 'custom'>('auto')
+const nginxLoaded=ref(false),nginxLoading=ref(false),nginxLoadError=ref('')
 const globalNginxDirty = ref(false)
 const globalNginxSaving = ref(false)
 const globalNginxBackups = ref<{ name: string; created_at: string }[]>([])
@@ -1001,14 +1016,14 @@ function selectTheme(mode: string) {
   setThemeMode(mode)
 }
 
-function applySettingsToForm(settings: Record<string, string>) {
-  Object.assign(form, {
-    theme: themeMode.value,
-    timezone: settings.timezone ?? 'Asia/Shanghai',
-  })
-  applyNotifySettings(settings)
-  ddnsInterval.value = Number(settings.ddns_check_interval_minutes ?? 5)
-  certThreshold.value = Number(settings.cert_renew_threshold_days ?? 30)
+function applySettingsToForm(settings: Record<string, string>, group?:SettingsGroup) {
+  const applies=(key:SettingsGroup)=>!group||group===key
+  if(applies('general')){
+    Object.assign(form,{theme:settings.theme ?? themeMode.value,timezone:settings.timezone ?? 'Asia/Shanghai'})
+    ddnsInterval.value=Number(settings.ddns_check_interval_minutes??5)
+  }
+  if(applies('notify'))applyNotifySettings(settings)
+  if(applies('logs')){
   logRetention.value = Number(settings.log_retention_days ?? 30)
   analyticsRetention.value = Number(settings.analytics_retention_days ?? 30)
   analyticsExcludePrivate.value = settings.analytics_exclude_private_ips !== 'false'
@@ -1017,6 +1032,9 @@ function applySettingsToForm(settings: Record<string, string>) {
   analyticsGeoRemoteURL.value =
     settings.analytics_geo_remote_url ??
     'http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN'
+  }
+  if(applies('acme')){
+  certThreshold.value = Number(settings.cert_renew_threshold_days ?? 30)
   acmeEmail.value = settings.acme_email ?? ''
   zerosslHasKey.value = Boolean(settings.zerossl_api_key?.trim())
   zerosslApiKey.value = ''
@@ -1051,6 +1069,8 @@ function applySettingsToForm(settings: Record<string, string>) {
   customAcmeEabKid.value = ''
   customAcmeEabHmacHasKey.value = Boolean(settings.custom_acme_eab_hmac?.trim())
   customAcmeEabHmac.value = ''
+  }
+  if(applies('security')){
   chinaCIDRHours.value = Number(settings.china_cidr_update_interval_hours ?? 24)
   try {
     const tp = JSON.parse(settings.trusted_proxy_json || '{}') as {
@@ -1077,6 +1097,7 @@ function applySettingsToForm(settings: Record<string, string>) {
     globalIPWhitelistText.value = mergeIPList(DEFAULT_PRIVATE_CIDRS, wl).join('\n')
   } catch {
     globalIPWhitelistText.value = DEFAULT_PRIVATE_CIDRS.join('\n')
+  }
   }
 }
 
@@ -1116,17 +1137,18 @@ function applyGlobalNginxView(view: GlobalNginxView) {
   globalNginxServerMode.value = view.mode
   globalNginxEditMode.value = view.mode
   globalNginxBackups.value = view.backups ?? []
+  selectedNginxBackup.value = null
   globalNginxDraft.value =
     view.mode === 'auto' ? globalNginxGeneratedSnippet.value : view.content || globalNginxCustomHint
   globalNginxDirty.value = false
 }
 
 async function loadGlobalNginx() {
-  try {
-    applyGlobalNginxView(await api.getGlobalNginx())
-  } catch {
-    // optional on load
-  }
+  if(nginxLoading.value||globalNginxDirty.value)return
+  nginxLoading.value=true;nginxLoadError.value=''
+  try{applyGlobalNginxView(await api.getGlobalNginx());nginxLoaded.value=true}
+  catch(error){nginxLoadError.value=error instanceof Error?error.message:'读取 Nginx 配置失败'}
+  finally{nginxLoading.value=false}
 }
 
 function setGlobalNginxEditMode(mode: 'auto' | 'custom') {
@@ -1134,7 +1156,7 @@ function setGlobalNginxEditMode(mode: 'auto' | 'custom') {
   if (mode === 'custom') {
     if (!globalNginxDraft.value.trim() || globalNginxDraft.value === globalNginxGeneratedSnippet.value) {
       globalNginxDraft.value = globalNginxCustomHint
-      globalNginxDirty.value = false
+      globalNginxDirty.value = globalNginxServerMode.value !== 'custom'
     } else {
       globalNginxDirty.value = globalNginxServerMode.value !== 'custom'
     }
@@ -1152,6 +1174,7 @@ function onGlobalNginxDraftInput() {
 }
 
 async function saveGlobalNginx() {
+  if(!nginxLoaded.value||globalNginxSaving.value)return
   globalNginxSaving.value = true
   try {
     applyGlobalNginxView(await api.saveGlobalNginx({
@@ -1166,7 +1189,12 @@ async function saveGlobalNginx() {
   }
 }
 
+function confirmNginxRollback(){
+  if(globalNginxSaving.value)return
+  dialog.warning({title:'回滚 Nginx 配置',content:'将恢复所选历史版本（未选择时恢复上一版本），并重新应用 Nginx。',positiveText:'确认回滚',negativeText:'取消',onPositiveClick:()=>rollbackGlobalNginx(selectedNginxBackup.value||undefined)})
+}
 async function rollbackGlobalNginx(backup?: string) {
+  if(!nginxLoaded.value||globalNginxSaving.value)return
   globalNginxSaving.value = true
   try {
     applyGlobalNginxView(await api.rollbackGlobalNginx(backup))
@@ -1179,6 +1207,7 @@ async function rollbackGlobalNginx(backup?: string) {
 }
 
 async function resetGlobalNginxAuto() {
+  if(!nginxLoaded.value||globalNginxSaving.value)return
   globalNginxSaving.value = true
   try {
     applyGlobalNginxView(await api.saveGlobalNginx({ mode: 'auto' }))
@@ -1191,16 +1220,20 @@ async function resetGlobalNginxAuto() {
 }
 
 async function loadChinaCIDRStatus() {
+  if(disposed||chinaCIDRLoading||settingsTab.value!=='security')return
+  chinaCIDRLoading=true
   try {
-    chinaCIDR.value = await api.getChinaCIDRStatus()
+    const status=await api.getChinaCIDRStatus()
+    if(disposed||settingsTab.value!=='security')return
+    chinaCIDR.value = status
     if (chinaCIDR.value.updating) {
       startChinaCIDRPoll()
     } else {
       stopChinaCIDRPoll()
     }
   } catch {
-    // optional on load
-  }
+    // Status remains available for a manual retry.
+  } finally {chinaCIDRLoading=false}
 }
 
 function stopChinaCIDRPoll() {
@@ -1211,8 +1244,8 @@ function stopChinaCIDRPoll() {
 }
 
 function startChinaCIDRPoll() {
-  if (chinaCIDRPollTimer) return
-  chinaCIDRPollTimer = setInterval(() => void loadChinaCIDRStatus(), 2000)
+  if (chinaCIDRPollTimer||disposed||settingsTab.value!=='security') return
+  chinaCIDRPollTimer = setInterval(() => {if(!document.hidden)void loadChinaCIDRStatus()}, 2000)
 }
 
 async function refreshChinaCIDR() {
@@ -1236,6 +1269,7 @@ async function refreshChinaCIDR() {
 }
 
 onBeforeUnmount(() => {
+  disposed=true
   stopChinaCIDRPoll()
 })
 
@@ -1395,6 +1429,7 @@ function buildNotifyTestPayload(): NotifyTestPayload {
 }
 
 async function testNotify() {
+  if(notifyTesting.value||saving.value)return
   if (!notifyType.value) {
     message.warning('请先选择通知方式')
     return
@@ -1412,7 +1447,7 @@ async function testNotify() {
 
 function buildSavePayload() {
   const payload: Record<string, string> = {
-    theme: themeMode.value,
+    theme: form.theme,
     timezone: form.timezone,
     notify_type: notifyType.value,
     notify_email_json: buildNotifyEmailJSON(),
@@ -1483,9 +1518,7 @@ function buildSavePayload() {
     payload.freessl_eab_hmac = fHmac
   }
   const fDir = freesslDirectoryUrl.value.trim().replace(/`/g, '')
-  if (fDir) {
-    payload.freessl_directory_url = fDir
-  }
+  payload.freessl_directory_url = fDir
   const fAuto = freesslAutomationToken.value.trim()
   if (fAuto) {
     payload.freessl_automation_token = fAuto
@@ -1502,9 +1535,7 @@ function buildSavePayload() {
     payload.actalis_eab_hmac = aHmac
   }
   const cDir = customAcmeDirectoryUrl.value.trim().replace(/`/g, '')
-  if (cDir) {
-    payload.custom_acme_directory_url = cDir
-  }
+  payload.custom_acme_directory_url = cDir
   const cKid = customAcmeEabKid.value.trim()
   if (cKid) {
     payload.custom_acme_eab_kid = cKid
@@ -1516,6 +1547,24 @@ function buildSavePayload() {
   return payload
 }
 
+function groupPayload(group:SettingsGroup):Record<string,string>{
+  const belongs=(key:string)=>{
+    if(group==='general')return ['theme','timezone','ddns_check_interval_minutes'].includes(key)
+    if(group==='security')return ['trusted_proxy_json','global_ip_blacklist','global_ip_whitelist','china_cidr_update_interval_hours'].includes(key)
+    if(group==='notify')return key.startsWith('notify_')
+    if(group==='logs')return key==='log_retention_days'||key.startsWith('analytics_')
+    return key==='cert_renew_threshold_days'||/^(acme_|zerossl_|google_|sslcom_|freessl_|actalis_|custom_acme_)/.test(key)
+  }
+  return Object.fromEntries(Object.entries(buildSavePayload()).filter(([key])=>belongs(key)))
+}
+function captureBaseline(group:SettingsGroup){baseline.value={...baseline.value,[group]:groupPayload(group)}}
+function discardCurrent(){
+  if(!currentCanSave.value||saving.value)return
+  const group=settingsTab.value as SettingsGroup
+  applySettingsToForm(savedSettings.value,group)
+  if(group==='general')setThemeMode(form.theme)
+  captureBaseline(group)
+}
 async function loadAdminUsername() {
   const status = await api.authStatus()
   adminUsername.value = status.username ?? ''
@@ -1527,8 +1576,14 @@ async function load() {
   loading.value = true
   pageError.value = ''
   try {
-    applySettingsToForm(await api.getSettings())
-    await Promise.all([loadChinaCIDRStatus(), loadGlobalNginx(), loadAdminUsername()])
+    savedSettings.value=await api.getSettings()
+    applySettingsToForm(savedSettings.value)
+    // Local theme remains the initial preview; server theme is changed only explicitly.
+    form.theme=themeMode.value
+    savedSettings.value={...savedSettings.value,theme:form.theme}
+    for(const group of saveGroups)captureBaseline(group)
+    initialized.value=true
+    void loadCategory(settingsTab.value)
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -1536,27 +1591,31 @@ async function load() {
   }
 }
 
-async function save() {
-  const acmeEmailErr = acmeEmail.value.trim() ? validateAcmeEmailMessage(acmeEmail.value) : ''
-  if (acmeEmailErr) {
-    message.warning(acmeEmailErr)
-    return
+async function save(){
+  if(saving.value||loading.value||!currentCanSave.value||!currentDirty.value)return
+  const group=settingsTab.value as SettingsGroup
+  if(group==='acme'){
+    const err=acmeEmail.value.trim()?validateAcmeEmailMessage(acmeEmail.value):''
+    if(err){message.warning(err);return}
   }
-  saving.value = true
-  try {
-    const saved = await api.saveSettings(buildSavePayload())
-    applySettingsToForm(saved)
-    setThemeMode(saved.theme ?? form.theme)
-    invalidateAppTimezoneCache()
-    message.success('设置已保存')
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存失败')
-  } finally {
-    saving.value = false
-  }
+  const draft=groupPayload(group),original=baseline.value[group]||{}
+  const changes=Object.fromEntries(Object.entries(draft).filter(([key,value])=>value!==original[key]))
+  if(!Object.keys(changes).length)return
+  saving.value=true
+  try{
+    // Notify is a cohesive config; the API resolves unchanged secrets server-side.
+    const saved=await api.saveSettings(group==='notify'?draft:changes)
+    savedSettings.value=saved
+    applySettingsToForm(saved,group)
+    if(group==='general'){setThemeMode(form.theme);invalidateAppTimezoneCache()}
+    captureBaseline(group)
+    message.success('当前分类已保存')
+  }catch(error){message.error(error instanceof Error?error.message:'保存失败')}
+  finally{saving.value=false}
 }
 
 async function changeUsername() {
+  if(changingUsername.value||changingPassword.value)return
   const newUsername = usernameForm.new_username.trim()
   if (!newUsername) {
     message.warning('请填写登录用户名')
@@ -1581,6 +1640,7 @@ async function changeUsername() {
 }
 
 async function changePassword() {
+  if(changingUsername.value||changingPassword.value)return
   if (!passwordForm.old_password || !passwordForm.new_password) {
     message.warning('请填写当前密码和新密码')
     return
@@ -1596,6 +1656,7 @@ async function changePassword() {
     passwordForm.new_password = ''
     passwordForm.confirm_password = ''
     message.success('密码已更新，请重新登录')
+    initialized.value=false
     await router.replace({ name: 'login' })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '更新密码失败')
@@ -1605,6 +1666,7 @@ async function changePassword() {
 }
 
 async function exportBackup() {
+  if(exporting.value||restoring.value)return
   exporting.value = true
   try {
     await api.exportBackup()
@@ -1618,14 +1680,16 @@ async function exportBackup() {
 
 function restoreRequest({ file, onFinish, onError }: UploadCustomRequestOptions) {
   const raw = file.file
+  if(restoring.value||exporting.value){onError();return}
   if (!raw) {
     message.error('请选择备份文件')
     onError()
     return
   }
+  if(!/\.(tar\.gz|tgz)$/i.test(raw.name)||raw.size===0||raw.size>511*1024*1024){message.warning('请选择非空的 tar.gz / tgz 备份文件（最大 511 MiB）');onError();return}
   dialog.warning({
     title: '恢复配置',
-    content: '将用这份备份覆盖当前数据库、证书和 Nginx 配置。完成后会退出登录，请使用备份中的账号重新登录。',
+    content: '文件：'+raw.name+'（'+(raw.size/1024/1024).toFixed(2)+' MiB）。将校验备份并覆盖当前数据库、证书和 Nginx 配置，完成后需要重新登录。',
     positiveText: '恢复',
     negativeText: '取消',
     onNegativeClick: () => {
@@ -1652,6 +1716,7 @@ async function runRestore(
     })
     onFinish()
     restoring.value = false
+    initialized.value=false
     await router.push({ name: 'login', state: { restored: true } })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '恢复失败')
@@ -1666,7 +1731,22 @@ function applySettingsTab(tab: unknown) {
   }
 }
 
+let adminLoaded=false,adminLoading=false,disposed=false
+async function loadCategory(tab:string){
+ if(disposed||!initialized.value)return
+ if(tab==='security')void loadChinaCIDRStatus()
+ else stopChinaCIDRPoll()
+ if(tab==='advanced'&&!nginxLoaded.value)void loadGlobalNginx()
+ if(tab==='account'&&!adminLoaded&&!adminLoading){
+  adminLoading=true
+  try{await loadAdminUsername();adminLoaded=true}
+  catch(error){message.error(error instanceof Error?error.message:'读取管理员账户失败')}
+  finally{adminLoading=false}
+ }
+}
+watch(settingsTab,tab=>void loadCategory(tab))
 watch(() => route.query.tab, applySettingsTab)
+onBeforeRouteLeave(()=>{if(saving.value||restoring.value)return false;if(!initialized.value||!anyDirty.value)return true;return new Promise<boolean>(resolve=>dialog.warning({title:'离开系统设置？',content:'尚有未保存的设置，离开后将丢失草稿。',positiveText:'离开',negativeText:'继续编辑',onPositiveClick:()=>{if(dirtyGroups.value.general)setThemeMode(savedSettings.value.theme||'system');resolve(true)},onNegativeClick:()=>resolve(false),onClose:()=>resolve(false),onMaskClick:()=>resolve(false)}))})
 
 onMounted(() => {
   applySettingsTab(route.query.tab)
@@ -2245,4 +2325,47 @@ onMounted(() => {
 .theme-card--active .theme-card__icon,.theme-card__check { color:var(--fonu-brand); }
 .workspace-settings :deep(.n-tabs-nav) { border-bottom:1px solid var(--fonu-border); }
 @media(max-width:960px) { .settings-grid { grid-template-columns:minmax(0,1fr); } }
+
+.settings-workspace { display:grid; gap:14px; min-width:0; container-type:inline-size; }
+.settings-navigation { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; padding:8px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-surface); }
+.settings-nav-item { position:relative; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:6px; min-width:0; min-height:64px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--fonu-text-secondary); cursor:pointer; font:inherit; font-size:12px; padding:8px 4px; white-space:nowrap; }
+.settings-nav-item .n-icon { font-size:21px; }
+.settings-nav-item:hover { background:var(--fonu-bg-muted); }
+.settings-nav-item.is-active { color:var(--fonu-brand-text); background:var(--fonu-brand-soft); border-color:color-mix(in srgb,var(--fonu-brand) 28%,transparent); font-weight:600; }
+.dirty-dot { position:absolute; right:7px; top:7px; height:7px; width:7px; border-radius:50%; background:var(--fonu-warning); }
+.settings-category-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.settings-category-head h2 { font-size:18px; margin:0; color:var(--fonu-text); }
+.settings-category-head p { font-size:12px; color:var(--fonu-text-secondary); margin:4px 0 0; }
+.settings-content { padding:0; margin:0; border:0; min-width:0; }
+.settings-grid { gap:12px; align-items:start; }
+.settings-grid :deep(.fonu-card) { height:auto; }
+.settings-grid :deep(.fonu-card__body) { gap:10px; }
+.settings-block--spaced { margin-top:10px; padding-top:12px; border-top:1px solid var(--fonu-border); }
+.theme-cards { max-width:560px; }
+.theme-card { min-height:58px; flex-direction:row; padding:10px; }
+.theme-card--active { color:var(--fonu-brand-text); background:var(--fonu-brand-soft); border-color:var(--fonu-brand); }
+.theme-card__check { position:static; margin-left:auto; color:var(--fonu-brand); }
+.settings-fields { gap:14px; }
+.save-bar { position:sticky; bottom:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0; padding:12px 16px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-surface); box-shadow:0 -3px 12px #00000008; }
+.save-bar strong { font-size:13px; color:var(--fonu-text); }
+.save-bar small { display:block; font-size:11px; margin-top:3px; color:var(--fonu-text-secondary); }
+.save-bar-actions { display:flex; gap:8px; margin-left:auto; }
+.provider-list { display:grid; }
+.provider-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--fonu-border); }
+.provider-row:last-child { border-bottom:0; }
+.provider-row > span:first-child { flex:1; min-width:0; }
+.provider-row strong { font-size:14px; display:block; overflow-wrap:anywhere; }
+.provider-row small { display:block; color:var(--fonu-text-secondary); font-size:12px; margin-top:3px; }
+.provider-editor { display:grid; gap:14px; max-height:calc(100dvh - 160px); overflow:auto; padding:0 2px; }
+.provider-edit-block { border:0; padding:0; margin:0; }
+.provider-modal-actions { display:flex; justify-content:flex-end; }
+.notify-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+.notify-channel { display:grid; gap:14px; min-width:0; }
+.notify-events { margin-top:0; min-width:0; }
+.notify-test-row { grid-column:1/-1; }
+.backup-warning { margin-top:8px; }
+@container(max-width:960px){.settings-navigation{grid-template-columns:repeat(4,minmax(0,1fr));}}
+@container(max-width:730px){.notify-form{grid-template-columns:minmax(0,1fr)}.notify-test-row{grid-column:auto}}
+@container(max-width:420px){.settings-navigation{gap:3px;padding:5px}.settings-nav-item{font-size:11px;min-height:57px}.settings-nav-item .n-icon{font-size:17px}.provider-row{gap:6px}.save-bar{padding:10px}.theme-cards{grid-template-columns:repeat(3,minmax(0,1fr))}.theme-card{flex-direction:column;min-height:56px}.theme-card__check{display:none}}
+.settings-load-error{display:flex;align-items:center;gap:10px;color:var(--fonu-error);margin-bottom:12px}
 </style>

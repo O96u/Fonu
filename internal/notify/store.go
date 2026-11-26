@@ -182,41 +182,26 @@ func hasNotifyEventSettings(ctx context.Context, store *settings.Store) bool {
 }
 
 func (s *Store) Save(ctx context.Context, in SaveInput) error {
-	existing, _ := s.Load(ctx)
-	if in.Type == "" {
-		in.Type = existing.Type
-	}
+	existing, err := s.Load(ctx)
+ if err != nil{return err}
+ in.Email.HasPassword=existing.Email.HasPassword || (strings.TrimSpace(in.SMTPPassword)!="" && in.SMTPPassword!=MaskedSecret)
+ if strings.TrimSpace(in.WebhookSecret)==""||in.WebhookSecret==MaskedSecret {if strings.TrimSpace(in.Webhook.Key)==""&&existing.Webhook.Key!=""&&existing.Webhook.Key!=MaskedSecret {in.Webhook.Key=existing.Webhook.Key}}
+ in.Webhook.HasSecret=existing.Webhook.HasSecret || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
+ in.Telegram.HasBotToken=existing.Telegram.HasBotToken || (strings.TrimSpace(in.TelegramToken)!="" && in.TelegramToken!=MaskedSecret)
+ values:=map[string]string{}
 	if err := validateSaveInput(in); err != nil {
 		return err
 	}
 
-	if err := s.settings.Set(ctx, settings.KeyNotifyType, string(in.Type)); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnDDNSIPChange, in.OnDDNSIPChange); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnDDNSFailure, in.OnDDNSFailure); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnCertExpiry, in.OnCertExpiry); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnCertRenewSuccess, in.OnCertRenewSuccess); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnIPFrequentAccess, in.OnIPFrequentAccess); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnCertRenewFailure, in.OnCertRenewFailure); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnLoginFailure, in.OnLoginFailure); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyNotifyOnNginxReloadFailure, in.OnNginxReloadFailure); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyType] = string(in.Type)
+	values[settings.KeyNotifyOnDDNSIPChange] = strconv.FormatBool(in.OnDDNSIPChange)
+	values[settings.KeyNotifyOnDDNSFailure] = strconv.FormatBool(in.OnDDNSFailure)
+	values[settings.KeyNotifyOnCertExpiry] = strconv.FormatBool(in.OnCertExpiry)
+	values[settings.KeyNotifyOnCertRenewSuccess] = strconv.FormatBool(in.OnCertRenewSuccess)
+	values[settings.KeyNotifyOnIPFrequentAccess] = strconv.FormatBool(in.OnIPFrequentAccess)
+	values[settings.KeyNotifyOnCertRenewFailure] = strconv.FormatBool(in.OnCertRenewFailure)
+	values[settings.KeyNotifyOnLoginFailure] = strconv.FormatBool(in.OnLoginFailure)
+	values[settings.KeyNotifyOnNginxReloadFailure] = strconv.FormatBool(in.OnNginxReloadFailure)
 	threshold := in.IPFrequentThreshold
 	if threshold <= 0 {
 		threshold = DefaultIPFrequentThreshold
@@ -225,12 +210,8 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	if windowSec <= 0 {
 		windowSec = DefaultIPFrequentWindowSec
 	}
-	if err := s.settings.SetInt(ctx, settings.KeyNotifyIPFrequentThreshold, threshold); err != nil {
-		return err
-	}
-	if err := s.settings.SetInt(ctx, settings.KeyNotifyIPFrequentWindowSec, windowSec); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyIPFrequentThreshold] = strconv.Itoa(threshold)
+	values[settings.KeyNotifyIPFrequentWindowSec] = strconv.Itoa(windowSec)
 	loginThreshold := in.LoginFailureThreshold
 	if loginThreshold <= 0 {
 		loginThreshold = DefaultLoginFailureThreshold
@@ -239,12 +220,8 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	if loginWindowSec <= 0 {
 		loginWindowSec = DefaultLoginFailureWindowSec
 	}
-	if err := s.settings.SetInt(ctx, settings.KeyNotifyLoginFailureThreshold, loginThreshold); err != nil {
-		return err
-	}
-	if err := s.settings.SetInt(ctx, settings.KeyNotifyLoginFailureWindowSec, loginWindowSec); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyLoginFailureThreshold] = strconv.Itoa(loginThreshold)
+	values[settings.KeyNotifyLoginFailureWindowSec] = strconv.Itoa(loginWindowSec)
 
 	email := in.Email
 	email.HasPassword = email.HasPassword || strings.TrimSpace(in.SMTPPassword) != "" && in.SMTPPassword != MaskedSecret
@@ -252,9 +229,7 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	if err != nil {
 		return err
 	}
-	if err := s.settings.Set(ctx, settings.KeyNotifyEmailJSON, string(emailJSON)); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyEmailJSON] = string(emailJSON)
 
 	webhook := in.Webhook
 	secretValue := strings.TrimSpace(in.WebhookSecret)
@@ -265,13 +240,13 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 			webhook.HasSecret = true
 		}
 	}
-	webhookJSON, err := json.Marshal(webhook)
+	storedWebhook:=webhook
+ storedWebhook.Key=""
+ webhookJSON, err := json.Marshal(storedWebhook)
 	if err != nil {
 		return err
 	}
-	if err := s.settings.Set(ctx, settings.KeyNotifyWebhookJSON, string(webhookJSON)); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyWebhookJSON] = string(webhookJSON)
 
 	telegram := in.Telegram
 	normalizedProxyURL, err := normalizeProxyURL(telegram.ProxyURL)
@@ -286,17 +261,14 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 	if err != nil {
 		return err
 	}
-	if err := s.settings.Set(ctx, settings.KeyNotifyTelegramJSON, string(telegramJSON)); err != nil {
-		return err
-	}
+	values[settings.KeyNotifyTelegramJSON] = string(telegramJSON)
 
+ values[settings.KeyNotifyWebhookURL]=""
 	if in.Type == NotifyTypeWebhook && webhook.Provider == WebhookCustom {
-		if err := s.settings.Set(ctx, settings.KeyNotifyWebhookURL, strings.TrimSpace(webhook.URL)); err != nil {
-			return err
-		}
+		values[settings.KeyNotifyWebhookURL] = strings.TrimSpace(webhook.URL)
 	}
 
-	if err := s.saveSecret(ctx, settings.KeyNotifySMTPPassword, in.SMTPPassword, in.Email.HasPassword); err != nil {
+	if err := s.prepareSecret(values, settings.KeyNotifySMTPPassword, in.SMTPPassword, in.Email.HasPassword); err != nil {
 		return err
 	}
 
@@ -312,18 +284,18 @@ func (s *Store) Save(ctx context.Context, in SaveInput) error {
 			}
 		}
 	}
-	if err := s.saveSecret(ctx, settings.KeyNotifyWebhookSecret, webhookPlain, webhook.HasSecret); err != nil {
+	if err := s.prepareSecret(values, settings.KeyNotifyWebhookSecret, webhookPlain, webhook.HasSecret); err != nil {
 		return err
 	}
 
-	if err := s.saveSecret(ctx, settings.KeyNotifyTelegramToken, in.TelegramToken, telegram.HasBotToken); err != nil {
+	if err := s.prepareSecret(values, settings.KeyNotifyTelegramToken, in.TelegramToken, telegram.HasBotToken); err != nil {
 		return err
 	}
 
-	return nil
+ return s.settings.SetMany(ctx,values)
 }
 
-func (s *Store) saveSecret(ctx context.Context, key, plain string, hasExisting bool) error {
+func (s *Store) prepareSecret(values map[string]string, key, plain string, hasExisting bool) error {
 	plain = strings.TrimSpace(plain)
 	if plain == "" || plain == MaskedSecret {
 		if !hasExisting {
@@ -338,7 +310,8 @@ func (s *Store) saveSecret(ctx context.Context, key, plain string, hasExisting b
 	if err != nil {
 		return err
 	}
-	return s.settings.Set(ctx, key, enc)
+	values[key]=enc
+ return nil
 }
 
 func validateSaveInput(in SaveInput) error {
@@ -400,6 +373,7 @@ func SanitizeSettings(values map[string]string) {
 	delete(values, settings.KeyNotifySMTPPassword)
 	delete(values, settings.KeyNotifyWebhookSecret)
 	delete(values, settings.KeyNotifyTelegramToken)
+ if raw:=values[settings.KeyNotifyWebhookJSON];raw!=""{var cfg WebhookConfig;if json.Unmarshal([]byte(raw),&cfg)==nil{if cfg.Key!=""{cfg.HasSecret=true};cfg.Key="";if encoded,err:=json.Marshal(cfg);err==nil{values[settings.KeyNotifyWebhookJSON]=string(encoded)}}}
 }
 
 func ParseSaveInputFromMap(values map[string]string, existing Config) (SaveInput, bool) {
@@ -454,6 +428,7 @@ func ParseSaveInputFromMap(values map[string]string, existing Config) (SaveInput
 }
 
 func mapHasNotifySavePayload(values map[string]string) bool {
+ if _,present:=values[settings.KeyNotifyType];present{return true}
 	if values[settings.KeyNotifyType] != "" ||
 		values[settings.KeyNotifyEmailJSON] != "" ||
 		values[settings.KeyNotifyWebhookJSON] != "" ||

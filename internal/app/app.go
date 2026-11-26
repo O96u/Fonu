@@ -179,6 +179,11 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	}
 	sched := scheduler.New(
 		scheduler.Job{Name: "session_cleanup", Interval: time.Hour, Timeout: 30*time.Second, Run: authSvc.CleanupSessions},
+        scheduler.Job{Name:"log_archive_retention",Interval:time.Hour,Timeout:30*time.Second,RunErr:func(ctx context.Context)error{
+          days,err:=settingsStore.GetInt(ctx,settings.KeyLogRetentionDays);if err!=nil{return err};if days<1||days>365{return fmt.Errorf("invalid log retention days")}
+          paths:=[]string{filepath.Join(cfg.LogsDir(),"app.log"),filepath.Join(cfg.LogsDir(),"access.log"),filepath.Join(cfg.LogsDir(),"error.log"),cfg.FrpLogPath()}
+          return logstore.PruneHistoryArchives(ctx,paths,time.Now().AddDate(0,0,-days))
+        }},
 		scheduler.Job{
 			Name:     "ddns",
 			Timeout: 2 * time.Minute,

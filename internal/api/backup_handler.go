@@ -18,6 +18,7 @@ func NewBackupHandler(svc *backup.Service) *BackupHandler {
 }
 
 func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
+ w.Header().Set("Cache-Control","no-store")
 	path, err := h.svc.Export(r.Context())
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "创建备份失败")
@@ -38,6 +39,7 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
+ w.Header().Set("Cache-Control","no-store")
 	r.Body = http.MaxBytesReader(w, r.Body, 512 << 20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		writeError(r, w, http.StatusBadRequest, "上传文件无效")
@@ -63,7 +65,7 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "保存上传文件失败")
 		return
 	}
-	out.Close()
+	if err:=out.Close();err!=nil{_ = os.Remove(tmpPath);writeError(r,w,http.StatusInternalServerError,"保存上传文件失败");return}
 
 	if err := h.svc.Restore(r.Context(), tmpPath); err != nil {
 		_ = os.Remove(tmpPath)

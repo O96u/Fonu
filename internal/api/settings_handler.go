@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+ "strings"
+ "time"
+ "net/url"
+ "sync"
 
 	"github.com/fonu/fonu/internal/notify"
 	"github.com/fonu/fonu/internal/service"
@@ -13,6 +17,7 @@ import (
 )
 
 type SettingsHandler struct {
+ mu sync.Mutex
 	store  *settings.Store
 	proxy  *service.ProxyService
 	notify *notify.Service
@@ -23,16 +28,20 @@ func NewSettingsHandler(store *settings.Store, proxySvc *service.ProxyService, n
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
+ w.Header().Set("Cache-Control","no-store")
 	values, err := h.store.List(r.Context())
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取设置失败", err)
 		return
 	}
-	notify.SanitizeSettings(values)
+	sanitizeSettingsResponse(values)
 	writeJSON(w, http.StatusOK, values)
 }
 
 func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
+ w.Header().Set("Cache-Control","no-store")
+ h.mu.Lock();defer h.mu.Unlock()
+ r.Body=http.MaxBytesReader(w,r.Body,1<<20)
 	var req map[string]string
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(r, w, http.StatusBadRequest, "请求格式无效")
@@ -104,14 +113,18 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		if !allowed[key] {
 			continue
 		}
+        if isMaskedSetting(key) && value==notify.MaskedSecret {continue}
+        if len(value)>128*1024 {writeError(r,w,http.StatusBadRequest,"设置值过长");return}
 		if err := h.validateSetting(key, value); err != nil {
 			writeError(r, w, http.StatusBadRequest, err.Error())
 			return
 		}
 		filtered[key] = value
 	}
+	for key:=range filtered {if isNotifySettingKey(key)&&(h.notify==nil||h.notify.Store()==nil){writeError(r,w,http.StatusServiceUnavailable,"通知服务尚未初始化");return}}
 	if h.notify != nil && h.notify.Store() != nil {
-		existingNotify, _ := h.notify.Store().Load(r.Context())
+		existingNotify, loadErr := h.notify.Store().Load(r.Context())
+        if loadErr!=nil {writeError(r,w,http.StatusInternalServerError,"读取通知设置失败");return}
 		if in, ok := notify.ParseSaveInputFromMap(filtered, existingNotify); ok {
 			if err := h.notify.Store().Save(r.Context(), in); err != nil {
 				writeError(r, w, http.StatusBadRequest, err.Error())
@@ -130,7 +143,7 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 	var saveErr error
 	if h.proxy != nil && (trustedChanged || blacklistChanged || whitelistChanged) {
 		saveErr = h.proxy.SaveSettingsWithPublication(r.Context(), filtered)
-	} else {
+	} else if len(filtered)>0 {
 		saveErr = h.store.SetMany(r.Context(), filtered)
 	}
 	if saveErr != nil {
@@ -142,10 +155,23 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusInternalServerError, "读取设置失败", err)
 		return
 	}
-	notify.SanitizeSettings(values)
+	sanitizeSettingsResponse(values)
 	writeJSON(w, http.StatusOK, values)
 }
 
+func isMaskedSetting(key string) bool {
+ switch key {
+ case settings.KeyZeroSSLAPIKey,settings.KeyZeroSSLEABKid,settings.KeyZeroSSLEABHmac,settings.KeyGoogleEABKid,settings.KeyGoogleEABHmac,settings.KeySSLcomEABKid,settings.KeySSLcomEABHmac,settings.KeyFreeSSLEABKid,settings.KeyFreeSSLEABHmac,settings.KeyFreeSSLAutomationToken,settings.KeyActalisEABKid,settings.KeyActalisEABHmac,settings.KeyCustomACMEEABKid,settings.KeyCustomACMEEABHmac,settings.KeyFRPAuthToken,settings.KeyDNSHEAPIKey,settings.KeyDNSHEAPISecret:
+ return true
+ }
+ return false
+}
+func sanitizeSettingsResponse(values map[string]string){
+ notify.SanitizeSettings(values)
+ for key,value:=range values {if isMaskedSetting(key)&&strings.TrimSpace(value)!=""{values[key]=notify.MaskedSecret}}
+ // DNSHE multi-account storage belongs to the dedicated account API.
+ delete(values,settings.KeyDNSHEAccounts)
+}
 func isNotifySettingKey(key string) bool {
 	switch key {
 	case settings.KeyNotifyType,
@@ -176,6 +202,16 @@ func isNotifySettingKey(key string) bool {
 
 func (h *SettingsHandler) validateSetting(key, value string) error {
 	switch key {
+ case settings.KeyTheme:
+  if value!="system"&&value!="light"&&value!="dark"{return fmt.Errorf("无效的主题模式")}
+ case settings.KeyTimezone:
+  if strings.TrimSpace(value)==""{return fmt.Errorf("请选择时区")};if _,err:=time.LoadLocation(value);err!=nil{return fmt.Errorf("无效的时区")}
+ case settings.KeyDDNSCheckInterval,settings.KeyCertRenewThreshold,settings.KeyChinaCIDRUpdateHours,settings.KeyACMEDNSPropagationTimeout:
+  min,max:=1,1440
+  switch key{case settings.KeyCertRenewThreshold:max=90;case settings.KeyChinaCIDRUpdateHours:max=168;case settings.KeyACMEDNSPropagationTimeout:min,max=30,900}
+  n,err:=strconv.Atoi(value);if err!=nil||n<min||n>max{return fmt.Errorf("设置值需在 %d–%d 之间",min,max)}
+ case settings.KeyFreeSSLDirectoryURL,settings.KeyCustomACMEDirectoryURL,settings.KeyAnalyticsGeoRemoteURL:
+  if value!=""{u,err:=url.Parse(value);if err!=nil||u.Hostname()==""||(u.Scheme!="https"&&u.Scheme!="http")||u.User!=nil{return fmt.Errorf("请输入有效的 HTTP/HTTPS 服务地址")}}
 	case settings.KeyNotifyEmailJSON, settings.KeyNotifyWebhookJSON, settings.KeyNotifyTelegramJSON:
 		if value != "" {
 			var raw map[string]any
