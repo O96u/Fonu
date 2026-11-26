@@ -722,3 +722,7 @@ export interface NginxApplyStatus {
   last_error?: string
   updated_at?: string
 }
+
+export interface ProxyBusinessGroup { id: number; name: string }
+export interface ProxyBusinessState { groups: ProxyBusinessGroup[]; members: {rule_id:number;group_id:number}[] }
+export interface ProxyBusinessChange { action:'create'|'rename'|'delete'|'assign'|'reorder'; id?:number; name?:string; rule_ids?:number[]; ids?:number[] }

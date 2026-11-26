@@ -54,6 +54,8 @@ func NewRouter(deps Deps) http.Handler {
 		analyticsHandler := NewAnalyticsHandler(deps.Analytics)
 		protect("GET /api/analytics/overview", analyticsHandler.Overview)
 	}
+	protect("GET /api/proxy-groups", r.proxyHandler.BusinessGroups)
+	protect("POST /api/proxy-groups", r.proxyHandler.ChangeBusinessGroups)
 	protect("GET /api/proxies", r.proxyHandler.List)
 	protect("GET /api/proxies/{id}/favicon", r.proxyHandler.Favicon)
 	protect("GET /api/proxy-entries", r.proxyHandler.ListEntries)

@@ -20,6 +20,8 @@ import type {
   FRPStatus,
   DiscoveredService,
   FsDirListResponse,
+  ProxyBusinessState,
+  ProxyBusinessChange,
   ProxyClientConn,
   ChinaCIDRStatus,
   ProxyEntry,
@@ -137,6 +139,8 @@ export const api = {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
     return request<AnalyticsOverview>(`/api/analytics/overview${q}`, { signal }, 120_000)
   },
+  getProxyBusiness: () => request<ProxyBusinessState>('/api/proxy-groups'),
+  changeProxyBusiness: (payload:ProxyBusinessChange) => request<ProxyBusinessState>('/api/proxy-groups',{method:'POST',body:JSON.stringify(payload)}),
   listProxies: () => request<ProxyRule[]>('/api/proxies'),
   listProxyEntries: () => request<ProxyEntry[]>('/api/proxy-entries'),
   createProxyEntry: (payload: ProxyEntrySavePayload) =>
