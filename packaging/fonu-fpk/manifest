@@ -1,7 +1,7 @@
 appname=fonu
 version=@VERSION@
 display_name=Fonu
-desc="""Fonu 是面向飞牛 fnOS 的一站式 NAS 公网访问管理工具，帮助你通过自有域名远程访问 NAS、影音服务、容器及其他内网应用。内置独立 Nginx，无需修改飞牛系统 Nginx。主要功能：DDNS 动态域名解析（IPv4/IPv6）、HTTP/HTTPS 反向代理与服务发现、SSL/TLS 证书申请及自动续签、本地与远程证书部署、FRP 内网穿透（需自备 frps 服务端）、访问流量与安全分析、IP 访问控制、运行日志与诊断、消息通知、手动及自动本地备份与恢复。通过可视化管理界面统一配置，减少手写配置的繁琐操作。"""
+desc="""Fonu 是一款面向飞牛 fnOS 的轻量级 Nginx 反向代理管理应用，支持 FRP 内网穿透。通过可视化配置，将 NAS、影音服务、容器及其他内网应用映射至自有域名，实现便捷的 HTTP/HTTPS 访问。内置独立 Nginx，不修改飞牛系统 Nginx。主要功能：DDNS 动态域名解析（IPv4/IPv6）、HTTP/HTTPS 反向代理与服务发现、SSL/TLS 证书申请及自动续签、本地与远程证书部署、FRP 内网穿透（需自备 frps 服务端）、访问流量与安全分析、IP 访问控制、运行日志与诊断、消息通知、手动及自动本地备份与恢复。通过可视化管理界面统一配置，减少手写配置的繁琐操作。"""
 platform=@PLATFORM@
 source=thirdparty
 maintainer=muxui

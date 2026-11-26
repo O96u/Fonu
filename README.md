@@ -1,7 +1,7 @@
 <p align="center"><img src="web/src/assets/brand/logo.png" alt="Fonu" width="96" /></p>
 <h1 align="center">Fonu</h1>
 <p align="center"><strong>让 NAS 访问更简单</strong></p>
-<p align="center">面向飞牛 fnOS 的轻量公网访问管理工具</p>
+<p align="center">面向飞牛 fnOS 的 Nginx 反向代理与 FRP 内网穿透管理工具</p>
 
 <p align="center">
   <a href="https://github.com/O96u/Fonu/releases"><img src="https://img.shields.io/github/v/release/O96u/Fonu?include_prereleases&style=flat-square&label=Release" alt="Release" /></a>
@@ -11,19 +11,24 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="GPL-3.0" /></a>
 </p>
 
-Fonu 集成反向代理、DDNS、HTTPS 证书、内网穿透及访问分析，让 NAS 公网访问和日常维护集中在一个 Web 管理界面中。
+Fonu 是一款面向飞牛 fnOS 的轻量级 Nginx 反向代理管理应用，支持 FRP 内网穿透。通过可视化配置，将 NAS、影音服务、容器及其他内网应用映射至自有域名，实现便捷的 HTTP/HTTPS 访问。内置独立 Nginx，不修改飞牛系统 Nginx。 同时集成 DDNS、HTTPS 证书管理、访问与安全分析、消息通知及备份恢复。
 
 ## 功能特性
 
-| 模块 | 功能 |
-| --- | --- |
-| 仪表盘 | IPv4/IPv6、访问与安全分析、服务状态、CPU 和内存监控 |
-| DDNS | 多域名、多记录、自动同步 IPv4/IPv6；支持阿里云、Cloudflare、DNSPod、腾讯云、火山引擎、华为云、DNSHE |
-| 证书管理 | ACME 申请、导入、自动续签、本地与 SSH/SFTP 部署 |
-| 反向代理 | HTTP/HTTPS、多域名、多端口、服务分组、发现服务、访问控制、流量统计 |
-| 内网穿透 | FRP Web 网关、TCP/UDP 隧道、连接诊断 |
-| 日志中心 | 系统、访问、Nginx、FRP 日志，实时查看、筛选和导出 |
-| 系统设置 | 主题、账户安全、日志统计、备份恢复；邮件、Webhook、Telegram、企业微信、飞书通知 |
+<table>
+  <thead>
+    <tr><th width="120">模块</th><th>功能</th></tr>
+  </thead>
+  <tbody>
+    <tr><td width="120">仪&#8288;表&#8288;盘</td><td>IPv4/IPv6、访问与安全分析、服务状态、CPU 和内存监控</td></tr>
+    <tr><td width="120">DDNS</td><td>多域名、多记录、自动同步 IPv4/IPv6；支持阿里云、Cloudflare、DNSPod、腾讯云、火山引擎、华为云、DNSHE</td></tr>
+    <tr><td width="120">证&#8288;书&#8288;管&#8288;理</td><td>ACME 申请、导入、自动续签、本地与 SSH/SFTP 部署</td></tr>
+    <tr><td width="120">反&#8288;向&#8288;代&#8288;理</td><td>HTTP/HTTPS、多域名、多端口、服务分组、发现服务、访问控制、流量统计</td></tr>
+    <tr><td width="120">内&#8288;网&#8288;穿&#8288;透</td><td>FRP Web 网关、TCP/UDP 隧道、连接诊断</td></tr>
+    <tr><td width="120">日&#8288;志&#8288;中&#8288;心</td><td>系统、访问、Nginx、FRP 日志，实时查看、筛选和导出</td></tr>
+    <tr><td width="120">系&#8288;统&#8288;设&#8288;置</td><td>主题、账户安全、日志统计、备份恢复；邮件、Webhook、Telegram、企业微信、飞书通知</td></tr>
+  </tbody>
+</table>
 
 ## 界面展示
 
