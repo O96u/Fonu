@@ -124,11 +124,12 @@
     </div>
   </n-modal>
 
-  <n-modal v-model:show="showDetailPanel" :mask-closable="true" transform-origin="center">
+  <n-drawer :show="showDetailPanel" width="min(740px, 100vw)" placement="right" :mask-closable="true" @update:show="value=>{if(!value)closeDetail()}">
     <div v-if="selectedRule" class="proxy-detail-modal">
       <div class="proxy-detail-modal__header">
         <div class="proxy-detail-modal__intro">
-          <h3 class="proxy-detail-modal__title">{{ ruleName(selectedRule) }}</h3>
+          <ServiceFavicon :rule-id="selectedRule.id"/>
+          <div class="detail-title"><h3 class="proxy-detail-modal__title">{{ ruleName(selectedRule) }}</h3><small>{{primaryHost(selectedRule)}} · 规则 #{{selectedRule.id}}</small></div>
           <StatusBadge
             :value="selectedRule.enabled ? 'ok' : 'disabled'"
             :text="selectedRule.enabled ? '已启用' : '已停用'"
@@ -228,7 +229,7 @@
         </div>
       </div>
     </div>
-  </n-modal>
+  </n-drawer>
 
   <Teleport to="body">
     <div v-if="logFullscreen && selectedRule" class="proxy-log-fullscreen">
@@ -250,6 +251,16 @@
       />
     </div>
   </Teleport>
+
+  <ProxyEditorFrame :show="!!deleteTarget" title="删除独立代理规则" subtitle="删除后仅该规则关联域名停止转发" :icon="TrashOutline" :busy="deleteBusy" @close="deleteTarget=null">
+    <div v-if="deleteTarget" class="delete-review">
+      <div class="delete-identity"><ServiceFavicon :rule-id="deleteTarget.id"/><div><strong>{{ruleName(deleteTarget)}}</strong><small>规则 #{{deleteTarget.id}} · {{deleteTarget.enabled?'已启用':'已停用'}}</small></div></div>
+      <dl><dt>前端域名</dt><dd v-for="host in ruleHosts(deleteTarget)" :key="host">{{host}}</dd><dt>目标地址</dt><dd>{{deleteTarget.upstream}}</dd><dt>监听</dt><dd>{{deleteTarget.listen_port}} · {{deleteTarget.https_enabled?'HTTPS':'HTTP'}}</dd></dl>
+      <n-alert type="warning" :bordered="false">不会删除其他独立规则、业务分组、证书或 DDNS 配置。后端发布失败时保留原规则。</n-alert>
+      <n-alert v-if="deleteError" type="error">{{deleteError}}</n-alert>
+    </div>
+    <template #footer><n-button :disabled="deleteBusy" @click="deleteTarget=null">取消</n-button><n-button type="error" :loading="deleteBusy" @click="deleteRule">确认删除</n-button></template>
+  </ProxyEditorFrame>
 
   <ProxyEditorFrame :show="showModal" :title="modalTitle" :subtitle="editing?'规则 #'+editing.id+' · 独立配置':copySource?'复制后为全新独立规则':'每个域名创建独立代理规则'" :icon="copySource?CopyOutline:editing?CreateOutline:AddOutline" :busy="saving||nginxSaving" wide @close="closeModal">
     <template #navigation>
@@ -284,6 +295,8 @@
     v-model:show-discovery-modal="showDiscoveryModal"
     v-model:discovery-host="discoveryHost"
     :discovery-target="discoveryTarget"
+    :error="discoveryError"
+    :scanned="discoveryScanned"
     :entry-options="preferredEntryGroups.map(g=>({label:entryGroupDisplayName(g),value:g.key}))"
     @select-entry="discoveryTarget=entryGroups.find(g=>g.key===$event)??null"
     :business-options="[{label:'未分组',value:0},...business.groups.map(g=>({label:g.name,value:g.id}))]"
@@ -310,6 +323,7 @@ import {useRouter} from 'vue-router'
 import {
   NAlert,
   NButton,
+  NDrawer,
   NIcon,
   NModal,
   NPopover,
@@ -333,7 +347,6 @@ import {
   InformationCircleOutline,
   PeopleOutline,
   TrashOutline,
-  WarningOutline,
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
 import { createProxyPoll } from '../composables/proxy/useProxyPoll'
@@ -472,7 +485,7 @@ const discoverySummary = computed(() => {
 })
 
 const hasSelectedDiscoveryRows = computed(() =>
-  discoveryRows.value.some((row) => row.selected && row.hostname.trim()),
+  discoveryRows.value.some(row=>row.selected) && discoveryRows.value.every(row=>!row.selected||!!row.hostname.trim()),
 )
 
 const discoverySelectAllChecked = computed(() => {
@@ -514,6 +527,11 @@ const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const showModal = ref(false)
+const deleteTarget=ref<ProxyRule|null>(null)
+const deleteBusy=ref(false)
+const deleteError=ref('')
+const discoveryError=ref('')
+const discoveryScanned=ref(false)
 type EditorTab='basic'|'https'|'security'|'advanced'|'nginx'
 const editorTabs:{key:EditorTab;label:string}[]=[{key:'basic',label:'基础配置'},{key:'https',label:'HTTPS / 监听'},{key:'security',label:'安全策略'},{key:'advanced',label:'高级设置'},{key:'nginx',label:'Nginx'}]
 const formTab=ref<EditorTab>('basic')
@@ -648,7 +666,7 @@ const canReorderEntries = computed(() => !hasFilters.value && !reordering.value 
   entryGroups.value.every(group => group.entryId != null))
 
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
-const defaultEntryGroup=computed(()=>entryGroups.value.find(g=>g.listen.https_enabled&&g.listen.listen_port===nginxHttpsPort.value)??entryGroups.value[0])
+const defaultEntryGroup=computed(()=>entryGroups.value.find(g=>g.listen.https_enabled&&g.listen.listen_port===nginxHttpsPort.value))
 const preferredEntryGroups=computed(()=>[...entryGroups.value].sort((a,b)=>Number(b.key===defaultEntryGroup.value?.key)-Number(a.key===defaultEntryGroup.value?.key)))
 const ruleEntryNames = computed(() => {
   const names = new Map<number,string>()
@@ -872,6 +890,7 @@ function entryPortConflict(port: number, excludeId?: number | null): string | nu
 }
 
 async function saveEntry() {
+  if(savingEntry.value)return
   if (!entryForm.listen_ipv4 && !entryForm.listen_ipv6) {
     message.error('至少需要启用 IPv4 或 IPv6 监听')
     return
@@ -996,8 +1015,9 @@ function openDiscoveryModal(group?: ProxyEntryGroup) {
   discoveryTarget.value = group ?? null
   discoveryHost.value = '127.0.0.1'
   discoveryRows.value = []
+  discoveryError.value=''
+  discoveryScanned.value=false
   showDiscoveryModal.value = true
-  void runDiscoveryScan()
 }
 
 function patchDiscoveryRow(id: string, patch: Partial<DiscoveryRow>) {
@@ -1013,8 +1033,8 @@ function onDiscoverySelectAll(checked: boolean) {
 }
 
 async function runDiscoveryScan() {
-  if (discoveryLoading.value) return
-
+  if (discoveryLoading.value||discoveryAdding.value) return
+  discoveryError.value=''
   const host = discoveryHost.value.trim() || '127.0.0.1'
   discoveryScanHost.value = host
   discoveryLoading.value = true
@@ -1022,7 +1042,9 @@ async function runDiscoveryScan() {
 
   try {
     const items = asList(await api.scanDiscovery(host))
-    discoveryRows.value = buildDiscoveryRows(items)
+    const previous=new Map(discoveryRows.value.map(row=>[row.service.upstream,row]))
+    discoveryRows.value = buildDiscoveryRows(items).map(row=>{const old=previous.get(row.service.upstream);return old?{...row,selected:old.selected,ruleName:old.ruleName,hostname:old.hostname}:row})
+    discoveryScanned.value=true
     loadingMsg.destroy()
     if (discoveryRows.value.length === 0) {
       message.info(`扫描完成：${host} 未发现可添加的 HTTP 服务`)
@@ -1031,16 +1053,18 @@ async function runDiscoveryScan() {
     }
   } catch (error) {
     loadingMsg.destroy()
-    message.error(error instanceof Error ? error.message : '扫描失败')
+    discoveryError.value=error instanceof Error?error.message:'扫描失败'
+    message.error(discoveryError.value)
   } finally {
     discoveryLoading.value = false
   }
 }
 
 async function submitDiscovery() {
-  const selected = discoveryRows.value.filter(
-    (row) => row.selected && row.hostname.trim(),
-  )
+  if(discoveryAdding.value||discoveryLoading.value)return
+  discoveryError.value=''
+  const selected = discoveryRows.value.filter(row=>row.selected)
+  if(selected.some(row=>!row.hostname.trim())){discoveryError.value='请为每个已选服务填写前端域名';return}
   if (selected.length === 0) {
     message.warning('请至少选择一项并填写前端域名')
     return
@@ -1079,7 +1103,8 @@ async function submitDiscovery() {
     showDiscoveryModal.value = false
     await load()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '添加失败')
+    discoveryError.value=error instanceof Error?error.message:'添加失败'
+    message.error(discoveryError.value)
   } finally {
     discoveryAdding.value = false
   }
@@ -1353,10 +1378,6 @@ function ruleName(rule: ProxyRule): string {
 
 function hostsToText(rule: ProxyRule): string {
   return ruleHosts(rule).join('\n')
-}
-
-function ruleTitle(rule: ProxyRule): string {
-  return ruleName(rule)
 }
 
 function listenLabel(rule: ProxyRule): string {
@@ -2273,36 +2294,23 @@ async function save() {
   }
 }
 
-function confirmDelete(rule: ProxyRule) {
-  dialog.error({
-    title: `确定删除 ${ruleTitle(rule)}？`,
-    content: '删除后相关域名将停止反向代理。',
-    positiveText: '删除',
-    negativeText: '取消',
-    positiveButtonProps: { type: 'error' },
-    onPositiveClick: () =>
-      api
-        .deleteProxy(rule.id)
-        .then(async () => {
-          if (selectedRuleId.value === rule.id) {
-            selectedRuleId.value = null
-            showDetailPanel.value = false
-          }
-          rules.value = rules.value.filter((r) => r.id !== rule.id)
-          message.success('规则已删除')
-          await load()
-        })
-        .catch(async (error: unknown) => {
-          const msg = error instanceof Error ? error.message : '删除失败'
-          if (msg.startsWith('规则已删除')) {
-            message.warning(msg)
-            await load()
-          } else {
-            message.error(msg)
-            return false
-          }
-        }),
-  })
+function confirmDelete(rule:ProxyRule){deleteTarget.value=rule;deleteError.value=''}
+async function deleteRule(){
+  const rule=deleteTarget.value
+  if(!rule||deleteBusy.value)return
+  deleteBusy.value=true;deleteError.value=''
+  try{
+    await api.deleteProxy(rule.id)
+    if(selectedRuleId.value===rule.id){closeDetail();selectedRuleId.value=null}
+    rules.value=rules.value.filter(r=>r.id!==rule.id)
+    deleteTarget.value=null
+    message.success('规则已删除')
+    await load()
+  }catch(error){
+    const msg=error instanceof Error?error.message:'删除失败'
+    if(msg.startsWith('规则已删除')){deleteTarget.value=null;message.warning(msg);await load()}
+    else{deleteError.value=msg;message.error(msg)}
+  }finally{deleteBusy.value=false}
 }
 
 watch(
@@ -3580,4 +3588,6 @@ onUnmounted(() => {
 
 .editor-tabs{display:flex;flex-wrap:wrap;gap:5px}.editor-tabs button{font:inherit;font-size:13px;border:0;background:transparent;border-radius:6px;padding:7px 12px;color:var(--fonu-text-secondary);cursor:pointer;display:flex;align-items:center;gap:5px}.editor-tabs button[aria-selected=true]{background:var(--fonu-surface);color:var(--fonu-brand-text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}.editor-tabs button:focus-visible{outline:2px solid var(--fonu-brand)}.editor-count{font-size:11px}.editor-dirty-dot{width:6px;height:6px;background:var(--fonu-brand);border-radius:50%}.editor-footer-info{font-size:12px;color:var(--fonu-text-secondary);margin-right:auto;flex:1 1 150px}.editor-save-error{margin-top:12px}
 @media(max-width:600px){.editor-tabs button{font-size:12px;padding:6px 8px}}
+
+.proxy-detail-modal{width:100%;max-height:none;height:100%;border-radius:0;box-shadow:none;container:proxy-detail / inline-size}.proxy-detail-modal__header{padding:16px;flex-wrap:wrap;gap:10px}.proxy-detail-modal__intro{flex:1 1 200px;flex-wrap:wrap;gap:8px}.detail-title{min-width:0;flex:1 1 130px}.detail-title small{display:block;font-size:11px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}.proxy-detail-modal__title{overflow-wrap:anywhere}.proxy-detail__scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}.proxy-detail__tabbar{padding-inline:16px}.proxy-detail__pane--logs,.proxy-detail__pane--nginx{min-height:350px;flex-shrink:0}.delete-review{display:grid;gap:12px}.delete-identity{display:flex;align-items:center;gap:10px}.delete-identity strong,.delete-identity small{display:block}.delete-identity small{font-size:12px;color:var(--fonu-text-secondary)}.delete-review dl{margin:0;display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px;border:1px solid var(--fonu-border);border-radius:8px;padding:12px;font-size:13px}.delete-review dt{color:var(--fonu-text-secondary)}.delete-review dd{grid-column:2;margin:0;overflow-wrap:anywhere}
 </style>

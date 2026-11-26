@@ -429,4 +429,5 @@ const emit=defineEmits<{refreshClients:[]}>()
 .overview-main{grid-template-columns:1fr}
 .overview-card--clients{min-height:100px}
 }
+.proxy-detail__pane--overview{overflow:visible;flex:none;padding:14px;gap:12px}.overview-strip{grid-template-columns:repeat(2,minmax(0,1fr));text-align:left}.overview-strip__value{white-space:normal;overflow-wrap:anywhere}.overview-main{grid-template-columns:1fr;min-height:0}.overview-side{display:grid;gap:10px;min-height:0}.overview-client-list{overflow:visible;max-height:none}.overview-card--clients{min-height:0;overflow:visible}.overview-chart{height:180px}
 </style>
