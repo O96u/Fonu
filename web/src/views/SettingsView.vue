@@ -392,7 +392,7 @@
 
 
         </div>
-      </FonuCard></div>
+      </FonuCard><NotifyHistory/></div>
         <div v-else-if="settingsTab==='acme'" class="settings-grid settings-grid--single"><FonuCard title="续签策略" subtitle="自动检查与续签">
             <div class="settings-fields">
               <div class="settings-field">
@@ -775,6 +775,7 @@ import AcmeApplyLink from '../components/AcmeApplyLink.vue'
 import ConfiguredSecretField from '../components/ConfiguredSecretField.vue'
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import FonuCard from '../components/FonuCard.vue'
+import NotifyHistory from '../components/NotifyHistory.vue'
 import SettingsVersionCard from '../components/SettingsVersionCard.vue'
 import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'

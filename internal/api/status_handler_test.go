@@ -2,6 +2,7 @@ package api
 
 import (
 	"testing"
+ "strings"
 
 	certstore "github.com/fonu/fonu/internal/certificate"
 )
@@ -56,4 +57,11 @@ func TestSummarizeCertificates(t *testing.T) {
 	if status != "error" {
 		t.Fatalf("apply failure should stay error, got %s", status)
 	}
+}
+
+func TestParseProcessStatWithParentheses(t *testing.T){
+ fields:=[]string{"S","1","2","3","4","5","6","7","8","9","10","31","12","13","14","15","16","17","18","999"}
+ ticks,start,ok:=parseProcessStat("42 (name with ) chars) "+strings.Join(fields," "))
+ if !ok||ticks!=43||start!=999{t.Fatalf("ticks=%d start=%d ok=%v",ticks,start,ok)}
+ if _,_,ok:=parseProcessStat("broken");ok{t.Fatal("invalid stat accepted")}
 }

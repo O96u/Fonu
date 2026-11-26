@@ -129,7 +129,8 @@ export const api = {
     }),
 
   getStatus: () => request<DashboardStatus>('/api/status'),
-  getRuntime: () => request<{uptime_seconds:number;rss_bytes?:number;heap_bytes:number;goroutines:number;host_cpu_total?:number;host_cpu_idle?:number;host_memory_total?:number;host_memory_available?:number}>('/api/runtime'),
+  getRuntime: (signal?:AbortSignal) => request<{uptime_seconds:number;rss_bytes?:number;heap_bytes:number;goroutines:number;host_cpu_total?:number;host_cpu_idle?:number;host_memory_total?:number;host_memory_available?:number;versions?:Record<string,string>;processes?:Record<string,{running:boolean;rss_bytes:number;processes:{pid:number;start:number;ticks:number;rss_bytes:number;fd_count?:number}[]}>;nginx_apply?:import('./types').NginxApplyStatus;nginx_errors?:string[]}>('/api/runtime',{signal}),
+  getNotifyHistory: (signal?:AbortSignal) => request<{at:string;event:string;channel:string;state:string;detail:string}[]>('/api/settings/notify/history',{signal}),
   getNginxApplyStatus: () => request<import('./types').NginxApplyStatus>('/api/nginx/apply-status'),
   getAwarenessLive: (range: AwarenessRange = 'today') => {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''

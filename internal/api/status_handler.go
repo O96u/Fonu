@@ -34,6 +34,9 @@ type StatusHandler struct {
 	publicIPv6       string
 	publicIPSource   string
 	publicIPCachedAt time.Time
+ runtimeMu sync.Mutex
+ runtimeVersions map[string]string
+ runtimeVersionAt time.Time
 }
 
 func NewStatusHandler(cfg config.Config, proxySvc *service.ProxyService, ddnsSvc *ddns.Service, acmeSvc *acme.Service, analyticsSvc *analytics.Service, startedAt, nginxPIDFile string) *StatusHandler {
