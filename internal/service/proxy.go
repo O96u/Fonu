@@ -280,6 +280,7 @@ func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
 	certs, err := s.loadCertSources(ctx)
 	if err != nil { return err }
 	final := s.cfg.ChinaCIDRPath()
+	if err:=os.MkdirAll(filepath.Dir(final),0755);err!=nil{return err}
 	old, err := os.ReadFile(final)
 	hadOld := err == nil
 	if err != nil && !os.IsNotExist(err) { return err }
@@ -290,20 +291,26 @@ func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
 	opts.ChinaCIDRPathOverride = tmp
 	opts.ChinaCIDRAvailable = true
 	if err := s.nginx.ValidateOnlyWithOptions(ctx, rules, certs, opts); err != nil { return err }
-	if err := os.Rename(tmp, final); err != nil { return err }
-	if err := s.applyNginxLocked(ctx); err != nil {
-		var rollbackErr error
-		if hadOld {
-			var staged string
-			staged, rollbackErr = writeCIDRTemp(filepath.Dir(final), old)
-			if rollbackErr == nil { defer os.Remove(staged); rollbackErr = os.Rename(staged, final) }
-		} else { rollbackErr = os.Remove(final) }
-		if rollbackErr != nil { return errors.Join(err, fmt.Errorf("CIDR rollback: %w", rollbackErr)) }
-		rollbackCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if _, reloadErr := s.nginx.ApplyWithOptions(rollbackCtx, rules, certs, s.loadGenerateOptions(rollbackCtx)); reloadErr != nil { return errors.Join(err, reloadErr) }
-		return err
+
+	journal,err:=s.beginProxyJournalWithCIDR(&cidrSnapshot{Exists:hadOld,Body:old})
+	if err!=nil{return err}
+	if err := os.Rename(tmp, final); err != nil { return s.abortProxyJournal(journal,err) }
+
+	applyErr:=s.applyNginxLocked(ctx)
+	if applyErr==nil {
+		// The commit token is persisted only after the new CIDR publication
+		// succeeds. An interrupted update restores the previous file.
+		_,applyErr=s.db.ExecContext(ctx,`INSERT INTO proxy_publication_commit(id,token) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token`,journal.Token)
 	}
+	if applyErr!=nil {
+		if err:=s.restoreJournalFiles(journal);err!=nil{return errors.Join(applyErr,err)}
+		recovery,cancel:=context.WithTimeout(context.Background(),20*time.Second)
+		defer cancel()
+		if err:=s.applyNginxLocked(recovery);err!=nil{return errors.Join(applyErr,err)}
+		return errors.Join(applyErr,s.clearProxyJournal())
+	}
+	// A committed journal left behind is safe to reconcile on next startup.
+	_ = s.clearProxyJournal()
 	return nil
 }
 
@@ -311,6 +318,7 @@ func writeCIDRTemp(dir string, body []byte) (string, error) {
 	f, err := os.CreateTemp(dir, "cidr-*.conf")
 	if err != nil { return "", err }
 	if err = f.Chmod(0644); err == nil { _, err = f.Write(body) }
+	if err==nil{err=f.Sync()}
 	closeErr := f.Close()
 	if err == nil { err = closeErr }
 	if err != nil { os.Remove(f.Name()); return "", err }

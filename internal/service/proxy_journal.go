@@ -17,12 +17,24 @@ import (
 type proxyJournal struct {
 	Token string `json:"token"`
 	Files nginx.PublicationFiles `json:"files"`
+	// Only CIDR updates need to snapshot the potentially large IP database.
+	CIDR *cidrSnapshot `json:"cidr,omitempty"`
 }
 
 func(s *ProxyService) journalPath()string{return filepath.Join(s.cfg.NginxDir(),"pending-publication.json")}
 
+type cidrSnapshot struct {
+	Exists bool `json:"exists"`
+	Body []byte `json:"body,omitempty"`
+}
+
 func(s *ProxyService) beginProxyJournal()(proxyJournal,error){
+	return s.beginProxyJournalWithCIDR(nil)
+}
+
+func(s *ProxyService) beginProxyJournalWithCIDR(cidr *cidrSnapshot)(proxyJournal,error){
 	var j proxyJournal
+	j.CIDR=cidr
 	if _,err:=os.Stat(s.journalPath());err==nil{return j,fmt.Errorf("存在未恢复的反代配置发布记录")}else if !os.IsNotExist(err){return j,err}
 	token:=make([]byte,16)
 	if _,err:=rand.Read(token);err!=nil{return j,err}
@@ -42,15 +54,28 @@ func(s *ProxyService) clearProxyJournal()error{
 	return err
 }
 
+func(s *ProxyService) restoreJournalFiles(j proxyJournal) error {
+	if j.CIDR!=nil {
+		path:=s.cfg.ChinaCIDRPath()
+		if j.CIDR.Exists {
+			tmp,err:=writeCIDRTemp(filepath.Dir(path),j.CIDR.Body)
+			if err!=nil{return err}
+			defer os.Remove(tmp)
+			if err=os.Rename(tmp,path);err!=nil{return err}
+		} else if err:=os.Remove(path);err!=nil&&!os.IsNotExist(err){return err}
+	}
+	return nginx.RestorePublicationFiles(s.cfg,j.Files)
+}
+
 func(s *ProxyService) abortProxyJournal(j proxyJournal,cause error)error{
-	if err:=nginx.RestorePublicationFiles(s.cfg,j.Files);err!=nil{return errors.Join(cause,fmt.Errorf("恢复发布文件失败：%w",err))}
+	if err:=s.restoreJournalFiles(j);err!=nil{return errors.Join(cause,fmt.Errorf("恢复发布文件失败：%w",err))}
 	return errors.Join(cause,s.clearProxyJournal())
 }
 
 // Keep the journal if publication failed: a subsequent recovery must verify
 // disk and running configuration against the committed database.
 func(s *ProxyService) retainFailedPublication(j proxyJournal,cause error)error{
-	if err:=nginx.RestorePublicationFiles(s.cfg,j.Files);err!=nil{return errors.Join(cause,err)}
+	if err:=s.restoreJournalFiles(j);err!=nil{return errors.Join(cause,err)}
 	return cause
 }
 
@@ -66,7 +91,7 @@ func(s *ProxyService) recoverPendingLocked(ctx context.Context)error{
 	err=s.db.QueryRowContext(ctx,"SELECT token FROM proxy_publication_commit WHERE id=1").Scan(&committed)
 	if err!=nil&&!errors.Is(err,sql.ErrNoRows){return err}
 	if committed!=j.Token{
-		if err:=nginx.RestorePublicationFiles(s.cfg,j.Files);err!=nil{return err}
+		if err:=s.restoreJournalFiles(j);err!=nil{return err}
 	}
 	if err:=s.applyNginxLocked(ctx);err!=nil{return fmt.Errorf("恢复反代配置失败：%w",err)}
 	return s.clearProxyJournal()
