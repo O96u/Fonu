@@ -12,7 +12,7 @@
           <template #value>
             <span class="stat-primary mono">{{ publicIPv4Label }}</span>
           </template>
-          <p class="stat-desc" :title="publicIPv6Label + ' · ' + publicIPSourceLabel">{{ publicIPv6Label }} · {{ publicIPSourceLabel }}</p>
+          <p class="stat-desc stat-ip-desc" :title="publicIPv6Label + ' · ' + publicIPSourceLabel">{{ publicIPv6Label }} · {{ publicIPSourceLabel }}</p>
         </StatCard>
 
         <StatCard label="域名" tone="green">
@@ -136,7 +136,7 @@ function selectTab(key: string) { void router.replace({name:'dashboard',query:ke
 const quickEntries = [{route:'ddns',label:'DDNS',icon:GlobeOutline},{route:'certificates',label:'证书管理',icon:ShieldCheckmarkOutline},{route:'proxies',label:'反向代理',icon:GitNetworkOutline},{route:'frp',label:'内网穿透',icon:WifiOutline},{route:'logs',label:'日志中心',icon:EyeOutline},{route:'settings',label:'系统设置',icon:SettingsOutline}]
 const message = useMessage()
 const logTimeZone = useAppTimezone()
-const status = ref<DashboardStatus | null>(null)
+const status = shallowRef<DashboardStatus | null>(null)
 const analyticsOverview = shallowRef<AnalyticsOverview | null>(null)
 const displayedRange = computed(() => analyticsOverview.value?.range ?? awarenessRange.value)
 const awarenessLoading = ref(false)
@@ -535,6 +535,7 @@ onUnmounted(pauseDashboard)
 .stat-primary{font-size:inherit; font-variant-numeric:tabular-nums}
 .stats-row :deep(.stat-card){padding:6px 14px}
 .stat-desc{font-size:11px;color:var(--fonu-text-secondary);margin:3px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat-ip-desc{white-space:normal;overflow-wrap:anywhere;line-height:1.4}
 .workspace-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12px;align-items:start}
 .workspace-main,.workspace-side{display:flex;flex-direction:column;gap:12px;min-width:0}.workspace-main{container-type:inline-size}
 .recent-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto minmax(44px,auto);align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--fonu-border);font-size:12px}.recent-row:last-child{border-bottom:0}.recent-service,.recent-client{min-width:0;display:grid;gap:2px}.recent-service strong,.recent-service small,.recent-client span,.recent-client small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-service small,.recent-client small,.recent-time{color:var(--fonu-text-secondary);font-size:11px}.recent-time{text-align:right}.recent-empty{padding:10px 0;margin:0}

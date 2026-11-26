@@ -319,7 +319,7 @@ export interface AwarenessLiveSnapshot {
 export interface DashboardStatus {
   public_ipv4: string
   public_ipv6: string
-  public_ip_source?: 'ddns' | 'detect' | 'none'
+  public_ip_source?: 'ddns' | 'detect' | 'mixed' | 'none'
   ddns_status: string
   ddns_count: number
   ddns_last_updated?: string

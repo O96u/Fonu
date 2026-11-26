@@ -113,7 +113,7 @@ jobs:
           else
             gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
           fi
-          notes="V2 测试版本（非正式版）。包含旧密钥迁移、运行状态与 Nginx 诊断、通知触发修复和发送记录。升级前请完整备份现有数据及密钥。Source commit: $SOURCE_SHA. Build run: $RUN_ID."
+          notes="V2 测试版本（非正式版）。包含概览布局、Nginx 版本显示、独立公网 IPv6 检测及长时间范围统计性能优化。升级前请完整备份现有数据及密钥。Source commit: $SOURCE_SHA. Build run: $RUN_ID."
           if gh release view "$TAG" --repo "$repo" >/dev/null 2>&1; then
             gh release view "$TAG" --repo "$repo" --json isPrerelease --jq .isPrerelease | grep -qx true
             gh release edit "$TAG" --repo "$repo" --prerelease --latest=false --notes "$notes"
