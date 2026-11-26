@@ -12,7 +12,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/O96u/Fonu/releases/latest"><img src="https://img.shields.io/github/v/release/O96u/Fonu?style=flat-square&label=release" alt="Latest release" /></a>
+  <a href="https://github.com/O96u/Fonu/releases"><img src="https://img.shields.io/badge/V2-v2.0.0--rc.01-10b981?style=flat-square" alt="V2 RC" /></a>
+  <a href="https://github.com/O96u/Fonu/releases/latest"><img src="https://img.shields.io/github/v/release/O96u/Fonu?style=flat-square&label=stable" alt="Stable release" /></a>
+  <a href="https://github.com/O96u/Fonu/actions/workflows/ci.yml"><img src="https://github.com/O96u/Fonu/actions/workflows/ci.yml/badge.svg?branch=v2" alt="CI" /></a>
   <a href="https://hub.docker.com/r/muxui/fonu"><img src="https://img.shields.io/docker/v/muxui/fonu?sort=semver&style=flat-square&logo=docker&logoColor=white" alt="Docker Hub" /></a>
   <img src="https://img.shields.io/badge/目标平台-飞牛_fnOS-22c55e?style=flat-square" alt="飞牛 fnOS" />
   <img src="https://img.shields.io/badge/其他环境-未测试-94a3b8?style=flat-square" alt="其他环境未测试" />
@@ -26,97 +28,51 @@
 
 ## 简介
 
-**Fonu** 是一款主要为 **飞牛 fnOS** 编写的反代与管理工具，帮助你在 NAS 上快速搭建稳定的公网访问能力：通过 Web 界面管理 Nginx 反向代理、自动同步 DDNS、申请与续期 Let's Encrypt 证书，并在一个仪表盘里查看服务状态、访问日志与流量统计。
+**Fonu** 是面向飞牛 fnOS 的轻量公网访问管理工具，集成 Nginx 反向代理、DDNS、ACME HTTPS 证书、FRP 内网穿透、日志与访问统计，无需手写配置即可统一管理 NAS 服务。
 
-无需手写 Nginx 配置，也无需在多个工具之间切换。当前开发与测试环境以飞牛 fnOS 为主，**群晖、威联通、自建 Linux 等其他环境尚未充分测试**，部署前请自行验证。
+> **V2 候选版：v2.0.0-rc.01**。V2 为主要开发线；[v1 分支](https://github.com/O96u/Fonu/tree/v1) 保留旧版源码，[稳定版](https://github.com/O96u/Fonu/releases/latest) 仍面向生产环境。RC 尚未完成所有真机长期运行验收，升级前请备份。
 
 ## 功能特性
 
-| 模块           | 说明                                                                                           |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| **反向代理**   | 多域名、多端口、HTTP/HTTPS、自动重定向；实时访问日志、流量统计、当前连接 IP                    |
-| **DDNS**       | 支持 Cloudflare、DNSPod、阿里云、腾讯云、火山引擎、华为云 DNS；单任务多根域名，自动同步公网 IP         |
-| **HTTPS 证书** | ACME 自动申请与续期；证书/私钥/ZIP 下载；按证书配置本机目录映射或 SSH（SFTP）上传与重载命令；申请进度实时日志 |
-| **仪表盘**     | 公网 IP、域名、证书、服务状态；**访问统计**（SQLite：请求、独立 IP、拦截、访问地图）；**异常**（5xx / 4xx、耗时、慢请求）；趋势与最近 30 条访问 |
-| **日志中心**   | 系统日志、Nginx 访问日志（含 **拦截筛选**、来源 IP **归属地**）、Nginx 错误日志；分页筛选与自动刷新 |
-| **内网穿透**   | FRP 客户端：Nginx Web 网关穿透 + TCP/UDP 端口隧道；连接设置与隧道可分开保存后启动 |
-| **系统设置**   | 常规 / 通知 / 安全 / 高级 / 版本；访问统计保留与归属地；邮件/Webhook/Telegram 告警、备份与恢复 |
-| **其他**       | 深色模式、配置导出/导入、GitHub Release 更新提示                                               |
+| 模块 | V2 功能 |
+| --- | --- |
+| 仪表盘 | 概览、访问分析、安全分析；公网 IPv4/IPv6、访问趋势、来源及服务排行；Fonu/Nginx/FRP 版本、CPU、内存与 Nginx 诊断 |
+| DDNS | 多域名、多记录、独立 IPv4/IPv6 开关；Cloudflare、阿里云、DNSPod、腾讯云、火山引擎、华为云与 DNSHE |
+| HTTPS 证书 | ACME 申请、导入、续签策略、DNS 凭证关联、本地部署与 SSH/SFTP 部署、部署历史 |
+| 反向代理 | 独立规则、多域名、多端口、业务分组、列表/卡片、发现服务、访问控制、发布回滚、访问 IP 和实时/累计流量 |
+| 内网穿透 | 内置 frpc；Web 网关及 TCP/UDP 隧道、连接设置、诊断与运行日志 |
+| 日志中心 | 系统、访问、Nginx 与 FRP 日志；筛选、分页、导出及自动刷新 |
+| 系统设置 | 主题、账户、反代安全、ACME、通知、日志统计、备份恢复和高级配置 |
+| 消息通知 | 邮件、Webhook、Telegram、企业微信、飞书；DDNS、证书、安全事件及 Nginx 重载失败，发送记录可查 |
+| 安全与性能 | 自动随机密钥迁移、凭证加密、备份校验、SQL 聚合与按需查询、资源回收、依赖漏洞扫描 |
 
 ## 界面展示
 
+<details>
+<summary>查看 V2 八张界面预览（仅脱敏示例）</summary>
+
+截图中的域名、IP 和账号已用示例替换；截图来自 RC 前的 Beta 44 实机界面。预览文件目录为 `docs/screenshots/v2/`。
+
 <table>
   <tr>
-    <td align="center" width="50%">
-      <b>仪表盘</b><br>
-      <a href="docs/screenshots/dashboard.png"><img src="docs/screenshots/dashboard.png" alt="仪表盘" width="100%" /></a>
-    </td>
-    <td align="center" width="50%">
-      <b>DDNS</b><br>
-      <a href="docs/screenshots/ddns.png"><img src="docs/screenshots/ddns.png" alt="DDNS" width="100%" /></a>
-    </td>
+    <td width="50%" align="center"><b>仪表盘</b><br><a href="docs/screenshots/v2/dashboard.png"><img src="docs/screenshots/v2/dashboard.png" alt="仪表盘" width="100%" /></a></td>
+    <td width="50%" align="center"><b>DDNS</b><br><a href="docs/screenshots/v2/ddns.png"><img src="docs/screenshots/v2/ddns.png" alt="DDNS" width="100%" /></a></td>
   </tr>
   <tr>
-    <td align="center">
-      <b>HTTPS 证书</b><br>
-      <a href="docs/screenshots/certificates.png"><img src="docs/screenshots/certificates.png" alt="HTTPS 证书" width="100%" /></a>
-    </td>
-    <td align="center">
-      <b>HTTPS 证书 · 申请向导</b><br>
-      <a href="docs/screenshots/certificates-apply.png"><img src="docs/screenshots/certificates-apply.png" alt="证书申请" width="100%" /></a>
-    </td>
+    <td width="50%" align="center"><b>证书管理</b><br><a href="docs/screenshots/v2/certificates.png"><img src="docs/screenshots/v2/certificates.png" alt="证书管理" width="100%" /></a></td>
+    <td width="50%" align="center"><b>反向代理</b><br><a href="docs/screenshots/v2/proxy.png"><img src="docs/screenshots/v2/proxy.png" alt="反向代理" width="100%" /></a></td>
   </tr>
   <tr>
-    <td align="center">
-      <b>反向代理</b><br>
-      <a href="docs/screenshots/proxy.png"><img src="docs/screenshots/proxy.png" alt="反向代理" width="100%" /></a>
-    </td>
-    <td align="center">
-      <b>反向代理 · 规则详情</b><br>
-      <a href="docs/screenshots/proxy-detail.png"><img src="docs/screenshots/proxy-detail.png" alt="反向代理规则详情" width="100%" /></a>
-    </td>
+    <td width="50%" align="center"><b>内网穿透</b><br><a href="docs/screenshots/v2/frp.png"><img src="docs/screenshots/v2/frp.png" alt="内网穿透" width="100%" /></a></td>
+    <td width="50%" align="center"><b>日志中心</b><br><a href="docs/screenshots/v2/logs.png"><img src="docs/screenshots/v2/logs.png" alt="日志中心" width="100%" /></a></td>
   </tr>
   <tr>
-    <td align="center">
-      <b>反向代理 · 规则配置</b><br>
-      <a href="docs/screenshots/proxy-rule-basic.png"><img src="docs/screenshots/proxy-rule-basic.png" alt="反向代理规则配置" width="100%" /></a>
-    </td>
-    <td align="center">
-      <b>反向代理 · 安全设置</b><br>
-      <a href="docs/screenshots/proxy-rule-security.png"><img src="docs/screenshots/proxy-rule-security.png" alt="反向代理安全设置" width="100%" /></a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <b>反向代理 · Nginx 配置</b><br>
-      <a href="docs/screenshots/proxy-rule-nginx.png"><img src="docs/screenshots/proxy-rule-nginx.png" alt="反向代理 Nginx 配置" width="100%" /></a>
-    </td>
-     <td align="center" colspan="2">
-      <b>日志中心</b><br>
-      <a href="docs/screenshots/logs.png"><img src="docs/screenshots/logs.png" alt="日志中心" width="100%" /></a>
-    </td>
-  </tr>
-  <tr>
-  <td align="center">
-      <b>内网穿透 · Web 网关</b><br>
-      <a href="docs/screenshots/frp.png"><img src="docs/screenshots/frp.png" alt="内网穿透 Web 网关" width="100%" /></a>
-    </td>
-    <td align="center" colspan="2">
-      <b>内网穿透 · TCP 转发</b><br>
-      <a href="docs/screenshots/frp-tcp.png"><img src="docs/screenshots/frp-tcp.png" alt="内网穿透 TCP 转发" width="100%" /></a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <b>系统设置</b><br>
-      <a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="系统设置" width="100%" /></a>
-    </td>
-    <td align="center">
-      <b>系统设置 · 高级</b><br>
-      <a href="docs/screenshots/settings-advanced.png"><img src="docs/screenshots/settings-advanced.png" alt="系统设置高级" width="100%" /></a>
-    </td>
+    <td width="50%" align="center"><b>系统设置</b><br><a href="docs/screenshots/v2/settings.png"><img src="docs/screenshots/v2/settings.png" alt="系统设置" width="100%" /></a></td>
+    <td width="50%" align="center"><b>主题外观</b><br><a href="docs/screenshots/v2/appearance.png"><img src="docs/screenshots/v2/appearance.png" alt="主题外观" width="100%" /></a></td>
   </tr>
 </table>
+
+</details>
 
 ## 技术栈
 
@@ -132,7 +88,7 @@
 
 ## 部署
 
-当前稳定版见 [GitHub Releases](https://github.com/O96u/Fonu/releases)（含 **v1.3.10** 的 amd64 / arm64 `.fpk` 与 Docker 镜像）。变更说明见 [CHANGELOG.md](CHANGELOG.md)。
+当前 V2 候选版请见 [GitHub Releases](https://github.com/O96u/Fonu/releases) 中的 **v2.0.0-rc.01**。稳定版 v1.3.11 继续保留。变更说明见 [CHANGELOG.md](CHANGELOG.md)。本次 RC 提供 amd64 / arm64 FPK；Docker Hub `latest` 仍为稳定版，V2 Docker 可从 v2 源码构建。
 
 Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fonu)
 
@@ -142,8 +98,8 @@ Docker 镜像：[hub.docker.com/r/muxui/fonu](https://hub.docker.com/r/muxui/fon
 
 | 包 | 权限 | 怎么选 |
 | ---- | ---- | ---- |
-| `fonu_1.3.10_amd64.fpk`、`fonu_1.3.10_arm64.fpk` | 应用用户 `fonu`（`run-as: package`） | 默认。证书映射和其他目录在应用设置「访问权限」里授权。这个包可以提交飞牛应用中心。 |
-| `fonu_1.3.10_amd64_root.fpk`、`fonu_1.3.10_arm64_root.fpk` | `root`（`run-as: root`） | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只在 GitHub Release 提供。进程以 root 运行，能写系统目录、监听特权端口，风险也更大，请自行决定要不要装。 |
+| `fonu_2.0.0-rc.01_amd64.fpk`、`fonu_2.0.0-rc.01_arm64.fpk` | 应用用户 `fonu`（`run-as: package`） | 默认。证书映射和其他目录在应用设置「访问权限」里授权。这个包可以提交飞牛应用中心。 |
+| `fonu_2.0.0-rc.01_amd64_root.fpk`、`fonu_2.0.0-rc.01_arm64_root.fpk` | `root`（`run-as: root`） | **不上架飞牛商店。** 第三方 root 包无法在应用中心发布，只在 GitHub Release 提供。进程以 root 运行，能写系统目录、监听特权端口，风险也更大，请自行决定要不要装。 |
 
 | 入口 | 默认地址（安装向导可改） |
 | ---- | ------------------------ |
@@ -182,13 +138,13 @@ docker run -d \
 <summary>Docker Compose（host 模式，与快速部署一致）</summary>
 
 ```bash
-FONU_SESSION_SECRET=your-secret docker compose up -d
+docker compose up -d
 ```
 
 本地从源码构建镜像：
 
 ```bash
-FONU_SESSION_SECRET=your-secret docker compose up -d --build
+docker compose up -d --build
 ```
 
 </details>
@@ -225,7 +181,7 @@ FONU_TLS_KEY_FILE=/console-tls/privkey.pem
 ### 从 Docker 迁到 FPK
 
 1. 停 Docker 版，安装 FPK，将原 volume **`/data` 内容复制到** `/var/apps/fonu/var/`。
-2. 备份导入（设置页 tar.gz）**不含**加密密钥：DDNS / 通知里的 Token 需在界面 **重新保存**，或把 Docker 的 `FONU_SESSION_SECRET` 写入 `/var/apps/fonu/etc/session_secret` 后重启。
+2. 新格式备份包含本地生成的 `.secret_key`，旧格式备份不包含；若源实例通过环境变量显式指定密钥，必须保留原值。跨环境恢复前先备份并确认密钥匹配，不要直接更换密钥。
 3. 检查 `/var/apps/fonu/etc/fonu.env`：删除 `FONU_DATA_DIR=...@appdata...`、`FONU_NGINX_MIME_TYPES=/etc/nginx/...` 等 Docker 残留行；重启后在 **反向代理** 保存一次以重生成 Nginx 配置。
 
 详见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)「从 Docker 迁到原生 FPK」一节。
@@ -291,7 +247,7 @@ vhostHTTPSPort = 443
 | `FONU_TLS_CERT_FILE` | 空 | 管理后台 HTTPS PEM 证书链路径 |
 | `FONU_TLS_KEY_FILE` | 空 | 管理后台 HTTPS PEM 私钥路径 |
 | `FONU_DATA_DIR`         | `/data`                   | 数据目录（数据库、Nginx 配置、证书、日志） |
-| `FONU_SESSION_SECRET`   | `change-me-in-production` | 会话加密密钥，生产环境请自行修改           |
+| `FONU_SESSION_SECRET`   | 自动生成 | 加密密钥，显式设置时必须持续保留           |
 | `FONU_NGINX_HTTP_PORT`  | `80`                      | 新建 HTTP 反代规则的默认监听端口           |
 | `FONU_NGINX_HTTPS_PORT` | `443`                     | 新建 HTTPS 反代规则的默认监听端口          |
 | `FONU_NGINX_BIN`        | `nginx`                   | Nginx 可执行文件路径（本地开发可指定）     |
@@ -306,14 +262,14 @@ vhostHTTPSPort = 443
 4. **访问日志**：仅统计经 Fonu Nginx 反代的域名流量，不包含管理后台 `:6893` 的请求。
 5. **证书与 DNS**：HTTPS 申请前请确保域名 DNS 已解析到本机，且 DDNS 凭证能管理对应根域。**目录映射** 目标须为进程可写路径——Docker 请将宿主机目录 **挂载进容器**；FPK 请用 **应用文件 / fonu/certs** 或应用设置 **访问权限** 中的目录（步骤见 [packaging/fonu-fpk/README.md](packaging/fonu-fpk/README.md)）。
 6. **数据持久化**：Docker 挂载 volume 到 `FONU_DATA_DIR`（默认 `/data`）；FPK 数据在 `/var/apps/fonu/var/`，卸载可选删除全部数据。
-7. **备份**：设置页导出/导入为 `fonu.db` + `nginx` + `certs` 打包；**不含** `FONU_SESSION_SECRET`，跨环境恢复后敏感项可能需重填。也可直接备份整个数据目录。
+7. **备份**：设置页导出/导入为 `fonu.db` + `nginx` + `certs` 打包；包含本地生成的 `.secret_key`（如存在），但不导出显式环境变量密钥；跨环境恢复必须保证密钥匹配。也可直接备份整个数据目录。
 
 ## 本地开发
 
 ```bash
 # 前端热更新
 corepack enable
-cd web && bash scripts/install-deps.sh && ppnpm run dev
+cd web && bash scripts/install-deps.sh && pnpm run dev
 
 # 后端（需先把 web/dist 复制到 cmd/fonu/web/dist）
 cd web && pnpm run build
@@ -324,7 +280,7 @@ go test ./...
 cd web && pnpm run typecheck
 ```
 
-发版版本号以 Git tag 与 `web/package.json` 为准（当前 **1.3.10**）；Docker / CI 通过构建参数注入，本地 `go run` 默认显示 `dev`。
+RC 的 FPK 版本由构建工作流注入（当前 **2.0.0-rc.01**）；正式版使用 Git tag。本地 `go run` 默认显示 `dev`。
 
 ## 开源协议
 
@@ -333,7 +289,7 @@ cd web && pnpm run typecheck
 
 ### 加密密钥与备份安全
 
-新安装未设置 `FONU_SESSION_SECRET` 时自动在数据目录生成 `.secret_key`（权限 0600）。显式设置环境变量优先。升级旧数据库时保留旧默认密钥以免已有凭据失效，并记录警告；旧实例应在安全备份后迁移凭据，不要直接更换密钥。新格式备份包含本地生成的密钥和证书私钥，请妥善保护。使用显式环境变量的实例恢复时仍需提供原密钥；旧格式备份不包含密钥，跨实例恢复前请确认源密钥。HTTPS 反向代理部署可设置 `FONU_SECURE_COOKIE=true`（仅在浏览器通过 HTTPS 访问时启用）。
+新安装未设置 `FONU_SESSION_SECRET` 时自动在数据目录生成 `.secret_key`（权限 0600）。显式设置环境变量优先。升级使用历史固定密钥的数据库时，后台自动生成随机密钥并事务化重新加密已知凭证，失败时停止启动并保留原数据。不要直接更换密钥。新格式备份包含本地生成的密钥和证书私钥，请妥善保护。使用显式环境变量的实例恢复时仍需提供原密钥；旧格式备份不包含密钥，跨实例恢复前请确认源密钥。HTTPS 反向代理部署可设置 `FONU_SECURE_COOKIE=true`（仅在浏览器通过 HTTPS 访问时启用）。
 
 升级说明：会话令牌改为 SHA-256 摘要存储，升级后已有登录会话失效，需要重新登录；其他业务数据不受影响。
 

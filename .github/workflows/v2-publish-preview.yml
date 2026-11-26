@@ -1,4 +1,4 @@
-name: Publish V2 FPK prerelease
+name: Publish V2 candidate release
 on:
   # A deliberate preview version change requests a new verified prerelease.
   # Ordinary audit commits only build and test; existing release tags are immutable.
@@ -78,7 +78,7 @@ jobs:
           name="$(basename "${candidates[0]}")"
           version="${name#fonu_}"
           version="${version%_amd64.fpk}"
-          [[ "$version" =~ ^2\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          [[ "$version" =~ ^2\.[0-9]+\.[0-9]+-(beta|rc)\.[0-9]+$ ]]
           mkdir assets
           for arch in amd64 arm64; do
             for suffix in "" _root; do
@@ -113,13 +113,39 @@ jobs:
           else
             gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
           fi
-          notes="V2 测试版本（非正式版）。包含概览布局、Nginx 版本显示、独立公网 IPv6 检测及长时间范围统计性能优化。升级前请完整备份现有数据及密钥。Source commit: $SOURCE_SHA. Build run: $RUN_ID."
+          gh api "repos/$repo/contents/docs/releases/$TAG.md?ref=$SOURCE_SHA" --jq .content | base64 -d > release-notes.md
+          printf '\nSource commit: %s\nBuild run: %s\n' "$SOURCE_SHA" "$RUN_ID" >> release-notes.md
           if gh release view "$TAG" --repo "$repo" >/dev/null 2>&1; then
             gh release view "$TAG" --repo "$repo" --json isPrerelease --jq .isPrerelease | grep -qx true
-            gh release edit "$TAG" --repo "$repo" --prerelease --latest=false --notes "$notes"
+            gh release edit "$TAG" --repo "$repo" --prerelease --latest=false --notes-file release-notes.md
             gh release upload "$TAG" --repo "$repo" assets/* --clobber
           else
-            gh release create "$TAG" assets/* --repo "$repo" --verify-tag --prerelease --latest=false --title "Fonu ${TAG#v}" --notes "$notes"
+            gh release create "$TAG" assets/* --repo "$repo" --verify-tag --prerelease --latest=false --title "Fonu ${TAG#v}" --notes-file release-notes.md
           fi
           gh release view "$TAG" --repo "$repo" --json isPrerelease,assets --jq '.isPrerelease and (.assets | length >= 5)' | grep -qx true
           test "$(gh api "repos/$repo/releases/latest" --jq .tag_name)" = "$stable"
+
+      - name: Clean obsolete beta tags after verified RC
+        if: steps.packages.outputs.tag == 'v2.0.0-rc.01'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.packages.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          gh release view "$TAG" --repo "$repo" --json isPrerelease,assets --jq '.isPrerelease and (.assets | length >= 5)' | grep -qx true
+          # Only remove beta/bata Git tag refs, never stable releases or branches.
+          gh api --paginate "repos/$repo/git/matching-refs/tags/v2" --jq '.[].ref' > refs.txt
+          failed=0
+          while IFS= read -r ref; do
+            [[ "$ref" =~ ^refs/tags/v2\\.[0-9]+\\.[0-9]+-(beta|bata)\\.[0-9]+$ ]] || continue
+            tag="${ref#refs/tags/}"
+            if gh api "repos/$repo/releases/tags/$tag" >/dev/null 2>&1; then
+              echo "::warning::Preserving $tag because it has a release; remove the beta release explicitly before deleting the tag"
+              failed=1
+              continue
+            fi
+            if gh api --method DELETE "repos/$repo/git/refs/tags/$tag"; then echo "Deleted $tag"; else failed=1; fi
+          done < refs.txt
+          exit "$failed"

@@ -1,20 +1,10 @@
-name: V2 FPK preview
+name: V2 FPK build
 
 on:
   push:
     branches: [v2]
     paths:
       - '.github/workflows/v2-fpk-preview.yml'
-      - '.github/workflows/ci.yml'
-      - 'web/src/**'
-      - 'web/index.html'
-      - 'web/package.json'
-      - 'web/pnpm-lock.yaml'
-      - 'internal/**'
-      - 'cmd/**'
-      - 'packaging/**'
-      - 'go.mod'
-      - 'go.sum'
   workflow_dispatch:
 
 permissions:
@@ -40,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/v2
-          echo "version=2.0.0-beta.44" >> "$GITHUB_OUTPUT"
+          echo "version=2.0.0-rc.01" >> "$GITHUB_OUTPUT"
           echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           echo "attach_tag=" >> "$GITHUB_OUTPUT"
           echo "trial_tag=" >> "$GITHUB_OUTPUT"
