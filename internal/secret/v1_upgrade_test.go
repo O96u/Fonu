@@ -28,7 +28,8 @@ func TestV1DatabaseUpgradePreservesRecordsAndCredentials(t *testing.T){
  enc,err:=old.Encrypt("fixture-secret");if err!=nil{t.Fatal(err)}
  for _,q:=range []struct{sql string;args []any}{
   {"INSERT INTO admins(username,password_hash) VALUES('fixture-admin','fixture-hash')",nil},
-  {"INSERT INTO proxy_rules(domain,upstream) VALUES('app.example.com','http://127.0.0.1:8080')",nil},
+  {"INSERT INTO proxy_rules(upstream,listen_port,https_enabled,http_redirect) VALUES('http://127.0.0.1:8080',8080,0,0)",nil},
+  {"INSERT INTO proxy_hosts(rule_id,hostname,listen_port) SELECT id,'app.example.com',listen_port FROM proxy_rules",nil},
   {"INSERT INTO ddns_configs(provider,root_domain,record_name,api_token_enc) VALUES('cloudflare','example.com','www',?)",[]any{enc}},
   {"INSERT INTO certificates(domain,acme_ca,export_json) VALUES('example.com','imported',?)",[]any{`{"ssh":{"host":"example.com","password":"fixture-ssh"}}`}},
   {"INSERT INTO settings(key,value) VALUES('notify_type','telegram') ON CONFLICT(key) DO UPDATE SET value=excluded.value",nil},
@@ -42,7 +43,7 @@ func TestV1DatabaseUpgradePreservesRecordsAndCredentials(t *testing.T){
  box,err:=secret.NewBox(key);if err!=nil{t.Fatal(err)}
  certs:=certificate.NewStore(conn,box);if err:=certs.MigrateExportSecrets(ctx);err!=nil{t.Fatal(err)}
  if err:=db.Migrate(ctx,conn,current);err!=nil{t.Fatal(err)}
- for _,table:=range []string{"admins","proxy_rules","ddns_configs","certificates","access_facts","access_minute_ip"}{
+ for _,table:=range []string{"admins","proxy_rules","proxy_hosts","ddns_configs","certificates","access_facts","access_minute_ip"}{
   var count int;if err:=conn.QueryRow("SELECT count(*) FROM "+table).Scan(&count);err!=nil||count!=1{t.Fatalf("%s count=%d err=%v",table,count,err)}
  }
  for _,query:=range []string{"SELECT api_token_enc FROM ddns_configs","SELECT value FROM settings WHERE key='frp_auth_token'"}{

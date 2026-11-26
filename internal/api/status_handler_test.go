@@ -76,7 +76,7 @@ func TestRuntimeSamplingSoak(t *testing.T){
  seconds,err:=strconv.Atoi(os.Getenv("FONU_SOAK_SECONDS"))
  if err!=nil||seconds<=0{t.Skip("set FONU_SOAK_SECONDS to enable")}
  if seconds>1800{t.Fatal("soak duration capped at 1800 seconds")}
- h:=NewStatusHandler(config.Config{DataDir:t.TempDir()},nil,nil,nil,time.Now().UTC().Format(time.RFC3339),"")
+ h:=NewStatusHandler(config.Config{DataDir:t.TempDir()},nil,nil,nil,nil,time.Now().UTC().Format(time.RFC3339),"")
  sample:=func(){r:=httptest.NewRequest("GET","/api/runtime",nil);w:=httptest.NewRecorder();h.Runtime(w,r);if w.Code!=200{t.Fatalf("runtime %d",w.Code)}}
  sample();runtime.GC()
  var before,after runtime.MemStats;runtime.ReadMemStats(&before)

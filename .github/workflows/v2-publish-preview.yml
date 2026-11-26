@@ -1,6 +1,11 @@
 name: Publish V2 FPK prerelease
 on:
-  # Audit commits are verified by CI and preview builds without replacing release tags.
+  # A deliberate preview version change requests a new verified prerelease.
+  # Ordinary audit commits only build and test; existing release tags are immutable.
+  push:
+    branches: [v2]
+    paths:
+      - '.github/workflows/v2-fpk-preview.yml'
   workflow_dispatch:
     inputs:
       run_id:
@@ -21,7 +26,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       INPUT_RUN_ID: ${{ inputs.run_id }}
-      BEFORE_SHA: ${{ github.event.before }}
     steps:
       - name: Resolve and wait for matching build and CI
         id: verify
@@ -31,10 +35,6 @@ jobs:
           repo="$GITHUB_REPOSITORY"
           run_id="$INPUT_RUN_ID"
           sha="$GITHUB_SHA"
-          # One-time migration: publish the already-started Beta 5 build.
-          if [ -z "$run_id" ] && { [ "$BEFORE_SHA" = 82bc6b4616eac29a0f9f39345fc01131e29c4550 ] || [ "$BEFORE_SHA" = 5157ce38eaf807e142afdcca615ccdfb94709ec7 ]; }; then
-            run_id=45579336896
-          fi
           if [ -n "$run_id" ]; then
             [[ "$run_id" =~ ^[0-9]+$ ]]
             run="$(gh api "repos/$repo/actions/runs/$run_id")"
@@ -113,7 +113,7 @@ jobs:
           else
             gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
           fi
-          notes="V2 test build. Source commit: $SOURCE_SHA. Build run: $RUN_ID. Back up existing Fonu data before installation."
+          notes="V2 测试版本（非正式版）。包含旧密钥迁移、运行状态与 Nginx 诊断、通知触发修复和发送记录。升级前请完整备份现有数据及密钥。Source commit: $SOURCE_SHA. Build run: $RUN_ID."
           if gh release view "$TAG" --repo "$repo" >/dev/null 2>&1; then
             gh release view "$TAG" --repo "$repo" --json isPrerelease --jq .isPrerelease | grep -qx true
             gh release edit "$TAG" --repo "$repo" --prerelease --latest=false --notes "$notes"
