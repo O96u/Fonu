@@ -58,7 +58,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	slog.SetDefault(logger)
 
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil { return nil, err }
-	if err := backup.ApplyPending(cfg.DataDir); err != nil { return nil, err }
+	explicitKey:=cfg.SessionSecret
+	if err := backup.ApplyPending(cfg.DataDir,explicitKey); err != nil { return nil, err }
 	for _, dir := range []string{cfg.NginxDir(), cfg.LogsDir(), cfg.CertsDir(), cfg.FrpDir()} {
 		if err := os.MkdirAll(dir, 0755); err != nil { return nil, err }
 	}
@@ -118,7 +119,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	dnsheRenewSvc := dnsherenew.NewService(settingsStore, secretBox, logger)
 	certExportSvc := certexport.New(cfg, certStore, logger)
 	acmeSvc := acme.NewService(cfg, certStore, ddnsSvc, settingsStore, proxySvc, certExportSvc, logger, notifySvc)
-	backupSvc := backup.New(cfg.DataDir)
+	backupSvc := backup.New(cfg.DataDir,explicitKey)
 	discoverySvc := discovery.New()
 	frpStore := frp.NewStore(settingsStore, secretBox)
 	frpMgr := frp.NewManager(cfg, frpStore, logger)

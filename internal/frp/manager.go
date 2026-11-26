@@ -398,12 +398,14 @@ func (m *Manager) runFrpc(ctx context.Context, args []string, prefix string) err
 const maxCommandOutput = 16 << 10
 
 // commandOutput keeps diagnostic output bounded while consuming all bytes.
-type commandOutput struct { bytes.Buffer }
+type commandOutput struct { buffer bytes.Buffer }
+func (b *commandOutput) Len()int{return b.buffer.Len()}
+func (b *commandOutput) String()string{return b.buffer.String()}
 func (b *commandOutput) Write(p []byte)(int,error){
 	n:=len(p)
 	if remaining:=maxCommandOutput-b.Len();remaining>0{
 		if len(p)>remaining{p=p[:remaining]}
-		_,_ = b.Buffer.Write(p)
+		_,_ = b.buffer.Write(p)
 	}
 	return n,nil
 }

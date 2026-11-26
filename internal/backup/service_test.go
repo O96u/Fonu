@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fonu/fonu/internal/db"
+	"github.com/fonu/fonu/internal/secret"
 )
 
 func TestRestoreStagesDatabaseUntilNextStart(t *testing.T) {
@@ -258,4 +259,26 @@ func TestRecoverEmptyRollbackDirectory(t *testing.T) {
 	if err := os.Mkdir(path,0700); err != nil { t.Fatal(err) }
 	if err := recoverRestore(dir); err != nil { t.Fatal(err) }
 	if _,err := os.Stat(path); !os.IsNotExist(err) { t.Fatal("orphan directory remains") }
+}
+
+func TestRestoreRejectsMismatchedCredentialKey(t *testing.T){
+ ctx:=context.Background()
+ dir:=t.TempDir()
+ conn,err:=db.Open(filepath.Join(dir,"fonu.db"));if err!=nil{t.Fatal(err)}
+ key:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+ wrong:="abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+ box,err:=secret.NewBox(key);if err!=nil{t.Fatal(err)}
+ enc,err:=box.Encrypt("test-token");if err!=nil{t.Fatal(err)}
+ if _,err:=conn.Exec("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)");err!=nil{t.Fatal(err)}
+ if _,err:=conn.Exec("INSERT INTO settings VALUES('frp_auth_token',?)",enc);err!=nil{t.Fatal(err)}
+ if err:=conn.Close();err!=nil{t.Fatal(err)}
+ raw,err:=os.ReadFile(filepath.Join(dir,"fonu.db"));if err!=nil{t.Fatal(err)}
+ archive:=filepath.Join(t.TempDir(),"backup.tar.gz")
+ target:=t.TempDir()
+ if err:=writeArchive(archive,map[string][]byte{"fonu.db":raw,secret.KeyFileName:[]byte(wrong)});err!=nil{t.Fatal(err)}
+ if err:=New(target).Restore(ctx,archive);err==nil{t.Fatal("wrong key accepted")}
+ if _,err:=os.Stat(filepath.Join(target,pendingDirName));!os.IsNotExist(err){t.Fatal("invalid backup published")}
+ if err:=writeArchive(archive,map[string][]byte{"fonu.db":raw,secret.KeyFileName:[]byte(key)});err!=nil{t.Fatal(err)}
+ if err:=New(target).Restore(ctx,archive);err!=nil{t.Fatal(err)}
+ if err:=ApplyPending(target);err!=nil{t.Fatal(err)}
 }

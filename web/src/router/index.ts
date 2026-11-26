@@ -71,7 +71,7 @@ export function invalidateRouteAuth() {
   statusAt = 0
   pending = undefined
 }
-export function routeAuthStatus() {
+export function routeAuthStatus(): ReturnType<typeof api.authStatus> {
   if (lastStatus && Date.now() - statusAt < 1500) return Promise.resolve(lastStatus)
   if (!pending) {
     const generation = authGeneration

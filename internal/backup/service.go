@@ -21,11 +21,14 @@ const pendingDirName = "restore-pending"
 type Service struct {
 	mu sync.Mutex
 	dataDir    string
+	explicitKey string
 	onRestored func()
 }
 
-func New(dataDir string) *Service {
-	return &Service{dataDir: dataDir}
+func New(dataDir string, explicitKey ...string) *Service {
+	s:=&Service{dataDir:dataDir}
+	if len(explicitKey)>0{s.explicitKey=explicitKey[0]}
+	return s
 }
 
 func (s *Service) SetOnRestored(fn func()) {
@@ -99,7 +102,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 	defer file.Close()
 
 	pending := filepath.Join(s.dataDir, pendingDirName)
-	if _, err := os.Stat(pending); err == nil { return fmt.Errorf("已有待恢复备份，请等待重启") } else if !os.IsNotExist(err) { return err }
+	if _, err := os.Lstat(pending); err == nil { return fmt.Errorf("已有待恢复备份，请等待重启") } else if !os.IsNotExist(err) { return err }
 	stage, err := os.MkdirTemp(s.dataDir, ".restore-stage-*")
 	if err != nil { return err }
 	defer os.RemoveAll(stage)
@@ -164,7 +167,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 				_ = os.RemoveAll(stage)
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			if _, err := io.Copy(out, contextReader{ctx:ctx,r:tr}); err != nil {
 				out.Close()
 				_ = os.RemoveAll(stage)
 				return err
@@ -199,6 +202,7 @@ func (s *Service) Restore(ctx context.Context, archivePath string) error {
 		_ = os.RemoveAll(stage)
 		return fmt.Errorf("备份里的数据库不可用")
 	}
+	if err:=validateRestoreCredentials(ctx,stage,s.dataDir,s.explicitKey);err!=nil{return err}
 	// Publish only a complete, verified archive; interrupted extraction is never applied.
 	return os.Rename(stage, pending)
 }
@@ -232,7 +236,7 @@ func safeJoin(root, name string) (string, error) {
 	return target, nil
 }
 
-func ApplyPending(dataDir string) error {
+func ApplyPending(dataDir string, explicitKey ...string) error {
 	if err := recoverRestore(dataDir); err != nil { return err }
 	pending := filepath.Join(dataDir, pendingDirName)
 	staged := filepath.Join(pending, "fonu.db")
@@ -248,6 +252,9 @@ func ApplyPending(dataDir string) error {
 		return fmt.Errorf("待恢复的数据库不可用")
 	}
 
+	key:="";if len(explicitKey)>0{key=explicitKey[0]}
+	ctx,cancel:=context.WithTimeout(context.Background(),time.Minute);defer cancel()
+	if err:=validateRestoreCredentials(ctx,pending,dataDir,key);err!=nil{return err}
 	return swapRestoreFiles(dataDir, pending, os.Rename)
 }
 
@@ -273,22 +280,23 @@ func addDatabaseSnapshot(ctx context.Context, tw *tar.Writer, dataDir string) er
 	if err != nil {
 		return err
 	}
-	return addNamedFile(tw, "fonu.db", tmpPath, info)
+	return addNamedFile(ctx, tw, "fonu.db", tmpPath, info)
 }
 
 func addToArchive(ctx context.Context, tw *tar.Writer, baseDir, rel string) error {
 	path := filepath.Join(baseDir, rel)
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
+	if !info.IsDir() && !info.Mode().IsRegular(){return fmt.Errorf("备份源不是普通文件：%s",rel)}
 	if info.IsDir() {
 		return addDir(ctx, tw, baseDir, rel)
 	}
-	return addFile(tw, baseDir, rel, info)
+	return addFile(ctx, tw, baseDir, rel, info)
 }
 
 func addDir(ctx context.Context, tw *tar.Writer, baseDir, rel string) error {
@@ -312,15 +320,15 @@ func addDir(ctx context.Context, tw *tar.Writer, baseDir, rel string) error {
 		if err != nil {
 			return err
 		}
-		return addFile(tw, baseDir, relPath, info)
+		return addFile(ctx, tw, baseDir, relPath, info)
 	})
 }
 
-func addFile(tw *tar.Writer, baseDir, rel string, info os.FileInfo) error {
-	return addNamedFile(tw, filepath.ToSlash(rel), filepath.Join(baseDir, rel), info)
+func addFile(ctx context.Context,tw *tar.Writer, baseDir, rel string, info os.FileInfo) error {
+	return addNamedFile(ctx,tw, filepath.ToSlash(rel), filepath.Join(baseDir, rel), info)
 }
 
-func addNamedFile(tw *tar.Writer, name, path string, info os.FileInfo) error {
+func addNamedFile(ctx context.Context,tw *tar.Writer, name, path string, info os.FileInfo) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -334,6 +342,12 @@ func addNamedFile(tw *tar.Writer, name, path string, info os.FileInfo) error {
 	if err := tw.WriteHeader(header); err != nil {
 		return err
 	}
-	_, err = io.Copy(tw, file)
+	_, err = io.Copy(tw, contextReader{ctx:ctx,r:file})
 	return err
+}
+
+type contextReader struct{ctx context.Context;r io.Reader}
+func (r contextReader) Read(p []byte)(int,error){
+ if err:=r.ctx.Err();err!=nil{return 0,err}
+ return r.r.Read(p)
 }
