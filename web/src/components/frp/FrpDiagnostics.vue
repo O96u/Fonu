@@ -1,5 +1,5 @@
 <template>
-  <section class="diagnostics"><header><div><strong>运行诊断</strong><p>检查已保存的连接配置，不会修改隧道。</p></div><n-button size="small" :loading="loading" @click="run">开始检测</n-button></header>
+  <section class="diagnostics"><header><div><strong>运行诊断</strong><p>检查已保存的连接配置，不会修改隧道。</p></div><n-button size="small" :loading="loading" data-testid="frp-diagnose" @click="run">开始检测</n-button></header>
   <div v-if="error" class="error">{{ error }}</div>
   <div v-for="item in checks" :key="item.name" class="check"><span>{{ item.name }}</span><span class="detail">{{ item.detail }}</span><StatusBadge :kind="item.state === 'success' ? 'success' : item.state === 'error' ? 'error' : 'unknown'" :text="item.state === 'success' ? '正常' : item.state === 'error' ? '异常' : '待确认'" /></div>
   <p v-if="!checks.length && !loading && !error">点击检测，查看客户端、DNS、控制端口、登录和网关状态。</p></section>

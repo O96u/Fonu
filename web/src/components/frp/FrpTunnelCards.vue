@@ -1,6 +1,6 @@
 <template>
   <div class="tunnel-grid">
-    <article v-for="row in rows" :key="row.id" class="tunnel-card">
+    <article v-for="row in rows" :key="row.id" :data-testid="`frp-tunnel-${row.id}`" class="tunnel-card">
       <header><div class="tunnel-icon"><n-icon :component="SwapHorizontalOutline" /></div><div class="name"><strong>{{ row.name }}</strong><small>{{ (row.protocol || 'tcp').toUpperCase() }} 隧道</small></div><StatusBadge :kind="badge(row).kind" :text="badge(row).text" /><n-switch size="small" :value="row.enabled" :disabled="busy" @update:value="value => emit('toggle', row.id, value)" /></header>
       <div class="mapping"><div><small>VPS 远程端口</small><strong>{{ row.remote_port || '自动分配' }}</strong></div><span>→</span><div><small>本地服务</small><code>{{ endpoint(row.local_ip, row.local_port) }}</code></div></div>
       <footer><code>{{ row.remote_port ? endpoint(serverHost || 'VPS', row.remote_port) : '保存后分配' }}</code><div class="actions"><n-button size="tiny" quaternary @click="emit('copy', row)">复制地址</n-button><n-button size="tiny" quaternary :disabled="busy" @click="emit('edit', row)">编辑</n-button><n-button size="tiny" quaternary :disabled="busy" @click="emit('duplicate', row)">克隆</n-button><n-button size="tiny" quaternary type="error" :disabled="busy" @click="emit('remove', row)">删除</n-button></div></footer>

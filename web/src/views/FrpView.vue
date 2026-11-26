@@ -175,6 +175,7 @@
                 size="small"
                 :loading="restarting"
                 :disabled="busy"
+                data-testid="frp-restart"
                 @click="restartFrpc"
               >
                 <template #icon
@@ -198,7 +199,7 @@
         >
           <n-tab-pane name="connection">
             <template #tab>
-              <span class="routes-tab"><n-icon :component="SettingsOutline" />连接设置</span>
+              <span class="routes-tab" data-testid="frp-tab-connection"><n-icon :component="SettingsOutline" />连接设置</span>
             </template>
             <div class="routes-panel connection-panel">
         <FonuCard
@@ -298,7 +299,7 @@
           </n-tab-pane>
           <n-tab-pane name="web">
             <template #tab>
-              <span class="routes-tab">
+              <span class="routes-tab" data-testid="frp-tab-web">
                 <n-icon :component="GlobeOutline" />
                 Web 穿透
               </span>
@@ -324,6 +325,7 @@
                   <n-button
                     size="small"
                     :loading="syncing"
+                    data-testid="frp-sync-domains"
                     @click="syncDomains"
                   >
                     <template #icon
@@ -390,7 +392,7 @@
 
           <n-tab-pane name="tcp">
             <template #tab>
-              <span class="routes-tab">
+              <span class="routes-tab" data-testid="frp-tab-tcp">
                 <n-icon :component="SwapHorizontalOutline" />
                 端口穿透
               </span>
@@ -427,7 +429,7 @@
 
           <n-tab-pane name="advanced">
             <template #tab>
-              <span class="routes-tab">
+              <span class="routes-tab" data-testid="frp-tab-advanced">
                 <n-icon :component="OptionsOutline" />
                 高级设置
               </span>
@@ -478,7 +480,7 @@
 
           <n-tab-pane name="logs">
             <template #tab>
-              <span class="routes-tab">
+              <span class="routes-tab" data-testid="frp-tab-logs">
                 <n-icon :component="DocumentTextOutline" />
                 运行日志
               </span>
@@ -590,7 +592,7 @@
       <n-checkbox v-for="domain in syncCandidates" :key="domain" :value="domain" :disabled="domainList.some(d => d.toLowerCase() === domain.toLowerCase())">{{ domain }}<span v-if="domainList.some(d => d.toLowerCase() === domain.toLowerCase())"> · 已添加</span></n-checkbox>
       <span v-if="!syncCandidates.length">暂无可导入的反代域名</span>
     </div></n-checkbox-group>
-    <div class="modal-actions"><n-button @click="showSync = false">取消</n-button><n-button type="primary" :loading="saving" :disabled="!selectedDomains.length" @click="applySelectedDomains">导入 {{ selectedDomains.length }} 个域名</n-button></div>
+    <div class="modal-actions"><n-button @click="showSync = false">取消</n-button><n-button type="primary" :loading="saving" :disabled="!selectedDomains.length" data-testid="frp-import-selected" @click="applySelectedDomains">导入 {{ selectedDomains.length }} 个域名</n-button></div>
   </n-modal>
 
   <n-modal
