@@ -49,3 +49,12 @@ func TestGenerateIncludesWebSocketAndProxy(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateRejectsInvalidPersistedRule(t *testing.T) {
+ cfg:=config.Config{DataDir:t.TempDir(),NginxPIDFile:t.TempDir()+"/nginx.pid"}
+ rule:=proxy.Rule{ID:1,Upstream:"http://127.0.0.1:8080",ListenPort:80,ListenIPv4:true,Enabled:true,Hosts:[]proxy.Host{{Hostname:"example.com"}}}
+ invalid:=rule;invalid.Upstream="http://example.com; invalid"
+ if _,err:=Generate(cfg,[]proxy.Rule{invalid},nil,GenerateOptions{});err==nil{t.Fatal("invalid upstream accepted")}
+ invalid=rule;invalid.Hosts=[]proxy.Host{{Hostname:"example.com; invalid"}}
+ if _,err:=Generate(cfg,[]proxy.Rule{invalid},nil,GenerateOptions{});err==nil{t.Fatal("invalid host accepted")}
+}

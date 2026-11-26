@@ -11,7 +11,7 @@ COPY web/ ./
 ENV VITE_APP_VERSION=$VERSION
 RUN pnpm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS go-builder
 ARG VERSION
 ARG TARGETARCH
 WORKDIR /src

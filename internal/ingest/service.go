@@ -19,7 +19,6 @@ import (
 
 const (
 	batchSize       = 100
-	stateSaveEvery  = 2 * time.Second
 	backfillSleep   = 5 * time.Millisecond
 	geoTickInterval = 15 * time.Second
 	retentionTick   = 6 * time.Hour
@@ -134,7 +133,6 @@ func (s *Service) tailLoop(ctx context.Context) {
 	s.rewindSkippedTail(ctx)
 	st, _ := s.store.LoadState(ctx, s.path)
 	offset := st.Offset
-	lastSave := time.Now()
 
 	for {
 		if ctx.Err() != nil {
@@ -142,23 +140,24 @@ func (s *Service) tailLoop(ctx context.Context) {
 		}
 		// 必须把新偏移赋给外层 offset。写成 offset, batch := 会在 for 里重新声明，
 		// 外层偏移停住，同一段日志会按每批反复写入。
-		next, batch := s.readFrom(offset)
-		if len(batch) > 0 {
-			if err := s.store.InsertBatch(ctx, batch); err != nil {
-				s.logger.Warn("insert batch failed", "error", err.Error())
-				time.Sleep(500 * time.Millisecond)
+		next,batch:=s.readFrom(offset)
+		if next!=offset || len(batch)>0 {
+			if err:=s.commitRead(ctx,next,batch);err!=nil{
+				s.logger.Warn("insert batch failed","error",err.Error())
+				time.Sleep(500*time.Millisecond)
 				continue
 			}
-			for _, row := range batch { s.realtime.Add(row) }
+			for _,row:=range batch{s.realtime.Add(row)}
 			s.dispatch(batch)
-		}
-		offset = next
-		if time.Since(lastSave) >= stateSaveEvery {
-			_ = s.persistOffset(ctx, offset)
-			lastSave = time.Now()
+			offset=next
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func (s *Service) commitRead(ctx context.Context,offset int64,rows []FactRow)error{
+	info,err:=os.Stat(s.path);if err!=nil{return err}
+	return s.store.InsertBatchAndState(ctx,rows,s.path,IngestState{Offset:offset,FileSize:info.Size(),MtimeNs:info.ModTime().UnixNano()})
 }
 
 func (s *Service) persistOffset(ctx context.Context, offset int64) error {
@@ -473,7 +472,6 @@ func (s *Service) runBackfill(ctx context.Context) {
 	}
 
 	offset := int64(0)
-	lastSave := time.Now()
 	for {
 		if ctx.Err() != nil {
 			return
@@ -486,28 +484,19 @@ func (s *Service) runBackfill(ctx context.Context) {
 			break
 		}
 		next, batch := s.readFrom(offset)
-		if len(batch) > 0 {
-			if err := s.store.InsertBatch(ctx, batch); err != nil {
-				s.logger.Warn("backfill batch failed", "error", err.Error())
-				return
-			}
-			for _, row := range batch { s.realtime.Add(row) }
+		if next<=offset && len(batch)==0 {break}
+		if err:=s.commitRead(ctx,next,batch);err!=nil{
+			s.logger.Warn("backfill batch failed","error",err.Error())
+			return
 		}
-		if next <= offset {
-			break
-		}
-		offset = next
-		if time.Since(lastSave) >= stateSaveEvery {
-			_ = s.persistOffset(ctx, offset)
-			lastSave = time.Now()
-		}
+		for _,row:=range batch{s.realtime.Add(row)}
+		offset=next
 		// 这一轮已经读到当时的文件尾。后面若还在追加，交给 tail。
 		if len(batch) < batchSize {
 			break
 		}
 		time.Sleep(backfillSleep)
 	}
-	_ = s.persistOffset(ctx, offset)
 	s.logger.Info("access analytics backfill finished", "offset", offset)
 }
 

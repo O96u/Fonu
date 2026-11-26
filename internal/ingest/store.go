@@ -76,7 +76,15 @@ func (s *Store) LoadState(ctx context.Context, logPath string) (IngestState, err
 }
 
 func (s *Store) SaveState(ctx context.Context, logPath string, st IngestState) error {
-	_, err := s.db.ExecContext(ctx, `
+	return saveState(ctx,s.db,logPath,st)
+}
+
+type stateExecutor interface {
+	ExecContext(context.Context,string,...any)(sql.Result,error)
+}
+
+func saveState(ctx context.Context, executor stateExecutor, logPath string, st IngestState) error {
+	_, err := executor.ExecContext(ctx, `
 		INSERT INTO ingest_state(log_path, file_offset, file_size, file_mtime_ns, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(log_path) DO UPDATE SET
@@ -89,13 +97,21 @@ func (s *Store) SaveState(ctx context.Context, logPath string, st IngestState) e
 }
 
 func (s *Store) InsertBatch(ctx context.Context, rows []FactRow) error {
-	if len(rows) == 0 {
-		return nil
-	}
+	return s.insertBatch(ctx,rows,"",nil)
+}
+
+// InsertBatchAndState commits the facts and their consumed log offset together.
+func (s *Store) InsertBatchAndState(ctx context.Context, rows []FactRow, path string, st IngestState) error {
+	return s.insertBatch(ctx,rows,path,&st)
+}
+
+func (s *Store) insertBatch(ctx context.Context, rows []FactRow, path string, st *IngestState) error {
+	if len(rows)==0 && st==nil {return nil}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO access_facts(
 			ts, client_ip, host, service, method, path, status, bytes_sent, request_ms,
@@ -134,6 +150,7 @@ func (s *Store) InsertBatch(ctx context.Context, rows []FactRow) error {
 			return err
 		}
 	}
+	if st!=nil {if err:=saveState(ctx,tx,path,*st);err!=nil{return err}}
 	return tx.Commit()
 }
 

@@ -1,6 +1,6 @@
 module github.com/fonu/fonu
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/go-acme/lego/v4 v4.35.2

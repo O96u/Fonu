@@ -8,6 +8,7 @@ import (
 
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
+	"github.com/fonu/fonu/internal/validate"
 )
 
 func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
@@ -146,6 +147,19 @@ func writeCustomRuleBlocks(b *strings.Builder, cfg config.Config, ruleID int64, 
 }
 
 func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	// Revalidate persisted structured rules, including data imported from backups.
+	upstream, err := validate.Upstream(rule.Upstream)
+	if err != nil { return fmt.Errorf("规则 %d 目标地址无效",rule.ID) }
+	rule.Upstream=upstream
+	for _,group:=range rule.PortGroups(){
+		if err:=validate.ListenPort(group.Port);err!=nil{return fmt.Errorf("规则 %d 监听端口无效",rule.ID)}
+		for _,name:=range group.Hostnames{
+			if name!=strings.TrimSpace(name)||validate.Domain(name)!=nil{return fmt.Errorf("规则 %d 前端域名无效",rule.ID)}
+		}
+	}
+	for _,list:=range [][]string{rule.Security.IPBlacklist,rule.Security.IPWhitelist}{
+		if err:=validate.IPOrCIDRList(list);err!=nil{return fmt.Errorf("规则 %d IP 列表无效",rule.ID)}
+	}
 	if err := proxy.ValidateRequestProtection(rule.Security); err != nil { return fmt.Errorf("规则 %d 请求防护：%w", rule.ID, err) }
 	if strings.HasPrefix(rule.Upstream,"https://") && rule.Security.ProxySSLVerifyConfigured && !rule.Security.ProxySSLVerifyOff && systemCABundle() == "" {
 		return fmt.Errorf("系统 CA 证书文件不可用，请安装 CA 证书或明确关闭上游 TLS 验证")

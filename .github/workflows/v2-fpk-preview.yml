@@ -5,6 +5,7 @@ on:
     branches: [v2]
     paths:
       - '.github/workflows/v2-fpk-preview.yml'
+      - '.github/workflows/ci.yml'
       - 'web/src/**'
       - 'web/index.html'
       - 'web/package.json'
