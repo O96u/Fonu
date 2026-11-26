@@ -29,7 +29,7 @@
                   <div class="status-hero__sub">{{ connectionSubtitle }}</div>
                 </div>
               </div>
-              <div v-if="frpForm.enabled" class="status-hero__aside">
+              <div v-if="frpStatus.enabled" class="status-hero__aside">
                 <span
                   class="status-hero__badge"
                   :class="{ 'status-hero__badge--on': frpStatus.connected }"
@@ -38,7 +38,7 @@
                   {{ frpStatus.connected ? "运行中" : "未连接" }}
                 </span>
                 <div v-if="frpStatus.connected_at" class="status-hero__time">
-                  自 {{ connectedAtLabel }} 连接
+                  进程启动于 {{ connectedAtLabel }}
                 </div>
               </div>
             </div>
@@ -83,7 +83,7 @@
                 </div>
               </div>
               <div class="status-metric">
-                <div class="status-metric__label">连接时间</div>
+                <div class="status-metric__label">进程启动时间</div>
                 <div class="status-metric__value">{{ connectedAtLabel }}</div>
               </div>
               <div class="status-metric">
@@ -97,7 +97,7 @@
                 <span>已配置服务</span>
               </div>
 
-              <template v-if="frpForm.enabled">
+              <template v-if="frpStatus.enabled">
                 <div v-if="hasConfiguredRoutes" class="status-overview__groups">
                   <div v-if="domainList.length" class="status-overview__group">
                     <div class="status-overview__group-label">Web 域名</div>
@@ -158,19 +158,19 @@
               <div class="status-tags">
                 <span
                   class="status-tag"
-                  :class="{ 'status-tag--on': frpForm.enabled }"
+                  :class="{ 'status-tag--on': frpStatus.enabled }"
                 >
-                  {{ frpForm.enabled ? "穿透已启用" : "穿透未启用" }}
+                  {{ frpStatus.enabled ? "穿透已启用" : "穿透未启用" }}
                 </span>
                 <span
                   class="status-tag"
-                  :class="{ 'status-tag--on': frpForm.tls_enabled }"
+                  :class="{ 'status-tag--on': savedConfig?.tls_enabled }"
                 >
-                  {{ frpForm.tls_enabled ? "TLS 已开启" : "TLS 未开启" }}
+                  {{ savedConfig?.tls_enabled ? "TLS 已开启" : "TLS 未开启" }}
                 </span>
               </div>
               <n-button
-                v-if="frpForm.enabled"
+                v-if="frpStatus.enabled"
                 quaternary
                 size="small"
                 :loading="restarting"
@@ -342,7 +342,7 @@
                   <div>
                     <div class="gateway-item__title">HTTP 网关</div>
                     <div class="gateway-item__state">
-                      {{ httpGatewayOn ? "已启用" : "未启用" }}
+                      {{ httpGatewayOn ? "已注册" : frpStatus.http_gateway_state === "failed" ? "注册失败" : frpStatus.http_gateway_enabled ? "待确认" : "未配置" }}
                     </div>
                     <div class="gateway-item__hint">
                       转发到 Fonu Nginx (HTTP)
@@ -357,7 +357,7 @@
                   <div>
                     <div class="gateway-item__title">HTTPS 网关</div>
                     <div class="gateway-item__state">
-                      {{ httpsGatewayOn ? "已启用" : "未启用" }}
+                      {{ httpsGatewayOn ? "已注册" : frpStatus.https_gateway_state === "failed" ? "注册失败" : frpStatus.https_gateway_enabled ? "待确认" : "未配置" }}
                     </div>
                     <div class="gateway-item__hint">
                       转发到 Fonu Nginx (HTTPS)
@@ -512,6 +512,7 @@
                   </n-button>
                 </div>
               </div>
+              <FrpDiagnostics />
               <div class="frp-toolbar log-toolbar"><n-input v-model:value="logSearch" clearable placeholder="搜索日志" /><n-select v-model:value="logLevel" :options="[{label:'全部级别',value:'all'},{label:'警告',value:'warn'},{label:'错误',value:'error'}]" /><n-checkbox v-model:checked="logAuto">自动刷新</n-checkbox><n-checkbox v-model:checked="followLogs">跟随滚动</n-checkbox><n-button size="small" @click="copyText(logText, '已复制日志')">复制</n-button></div>
               <n-spin :show="loadingLogs">
                 <pre ref="logPanelRef" class="log-view log-view--panel">{{
@@ -743,6 +744,7 @@ import type { FRPConfig, FRPTCPProxy, FRPStatus } from "../api/types";
 import EmptyState from "../components/EmptyState.vue";
 import FrpDomainWorkspace from "../components/frp/FrpDomainWorkspace.vue";
 import FrpTunnelCards from "../components/frp/FrpTunnelCards.vue";
+import FrpDiagnostics from "../components/frp/FrpDiagnostics.vue";
 import FonuCard from "../components/FonuCard.vue";
 import LoadError from "../components/LoadError.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -767,7 +769,7 @@ const showSync = ref(false);
 const syncCandidates = ref<string[]>([]);
 const selectedDomains = ref<string[]>([]);
 const savedConfig = ref<FRPConfig | null>(null);
-const tunnelLayout = ref<"auto" | "list" | "cards">("auto");
+const tunnelLayout = ref("auto");
 const tunnelSearch = ref("");
 const protocolFilter = ref("all");
 const logSearch = ref("");
@@ -842,19 +844,19 @@ const tcpModalTitle = computed(() =>
 );
 const logText = computed(() => logLines.value.filter(line => line.toLowerCase().includes(logSearch.value.trim().toLowerCase()) && (logLevel.value === "all" || (logLevel.value === "error" ? /error|\[E\]|failed/i.test(line) : /warn|\[W\]/i.test(line)))).join("\n"));
 const httpGatewayOn = computed(
-  () => frpForm.enabled && (frpStatus.value.http_gateway_enabled ?? false),
+  () => frpStatus.value.enabled && frpStatus.value.http_gateway_state === "registered",
 );
 const httpsGatewayOn = computed(
-  () => frpForm.enabled && (frpStatus.value.https_gateway_enabled ?? false),
+  () => frpStatus.value.enabled && frpStatus.value.https_gateway_state === "registered",
 );
 const statusHeroClass = computed(() => {
-  if (!frpForm.enabled) return "status-hero--off";
+  if (!frpStatus.value.enabled) return "status-hero--off";
   if (frpStatus.value.connected) return "status-hero--on";
   return "status-hero--warn";
 });
 
 const statusHeroIcon = computed(() => {
-  if (!frpForm.enabled) return PauseCircleOutline;
+  if (!frpStatus.value.enabled) return PauseCircleOutline;
   if (frpStatus.value.connected) return CheckmarkCircleOutline;
   return AlertCircleOutline;
 });
@@ -1022,13 +1024,13 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
 ];
 
 const connectionTitle = computed(() => {
-  if (!frpForm.enabled) return "未启用";
+  if (!frpStatus.value.enabled) return "未启用";
   if (frpStatus.value.connected) return "已连接";
   return frpStatus.value.message || "未连接";
 });
 
 const connectionSubtitle = computed(() => {
-  if (!frpForm.enabled) return "内网穿透未开启";
+  if (!frpStatus.value.enabled) return "内网穿透未开启";
   if (frpStatus.value.connected) {
     return "客户端已连接到 VPS；各隧道是否生效仍需单独确认。";
   }
@@ -1064,7 +1066,7 @@ function buildFrpsConfig(opts: {
   const token = opts.token.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const allowPorts =
     opts.tcpRemotePorts.length > 0
-      ? `\n# TCP/UDP 隧道远程端口，需在 VPS 防火墙放行（TCP 与 UDP 均需放行对应端口）\nallowPorts = [${opts.tcpRemotePorts.map((port) => `"${port}"`).join(", ")}]\n`
+      ? `\n# TCP/UDP 隧道远程端口，需在 VPS 防火墙放行（TCP 与 UDP 均需放行对应端口）\nallowPorts = [${opts.tcpRemotePorts.map((port) => `{ single = ${port} }`).join(", ")}]\n`
       : "";
   return `bindAddr = "0.0.0.0"
 bindPort = ${opts.bindPort}

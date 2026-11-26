@@ -115,6 +115,12 @@ func (h *FRPHandler) ExportConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"config": content})
 }
 
+func (h *FRPHandler) Diagnostics(w http.ResponseWriter, r *http.Request) {
+	checks, err := h.mgr.Diagnostics(r.Context())
+	if err != nil { writeError(r, w, http.StatusInternalServerError, "读取 FRP 诊断失败"); return }
+	writeJSON(w, http.StatusOK, checks)
+}
+
 func (h *FRPHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	result, err := h.mgr.Restart(r.Context())
 	if err != nil { writeError(r, w, http.StatusBadRequest, err.Error()); return }

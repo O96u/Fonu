@@ -35,7 +35,7 @@ vhostHTTPSPort = %d
 	if len(ports) > 0 {
 		parts := make([]string, 0, len(ports))
 		for _, port := range ports {
-			parts = append(parts, fmt.Sprintf(`"%d"`, port))
+			parts = append(parts, fmt.Sprintf(`{ single = %d }`, port))
 		}
 		b.WriteString("# TCP/UDP 隧道远程端口，需在 VPS 防火墙放行（TCP 与 UDP 均需放行对应端口）\n")
 		b.WriteString(fmt.Sprintf("allowPorts = [%s]\n\n", strings.Join(parts, ", ")))

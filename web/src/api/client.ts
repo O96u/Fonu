@@ -403,6 +403,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getFRPStatus: () => request<FRPStatus>('/api/frp/status'),
+  diagnoseFRP: () => request<{ name: string; state: string; detail: string }[]>('/api/frp/diagnostics', { method: 'POST' }),
   restartFRP: () => request<{ message: string; status: FRPStatus }>('/api/frp/restart', { method: 'POST' }),
   exportFRPSConfig: () => request<{ config: string }>('/api/frp/export-config', { method: 'POST' }),
   getFRPDomainCandidates: () => request<{ domains: string[] }>('/api/frp/domain-candidates'),

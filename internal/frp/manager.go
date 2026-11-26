@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"strconv"
 	"sync"
 	"fmt"
 	"log/slog"
@@ -249,6 +251,40 @@ func (m *Manager) FRPSConfig(ctx context.Context) (string, error) {
 		port = 7000
 	}
 	return BuildFRPSConfig(port, m.cfg.NginxDefaultHTTPPort, m.cfg.NginxDefaultHTTPSPort, token, tcpRemotePorts(cfg.TCPProxies)), nil
+}
+
+type DiagnosticCheck struct {
+	Name string `json:"name"`
+	State string `json:"state"`
+	Detail string `json:"detail"`
+}
+
+func (m *Manager) Diagnostics(ctx context.Context) ([]DiagnosticCheck, error) {
+	cfg, err := m.Load(ctx)
+	if err != nil { return nil, err }
+	st := m.Status(ctx)
+	checks := make([]DiagnosticCheck, 0, 7)
+	add := func(name, state, detail string) { checks = append(checks, DiagnosticCheck{name, state, detail}) }
+	if m.available() { add("frpc 客户端", "success", st.ClientVersion) } else { add("frpc 客户端", "error", "未安装") }
+	if st.ProcessRunning { add("本地进程", "success", "进程存活") } else { add("本地进程", "unknown", "未运行") }
+	if cfg.ServerAddr == "" { add("服务器地址", "unknown", "尚未配置"); return checks, nil }
+	host := strings.Trim(cfg.ServerAddr, "[]")
+	port := cfg.ServerPort
+	if port <= 0 { port = 7000 }
+	dnsCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ips, dnsErr := net.DefaultResolver.LookupIPAddr(dnsCtx, host)
+	cancel()
+	if dnsErr != nil || len(ips) == 0 { add("DNS 解析", "error", "无法解析服务器地址") } else { add("DNS 解析", "success", ips[0].IP.String()) }
+	dialCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	conn, dialErr := (&net.Dialer{}).DialContext(dialCtx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	cancel()
+	if dialErr != nil { add("控制端口", "error", "TCP 连接失败") } else { _ = conn.Close(); add("控制端口", "success", "TCP 可连接（不代表认证成功）") }
+	if st.Connected { add("FRP 登录", "success", "本次会话日志已确认登录") } else if !cfg.HasAuthToken { add("FRP 登录", "error", "未配置 Token") } else { add("FRP 登录", "unknown", st.Message) }
+	for _, gate := range []struct{name,state string}{{"HTTP 网关", st.HTTPGatewayState},{"HTTPS 网关", st.HTTPSGatewayState}} {
+		if len(cfg.CustomDomains) == 0 { add(gate.name, "unknown", "未配置域名"); continue }
+		switch gate.state { case "registered": add(gate.name,"success","日志确认注册"); case "failed": add(gate.name,"error","注册失败"); default: add(gate.name,"unknown","尚未确认注册") }
+	}
+	return checks, nil
 }
 
 func (m *Manager) NginxHTTPPort() int {
