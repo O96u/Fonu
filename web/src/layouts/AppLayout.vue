@@ -63,7 +63,6 @@
       <header class="topbar">
         <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '仪表盘' : route.meta.title }}</span></div>
         <div class="topbar__right">
-          <n-button tag="a" :href="GITHUB_REPO_URL" target="_blank" rel="noopener noreferrer" quaternary circle title="GitHub 项目" aria-label="GitHub 项目"><template #icon><n-icon :component="LogoGithub"/></template></n-button>
           <n-button v-if="embedded" tag="a" :href="standaloneUrl" target="_blank" rel="noopener noreferrer" quaternary circle title="独立网页打开" aria-label="独立网页打开"><template #icon><n-icon :component="OpenOutline"/></template></n-button>
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>
@@ -76,6 +75,7 @@
           </n-popover>
           <n-dropdown trigger="click" :options="modeOptions" @select="setThemeMode"><n-button quaternary circle aria-label="主题模式" title="主题模式"><template #icon><n-icon :component="isDark ? MoonOutline : SunnyOutline" /></template></n-button></n-dropdown>
           <n-popover trigger="click" placement="bottom-end" @update:show="loadNotifications"><template #trigger><n-button quaternary circle aria-label="通知" title="通知"><template #icon><n-icon :component="NotificationsOutline"/></template></n-button></template><div class="notification-pop"><strong>状态提醒</strong><p v-if="notificationLoading">正在获取状态…</p><p v-else-if="notificationError">状态获取失败，请重新打开。</p><template v-else><router-link v-for="n in notificationRows" :key="n.title" :to="{name:n.route}"><strong>{{ n.title }}</strong><small>{{ n.detail }}</small></router-link><p v-if="!notificationRows.length">暂无待处理事项</p></template><router-link :to="{name:'settings',query:{tab:'notify'}}">通知渠道设置</router-link></div></n-popover>
+          <n-button tag="a" :href="GITHUB_REPO_URL" target="_blank" rel="noopener noreferrer" quaternary circle title="GitHub 项目" aria-label="GitHub 项目"><template #icon><n-icon :component="LogoGithub"/></template></n-button>
           <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
             <n-button quaternary class="user-btn">
               <span class="user-avatar">{{ displayUsername.charAt(0).toUpperCase() }}</span>

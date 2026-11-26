@@ -1,6 +1,8 @@
 # Fonu 飞牛 fnOS 原生 FPK
 
-真·原生安装包：内置 `fonu`（Go + 嵌入 Vue 管理端）、源码编译的 `Nginx`、`frpc`。安装后目录遵循飞牛约定：
+Fonu 是面向飞牛 fnOS 的 NAS 公网访问管理工具，集中管理 DDNS、HTTP/HTTPS 反向代理、证书自动续签与部署、FRP 内网穿透、访问和安全分析、日志、通知及本地备份。通过自有域名访问 NAS、影音服务和容器应用；无公网 IP 时可配合自备 frps 服务端进行内网穿透。
+
+原生 FPK 内置 `fonu`（Go + Vue 管理端）、独立 `Nginx` 和 `frpc`，不修改飞牛系统 Nginx。安装后目录遵循飞牛约定：
 
 ```
 /var/apps/fonu/
@@ -22,10 +24,10 @@ nginx 使用当前 **stable 1.30.x**（1.28/1.29 已停止维护），configure 
 | 方式 | 说明 |
 |------|------|
 | **正式发版** | 推送 `v*` tag 后，`.fpk` 会出现在对应 GitHub Release 的 **Assets** |
-| **手动试包** | Actions → **Build FPK** → 填 `version`；可选 `nginx_version`（默认最新 1.30.x）；产物在预发布 **`fpk-v<version>`**，若已有 `v<version>` Release 会同时挂到该版本 Assets |
+| **手动试包** | Actions → **Release** → **Run workflow**，选择 `v2`，填写 `tag`（如 `v2.0.1-rc.01`）；不勾选 `publish` 时只构建测试包，产物在 Actions Artifacts 中 |
 | **本地 Linux** | 安装 gcc/make、libpcre2-dev、libssl-dev、fnpack 后执行 `packaging/fonu-fpk/scripts/build-fpk.sh amd64 1.3.0` |
 
-产物始终是 **`.fpk`**；请只在 Release **Assets** 下载，不要用 Actions **Artifacts**（那是 zip 外壳）。
+公开发行包从 Release **Assets** 下载；手动试包从对应 Actions **Artifacts** 下载并解压，实际安装文件为 `.fpk`。
 
 ## 普通包和 root 包
 

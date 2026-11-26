@@ -13,8 +13,6 @@
 
 Fonu 集成反向代理、DDNS、HTTPS 证书、内网穿透及访问分析，让 NAS 公网访问和日常维护集中在一个 Web 管理界面中。
 
-<p align="center"><a href="https://github.com/O96u/Fonu/releases">下载发行版</a> · <a href="CHANGELOG.md">更新日志</a> · <a href="https://github.com/O96u/Fonu/tree/v1">旧版源码</a></p>
-
 ## 功能特性
 
 | 模块 | 功能 |
