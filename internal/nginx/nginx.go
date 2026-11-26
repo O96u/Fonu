@@ -36,6 +36,9 @@ type Manager struct {
 	confirmedWorkers map[string]bool
 }
 
+// ErrPublicationRecovery marks a failed attempt to restore the previous runtime/files.
+var ErrPublicationRecovery = errors.New("nginx publication recovery incomplete")
+
 type ApplyResult struct {
 	Reloaded bool
 	Confirmed bool
@@ -153,7 +156,7 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	defer func() {
 		if applyErr != nil {
 			if err := restoreAuth(); err != nil {
-				applyErr = errors.Join(applyErr, fmt.Errorf("restore htpasswd: %w", err))
+				applyErr = errors.Join(applyErr, ErrPublicationRecovery, fmt.Errorf("restore htpasswd: %w", err))
 			}
 		}
 	}()
@@ -218,17 +221,25 @@ func (m *Manager) ApplyWithOptions(ctx context.Context, rules []proxy.Rule, cert
 	defer func() {
 		if applyErr == nil { return }
 		if err := restoreConfig(currentPath, backupPath, hadPrevious); err != nil {
-			applyErr = errors.Join(applyErr, fmt.Errorf("restore nginx config: %w", err))
+			applyErr = errors.Join(applyErr, ErrPublicationRecovery, fmt.Errorf("restore nginx config: %w", err))
 			return
 		}
 		if err := restoreAuth(); err != nil {
-			applyErr = errors.Join(applyErr, fmt.Errorf("restore htpasswd: %w", err))
+			applyErr = errors.Join(applyErr, ErrPublicationRecovery, fmt.Errorf("restore htpasswd: %w", err))
 		}
 		if !hadPrevious && m.available() { m.terminateMaster() }
 		if hadPrevious && m.available() {
 			rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			if err := m.start(rollbackCtx); err != nil { applyErr = errors.Join(applyErr, fmt.Errorf("restore nginx service: %w", err)) }
+			pid,_:=readPIDFile(m.cfg.NginxPIDFile)
+			previous:=activeWorkers(pid)
+			if err := m.start(rollbackCtx); err != nil {
+				applyErr = errors.Join(applyErr, ErrPublicationRecovery, fmt.Errorf("restore nginx service: %w", err))
+			} else if workerConfirmationSupported() {
+				if _,_,err:=m.waitForWorkers(rollbackCtx,previous);err!=nil{
+					applyErr=errors.Join(applyErr,ErrPublicationRecovery,err)
+				}
+			}
 		}
 	}()
 	if !m.available() {

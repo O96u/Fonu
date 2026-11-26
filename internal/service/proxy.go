@@ -344,3 +344,43 @@ func (s *ProxyService) SaveBatch(ctx context.Context, id int64, update *proxy.Up
 func (s *ProxyService) ListTrafficRules(ctx context.Context)([]proxy.Rule,error){
 	return s.store.ListTrafficRules(ctx)
 }
+
+
+// LockCertificateMutation protects the short local certificate file/record
+// replacement phase from configuration generation. Do not hold it during
+// ACME network operations or call ReloadAll before releasing it.
+func (s *ProxyService) LockCertificateMutation() func(){
+	if s==nil{return func(){}}
+	s.applyMu.Lock()
+	var once sync.Once
+	return func(){once.Do(s.applyMu.Unlock)}
+}
+
+// CheckCertificateDeletionLocked conservatively protects enabled HTTPS rules
+// and direct references in the current generated configuration.
+func (s *ProxyService) CheckCertificateDeletionLocked(ctx context.Context,rec certificate.Record)error{
+	if s==nil{return nil}
+	rules,err:=s.store.ListEnabled(ctx)
+	if err!=nil{return err}
+	domains:=rec.Domains
+	if len(domains)==0{domains=[]string{rec.Domain};if rec.Wildcard{domains=append(domains,"*."+rec.Domain)}}
+	for _,rule:=range rules{
+		if !rule.HTTPSEnabled{continue}
+		for _,host:=range rule.Hostnames(){
+			for _,domain:=range domains{
+				hostLower,domainLower:=strings.ToLower(host),strings.ToLower(domain)
+				if hostLower==domainLower||(strings.HasPrefix(domainLower,"*.")&&strings.HasSuffix(hostLower,domainLower[1:])&&!strings.Contains(strings.TrimSuffix(hostLower,domainLower[1:]),".")){
+					return fmt.Errorf("证书关联已启用的 HTTPS 规则 %d（%s），请先调整或停用规则",rule.ID,host)
+				}
+			}
+		}
+	}
+	content,err:=os.ReadFile(s.cfg.NginxConfigPath())
+	if err!=nil&&!os.IsNotExist(err){return err}
+	normalized:=filepath.ToSlash(string(content))
+	for _,name:=range certificate.RecordStorageNames(rec){
+		path:=filepath.ToSlash(filepath.Join(s.cfg.CertsDir(),name))+"/"
+		if strings.Contains(normalized,path){return fmt.Errorf("当前 Nginx 配置仍引用证书 %s，请先调整规则",rec.Domain)}
+	}
+	return nil
+}

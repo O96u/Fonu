@@ -350,6 +350,8 @@ func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile
 		return certstore.Record{}, err
 	}
 
+	unlockPublication:=s.proxySvc.LockCertificateMutation()
+	defer unlockPublication()
 	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
 	if err != nil {
 		return certstore.Record{}, err
@@ -368,6 +370,7 @@ func (s *Service) Import(ctx context.Context, certPEM, keyPEM, certFile, keyFile
 	}
 
 	if err := finishFiles(true); err != nil { return certstore.Record{}, err }
+	unlockPublication()
 	s.saveCertExport(ctx, info.Primary, export)
 	rec, err := s.store.GetByDomain(ctx, info.Primary)
 	if err != nil {
@@ -392,13 +395,15 @@ func (s *Service) Delete(ctx context.Context, domain string) error {
 	if err != nil {
 		return err
 	}
-	s.removeCertExport(ctx, existing)
+	unlockPublication:=s.proxySvc.LockCertificateMutation()
+	defer unlockPublication()
+	if err:=s.proxySvc.CheckCertificateDeletionLocked(ctx,existing);err!=nil{return err}
+	if err := s.store.Delete(ctx, domain); err != nil { return err }
 	if err := removeCertFiles(s.cfg.CertsDir(), existing); err != nil {
 		s.logger.Warn("remove cert files failed", "domain", domain, "error", err.Error())
 	}
-	if err := s.store.Delete(ctx, domain); err != nil {
-		return err
-	}
+	unlockPublication()
+	s.removeCertExport(ctx, existing)
 	if err := s.proxySvc.ReloadAll(ctx); err != nil {
 		s.logger.Warn("nginx reload after cert delete failed", "error", err.Error())
 	}
@@ -536,6 +541,8 @@ func (s *Service) Update(ctx context.Context, domain, name string, export certst
 	}
 
 	oldNames := certstore.RecordStorageNames(existing)
+	unlockPublication:=s.proxySvc.LockCertificateMutation()
+	defer unlockPublication()
 	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), info.Domains, certBytes, keyBytes)
 	if err != nil {
 		return certstore.Record{}, err
@@ -566,6 +573,7 @@ func (s *Service) Update(ctx context.Context, domain, name string, export certst
 		}
 	}
 
+	unlockPublication()
 	rec, err = s.UpdateMeta(ctx, existing.Domain, name, export)
 	if err != nil {
 		return certstore.Record{}, err
@@ -908,6 +916,8 @@ func (s *Service) obtain(ctx context.Context, job *Job, ca, email, provider stri
 		return certstore.Record{}, fmt.Errorf("证书申请失败：%w", err)
 	}
 
+	unlockPublication:=s.proxySvc.LockCertificateMutation()
+	defer unlockPublication()
 	certPath, keyPath, finishFiles, err := stageCertFiles(s.cfg.CertsDir(), domains, cert.Certificate, cert.PrivateKey)
 	if err != nil {
 		return certstore.Record{}, err
