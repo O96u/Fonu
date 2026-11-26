@@ -1,151 +1,58 @@
 <template>
-  <PageHeader
-    title="日志中心"
-    description="集中查看运行记录、访问请求与异常"
-  ><template #actions><n-button secondary @click="router.push({ name: 'settings' })">日志设置</n-button></template></PageHeader>
-
-  <LoadError v-if="pageError" :message="pageError" @retry="loadAll" />
-
-  <div v-else class="log-workspace">
+  <PageHeader title="日志中心" description="运行记录、访问请求与异常排查">
+    <template #actions><n-button size="small" :loading="summaryLoading || loading" @click="refreshAll(true)">刷新全部</n-button></template>
+  </PageHeader>
+  <div class="log-workspace">
     <div class="log-source-grid">
-      <button v-for="item in sourceCards" :key="item.key" type="button" class="log-source" :data-testid="'log-source-'+item.key" :class="{ 'is-active': tab === item.key }" :aria-pressed="tab === item.key" @click="tab = item.key">
+      <button v-for="item in sourceCards" :key="item.key" type="button" class="log-source" :data-testid="'log-source-'+item.key" :class="{ 'is-active': tab === item.key }" :aria-pressed="tab === item.key" @click="selectSource(item.key)">
         <span class="source-heading"><n-icon :component="item.icon" />{{ item.label }}<n-icon v-if="tab === item.key" :component="CheckmarkCircleOutline" class="source-check" /></span>
-        <strong>{{ loaded[item.key] ? item.count : '—' }}</strong>
-        <small>{{ errors[item.key] ? '读取失败' : loaded[item.key] ? '已读取记录 · 最近片段' : '点击查看日志' }}</small>
+        <strong v-if="summary[item.key] && !summary[item.key].error">{{ summary[item.key].count.toLocaleString() }}</strong>
+        <strong v-else>—</strong>
+        <small>{{ summary[item.key]?.error ? '统计失败 · 可重试' : summaryLoading && !summary[item.key] ? '统计中…' : '留存记录' }}</small>
       </button>
     </div>
+    <div class="summary-caption"><span>{{ summaryError || (summaryAt ? '统计更新于 '+formatLogTime(summaryAt,{timeZone:logTimeZone}) : '正在统计四类日志') }}</span><span>统计范围：当前文件及可识别的轮转归档</span></div>
     <FonuCard flush class="logs-card">
       <div class="log-workspace-head">
-        <div><strong>{{ sourceCards.find(item => item.key === tab)?.label }}</strong><small>当前展示最近读取的日志片段，并非全部历史</small></div>
-        <div class="log-head-actions"><n-button size="small" :disabled="!activeRows.length" @click="exportLoaded">导出筛选结果</n-button><n-button size="small" :type="autoRefresh ? 'primary' : 'default'" secondary @click="autoRefresh = !autoRefresh">{{ autoRefresh ? '自动刷新已开启' : '自动刷新' }}</n-button></div>
+        <div><strong>{{ sourceCards.find(item => item.key === tab)?.label }}</strong><small>{{ sourceDescriptions[tab] }}</small></div>
+        <div class="log-head-actions">
+          <n-button size="small" :loading="exporting" :disabled="loading || !activeRows.length" @click="exportHistory">导出筛选结果</n-button>
+          <n-button size="small" :type="autoRefresh ? 'primary' : 'default'" secondary @click="autoRefresh = !autoRefresh">{{ autoRefresh ? '自动刷新已开启' : '自动刷新' }}</n-button>
+        </div>
       </div>
-      <div v-if="errors[tab]" class="log-error"><span>{{ errors[tab] }}</span><n-button size="small" @click="loadCurrent">重试</n-button></div>
-      <div v-if="activeLoading && !loaded[tab]" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
-    <n-tabs v-model:value="tab" type="line" animated class="logs-tabs">
-      <n-tab-pane name="system" tab="系统日志">
-        <LogToolbar
-          v-model:keyword="systemKeyword"
-          v-model:level="systemLevel"
-          :show-level="true"
-          @refresh="loadSystemLogs"
-        />
-        <p class="tab-hint">Fonu 全部运行日志（API、DDNS、证书、通知、Nginx 重载等），不含 Nginx 访问与错误文件。</p>
-        <n-data-table
-          v-if="filteredSystemLogs.length > 0"
-          class="log-table"
-          :columns="systemColumns"
-          :data="pagedSystemLogs"
-          :loading="loadingSystem"
-          :bordered="false"
-          :row-class-name="systemRowClassName"
-          :row-props="row => detailRowProps('system', row)"
-        />
-        <LogPagination
-          v-if="filteredSystemLogs.length > 0"
-          v-model:page="systemPage"
-          :item-count="filteredSystemLogs.length"
-        />
-        <EmptyState
-          v-if="!loadingSystem && loaded['system'] && !errors['system'] && filteredSystemLogs.length === 0"
-          :title="systemLogs.length ? '没有匹配的日志' : '暂无系统日志'"
-          description="应用启动、DDNS 更新、证书操作或 API 请求会记录在这里。"
-        />
-      </n-tab-pane>
-
-      <n-tab-pane name="access" tab="访问日志">
-        <LogToolbar
-          v-model:keyword="accessKeyword"
-          v-model:status="accessStatus"
-          v-model:kind="accessKind"
-          :show-domain="true"
-          :show-status="true"
-          :show-kind="true"
-          @refresh="loadAccess"
-        />
-        <p v-if="accessFilterBanner" class="tab-hint access-filter-banner">
-          {{ accessFilterBanner }}
-          <router-link v-if="accessKind || accessClientIP" :to="{ name: 'logs', query: { tab: 'access' } }" class="access-filter-clear">
-            清除筛选
-          </router-link>
-        </p>
-        <p v-if="accessKind === 'intercept' && accessFilterBanner" class="tab-hint">
-          策略拦截：403 / 429 / 401 等拒绝响应。「拦截原因」为启发式说明，并非 Nginx 规则名。
-        </p>
-        <n-data-table
-          v-if="filteredAccessLogs.length > 0"
-          class="log-table"
-          :columns="accessColumns"
-          :data="pagedAccessLogs"
-          :loading="loadingAccess"
-          :bordered="false"
-          :scroll-x="accessTableScrollX"
-          :row-class-name="accessRowClassName"
-          :row-props="row => detailRowProps('access', row)"
-        />
-        <LogPagination
-          v-if="filteredAccessLogs.length > 0"
-          v-model:page="accessPage"
-          :item-count="filteredAccessLogs.length"
-        />
-        <EmptyState
-          v-if="!loadingAccess && loaded['access'] && !errors['access'] && filteredAccessLogs.length === 0"
-          :title="accessLogs.length ? '没有匹配的日志' : accessEmptyTitle"
-          :description="accessLogs.length ? '请调整或清除当前筛选条件。' : accessEmptyDescription"
-        />
-      </n-tab-pane>
-
-      <n-tab-pane name="nginx" tab="Nginx 日志">
-        <p class="tab-hint">Nginx 错误日志（error.log），记录 SSL 握手失败、上游连接异常、配置冲突等。</p>
-        <LogToolbar v-model:keyword="errorKeyword" v-model:level="errorLevel" :show-level="true" @refresh="loadErrorLogs" />
-        <n-data-table
-          v-if="filteredErrorLogs.length > 0"
-          class="log-table"
-          :columns="errorColumns"
-          :data="pagedErrorLogs"
-          :loading="loadingError"
-          :bordered="false"
-          :row-class-name="errorRowClassName"
-          :row-props="row => detailRowProps('nginx', row)"
-        />
-        <LogPagination
-          v-if="filteredErrorLogs.length > 0"
-          v-model:page="errorPage"
-          :item-count="filteredErrorLogs.length"
-        />
-        <EmptyState
-          v-if="!loadingError && loaded['nginx'] && !errors['nginx'] && filteredErrorLogs.length === 0"
-          :title="errorLogs.length ? '没有匹配的日志' : '暂无 Nginx 错误日志'"
-          description="Nginx 出现 SSL、上游或配置相关错误时会记录在这里。"
-        />
-      </n-tab-pane>
-
-      <n-tab-pane name="frp" tab="FRP 日志">
-        <p class="tab-hint">
-          frpc 运行日志（frpc.log），记录连接 frps、代理启停与隧道状态变化。
-        </p>
-        <LogToolbar v-model:keyword="frpKeyword" v-model:level="frpLevel" :show-level="true" @refresh="loadFrpLogs" />
-        <n-data-table
-          v-if="filteredFrpLogs.length > 0"
-          class="log-table"
-          :columns="frpColumns"
-          :data="pagedFrpLogs"
-          :loading="loadingFrp"
-          :bordered="false"
-          :row-class-name="frpRowClassName"
-          :row-props="row => detailRowProps('frp', row)"
-        />
-        <LogPagination
-          v-if="filteredFrpLogs.length > 0"
-          v-model:page="frpPage"
-          :item-count="filteredFrpLogs.length"
-        />
-        <EmptyState
-          v-if="!loadingFrp && loaded['frp'] && !errors['frp'] && filteredFrpLogs.length === 0"
-          :title="frpLogs.length ? '没有匹配的日志' : '暂无 FRP 日志'"
-          description="启用内网穿透并启动 frpc 后，连接与隧道相关输出会记录在这里。"
-        />
-      </n-tab-pane>
-    </n-tabs>
+      <div class="history-filters">
+        <div class="filter-row">
+          <n-input v-model:value="current.keyword" class="keyword" placeholder="关键词搜索" clearable />
+          <n-select v-model:value="current.range" :options="rangeOptions" class="range-select" />
+          <n-select v-if="tab==='access'" v-model:value="current.status" :options="statusOptions" placeholder="全部状态" clearable class="status-select"/>
+          <n-select v-else v-model:value="current.level" :options="levelOptions" placeholder="全部级别" clearable class="status-select"/>
+          <n-button size="small" :loading="loading" @click="loadHistory">刷新</n-button>
+        </div>
+        <div class="filter-row secondary-filters">
+          <n-input v-model:value="current.service" :placeholder="tab==='access'?'服务或域名':tab==='system'?'模块名称':tab==='frp'?'隧道或来源':'域名或来源'" clearable />
+          <template v-if="tab==='access'">
+            <n-input v-model:value="current.ip" placeholder="客户端 IP（精确匹配）" clearable/>
+            <n-select v-model:value="current.kind" :options="kindOptions" placeholder="全部访问类型" clearable />
+          </template>
+          <n-date-picker v-if="current.range==='custom'" v-model:value="current.custom" type="datetimerange" clearable />
+          <n-button text size="small" @click="resetFilters">清除筛选</n-button>
+        </div>
+        <p v-if="tab==='access' && current.kind" class="filter-note">拦截及扫描类型由日志字段推断，不代表已确认命中的具体规则。</p>
+        <p v-if="current.range==='custom'" class="filter-note">自定义时间按当前浏览器时区输入，列表按 Fonu 设置的时区显示。</p>
+      </div>
+      <div v-if="error" class="log-error"><span>{{ error }}</span><n-button size="small" @click="loadHistory">重试</n-button></div>
+      <div v-if="loading && !activeRows.length" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
+      <template v-if="activeRows.length">
+        <n-data-table v-if="tab==='system'" class="log-table" :columns="systemColumns" :data="systemLogs" :loading="loading" :bordered="false" :scroll-x="650" :row-class-name="systemRowClassName" :row-props="row => detailRowProps('system',row)"/>
+        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1120:920" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
+        <n-data-table v-else-if="tab==='nginx'" class="log-table" :columns="errorColumns" :data="errorLogs" :loading="loading" :bordered="false" :scroll-x="600" :row-class-name="errorRowClassName" :row-props="row => detailRowProps('nginx',row)"/>
+        <n-data-table v-else class="log-table" :columns="frpColumns" :data="frpLogs" :loading="loading" :bordered="false" :scroll-x="720" :row-class-name="frpRowClassName" :row-props="row => detailRowProps('frp',row)"/>
+      </template>
+      <EmptyState v-else-if="!loading && !error" :title="hasFilters ? '没有匹配的日志' : '暂无日志'" :description="hasFilters ? '请调整时间范围或筛选条件。' : '当前日志文件及归档中暂无记录。'"/>
+      <div class="history-footer">
+        <span>{{ activeRows.length ? '第 '+(offset+1)+'–'+(offset+activeRows.length)+' 条匹配记录' : '暂无匹配记录' }}<small v-if="autoRefresh && offset>0">历史页暂停自动刷新</small></span>
+        <div class="history-pagination"><n-select v-model:value="pageSize" :options="pageSizeOptions" size="small" style="width:106px"/><n-button size="small" :disabled="loading||offset===0" @click="previousPage">上一页</n-button><span>第 {{ Math.floor(offset/pageSize)+1 }} 页</span><n-button size="small" :disabled="loading||!hasMore" @click="nextPage">下一页</n-button></div>
+      </div>
     </FonuCard>
   </div>
   <n-drawer v-model:show="showDetail" :width="'min(520px, 94vw)'">
@@ -160,8 +67,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
   NDataTable,
@@ -170,24 +77,20 @@ import {
   NIcon,
   NSpin,
   NInput,
-  NPagination,
+  NDatePicker,
   NSelect,
-  NTabPane,
-  NTabs,
   NTag,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
-import { api, asList } from '../api/client'
-import type { AccessLogEntry, ProxyRule, SystemLogEntry } from '../api/types'
+import { api } from '../api/client'
+import type { AccessLogEntry, SystemLogEntry } from '../api/types'
 import EmptyState from '../components/EmptyState.vue'
 import FonuCard from '../components/FonuCard.vue'
-import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import {
   accessServiceTooltip,
   buildProxyBindingIndex,
-  formatAccessFallback,
   resolveAccessServiceLabel,
 } from '../utils/accessService'
 import { useAppTimezone } from '../composables/useAppTimezone'
@@ -210,267 +113,129 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { copyToClipboard } from '../utils/clipboard'
 import { DesktopOutline, GlobeOutline, AlertCircleOutline, GitNetworkOutline, CheckmarkCircleOutline } from '@vicons/ionicons5'
 
-const PAGE_SIZE = 20
-const logTimeZone = useAppTimezone()
 
-const LogPagination = defineComponent({
-  name: 'LogPagination',
-  props: {
-    page: { type: Number, required: true },
-    itemCount: { type: Number, required: true },
-  },
-  emits: ['update:page'],
-  setup(props, { emit }) {
-    return () =>
-      h('div', { class: 'log-pagination' }, [
-        h(NPagination, {
-          page: props.page,
-          pageSize: PAGE_SIZE,
-          itemCount: props.itemCount,
-          showSizePicker: false,
-          'onUpdate:page': (p: number) => emit('update:page', p),
-        }),
-      ])
-  },
-})
-
-const LogToolbar = defineComponent({
-  name: 'LogToolbar',
-  props: {
-    keyword: { type: String, default: '' },
-    status: { type: Number as () => number | null, default: null },
-    kind: { type: String, default: '' },
-    level: { type: String, default: '' },
-    showDomain: Boolean,
-    showStatus: Boolean,
-    showKind: Boolean,
-    showLevel: Boolean,
-    autoRefresh: { type: Boolean, default: undefined },
-  },
-  emits: ['update:keyword', 'update:status', 'update:kind', 'update:level', 'refresh', 'toggle-auto'],
-  setup(props, { emit }) {
-    return () =>
-      h('div', { class: 'toolbar' }, [
-        h(NInput, {
-          value: props.keyword,
-          placeholder: '关键词搜索',
-          clearable: true,
-          style: 'max-width: 220px',
-          'onUpdate:value': (v: string) => emit('update:keyword', v),
-        }),
-        props.showStatus
-          ? h(NSelect, {
-              value: props.status,
-              placeholder: '状态码',
-              clearable: true,
-              style: 'width: 120px',
-              options: [200, 201, 204, 301, 302, 304, 400, 401, 403, 404, 408, 429, 499, 500, 502, 503, 504].map((c) => ({ label: String(c), value: c })),
-              'onUpdate:value': (v: number | null) => emit('update:status', v),
-            })
-          : null,
-        props.showKind
-          ? h(NSelect, {
-              value: props.kind || null,
-              placeholder: '访问类型',
-              clearable: true,
-              style: 'width: 160px',
-              options: [
-                { label: '策略拦截', value: 'intercept' },
-                { label: '403 拒绝', value: '403' },
-                { label: '429 限流', value: '429' },
-                { label: '401 未授权', value: '401' },
-                { label: '疑似扫描', value: 'scan' },
-              ],
-              'onUpdate:value': (v: string | null) => emit('update:kind', v ?? ''),
-            })
-          : null,
-        props.showLevel
-          ? h(NSelect, {
-              value: props.level,
-              placeholder: '日志级别',
-              clearable: true,
-              style: 'width: 120px',
-              options: [
-                { label: '信息', value: 'INFO' },
-                { label: '警告', value: 'WARN' },
-                { label: '错误', value: 'ERROR' },
-              ],
-              'onUpdate:value': (v: string) => emit('update:level', v),
-            })
-          : null,
-        h(NButton, { onClick: () => emit('refresh') }, () => '刷新'),
-        props.autoRefresh !== undefined
-          ? h(NButton, { quaternary: true, onClick: () => emit('toggle-auto') }, () =>
-              props.autoRefresh ? '关闭自动刷新' : '自动刷新',
-            )
-          : null,
-      ])
-  },
-})
-
-const message = useMessage()
-const route = useRoute()
-const router = useRouter()
-const LOG_TABS = ['system', 'access', 'nginx', 'frp'] as const
-type LogTab = (typeof LOG_TABS)[number]
-
-function resolveTab(query: RouteLocationNormalizedLoaded['query']): LogTab {
-  const qtab = query.tab
-  if (qtab === 'error' || qtab === 'nginx') return 'nginx'
-  if (qtab === 'stream') return 'access'
-  if (qtab === 'frp') return 'frp'
-  if (typeof qtab === 'string' && (LOG_TABS as readonly string[]).includes(qtab)) {
-    return qtab as LogTab
-  }
-  if (typeof query.kind === 'string' && query.kind.trim()) return 'access'
-  if (typeof query.ip === 'string' && query.ip.trim()) return 'access'
-  return 'system'
+type LogTab = 'system'|'access'|'nginx'|'frp'
+type LogFilter = {keyword:string;service:string;ip:string;kind:string|null;status:number|null;level:string|null;range:string;custom:[number,number]|null}
+const makeFilter=():LogFilter=>({keyword:'',service:'',ip:'',kind:null,status:null,level:null,range:'all',custom:null})
+const filters=reactive<Record<LogTab,LogFilter>>({system:makeFilter(),access:makeFilter(),nginx:makeFilter(),frp:makeFilter()})
+const route=useRoute(),router=useRouter(),message=useMessage(),logTimeZone=useAppTimezone()
+function resolveTab(value:unknown):LogTab{
+ if(value==='error')return 'nginx'
+ if(value==='stream')return 'access'
+ if(value==='access'||value==='nginx'||value==='frp'||value==='system')return value
+ return route.query.ip||route.query.kind?'access':'system'
 }
-
-function applyRouteQuery(from: RouteLocationNormalizedLoaded = route) {
-  syncingRouteQuery = true
-  accessKind.value = typeof from.query.kind === 'string' ? from.query.kind : ''
-  accessClientIP.value = typeof from.query.ip === 'string' ? from.query.ip : ''
-  if (typeof from.query.keyword === 'string') {
-    accessKeyword.value = from.query.keyword
-  }
-  tab.value = resolveTab(from.query)
-  syncingRouteQuery = false
+const tab=ref<LogTab>(resolveTab(route.query.tab))
+const current=computed(()=>filters[tab.value])
+const sourceCards=[{key:'system' as const,label:'系统日志',icon:DesktopOutline},{key:'access' as const,label:'访问日志',icon:GlobeOutline},{key:'nginx' as const,label:'Nginx 日志',icon:AlertCircleOutline},{key:'frp' as const,label:'FRP 日志',icon:GitNetworkOutline}]
+const sourceDescriptions={system:'应用运行、DDNS、证书与维护记录（常规 HTTP INFO 噪声已排除）',access:'经 Nginx 的反代访问请求',nginx:'Nginx 错误、上游与 TLS 异常',frp:'frpc 连接、代理与隧道记录'}
+const rangeOptions=[{label:'全部留存时间',value:'all'},{label:'最近 24 小时',value:'24h'},{label:'最近 7 天',value:'7d'},{label:'最近 30 天',value:'30d'},{label:'自定义时间',value:'custom'}]
+const statusOptions=[200,201,204,301,302,304,400,401,403,404,408,429,499,500,502,503,504].map(value=>({value,label:String(value)}))
+const levelOptions=[{label:'信息',value:'INFO'},{label:'警告',value:'WARN'},{label:'错误',value:'ERROR'},{label:'调试',value:'DEBUG'},{label:'未知',value:'UNKNOWN'}]
+const kindOptions=[{label:'正常访问',value:'access'},{label:'策略拦截',value:'intercept'},{label:'403 拒绝',value:'403'},{label:'429 限流',value:'429'},{label:'401 未授权',value:'401'},{label:'疑似扫描',value:'scan'}]
+const pageSizeOptions=[20,50,100].map(value=>({value,label:value+' 条/页'}))
+const summary=ref<Record<string,{count:number;error?:string}>>({}),summaryAt=ref(''),summaryError=ref(''),summaryLoading=ref(false)
+const loading=ref(false),error=ref(''),exporting=ref(false),autoRefresh=ref(true)
+const offset=ref(0),pageSize=ref(20),hasMore=ref(false)
+const accessLogs=ref<AccessLogEntry[]>([]),systemLogs=ref<SystemLogEntry[]>([]),errorLogs=ref<ParsedNginxError[]>([]),frpLogs=ref<ParsedFrpLog[]>([])
+const activeRows=computed(()=>({access:accessLogs.value,system:systemLogs.value,nginx:errorLogs.value,frp:frpLogs.value})[tab.value])
+const proxyBindingIndex=ref(buildProxyBindingIndex([]))
+const showAccessBlockReason=computed(()=>Boolean(current.value.kind)||accessLogs.value.some(row=>Boolean(row.block_reason)))
+const hasFilters=computed(()=>{const c=current.value;return Boolean(c.keyword||c.service||c.ip||c.kind||c.status||c.level||c.range!=='all')})
+function queryParams(){
+ const c=current.value
+ let from:string|undefined,to:string|undefined
+ if(c.range==='custom'&&c.custom){from=new Date(c.custom[0]).toISOString();to=new Date(c.custom[1]).toISOString()}
+ else if(c.range!=='all'&&c.range!=='custom'){
+  const hours=c.range==='24h'?24:c.range==='7d'?168:720
+  from=new Date(Date.now()-hours*3600000).toISOString()
+ }
+ return {source:tab.value,keyword:c.keyword.trim(),service:c.service.trim(),ip:tab.value==='access'?c.ip.trim():undefined,kind:tab.value==='access'?c.kind||undefined:undefined,status:tab.value==='access'?c.status??undefined:undefined,level:tab.value!=='access'?c.level||undefined:undefined,from,to}
 }
-
-const ACCESS_KIND_LABELS: Record<string, string> = {
-  intercept: '策略拦截（403 / 429 / 401）',
-  '403': 'HTTP 403',
-  '429': 'HTTP 429',
-  '401': 'HTTP 401',
-  scan: '疑似扫描',
+let disposed=false,generation=0,historyController:AbortController|undefined,summaryController:AbortController|undefined,exportController:AbortController|undefined
+let debounce:ReturnType<typeof setTimeout>|undefined,timer:ReturnType<typeof setInterval>|undefined
+let nextSummaryAt=0
+let pageSnapshot=''
+function clearRows(){accessLogs.value=[];systemLogs.value=[];errorLogs.value=[];frpLogs.value=[];hasMore.value=false}
+async function loadSummary(force=false){
+ if(disposed||summaryLoading.value)return
+ summaryLoading.value=true;summaryError.value=''
+ summaryController=new AbortController()
+ try{const r=await api.getLogSummary(summaryController.signal,force);if(!disposed){summary.value=r.sources;summaryAt.value=r.updated_at;nextSummaryAt=Date.now()+30000}}
+ catch(e){if(!disposed)summaryError.value=e instanceof Error?e.message:'统计失败'}
+ finally{summaryLoading.value=false}
 }
-
-const accessFilterBanner = computed(() => {
-  const parts: string[] = []
-  if (accessKind.value) {
-    parts.push(`筛选：${ACCESS_KIND_LABELS[accessKind.value] ?? accessKind.value}`)
-  }
-  if (accessClientIP.value) {
-    parts.push(`来源 IP：${accessClientIP.value}`)
-  }
-  if (parts.length === 0) return ''
-  return `${parts.join(' · ')} · 共 ${filteredAccessLogs.value.length} 条（最近日志片段内匹配）`
-})
-
-const tab = ref<LogTab>(resolveTab(route.query))
-const pageError = ref('')
-const autoRefresh = ref(false)
-let refreshTimer: ReturnType<typeof setInterval> | null = null
-
-const accessLogs = ref<AccessLogEntry[]>([])
-const proxyRules = ref<ProxyRule[]>([])
-const proxyBindingIndex = computed(() => buildProxyBindingIndex(proxyRules.value))
-const errorLogs = ref<ParsedNginxError[]>([])
-const frpLogs = ref<ParsedFrpLog[]>([])
-const systemLogs = ref<SystemLogEntry[]>([])
-const loadingAccess = ref(false)
-const loadingError = ref(false)
-const loadingFrp = ref(false)
-const loadingSystem = ref(false)
-
-const accessKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
-const accessStatus = ref<number | null>(null)
-const accessKind = ref(typeof route.query.kind === 'string' ? route.query.kind : '')
-const accessClientIP = ref(typeof route.query.ip === 'string' ? route.query.ip : '')
-const errorKeyword = ref('')
-const errorLevel = ref('')
-const frpKeyword = ref('')
-const frpLevel = ref('')
-const systemKeyword = ref('')
-const systemLevel = ref('')
-
-const accessPage = ref(1)
-const errorPage = ref(1)
-const frpPage = ref(1)
-const systemPage = ref(1)
-
-/** Avoid writing URL while applying ?kind= / ?ip= from navigation (route.query can lag one tick). */
-let syncingRouteQuery = false
-
-const usesServerAccessFilter = computed(() => Boolean(accessKind.value.trim() || accessClientIP.value.trim()))
-
-const accessEmptyTitle = computed(() => {
-  if (accessKind.value === 'intercept') return '暂无策略拦截记录'
-  if (accessClientIP.value) return '该 IP 暂无匹配访问'
-  return '暂无访问日志'
-})
-
-const accessEmptyDescription = computed(() => {
-  if (accessKind.value === 'intercept') {
-    return '近期反代访问中未出现 403/429/401。可在反代规则中启用 IP 白名单、限流或认证后再观察。'
-  }
-  if (accessClientIP.value) {
-    return `未在最近扫描的 access.log 片段中找到 ${accessClientIP.value} 的记录。`
-  }
-  return '此处记录经 Nginx 反向代理的访问（非 Fonu 管理界面本身）。请通过代理域名访问后刷新。'
-})
-
-const showAccessBlockReason = computed(
-  () =>
-    accessKind.value === 'intercept' ||
-    accessKind.value === '403' ||
-    accessKind.value === '429' ||
-    accessKind.value === '401' ||
-    accessKind.value === 'scan' ||
-    accessLogs.value.some((row) => Boolean(row.block_reason)),
-)
-
-const accessTableScrollX = computed(() => (showAccessBlockReason.value ? 1120 : 920))
-
-const filteredAccessLogs = computed(() => {
-  if (usesServerAccessFilter.value) {
-    return accessLogs.value
-  }
-  return accessLogs.value.filter((log) => {
-    if (accessKeyword.value) {
-      const kw = accessKeyword.value.toLowerCase()
-      const service = resolveAccessServiceLabel(log, proxyBindingIndex.value)
-      const fallback = formatAccessFallback(log)
-      if (!`${service} ${fallback} ${log.domain} ${log.path} ${log.client_ip}`.toLowerCase().includes(kw)) return false
-    }
-    if (accessStatus.value && log.status !== accessStatus.value) return false
-    return true
-  })
-})
-
-const filteredErrorLogs = computed(() => {
-  const kw = errorKeyword.value.toLowerCase()
-  return errorLogs.value.filter(entry => entry.raw.toLowerCase().includes(kw) && levelMatches(nginxLevelTagType(entry.level), errorLevel.value))
-})
-
-const filteredFrpLogs = computed(() => frpLogs.value.filter(entry => entry.raw.toLowerCase().includes(frpKeyword.value.toLowerCase()) && levelMatches(frpLevelTagType(entry.level), frpLevel.value)))
-
-const filteredSystemLogs = computed(() => {
-  return systemLogs.value.filter((log) => {
-    const display = displaySystemLog(log)
-    if (!levelMatches(systemLevelTagType(display.displayLevel), systemLevel.value)) return false
-    if (
-      systemKeyword.value &&
-      !`${display.displayModule} ${log.message}`.toLowerCase().includes(systemKeyword.value.toLowerCase())
-    ) {
-      return false
-    }
-    return true
-  })
-})
-
-function levelMatches(type: string, level: string) { return !level || type === ({ INFO:'info', WARN:'warning', ERROR:'error' } as Record<string,string>)[level] }
-function paginate<T>(items: T[], page: number) {
-  const start = (page - 1) * PAGE_SIZE
-  return items.slice(start, start + PAGE_SIZE)
+async function loadHistory(){
+ if(disposed)return
+ clearTimeout(debounce)
+ if(current.value.range==='custom'&&!current.value.custom){loading.value=false;error.value='请选择自定义时间范围';return}
+ historyController?.abort()
+ const ctl=new AbortController();historyController=ctl
+ const id=++generation,source=tab.value
+ if(offset.value===0)pageSnapshot=new Date().toISOString()
+ loading.value=true;error.value=''
+ try{
+  const r=await api.getLogHistory({...queryParams(),offset:offset.value,limit:pageSize.value,snapshot:pageSnapshot},ctl.signal)
+  if(disposed||id!==generation)return
+  if(source==='access')accessLogs.value=r.rows as AccessLogEntry[]
+  else if(source==='system')systemLogs.value=r.rows as SystemLogEntry[]
+  else if(source==='nginx')errorLogs.value=(r.rows as string[]).map(parseNginxErrorLine)
+  else frpLogs.value=(r.rows as string[]).map(parseFrpLogLine)
+  hasMore.value=r.has_more
+ }catch(e){if(!disposed&&id===generation)error.value=e instanceof Error?e.message:'读取历史日志失败'}
+ finally{if(id===generation)loading.value=false}
 }
-
-const pagedAccessLogs = computed(() => paginate(filteredAccessLogs.value, accessPage.value))
-const pagedErrorLogs = computed(() => paginate(filteredErrorLogs.value, errorPage.value))
-const pagedFrpLogs = computed(() => paginate(filteredFrpLogs.value, frpPage.value))
-const pagedSystemLogs = computed(() => paginate(filteredSystemLogs.value, systemPage.value))
-
+function refreshAll(force=false){void loadSummary(force);void loadHistory()}
+function selectSource(key:LogTab){
+ if(key===tab.value)return
+ const c=filters[key]
+ void router.replace({name:'logs',query:{tab:key,...(key==='access'?{ip:c.ip||undefined,kind:c.kind||undefined,keyword:c.keyword||undefined}:{})}})
+}
+function resetFilters(){
+ Object.assign(current.value,makeFilter())
+ if(tab.value==='access')void router.replace({name:'logs',query:{tab:'access'}})
+}
+function previousPage(){offset.value=Math.max(0,offset.value-pageSize.value);clearRows();void loadHistory()}
+function nextPage(){offset.value+=pageSize.value;clearRows();void loadHistory()}
+function applyRoute(){
+ tab.value=resolveTab(route.query.tab)
+ if(tab.value==='access'){
+  filters.access.ip=typeof route.query.ip==='string'?route.query.ip:''
+  filters.access.kind=typeof route.query.kind==='string'?route.query.kind:null
+  filters.access.keyword=typeof route.query.keyword==='string'?route.query.keyword:''
+ }
+}
+async function exportHistory(){
+ if(exporting.value||loading.value)return
+ exporting.value=true
+ const ctl=new AbortController();exportController=ctl
+ const source=tab.value
+ try{
+  const r=await api.getLogHistory({...queryParams(),offset:0,limit:10000,export:1},ctl.signal)
+  if(disposed)return
+  if(r.has_more){message.warning('匹配记录超过 10000 条，请缩小时间范围后导出');return}
+  const blob=new Blob([JSON.stringify(r.rows,null,2)],{type:'application/json;charset=utf-8'})
+  const url=URL.createObjectURL(blob),a=document.createElement('a')
+  a.href=url;a.download='fonu-'+source+'-logs.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+  message.success('已导出 '+r.rows.length+' 条匹配记录')
+ }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'导出失败')}
+ finally{exporting.value=false}
+}
+applyRoute()
+watch(()=>route.fullPath,()=>{if(route.name==='logs')applyRoute()})
+watch(()=>JSON.stringify([tab.value,current.value,pageSize.value]),()=>{
+ historyController?.abort();generation++;offset.value=0;clearRows();error.value='';loading.value=true
+ clearTimeout(debounce);debounce=setTimeout(()=>void loadHistory(),250)
+})
+onMounted(()=>{
+ refreshAll()
+ timer=setInterval(()=>{
+  if(disposed||document.hidden||route.name!=='logs')return
+  if(Date.now()>=nextSummaryAt)void loadSummary()
+  if(autoRefresh.value&&offset.value===0&&!loading.value)void loadHistory()
+ },10000)
+})
+onUnmounted(()=>{disposed=true;generation++;historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
 const methodTagType = (method: string) => {
   const map: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
     GET: 'success',
@@ -669,16 +434,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
   },
 ]
 
-const loaded = ref<Record<LogTab, boolean>>({ system:false, access:false, nginx:false, frp:false })
-const errors = ref<Record<LogTab, string>>({ system:'', access:'', nginx:'', frp:'' })
-const sourceCards = computed(() => [
-  { key:'system' as const, label:'系统日志', icon:DesktopOutline, count:systemLogs.value.length },
-  { key:'access' as const, label:'访问日志', icon:GlobeOutline, count:accessLogs.value.length },
-  { key:'nginx' as const, label:'Nginx 日志', icon:AlertCircleOutline, count:errorLogs.value.length },
-  { key:'frp' as const, label:'FRP 日志', icon:GitNetworkOutline, count:frpLogs.value.length },
-])
-const activeRows = computed(() => ({ system:filteredSystemLogs.value, access:filteredAccessLogs.value, nginx:filteredErrorLogs.value, frp:filteredFrpLogs.value })[tab.value])
-const activeLoading = computed(() => ({ system:loadingSystem.value, access:loadingAccess.value, nginx:loadingError.value, frp:loadingFrp.value })[tab.value])
+
 const showDetail = ref(false)
 const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string } | null>(null)
 function detailRowProps(kind: LogTab, row: unknown) {
@@ -691,7 +447,7 @@ function openDetail(kind: LogTab, row: unknown) {
   let raw = JSON.stringify(row,null,2) ?? '', rawLabel = '记录字段（JSON）', ip:string|undefined
   if (kind === 'access') {
     const r = row as AccessLogEntry
-    add('访问时间', formatLogTime(r.time,{timeZone:logTimeZone.value}));add('服务',resolveAccessServiceLabel(r,proxyBindingIndex.value));add('域名',r.domain);add('端口',r.server_port);add('请求方法',r.method);add('路径',r.path);add('客户端 IP',r.client_ip);add('归属地',r.geo ? displayGeoLabel(r.geo) : '');add('HTTP 状态',r.status);add('响应耗时',formatMs(r.response_time));add('上游',r.upstream);add('拦截原因（推测）',r.block_reason);ip=r.client_ip
+    add('访问时间', formatLogTime(r.time,{timeZone:logTimeZone.value}));add('服务',resolveAccessServiceLabel(r,proxyBindingIndex.value));add('域名',r.domain);add('端口',r.server_port);add('请求方法',r.method);add('路径',r.path);add('客户端 IP',r.client_ip);add('归属地',r.geo ? displayGeoLabel(r.geo) : '');add('HTTP 状态',r.status);add('响应耗时',formatMs(r.response_time));add('上游',r.upstream);add('User-Agent',r.user_agent);add('请求字节',r.request_length);add('响应字节',r.bytes_sent);add('拦截原因（推测）',r.block_reason);ip=r.client_ip
   } else if (kind === 'system') {
     const r = displaySystemLog(row as SystemLogEntry)
     add('时间',formatLogTime(r.time,{timeZone:logTimeZone.value}));add('级别',r.displayLevel);add('模块',r.displayModule);add('消息',r.message)
@@ -709,112 +465,11 @@ async function copyDetail() {
 function filterDetailIP() {
   if (!detail.value?.ip) return
   showDetail.value=false
+  filters.access.ip=detail.value.ip
   void router.replace({name:'logs',query:{tab:'access',ip:detail.value.ip}})
 }
-function exportLoaded() {
-  const blob=new Blob([JSON.stringify(activeRows.value.map(row => 'raw' in row ? row.raw : row),null,2)],{type:'application/json;charset=utf-8'})
-  const url=URL.createObjectURL(blob), a=document.createElement('a')
-  a.href=url;a.download='fonu-'+tab.value+'-logs.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
-}
-async function loadProxyRules() {
-  try {
-    proxyRules.value = asList(await api.listProxies())
-  } catch {
-    proxyRules.value = []
-  }
-}
 
-let accessGeneration = 0
-let accessRequestKey = ''
-let accessDebounce: ReturnType<typeof setTimeout> | undefined
-let disposed = false
-async function loadAccess() {
-  const params = {limit:usesServerAccessFilter.value ? 200 : 100, keyword:usesServerAccessFilter.value ? accessKeyword.value.trim() || undefined : undefined, status:usesServerAccessFilter.value ? accessStatus.value || undefined : undefined, kind:accessKind.value.trim() || undefined, ip:accessClientIP.value.trim() || undefined}
-  const key=JSON.stringify(params)
-  if (loadingAccess.value && key === accessRequestKey) return
-  const generation=++accessGeneration
-  accessRequestKey=key
-  loadingAccess.value=true;errors.value.access=''
-  try {
-    await loadProxyRules()
-    if (disposed || generation !== accessGeneration) return
-    const rows=asList(await api.getAccessLogs(params))
-    if (disposed || generation !== accessGeneration) return
-    accessLogs.value=rows;loaded.value.access=true
-  } catch (error) {
-    if (!disposed && generation === accessGeneration) errors.value.access=error instanceof Error ? error.message : '加载访问日志失败'
-  } finally {
-    if (generation === accessGeneration) loadingAccess.value=false
-  }
-}
-async function loadErrorLogs() {
-  if (loadingError.value) return
-  loadingError.value=true;errors.value.nginx=''
-  try { const rows=asList(await api.getErrorLogs({limit:100}));if (!disposed) {errorLogs.value=rows.map(parseNginxErrorLine);loaded.value.nginx=true} }
-  catch(error) {if (!disposed) errors.value.nginx=error instanceof Error ? error.message : '加载 Nginx 日志失败'}
-  finally {loadingError.value=false}
-}
-async function loadFrpLogs() {
-  if (loadingFrp.value) return
-  loadingFrp.value=true;errors.value.frp=''
-  try {const rows=asList(await api.getFRPLogs(200));if (!disposed) {frpLogs.value=rows.map(parseFrpLogLine);loaded.value.frp=true}}
-  catch(error) {if (!disposed) errors.value.frp=error instanceof Error ? error.message : '加载 FRP 日志失败'}
-  finally {loadingFrp.value=false}
-}
-async function loadSystemLogs() {
-  if (loadingSystem.value) return
-  loadingSystem.value=true;errors.value.system=''
-  try {const rows=asList(await api.getSystemLogs({limit:100}));if (!disposed) {systemLogs.value=rows;loaded.value.system=true}}
-  catch(error) {if (!disposed) errors.value.system=error instanceof Error ? error.message : '加载系统日志失败'}
-  finally {loadingSystem.value=false}
-}
-function loadCurrent() {
-  if (disposed) return
-  if(tab.value==='access') void loadAccess()
-  else if(tab.value==='nginx') void loadErrorLogs()
-  else if(tab.value==='frp') void loadFrpLogs()
-  else void loadSystemLogs()
-}
-function loadAll() {pageError.value='';loadCurrent()}
-function scheduleAccess() {
-  clearTimeout(accessDebounce)
-  if (loadingAccess.value) { accessGeneration++; loadingAccess.value=false }
-  accessDebounce=setTimeout(()=>{if(tab.value==='access' && !disposed) void loadAccess()},250)
-}
-watch([accessKeyword,accessStatus],()=>{accessPage.value=1;if(tab.value==='access' && usesServerAccessFilter.value) scheduleAccess()})
-watch(accessKind,kind=>{
-  accessPage.value=1
-  if(syncingRouteQuery)return
-  const query={...route.query,tab:'access',kind:kind || undefined}
-  if((route.query.kind || '')!==kind) void router.replace({name:'logs',query})
-},{flush:'sync'})
-watch([errorKeyword,errorLevel],()=>{errorPage.value=1})
-watch([frpKeyword,frpLevel],()=>{frpPage.value=1})
-watch([systemKeyword,systemLevel],()=>{systemPage.value=1})
-watch(filteredAccessLogs,rows=>{accessPage.value=Math.min(accessPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
-watch(filteredErrorLogs,rows=>{errorPage.value=Math.min(errorPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
-watch(filteredFrpLogs,rows=>{frpPage.value=Math.min(frpPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
-watch(filteredSystemLogs,rows=>{systemPage.value=Math.min(systemPage.value,Math.max(1,Math.ceil(rows.length/PAGE_SIZE)))})
-watch(autoRefresh,on=>{
-  if(refreshTimer)clearInterval(refreshTimer)
-  refreshTimer=on ? setInterval(()=>{if(!document.hidden && route.name==='logs' && !activeLoading.value)loadCurrent()},10000):null
-})
-watch(()=>route.fullPath,()=>{
-  if(route.name!=='logs')return
-  applyRouteQuery()
-  if(tab.value==='access') {accessPage.value=1;scheduleAccess()}
-  else loadCurrent()
-})
-watch(tab,name=>{
-  if(route.name!=='logs')return
-  if(resolveTab(route.query)!==name)void router.replace({name:'logs',query:{...route.query,tab:name}})
-  else if(name==='access')scheduleAccess()
-  else loadCurrent()
-})
-onMounted(()=>{applyRouteQuery();loadCurrent()})
-onUnmounted(()=>{disposed=true;accessGeneration++;clearTimeout(accessDebounce);if(refreshTimer)clearInterval(refreshTimer)})
 </script>
-
 <style scoped>
 .logs-card :deep(.n-tabs-nav) {
   padding: var(--fonu-space-4) var(--fonu-space-5) 0;
@@ -1025,4 +680,21 @@ onUnmounted(()=>{disposed=true;accessGeneration++;clearTimeout(accessDebounce);i
 .detail-console { padding:12px; max-height:260px; margin:0; }
 .detail-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
 @container(max-width:680px) { .log-source-grid {grid-template-columns:repeat(2,minmax(0,1fr))} .log-source{padding:10px} .logs-card :deep(.n-tabs-nav){padding-inline:12px} }
+
+.log-workspace { gap:10px; }
+.log-source-grid { gap:10px; }
+.log-source { padding:12px; }
+.summary-caption { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; font-size:11px; color:var(--fonu-text-secondary); }
+.history-filters { display:grid; gap:9px; padding:12px 16px; border-bottom:1px solid var(--fonu-border); }
+.filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.filter-row > .n-input { flex:1 1 180px; min-width:0; width:auto; }
+.filter-row > .n-select { width:145px; }
+.filter-row > .range-select { width:150px; }
+.filter-row > .n-date-picker { flex:1 1 300px; min-width:0; }
+.filter-note { margin:0; color:var(--fonu-text-secondary); font-size:11px; }
+.history-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 16px; border-top:1px solid var(--fonu-border); font-size:12px; color:var(--fonu-text-secondary); }
+.history-footer small { display:block; font-size:11px; }
+.history-pagination { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+@container(max-width:550px) { .history-filters,.history-footer {padding:10px} .filter-row > .n-select {flex:1 1 120px;width:auto} .filter-row > .keyword {flex-basis:100%} .history-pagination{gap:5px} }
 </style>
+

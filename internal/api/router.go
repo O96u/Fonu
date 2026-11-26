@@ -129,7 +129,9 @@ func NewRouter(deps Deps) http.Handler {
 		protect("GET /api/settings/china-cidr", r.chinaCIDRHandler.Status)
 		protect("POST /api/settings/china-cidr/refresh", r.chinaCIDRHandler.Refresh)
 	}
-	protect("GET /api/logs/access", r.logsHandler.Access)
+	protect("GET /api/logs/summary", r.logsHandler.Summary)
+ protect("GET /api/logs/history", r.logsHandler.History)
+ protect("GET /api/logs/access", r.logsHandler.Access)
 	protect("GET /api/logs/error", r.logsHandler.Error)
 	protect("GET /api/logs/system", r.logsHandler.System)
 	protect("GET /api/logs/stream", r.logsHandler.Stream)

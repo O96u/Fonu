@@ -482,6 +482,9 @@ export interface AccessLogEntry {
   awareness_kind?: AwarenessEventKind | string
   block_reason?: string
   geo?: string
+  user_agent?: string
+  request_length?: number
+  bytes_sent?: number
 }
 
 export interface SystemLogEntry {

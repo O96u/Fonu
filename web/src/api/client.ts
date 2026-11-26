@@ -413,6 +413,12 @@ export const api = {
     }),
   getFRPLogs: (limit = 200) => request<string[]>(`/api/frp/logs?limit=${limit}`),
 
+  getLogSummary: (signal?: AbortSignal, force=false) => request<{sources:Record<string,{count:number;error?:string}>;updated_at:string}>('/api/logs/summary'+(force?'?force=1':''),{signal}),
+  getLogHistory: (params: Record<string,string|number|undefined>, signal?: AbortSignal) => {
+    const q=new URLSearchParams()
+    for(const [key,value] of Object.entries(params)) if(value!==undefined && value!=='') q.set(key,String(value))
+    return request<{rows:unknown[];has_more:boolean;offset:number;limit:number}>('/api/logs/history?'+q,{signal})
+  },
   getAccessLogs: (params?: {
     limit?: number
     keyword?: string

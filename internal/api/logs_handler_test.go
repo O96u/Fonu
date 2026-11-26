@@ -49,6 +49,16 @@ func TestLogsAccessRoute(t *testing.T) {
 		StartedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 
+	for _,path:=range []string{"/api/logs/summary","/api/logs/history?source=access"}{
+		unauthorized:=httptest.NewRecorder()
+		handler.ServeHTTP(unauthorized,httptest.NewRequest(http.MethodGet,path,nil))
+		if unauthorized.Code!=http.StatusUnauthorized {t.Fatalf("unprotected history route %s: %d",path,unauthorized.Code)}
+		authorized:=httptest.NewRecorder()
+		q:=httptest.NewRequest(http.MethodGet,path,nil)
+		q.AddCookie(&http.Cookie{Name:"fonu_session",Value:sessionID})
+		handler.ServeHTTP(authorized,q)
+		if authorized.Code!=http.StatusOK{t.Fatalf("history route %s: %d %s",path,authorized.Code,authorized.Body.String())}
+	}
 	req := httptest.NewRequest(http.MethodGet, "/api/logs/access?limit=100", nil)
 	req.AddCookie(&http.Cookie{Name: "fonu_session", Value: sessionID})
 	rec := httptest.NewRecorder()

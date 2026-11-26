@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+ "sync"
 
 	"github.com/fonu/fonu/internal/awareness"
 	"github.com/fonu/fonu/internal/config"
@@ -18,10 +19,13 @@ type LogsHandler struct {
 	cfg      config.Config
 	proxySvc *service.ProxyService
 	geo      *iplocate.Service
+ historyGate chan struct{}
+ historyMu sync.Mutex
+ historySummary historySummary
 }
 
 func NewLogsHandler(cfg config.Config, proxySvc *service.ProxyService, geo *iplocate.Service) *LogsHandler {
-	return &LogsHandler{cfg: cfg, proxySvc: proxySvc, geo: geo}
+	return &LogsHandler{cfg: cfg, proxySvc: proxySvc, geo: geo, historyGate: make(chan struct{},2)}
 }
 
 type accessLogRow struct {
