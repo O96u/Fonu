@@ -2,7 +2,7 @@
   <n-form label-placement="top" class="basic-editor">
     <section class="editor-section">
       
-      <div v-if="copySource" class="source-note"><n-icon :component="CopyOutline"/><div><strong>复制来源：{{copySource.name||copySource.domain}}</strong><small>{{copySource.domain}} · {{copySource.upstream}}</small><small>请填写新域名。认证密码及手动 Nginx 文本不会复制。</small></div></div>
+      <div v-if="copySource" class="source-note"><n-icon :component="CopyOutline"/><div><strong>复制来源：{{copySource.name||copySource.domain}}</strong><small>{{copySource.domain}} · {{copySource.upstream}}</small><small>请填写新域名。访问认证凭据及手动 Nginx 文本不会复制。其他安全策略可独立修改。</small></div></div>
       <div class="field-grid">
         <n-form-item label="服务名称"><ProxyDraftInput :value="form.name" :maxlength="100" label="服务名称" placeholder="例如：飞牛影视" @update:value="emit('patch',{name:$event})"/></n-form-item>
         <n-form-item label="业务分组"><n-select :value="businessGroup" :options="businessOptions" @update:value="emit('business',$event)"/></n-form-item>

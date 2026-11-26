@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"testing"
 
 	"github.com/fonu/fonu/internal/config"
@@ -18,7 +19,7 @@ func TestEnsureErrorPagesWritesAssets(t *testing.T) {
 	}
 
 	errorsDir := cfg.ErrorsDir()
-	for _, name := range []string{"403.html", "404.html", "error.png", "429.png"} {
+	for _, name := range []string{"403.html", "404.html", "429.html", "500.html", "502.html", "503.html", "error.png", "429.png"} {
 		path := filepath.Join(errorsDir, name)
 		info, err := os.Stat(path)
 		if err != nil {
@@ -29,17 +30,16 @@ func TestEnsureErrorPagesWritesAssets(t *testing.T) {
 		}
 	}
 
-	html, err := os.ReadFile(filepath.Join(errorsDir, "403.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(html)
-	for _, want := range []string{
-		"/fonu-errors/error.png",
-		"background:url(/fonu-errors/error.png)",
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("403.html missing %q:\n%s", want, body)
+	for _, code := range []int{403,404,429,500,502,503} {
+		num:=strconv.Itoa(code)
+		html,err:=os.ReadFile(filepath.Join(errorsDir,num+".html"))
+		if err!=nil{t.Fatal(err)}
+		body:=string(html)
+		for _,want:=range []string{"<title>"+num,">"+num+"</span>","prefers-color-scheme:dark","Fonu","noindex,nofollow","viewport"} {
+			if !strings.Contains(body,want){t.Fatalf("%s.html missing %q",num,want)}
+		}
+		for _,unwanted:=range []string{"/fonu-errors/","<script","https://","<img"} {
+			if strings.Contains(body,unwanted){t.Fatalf("%s.html has external dependency %q",num,unwanted)}
 		}
 	}
 }

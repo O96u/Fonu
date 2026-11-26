@@ -18,7 +18,7 @@ try{
  page.on('console',msg=>{if(msg.type()==='error'&&msg.text().startsWith('[fonu]'))errors.push(msg.text())})
  let rules=[
   {id:1,name:'飞牛影视',domain:'speedtest.muxui.com',upstream:'http://192.168.8.3:8005',listen_port:8009,entry_id:2,enabled:true,security:{china_only:true}},
-  {id:2,name:'飞牛影视',domain:'s.muxui.com',upstream:'http://192.168.8.3:8005',listen_port:8009,entry_id:2,enabled:false,security:{basic_auth:{enabled:true}}},
+  {id:2,name:'飞牛影视',domain:'s.muxui.com',upstream:'http://192.168.8.3:8005',listen_port:8009,entry_id:2,enabled:false,security:{basic_auth:{enabled:true,username:'test',has_password:true}}},
   {id:3,name:'飞牛影视',domain:'fonu.roven.cc',upstream:'http://192.168.8.3:8005',listen_port:8009,entry_id:2,enabled:true,security:{}},
   {id:4,name:'飞牛 NAS',domain:'nas.example.com',upstream:'http://192.168.1.10:5666',listen_port:443,entry_id:1,enabled:true,security:{}},
   {id:5,name:'iKuai',domain:'ikuai.example.com',upstream:'https://192.168.1.1',listen_port:443,entry_id:1,enabled:true,security:{china_only:true}},
@@ -72,7 +72,22 @@ try{
  await page.locator('.summary-identity').first().click()
  assert.equal(await page.locator('.service-row--child').count(),3)
  assert.match(await page.locator('.summary-identity').first().innerText(),/3 条独立规则/)
+ assert.equal(await page.locator('.service-row--child').first().getByRole('link',{name:'在新窗口打开'}).getAttribute('href'),'https://speedtest.muxui.com:8009')
+ assert.equal(await page.locator('.service-row--child').first().getByRole('link',{name:'在新窗口打开'}).getAttribute('target'),'_blank')
  await page.screenshot({path:'ui-screenshots/desktop-list.png',fullPage:true})
+ const authRow=page.locator('.service-row--child').filter({hasText:'s.muxui.com'})
+ await authRow.getByRole('button',{name:'编辑规则'}).click()
+ const edit=page.locator('.editor-frame').filter({has:page.getByRole('heading',{name:'编辑代理',exact:true})})
+ await edit.getByRole('tab',{name:'安全设置'}).click()
+ assert.equal(await edit.getByRole('textbox',{name:'代理认证用户名'}).inputValue(),'test')
+ await edit.getByRole('button',{name:'取消',exact:true}).click()
+ await edit.waitFor({state:'hidden'})
+ await page.locator('.service-row--child').filter({hasText:'fonu.roven.cc'}).getByRole('button',{name:'编辑规则'}).click()
+ await edit.getByRole('tab',{name:'安全设置'}).click()
+ await edit.getByText('访问认证',{exact:true}).click()
+ assert.equal(await edit.locator('.security-option').filter({hasText:'Basic Auth'}).getByRole('switch').getAttribute('aria-checked'),'false')
+ await edit.getByRole('button',{name:'取消',exact:true}).click()
+ await edit.waitFor({state:'hidden'})
  // Each domain rule has its own switch. Only the selected rule is updated.
  await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/proxies/2')&&r.request().method()==='PUT'),page.locator('.service-row--child').nth(1).locator('[role=switch]').click()])
  await page.waitForFunction(()=>document.querySelectorAll('.service-row--child [role=switch]')[1]?.getAttribute('aria-checked')==='true')
@@ -83,6 +98,12 @@ try{
  const bounds=await page.locator('.service-block').evaluateAll(els=>els.map(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})))
  for(const b of bounds)for(const other of bounds)if(Math.abs(b.top-other.top)<2)assert.ok(Math.abs(b.bottom-other.bottom)<2,JSON.stringify(bounds))
  await page.screenshot({path:'ui-screenshots/desktop-cards.png',fullPage:true})
+ await page.locator('.summary-identity').first().click()
+ await page.locator('.expanded-panel').waitFor()
+ assert.equal(await page.locator('.expanded-panel .service-row--child').count(),3)
+ assert.equal(await page.locator('.expanded-panel .service-row--card').count(),0)
+ await page.screenshot({path:'ui-screenshots/desktop-cards-expanded.png',fullPage:true})
+ await page.locator('.summary-identity').first().click()
  await page.getByRole('button',{name:'列表',exact:true}).click()
  const search=page.locator('.filters input').first()
  await search.fill('fonu.roven.cc')
@@ -218,6 +239,12 @@ try{
  await diag.getByRole('button',{name:'立即检测'}).click()
  await diag.locator('.diag-latest').getByText('HTTP 可达').waitFor()
  await page.screenshot({path:'ui-screenshots/diagnostics.png',fullPage:true})
+ // More than ten services must remain in one scrollable workspace.
+ const extra=Array.from({length:11},(_,i)=>({...rules[0],id:100+i,name:'额外服务 '+i,domain:'extra'+i+'.example.net',hosts:[{id:100+i,hostname:'extra'+i+'.example.net'}],security:{}}))
+ rules=rules.concat(extra)
+ await page.reload()
+ await page.waitForFunction(()=>document.querySelectorAll('.service-block').length>=15)
+ assert.equal(await page.locator('.workspace .n-pagination').count(),0)
  assert.deepEqual(errors,[])
  console.log('Proxy workspace: independent toggles, domain search, group creation, list/cards, narrow width and screenshot capture passed')
 }catch(error){

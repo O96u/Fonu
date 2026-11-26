@@ -202,7 +202,8 @@ func writeErrorPages(b *strings.Builder, cfg config.Config) {
     error_page 404 /fonu-errors/404.html;
     error_page 429 /fonu-errors/429.html;
     error_page 500 /fonu-errors/500.html;
-    error_page 502 503 /fonu-errors/503.html;
+    error_page 502 /fonu-errors/502.html;
+    error_page 503 /fonu-errors/503.html;
 
     location = /fonu-errors/error.png {
         alias ` + errorsDir + `/error.png;
