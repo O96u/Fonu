@@ -45,7 +45,12 @@ jobs:
         env:
           FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
         run: node scripts/proxy-workspace.browser.mjs
-      - name: Upload proxy workspace screenshots
+      - name: Verify FRP workspace in real Chromium
+        working-directory: web
+        env:
+          FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
+        run: node scripts/frp-workspace.browser.mjs
+      - name: Upload proxy and FRP workspace screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:

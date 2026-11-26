@@ -66,6 +66,7 @@ func BuildStatus(cfg config.Config, frpCfg Config, enabled bool, lastError, star
 		return st
 	}
 	st.ProcessRunning = true
+	applyConnectedTiming(&st, startedAt)
 	ok, logHint, registrations := sessionStatus(tailLines(cfg.FrpLogPath(), 1000))
 	if ok {
 		st.Connected = true
@@ -135,7 +136,7 @@ func sessionStatus(lines []string) (bool, string, map[string]string) {
 		case strings.Contains(line, "login to server success"):
 			connected, hint = true, ""
 			clear(states)
-		case strings.Contains(line, "connect to server error"), strings.Contains(line, "authorization failed"), strings.Contains(line, "token in login doesn't match"), strings.Contains(line, "control writer is closing"), strings.Contains(line, "control reader is closing"), strings.Contains(line, "session shutdown"), strings.Contains(line, "connection closed"), strings.Contains(line, "heartbeat timeout"):
+		case strings.Contains(line, "connect to server error"), strings.Contains(line, "authorization failed"), strings.Contains(line, "token in login doesn't match"), strings.Contains(line, "control writer is closing"), strings.Contains(line, "control reader is closing"), strings.Contains(line, "session shutdown"), strings.Contains(line, "control connection closed"), strings.Contains(line, "heartbeat timeout"):
 			connected, hint = false, sanitizeLogLine(raw)
 			clear(states)
 		}

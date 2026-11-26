@@ -35,7 +35,7 @@
                   :class="{ 'status-hero__badge--on': frpStatus.connected }"
                 >
                   <span class="status-hero__badge-dot" />
-                  {{ frpStatus.connected ? "运行中" : "未连接" }}
+                  {{ frpStatus.connected ? "已连接" : frpStatus.process_running ? "连接待确认" : "未运行" }}
                 </span>
                 <div v-if="frpStatus.connected_at" class="status-hero__time">
                   进程启动于 {{ connectedAtLabel }}
@@ -174,6 +174,7 @@
                 quaternary
                 size="small"
                 :loading="restarting"
+                :disabled="busy"
                 @click="restartFrpc"
               >
                 <template #icon
@@ -452,7 +453,7 @@
                 <p class="field-hint field-hint--inline">
                   网关端口与 Fonu Nginx 一致（HTTP {{ nginxHttpPort }} / HTTPS
                   {{ nginxHttpsPort }}）。VPS 防火墙需放行
-                  {{ frpForm.server_port || 7000 }}、{{ nginxHttpPort }}、{{
+                  {{ savedConfig?.server_port || 7000 }}、{{ nginxHttpPort }}、{{
                     nginxHttpsPort
                   }}<template v-if="tcpRemotePorts.length">
                     ，以及隧道远程端口
@@ -863,10 +864,10 @@ const statusHeroIcon = computed(() => {
 
 const displayServerEndpoint = computed(() => {
   if (frpStatus.value.server_endpoint) return frpStatus.value.server_endpoint;
-  const addr = frpForm.server_addr.trim();
+  const addr = savedConfig.value?.server_addr?.trim() || "";
   if (!addr) return "—";
-  const port = frpForm.server_port > 0 ? frpForm.server_port : 7000;
-  return `${addr}:${port}`;
+  const port = savedConfig.value?.server_port || 7000;
+  return `${addr.includes(":") && !addr.startsWith("[") ? "[" + addr + "]" : addr}:${port}`;
 });
 
 const frpServerHost = computed(() => {
@@ -1206,7 +1207,7 @@ function validateTcpForm() {
 }
 
 async function saveTcpModal() {
-  if (saving.value || !validateTcpForm()) return;
+  if (busy.value || !validateTcpForm()) return;
   const payload: FRPTCPProxy = {
     id: tcpEditingId.value ?? createId(),
     name: tcpForm.name.trim(),
@@ -1245,14 +1246,14 @@ function confirmRemoveTcpProxy(row: FRPTCPProxy) {
 }
 
 async function removeTcpProxy(id: string) {
-  if (saving.value) return;
+  if (busy.value) return;
   const previous = tcpProxies.value;
   tcpProxies.value = tcpProxies.value.filter((item) => item.id !== id);
   if (!await save({ quiet: true, routesOnly: true, successText: "隧道已删除" })) tcpProxies.value = previous;
 }
 
 async function toggleTcpEnabled(id: string, enabled: boolean) {
-  if (saving.value) return;
+  if (busy.value) return;
   const previous = tcpProxies.value;
   tcpProxies.value = tcpProxies.value.map((item) =>
     item.id === id ? { ...item, enabled } : item,
@@ -1478,7 +1479,7 @@ async function fitOverviewChipLine(
     hasMore.value = false;
     return;
   }
-  for (let count = total; count >= 0; count--) {
+  for (let count = Math.min(total, 8); count >= 0; count--) {
     visible.value = count;
     hasMore.value = count < total;
     await nextTick();
