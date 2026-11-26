@@ -49,7 +49,7 @@
                     </div>
                     <div v-if="form.ip_blacklist_mode" class="security-panel__fields">
                       <n-form-item label="IP 黑名单">
-                        <n-input
+                        <ProxyDraftInput
                           :value="form.ip_blacklist_text" @update:value="emit('patch', { ip_blacklist_text: $event })"
                           type="textarea"
                           :rows="2"
@@ -67,7 +67,7 @@
                     </div>
                     <div v-if="form.ip_whitelist_mode" class="security-panel__fields">
                       <n-form-item label="IP 白名单">
-                        <n-input
+                        <ProxyDraftInput
                           :value="form.ip_whitelist_text" @update:value="emit('patch', { ip_whitelist_text: $event })"
                           type="textarea"
                           :rows="2"
@@ -89,7 +89,7 @@
                   </div>
                   <div v-if="form.basic_auth_enabled" class="security-fields-grid">
                     <n-form-item label="用户名">
-                      <n-input :value="form.basic_auth_username" @update:value="emit('patch', { basic_auth_username: $event })" placeholder="用户名" />
+                      <ProxyDraftInput :value="form.basic_auth_username" @update:value="emit('patch', { basic_auth_username: $event })" placeholder="用户名" />
                     </n-form-item>
                     <n-form-item>
                       <template #label>
@@ -105,10 +105,10 @@
                           </n-tag>
                         </span>
                       </template>
-                      <n-input
+                      <ProxyDraftInput
                         :value="form.basic_auth_password" @update:value="emit('patch', { basic_auth_password: $event })"
                         type="password"
-                        show-password-on="click"
+                        label="认证密码"
                         :placeholder="
                           hasPassword
                             ? CONFIGURED_SECRET_PLACEHOLDER
@@ -188,7 +188,8 @@
               </div>
 </template>
 <script setup lang="ts">
-import { NButton,NIcon,NTag,NCollapse,NCollapseItem,NSwitch,NFormItem,NInput,NInputNumber } from 'naive-ui'
+import { NButton,NIcon,NTag,NCollapse,NCollapseItem,NSwitch,NFormItem,NInputNumber } from 'naive-ui'
+import ProxyDraftInput from './ProxyDraftInput.vue'
 import { FlashOutline } from '@vicons/ionicons5'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../../constants/secretField'
 import type { ProxySecurityDraft } from '../../composables/proxy/securityDraft'

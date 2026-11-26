@@ -1027,7 +1027,7 @@ function openDiscoveryModal(group?: ProxyEntryGroup) {
 
 function patchDiscoveryRow(id: string, patch: Partial<DiscoveryRow>) {
   const row = discoveryRows.value.find(row => row.id === id)
-  if (row) Object.assign(row, patch)
+  if (row && !discoveryAdding.value && !discoveryLoading.value) Object.assign(row, patch)
 }
 
 function onDiscoverySelectAll(checked: boolean) {
