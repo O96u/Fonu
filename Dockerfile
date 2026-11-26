@@ -3,7 +3,7 @@ ARG VERSION=dev
 FROM --platform=$BUILDPLATFORM node:22-alpine AS web-builder
 ARG VERSION
 WORKDIR /src/web
-RUN corepack enable
+RUN apk add --no-cache bash && corepack enable
 COPY web/package.json web/*lock* ./
 COPY web/scripts/install-deps.sh ./scripts/install-deps.sh
 RUN bash scripts/install-deps.sh
