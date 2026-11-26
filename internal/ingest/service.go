@@ -149,6 +149,7 @@ func (s *Service) tailLoop(ctx context.Context) {
 				time.Sleep(500 * time.Millisecond)
 				continue
 			}
+			for _, row := range batch { s.realtime.Add(row) }
 			s.dispatch(batch)
 		}
 		offset = next
@@ -210,7 +211,6 @@ func (s *Service) readFrom(offset int64) (int64, []FactRow) {
 			row, ok := s.parseLine(strings.TrimRight(strings.TrimRight(line, "\n"), "\r"), bindings)
 			if ok {
 				batch = append(batch, row)
-				s.realtime.Add(row)
 			}
 			if len(batch) >= batchSize {
 				return offset + consumed, batch
@@ -491,6 +491,7 @@ func (s *Service) runBackfill(ctx context.Context) {
 				s.logger.Warn("backfill batch failed", "error", err.Error())
 				return
 			}
+			for _, row := range batch { s.realtime.Add(row) }
 		}
 		if next <= offset {
 			break

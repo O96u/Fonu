@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,7 +31,7 @@ func SendTelegram(ctx context.Context, client *http.Client, cfg RuntimeConfig, c
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("Telegram 请求构造失败")
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -53,6 +52,7 @@ func SendTelegram(ctx context.Context, client *http.Client, cfg RuntimeConfig, c
 		}
 		transport := cloneHTTPTransport(base)
 		transport.Proxy = http.ProxyURL(parsed)
+		defer transport.CloseIdleConnections()
 		httpClient = &http.Client{
 			Timeout:   base.Timeout,
 			Transport: transport,
@@ -62,17 +62,5 @@ func SendTelegram(ctx context.Context, client *http.Client, cfg RuntimeConfig, c
 		}
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		if len(raw) > 0 {
-			return fmt.Errorf("Telegram 请求失败 (%d): %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-		}
-		return fmt.Errorf("Telegram 请求失败 (%d)", resp.StatusCode)
-	}
-	return nil
+	return doRequest(httpClient, req)
 }

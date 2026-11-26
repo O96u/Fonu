@@ -547,6 +547,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) error {
 	latest, err := s.store.GetByID(ctx, cfg.ID)
 	if err != nil { return err }
 	cfg = latest
+	if !cfg.Enabled || cfg.AcmeOnly { return fmt.Errorf("该 DDNS 配置未启用或仅用于证书申请") }
 	prevIPv4 := cfg.LastIPv4
 	prevIPv6 := cfg.LastIPv6
 

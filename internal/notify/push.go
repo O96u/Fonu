@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,7 +49,7 @@ func sendBark(ctx context.Context, client *http.Client, cfg RuntimeConfig, title
 	endpoint := fmt.Sprintf("%s/%s/%s/%s", server, url.PathEscape(key), url.PathEscape(title), url.PathEscape(message))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("通知请求构造失败")
 	}
 	return doRequest(client, req)
 }
@@ -67,7 +66,7 @@ func sendNtfy(ctx context.Context, client *http.Client, cfg RuntimeConfig, title
 	endpoint := joinURL(server, topic)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(message))
 	if err != nil {
-		return err
+		return fmt.Errorf("通知请求构造失败")
 	}
 	req.Header.Set("Title", title)
 	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
@@ -95,7 +94,7 @@ func sendGotify(ctx context.Context, client *http.Client, cfg RuntimeConfig, tit
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("通知请求构造失败")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return doRequest(client, req)
@@ -109,7 +108,7 @@ func sendCustomWebhook(ctx context.Context, client *http.Client, cfg RuntimeConf
 	body, _ := json.Marshal(content.webhookPayload())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("通知请求构造失败")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return doRequest(client, req)
@@ -119,17 +118,18 @@ func doRequest(client *http.Client, req *http.Request) error {
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	resp, err := client.Do(req)
+	if req.URL.Host == "" || req.URL.User != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+		return fmt.Errorf("通知地址必须是有效的 HTTP 或 HTTPS URL")
+	}
+	local := *client
+	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := local.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("通知请求失败，请检查网络及服务地址")
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		if len(body) > 0 {
-			return fmt.Errorf("请求失败 (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		}
-		return fmt.Errorf("请求失败 (%d)", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("请求失败 (HTTP %d)", resp.StatusCode)
 	}
 	return nil
 }

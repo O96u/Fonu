@@ -2,6 +2,7 @@ package certexport
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -15,7 +16,7 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-func sshClientConn(cfg certstore.SSHExportConfig) (*ssh.Client, error) {
+func sshClientConn(ctx context.Context, cfg certstore.SSHExportConfig) (*ssh.Client, error) {
 	auth, err := sshAuthMethods(cfg)
 	if err != nil {
 		return nil, err
@@ -36,23 +37,29 @@ func sshClientConn(cfg certstore.SSHExportConfig) (*ssh.Client, error) {
 		Timeout:         15 * time.Second,
 	}
 	target := net.JoinHostPort(strings.Trim(cfg.Host, "[]"), strconv.Itoa(port))
-	conn, err := dialTCP(cfg, target)
+	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	conn, err := dialTCP(connectCtx, cfg, target)
 	if err != nil {
 		return nil, err
 	}
-	_ = conn.SetDeadline(time.Now().Add(30*time.Second))
+	deadline, _ := connectCtx.Deadline()
+	if err := conn.SetDeadline(deadline); err != nil { conn.Close(); return nil, err }
+	stop := context.AfterFunc(connectCtx, func() { _ = conn.Close() })
+	defer stop()
 	cc, chans, reqs, err := ssh.NewClientConn(conn, target, clientConfig)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	_ = conn.SetDeadline(time.Time{})
+	if !stop() && connectCtx.Err() != nil { conn.Close(); return nil, connectCtx.Err() }
+	if err := conn.SetDeadline(time.Time{}); err != nil { conn.Close(); return nil, err }
 	return ssh.NewClient(cc, chans, reqs), nil
 }
 
-func dialTCP(cfg certstore.SSHExportConfig, targetAddr string) (net.Conn, error) {
+func dialTCP(ctx context.Context, cfg certstore.SSHExportConfig, targetAddr string) (net.Conn, error) {
 	if !cfg.ProxyEnabled {
-		return net.DialTimeout("tcp", targetAddr, 15*time.Second)
+		return (&net.Dialer{Timeout: 15*time.Second}).DialContext(ctx, "tcp", targetAddr)
 	}
 	proxyPort := cfg.ProxyPort
 	if proxyPort <= 0 {
@@ -65,7 +72,7 @@ func dialTCP(cfg certstore.SSHExportConfig, targetAddr string) (net.Conn, error)
 	proxyAddr := net.JoinHostPort(strings.Trim(cfg.ProxyHost, "[]"), strconv.Itoa(proxyPort))
 	switch cfg.ProxyType {
 	case certstore.SSHProxyHTTP:
-		return dialHTTPProxy(proxyAddr, targetAddr, cfg.ProxyUsername, cfg.ProxyPassword)
+		return dialHTTPProxy(ctx, proxyAddr, targetAddr, cfg.ProxyUsername, cfg.ProxyPassword)
 	default:
 		var auth *proxy.Auth
 		if cfg.ProxyUsername != "" || cfg.ProxyPassword != "" {
@@ -75,16 +82,23 @@ func dialTCP(cfg certstore.SSHExportConfig, targetAddr string) (net.Conn, error)
 		if err != nil {
 			return nil, fmt.Errorf("SOCKS5 代理：%w", err)
 		}
-		return dialer.Dial("tcp", targetAddr)
+		contextDialer, ok := dialer.(proxy.ContextDialer)
+		if !ok { return nil, fmt.Errorf("SOCKS5 代理不支持取消连接") }
+		return contextDialer.DialContext(ctx, "tcp", targetAddr)
 	}
 }
 
-func dialHTTPProxy(proxyAddr, targetAddr, user, pass string) (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", proxyAddr, 15*time.Second)
+func dialHTTPProxy(ctx context.Context, proxyAddr, targetAddr, user, pass string) (net.Conn, error) {
+	if strings.ContainsAny(targetAddr, "\r\n\x00") { return nil, fmt.Errorf("SSH 目标地址无效") }
+	conn, err := (&net.Dialer{Timeout: 15*time.Second}).DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
 		return nil, fmt.Errorf("连接 HTTP 代理：%w", err)
 	}
-	_ = conn.SetDeadline(time.Now().Add(15*time.Second))
+	deadline := time.Now().Add(15*time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) { deadline = d }
+	if err := conn.SetDeadline(deadline); err != nil { conn.Close(); return nil, err }
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	var reqBuilder strings.Builder
 	reqBuilder.WriteString(fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", targetAddr, targetAddr))
 	if user != "" || pass != "" {
@@ -102,13 +116,19 @@ func dialHTTPProxy(proxyAddr, targetAddr, user, pass string) (net.Conn, error) {
 		conn.Close()
 		return nil, fmt.Errorf("HTTP 代理响应：%w", err)
 	}
-	if resp.Body != nil {
-		resp.Body.Close()
-	}
 	if resp.StatusCode != http.StatusOK {
 		conn.Close()
 		return nil, fmt.Errorf("HTTP 代理 CONNECT 失败：%s", strings.TrimSpace(resp.Status))
 	}
-	_ = conn.SetDeadline(time.Time{})
-	return conn, nil
+	if !stop() && ctx.Err() != nil { conn.Close(); return nil, ctx.Err() }
+	if err := conn.SetDeadline(time.Time{}); err != nil { conn.Close(); return nil, err }
+	// Preserve bytes already read beyond the CONNECT response headers.
+	return &bufferedSSHConn{Conn: conn, reader: br}, nil
 }
+
+type bufferedSSHConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedSSHConn) Read(p []byte) (int, error) { return c.reader.Read(p) }

@@ -1,13 +1,23 @@
 package notify
 
 import (
+	"context"
 	"crypto/tls"
+	"net"
+	"strconv"
+	"time"
 	"fmt"
 	"net/smtp"
 	"strings"
 )
 
 func SendEmail(cfg RuntimeConfig, title, message string) error {
+	return sendEmailContext(context.Background(), cfg, title, message)
+}
+
+func sendEmailContext(ctx context.Context, cfg RuntimeConfig, title, message string) error {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 	if strings.TrimSpace(cfg.Email.Host) == "" {
 		return fmt.Errorf("SMTP 主机未配置")
 	}
@@ -27,13 +37,16 @@ func SendEmail(cfg RuntimeConfig, title, message string) error {
 	}
 
 	body := buildMailBody(from, cfg.Email.To, title, message)
-	addr := fmt.Sprintf("%s:%d", cfg.Email.Host, cfg.Email.Port)
-	auth := smtp.PlainAuth("", cfg.Email.Username, cfg.SMTPPassword, cfg.Email.Host)
-
-	if cfg.Email.Port == 465 {
-		return sendSMTPS(addr, cfg.Email.Host, auth, from, cfg.Email.To, body)
+	host := strings.Trim(cfg.Email.Host, "[]")
+	if cfg.Email.Port < 1 || cfg.Email.Port > 65535 {
+		return fmt.Errorf("SMTP 端口无效")
 	}
-	return smtp.SendMail(addr, auth, from, cfg.Email.To, body)
+	addr := net.JoinHostPort(host, strconv.Itoa(cfg.Email.Port))
+	var auth smtp.Auth
+	if cfg.Email.Username != "" {
+		auth = smtp.PlainAuth("", cfg.Email.Username, cfg.SMTPPassword, host)
+	}
+	return sendSMTPContext(ctx, addr, host, auth, from, cfg.Email.To, body, cfg.Email.Port == 465, cfg.Email.TLS)
 }
 
 func buildMailBody(from string, to []string, title, message string) []byte {
@@ -51,40 +64,63 @@ func buildMailBody(from string, to []string, title, message string) []byte {
 	return []byte(strings.Join(headers, "\r\n") + "\r\n\r\n" + bodyText + "\r\n")
 }
 
-func sendSMTPS(addr, host string, auth smtp.Auth, from string, to []string, body []byte) error {
-	tlsCfg := &tls.Config{ServerName: host}
-	conn, err := tls.Dial("tcp", addr, tlsCfg)
+func sendSMTPContext(ctx context.Context, addr, host string, auth smtp.Auth, from string, to []string, body []byte, implicitTLS, requireTLS bool) error {
+	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("SMTP 连接失败")
+	}
+	defer raw.Close()
+	stop := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	defer stop()
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := raw.SetDeadline(deadline); err != nil { return err }
+	}
+	tlsCfg := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+	var conn net.Conn = raw
+	if implicitTLS {
+		tlsConn := tls.Client(raw, tlsCfg)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return fmt.Errorf("SMTP TLS 握手失败")
+		}
+		conn = tlsConn
 	}
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return err
+		return fmt.Errorf("SMTP 握手失败")
 	}
 	defer client.Close()
+	if !implicitTLS {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(tlsCfg); err != nil {
+				return fmt.Errorf("SMTP STARTTLS 失败")
+			}
+		} else if requireTLS {
+			return fmt.Errorf("SMTP 服务不支持 STARTTLS")
+		}
+	}
 
 	if auth != nil {
 		if err := client.Auth(auth); err != nil {
-			return err
+			return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 		}
 	}
 	if err := client.Mail(from); err != nil {
-		return err
+		return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 	}
 	for _, rcpt := range to {
 		if err := client.Rcpt(strings.TrimSpace(rcpt)); err != nil {
-			return err
+			return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 		}
 	}
 	writer, err := client.Data()
 	if err != nil {
-		return err
+		return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 	}
 	if _, err := writer.Write(body); err != nil {
-		return err
+		return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 	}
 	if err := writer.Close(); err != nil {
-		return err
+		return fmt.Errorf("SMTP 操作失败，请检查配置及服务状态")
 	}
-	return client.Quit()
+	if err := client.Quit(); err != nil { return fmt.Errorf("SMTP 结束会话失败") }; return nil
 }

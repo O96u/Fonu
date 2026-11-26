@@ -35,13 +35,15 @@ func NewRealtimeRing(window time.Duration) *RealtimeRing {
 func (r *RealtimeRing) Add(row FactRow) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	now := time.Now()
+	if row.TS.Before(now.Add(-r.window)) || row.TS.After(now) { return }
 	r.samples = append(r.samples, realtimeSample{
 		at:        row.TS,
 		requests:  1,
 		bytes:     row.BytesSent,
 		requestMS: row.RequestMS,
 	})
-	r.pruneLocked(time.Now())
+	r.pruneLocked(now)
 }
 
 func (r *RealtimeRing) Snapshot(now time.Time) RealtimeSnapshot {
@@ -86,6 +88,6 @@ func (r *RealtimeRing) pruneLocked(now time.Time) {
 		i++
 	}
 	if i > 0 {
-		r.samples = append([]realtimeSample(nil), r.samples[i:]...)
+		r.samples = r.samples[:copy(r.samples, r.samples[i:])]
 	}
 }

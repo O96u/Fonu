@@ -146,14 +146,17 @@ func (s *Service) recordThresholdHit(
 	mu.Lock()
  if len(hits)>=4096 {for key,values:=range hits{if len(values)==0||values[len(values)-1].Before(cutoff){delete(hits,key);delete(alerted,key)}};if _,ok:=hits[ip];!ok&&len(hits)>=4096{mu.Unlock();return}}
 	prev := hits[ip]
-	pruned := make([]time.Time, 0, len(prev)+1)
-	for _, at := range prev {
-		if !at.Before(cutoff) {
-			pruned = append(pruned, at)
-		}
+	// Hit timestamps are ordered. Reuse the existing buffer instead of
+	// allocating and copying the entire window on every access.
+	first := 0
+	for first < len(prev) && prev[first].Before(cutoff) {
+		first++
 	}
+	if keep := len(prev)-first; keep >= threshold {
+		first = len(prev)-threshold+1
+	}
+	pruned := prev[:copy(prev, prev[first:])]
 	pruned = append(pruned, now)
- if len(pruned)>threshold{pruned=pruned[len(pruned)-threshold:]}
 	hits[ip] = pruned
 
 	count := len(pruned)
@@ -238,7 +241,7 @@ func (s *Service) send(ctx context.Context, cfg RuntimeConfig, event, title, mes
 	content := FormatAlertAt(event, title, message, s.alertTime(ctx))
 	switch cfg.Type {
 	case NotifyTypeEmail:
-		return SendEmail(cfg, content.Subject, content.PlainBody)
+		return sendEmailContext(ctx, cfg, content.Subject, content.PlainBody)
 	case NotifyTypeWebhook:
 		return SendWebhook(ctx, s.client, cfg, content)
 	case NotifyTypeTelegram:

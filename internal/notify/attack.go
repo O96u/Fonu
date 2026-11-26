@@ -50,7 +50,7 @@ func(st *attackState) observe(entry logstore.AccessEntry,now time.Time,scan,cc b
    out=append(out,attackNotice{EventScan,"疑似恶意扫描",fmt.Sprintf("入口 %s，来源 IP %s，当前 60 秒统计窗该 IP 命中 %d 次探测特征，入口命中 %d 次。请查看日志并确认是否需要封禁。",host,ip,st.scans[ip],bucket.probes)})
   }
  }
- if cc&&((bucket.requests>=600&&len(bucket.ips)>=10)||bucket.limited>=100)&&now.Sub(st.lastCC)>=attackCooldown{
+ if cc&&(((bucket.requests>=600&&len(bucket.ips)>=10)||bucket.requests>=1200)||bucket.limited>=100)&&now.Sub(st.lastCC)>=attackCooldown{
   st.lastCC=now
   out=append(out,attackNotice{EventCC,"疑似 CC / 高频异常访问",fmt.Sprintf("入口 %s，当前 60 秒统计窗请求 %d 次，来源公网 IP 至少 %d 个，429 限流 %d 次。请核对正常流量并启用入口限流或 CDN 防护。",host,bucket.requests,len(bucket.ips),bucket.limited)})
  }
