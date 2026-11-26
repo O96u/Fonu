@@ -217,6 +217,9 @@ type statusRecorder struct {
 	status int
 }
 
+// Unwrap lets http.ResponseController reach the underlying connection.
+func (w *statusRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *statusRecorder) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)

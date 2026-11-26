@@ -233,12 +233,19 @@ func (s *Service) ChangeUsername(ctx context.Context, adminID int, password, new
 	if current == newUsername {
 		return nil
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE admins SET username = ? WHERE id = ?`, newUsername, adminID)
+	result, err := s.db.ExecContext(ctx, `UPDATE admins SET username = ? WHERE id = ? AND password_hash = ?`, newUsername, adminID, hash)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("用户名已被使用")
 		}
 		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrUnauthorized
 	}
 	return nil
 }
