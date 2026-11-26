@@ -387,7 +387,7 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.V2_RELEASE_TOKEN || github.token }}
       VERSION: ${{ needs.setup.outputs.version }}
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
       TAG: ${{ needs.setup.outputs.tag }}
@@ -415,7 +415,10 @@ jobs:
             [[ "$(git rev-list -n 1 "$tag")" == "$SOURCE_SHA" ]] || { echo 'Tag points to another commit'; exit 1; }
           else
             [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"
+            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA"; then
+              echo "::error::Cannot create release tag. Configure V2_RELEASE_TOKEN with repository release/tag permissions, or create the tag at the verified SOURCE_SHA and retry the publish job."
+              exit 1
+            fi
           fi
           flags=(--verify-tag --title "Fonu $VERSION")
           if [[ "$PRERELEASE" == true ]]; then
