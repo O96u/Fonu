@@ -367,7 +367,7 @@ const option = computed(() => {
         z: 5,
         rippleEffect: { brushType: 'stroke', scale: 3 },
         symbolSize: isChina ? 10 : 8,
-        itemStyle: { color: palette.value.chartSecondary, shadowBlur: 8, shadowColor: 'rgba(59,130,246,0.5)' },
+        itemStyle: { color: palette.value.chartSecondary, shadowBlur: 8, shadowColor: palette.value.chartSecondary + '80' },
         data: hub ? [{ name: hubLabel, value: [...hub, 1] }] : [],
       },
     ],

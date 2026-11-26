@@ -185,7 +185,7 @@ defineProps<{nested?:boolean;compact?:boolean;sortable:boolean;columns:DataTable
 
 .proxy-table :deep(.domain-cell__link-action:hover) {
   color: var(--fonu-brand-hover);
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--fonu-brand-soft);
 }
 
 .proxy-table :deep(.domain-cell__more) {

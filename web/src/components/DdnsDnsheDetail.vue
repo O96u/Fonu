@@ -827,7 +827,7 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
 }
 
 .record-table__link:hover {
-  color: var(--fonu-primary);
+  color: var(--fonu-brand-text);
 }
 
 .row-actions {
@@ -852,7 +852,7 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
 }
 
 .domain-row--over td {
-  box-shadow: inset 0 2px 0 var(--fonu-primary);
+  box-shadow: inset 0 2px 0 var(--fonu-brand-text);
 }
 
 .detail-empty-wrap {
@@ -885,15 +885,15 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
   border: 1px dashed var(--fonu-border);
   border-radius: var(--fonu-radius, 8px);
   background: transparent;
-  color: var(--fonu-primary);
+  color: var(--fonu-brand-text);
   font-size: 13px;
   cursor: pointer;
   margin-bottom: var(--fonu-space-2);
 }
 
 .add-account-btn:hover {
-  border-color: var(--fonu-primary);
-  background: var(--fonu-primary-soft, rgba(24, 160, 88, 0.08));
+  border-color: var(--fonu-brand-text);
+  background: var(--fonu-brand-soft);
 }
 
 .sidebar-empty {
@@ -915,12 +915,12 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
 }
 
 .account-item:hover {
-  background: var(--fonu-surface-hover, rgba(0, 0, 0, 0.04));
+  background: var(--fonu-bg-muted);
 }
 
 .account-item--active {
-  background: var(--fonu-primary-soft, rgba(24, 160, 88, 0.1));
-  border-color: var(--fonu-primary);
+  background: var(--fonu-brand-soft);
+  border-color: var(--fonu-brand-text);
 }
 
 .account-item--dragging {
@@ -928,7 +928,7 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
 }
 
 .account-item--over {
-  border-color: var(--fonu-primary);
+  border-color: var(--fonu-brand-text);
 }
 
 .account-item__grip {
@@ -1015,7 +1015,7 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
   gap: var(--fonu-space-3);
   padding: var(--fonu-space-3);
   border-radius: var(--fonu-radius, 8px);
-  background: var(--fonu-surface-muted, rgba(0, 0, 0, 0.03));
+  background: var(--fonu-bg-muted);
 }
 
 .gift-code {
@@ -1023,7 +1023,7 @@ defineExpose({ openEditAccount, openCredentials, confirmDeleteAccount })
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 1px;
-  color: var(--fonu-primary);
+  color: var(--fonu-brand-text);
 }
 
 .gift-meta {

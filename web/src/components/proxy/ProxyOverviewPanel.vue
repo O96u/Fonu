@@ -395,7 +395,7 @@ const emit=defineEmits<{refreshClients:[]}>()
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #10b981;
+  color: var(--fonu-success);
   font-weight: 500;
 }
 
@@ -403,7 +403,7 @@ const emit=defineEmits<{refreshClients:[]}>()
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--fonu-success);
   animation: live-pulse 1.5s ease-in-out infinite;
 }
 
@@ -429,11 +429,11 @@ const emit=defineEmits<{refreshClients:[]}>()
 }
 
 .traffic-live-legend__item--up .traffic-live-legend__dot {
-  background: #10b981;
+  background: var(--fonu-brand);
 }
 
 .traffic-live-legend__item--down .traffic-live-legend__dot {
-  background: #3b82f6;
+  background: var(--fonu-chart-secondary);
 }
 
 .mono { font-family: var(--fonu-mono); }

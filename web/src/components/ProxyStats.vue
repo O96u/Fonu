@@ -18,7 +18,7 @@ defineProps<{sampledAt:string;error:string;totalCount:number;enabledCount:number
 .metric{display:flex;flex-direction:column;gap:6px;min-width:0;padding:12px 14px;background:var(--fonu-surface);border:1px solid var(--fonu-border);border-radius:var(--fonu-radius)}
 .metric-label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--fonu-text-secondary)}.metric-label :deep(.n-icon){font-size:17px;color:var(--fonu-brand-text)}
 .metric strong{font-size:24px;line-height:1.2;font-weight:650;color:var(--fonu-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.metric strong.metric-traffic{display:grid;gap:4px;font-size:16px}.metric-traffic span:first-child{color:var(--fonu-success)}
+.metric strong.metric-traffic{display:grid;gap:4px;font-size:16px}.metric-traffic span:first-child{color:var(--fonu-brand-text)}.metric-traffic span:last-child{color:var(--fonu-chart-secondary)}
 .metric small{color:var(--fonu-text-secondary);font-size:11px;overflow-wrap:anywhere}
 .status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--fonu-success);vertical-align:middle}
 @media(max-width:760px){.metric{padding:10px 12px}.metric strong{font-size:20px}}
