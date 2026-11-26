@@ -149,11 +149,11 @@
       </div>
 
       <div class="proxy-detail__tabbar">
-        <n-tabs :value="detailTab" type="line" animated @update:value="value=>switchDetailTab(value as 'overview' | 'diagnostics' | 'logs' | 'nginx')">
-          <n-tab name="overview">概览</n-tab>
-          <n-tab name="diagnostics">运行诊断</n-tab>
-          <n-tab name="logs">日志</n-tab>
-          <n-tab name="nginx">Nginx</n-tab>
+        <n-tabs :value="detailTab" role="tablist" aria-label="代理详情" type="line" animated @update:value="value=>switchDetailTab(value as 'overview' | 'diagnostics' | 'logs' | 'nginx')">
+          <n-tab name="overview" role="tab" :aria-selected="detailTab==='overview'" tabindex="0" @keydown.enter.prevent="switchDetailTab('overview')" @keydown.space.prevent="switchDetailTab('overview')">概览</n-tab>
+          <n-tab name="diagnostics" role="tab" :aria-selected="detailTab==='diagnostics'" tabindex="0" @keydown.enter.prevent="switchDetailTab('diagnostics')" @keydown.space.prevent="switchDetailTab('diagnostics')">运行诊断</n-tab>
+          <n-tab name="logs" role="tab" :aria-selected="detailTab==='logs'" tabindex="0" @keydown.enter.prevent="switchDetailTab('logs')" @keydown.space.prevent="switchDetailTab('logs')">日志</n-tab>
+          <n-tab name="nginx" role="tab" :aria-selected="detailTab==='nginx'" tabindex="0" @keydown.enter.prevent="switchDetailTab('nginx')" @keydown.space.prevent="switchDetailTab('nginx')">Nginx</n-tab>
         </n-tabs>
       </div>
 
@@ -252,8 +252,8 @@
 
   <ProxyEditorFrame :show="showModal" :title="modalTitle" :subtitle="editing?'规则 #'+editing.id+' · 独立配置':copySource?'复制后为全新独立规则':'每个域名创建独立代理规则'" :icon="copySource?CopyOutline:editing?CreateOutline:AddOutline" :busy="saving||nginxSaving" wide @close="closeModal">
     <template #navigation>
-      <n-tabs :value="formTab" type="line" animated @update:value="value=>switchFormTab(value as EditorTab)">
-        <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" :disabled="saving||nginxSaving">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count"> {{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot"/></n-tab>
+      <n-tabs :value="formTab" role="tablist" aria-label="代理配置" type="line" animated @update:value="value=>switchFormTab(value as EditorTab)">
+        <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" role="tab" :aria-selected="formTab===tab.key" :tabindex="saving||nginxSaving?-1:0" :disabled="saving||nginxSaving" @keydown.enter.prevent="switchFormTab(tab.key)" @keydown.space.prevent="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count" aria-hidden="true"> {{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot" aria-hidden="true"/></n-tab>
       </n-tabs>
     </template>
     <ProxyBasicEditor v-show="formTab==='basic'||formTab==='https'" :section="formTab==='https'?'https':'basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>

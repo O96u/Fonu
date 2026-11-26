@@ -7,12 +7,12 @@ const require=createRequire(resolve(process.env.FONU_UI_TEST_ROOT,'package.json'
 const {chromium}=require('playwright')
 const base='http://127.0.0.1:4173'
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4173','--strictPort'],{stdio:'inherit'})
-let browser
+let browser, page
 try{
  for(let i=0;i<80;i++){try{if((await fetch(base)).ok)break}catch{}if(i===79)throw Error('Vite preview failed');await new Promise(r=>setTimeout(r,200))}
  await mkdir('ui-screenshots',{recursive:true})
  browser=await chromium.launch({headless:true})
- const page=await browser.newPage({viewport:{width:1440,height:980},deviceScaleFactor:1})
+ page=await browser.newPage({viewport:{width:1440,height:980},deviceScaleFactor:1})
  const errors=[]
  page.on('pageerror',err=>{errors.push(err.message);console.error('Browser page error:',err.message)})
  page.on('console',msg=>{if(msg.type()==='error'&&msg.text().startsWith('[fonu]'))errors.push(msg.text())})
@@ -124,7 +124,11 @@ try{
  assert.equal(await editor.getByPlaceholder('http://192.168.1.100:8005').inputValue(),'http://127.0.0.1:8080')
  await editor.getByText('有未保存的配置',{exact:true}).waitFor()
  await editor.getByRole('tab',{name:'HTTPS / 监听'}).click()
- await editor.getByRole('tab',{name:'基础配置'}).click()
+ await editor.getByText('监听与 HTTPS',{exact:true}).waitFor({state:'visible'})
+ assert.equal(await editor.getByRole('tab',{name:'HTTPS / 监听'}).getAttribute('aria-selected'),'true')
+ await editor.getByRole('tab',{name:'基础配置'}).focus()
+ await editor.getByRole('tab',{name:'基础配置'}).press('Enter')
+ assert.equal(await editor.getByRole('tab',{name:'基础配置'}).getAttribute('aria-selected'),'true')
  await editor.getByPlaceholder('例如：飞牛影视').waitFor({state:'visible'})
  assert.equal(await editor.getByPlaceholder('例如：飞牛影视').inputValue(),'新服务')
  assert.equal(await editor.getByPlaceholder('http://192.168.1.100:8005').inputValue(),'http://127.0.0.1:8080')
@@ -208,6 +212,12 @@ try{
  await page.screenshot({path:'ui-screenshots/diagnostics.png',fullPage:true})
  assert.deepEqual(errors,[])
  console.log('Proxy workspace: independent toggles, domain search, group creation, list/cards, narrow width and screenshot capture passed')
+}catch(error){
+ if(page){
+  await page.screenshot({path:'ui-screenshots/failure.png',fullPage:true}).catch(()=>{})
+  console.error('Visible dialogs/tabs:',await page.locator('[role=dialog]:visible, [role=tab]:visible, .n-tabs-tab:visible').evaluateAll(els=>els.map(el=>({tag:el.tagName,role:el.getAttribute('role'),label:el.getAttribute('aria-label'),text:el.textContent?.trim().slice(0,80)}))).catch(()=>[]))
+ }
+ throw error
 }finally{
  await browser?.close()
  server.kill('SIGTERM')
