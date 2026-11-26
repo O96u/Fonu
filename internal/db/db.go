@@ -103,7 +103,7 @@ func Open(path string) (*sql.DB, error) {
 	}
 
 	// WAL 让首页的多条统计查询和日志写入同时进行。busy_timeout 盖住短暂的写锁。
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", path)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(67108864)&_pragma=wal_autocheckpoint(1000)", path)
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

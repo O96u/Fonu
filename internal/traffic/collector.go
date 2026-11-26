@@ -45,6 +45,8 @@ type Collector struct {
 
 	mu    sync.RWMutex
 	hosts map[string]*hostState
+ startOnce sync.Once
+ done chan struct{}
 }
 
 type hostState struct {
@@ -68,6 +70,7 @@ func NewCollector(db *sql.DB, accessLogPath string, notifySvc *notify.Service) *
 		store:  NewStore(db),
 		notify: notifySvc,
 		hosts:  map[string]*hostState{},
+ done:make(chan struct{}),
 	}
 }
 
@@ -81,6 +84,7 @@ func (c *Collector) AttachIngest(ingestSvc interface{ OnLine(h ingest.LineHandle
 }
 
 func (c *Collector) Start(ctx context.Context) {
+ c.startOnce.Do(func(){
 	if totals, err := c.store.LoadTotals(ctx); err == nil {
 		c.mu.Lock()
 		for host, t := range totals {
@@ -93,8 +97,16 @@ func (c *Collector) Start(ctx context.Context) {
 		c.mu.Unlock()
 	}
 
-	go c.persistLoop(ctx)
+	go func(){defer close(c.done);c.persistLoop(ctx)}()
+ })
 }
+
+func(c *Collector) Wait(ctx context.Context)error{
+ select{case <-c.done:return nil;case <-ctx.Done():return ctx.Err()}
+}
+
+// Flush is called after the ingest producer has stopped.
+func(c *Collector) Flush(ctx context.Context)error{return c.persist(ctx)}
 
 func (c *Collector) tailLoop(ctx context.Context) {
 	offset := c.logOffset()
@@ -158,9 +170,15 @@ func (c *Collector) persistLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = c.persist(context.Background())
+			finalCtx,cancel:=context.WithTimeout(context.Background(),3*time.Second)
+ _ = c.persist(finalCtx)
+ cancel()
 			return
 		case <-ticker.C:
+            c.mu.Lock()
+            now:=time.Now()
+            for _,st:=range c.hosts{c.pruneHost(st,now)}
+            c.mu.Unlock()
 			_ = c.persist(ctx)
 		}
 	}

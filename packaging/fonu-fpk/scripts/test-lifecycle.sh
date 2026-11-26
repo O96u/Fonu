@@ -44,3 +44,11 @@ kill -0 "$foreign"
 kill "$foreign"
 wait "$foreign" || true
 echo "FPK stale PID checks passed"
+
+# Validate purge candidates without executing destructive callbacks.
+. "$cmd/uninstall_purge_data.sh"
+is_fonu_share_path "$root/fonu/certs"
+for bad in / /etc /volume1 /volume1/fonu /volume1/fonu/../fonu/certs /volume1/fonu/other; do
+  if is_fonu_share_path "$bad"; then echo "unsafe share accepted: $bad" >&2; exit 1; fi
+done
+echo "FPK purge path checks passed"

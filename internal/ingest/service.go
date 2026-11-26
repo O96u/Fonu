@@ -40,6 +40,8 @@ type Service struct {
 	handlers     []LineHandler
 	realtime     *RealtimeRing
 	backfillDone chan struct{}
+ startOnce sync.Once
+ done chan struct{}
 }
 
 func NewService(
@@ -64,6 +66,7 @@ func NewService(
 		logger:       logger.With("module", "INGEST"),
 		realtime:     NewRealtimeRing(60 * time.Second),
 		backfillDone: make(chan struct{}),
+ done:make(chan struct{}),
 	}
 }
 
@@ -87,15 +90,17 @@ func (s *Service) BackfillActive() bool {
 }
 
 func (s *Service) Start(ctx context.Context) {
-	s.refreshBindings(ctx)
-	go s.bindingLoop(ctx)
-	go func() {
-		s.runBackfill(ctx)
-		close(s.backfillDone)
-	}()
-	go s.tailLoop(ctx)
-	go s.geoLoop(ctx)
-	go s.retentionLoop(ctx)
+ s.startOnce.Do(func(){
+  s.refreshBindings(ctx)
+  var wg sync.WaitGroup
+  jobs:=[]func(context.Context){s.bindingLoop,func(ctx context.Context){defer close(s.backfillDone);s.runBackfill(ctx)},s.tailLoop,s.geoLoop,s.retentionLoop}
+  for _,job:=range jobs{wg.Add(1);go func(run func(context.Context)){defer wg.Done();run(ctx)}(job)}
+  go func(){wg.Wait();close(s.done)}()
+ })
+}
+
+func(s *Service) Wait(ctx context.Context)error{
+ select{case <-s.done:return nil;case <-ctx.Done():return ctx.Err()}
 }
 
 func (s *Service) bindingLoop(ctx context.Context) {
@@ -446,7 +451,8 @@ func (s *Service) retentionLoop(ctx context.Context) {
 }
 
 func (s *Service) purgeRetention(ctx context.Context) {
-	days, err := s.settings.GetInt(ctx, settings.KeyAnalyticsRetentionDays)
+	if s.settings==nil{return}
+ days, err := s.settings.GetInt(ctx, settings.KeyAnalyticsRetentionDays)
 	if err != nil || days <= 0 {
 		days = 30
 	}
@@ -465,7 +471,8 @@ func (s *Service) runBackfill(ctx context.Context) {
 	if st.Offset > 0 {
 		return
 	}
-	skip, _ := s.settings.GetBool(ctx, settings.KeyAnalyticsSkipHistoryBackfill)
+	skip:=false
+ if s.settings!=nil{skip,_=s.settings.GetBool(ctx,settings.KeyAnalyticsSkipHistoryBackfill)}
 	if skip {
 		s.seekEOF(ctx)
 		return

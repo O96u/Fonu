@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+ "errors"
+ "net"
+ "sync"
 	"fmt"
 	"io"
 	"io/fs"
@@ -48,6 +51,11 @@ type App struct {
 	scheduler  *scheduler.Scheduler
 	shutdownFn context.CancelFunc
 	db         interface{ Close() error }
+ ingest *ingest.Service
+ traffic *traffic.Collector
+ workers *sync.WaitGroup
+ shutdownMu sync.Mutex
+ closed bool
 }
 
 func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) {
@@ -164,7 +172,9 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		StaticFS:   staticFS,
 		StartedAt:  startedAt,
 	})
-	server := &http.Server{
+	ctx, cancel := context.WithCancel(context.Background())
+ server := &http.Server{
+ BaseContext:func(net.Listener)context.Context{return ctx},
 		Addr:              cfg.ListenAddr,
 		TLSConfig: tlsConfig,
 		Handler:           handler,
@@ -173,7 +183,6 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	intervalMinutes, _ := settingsStore.GetInt(ctx, settings.KeyDDNSCheckInterval)
 	if intervalMinutes <= 0 {
 		intervalMinutes = 5
@@ -237,16 +246,19 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		},
 	)
 	sched.Start(ctx)
-	ingestSvc.Start(ctx)
 	trafficCollector.Start(ctx)
+	ingestSvc.Start(ctx)
+ workers:=&sync.WaitGroup{}
+ workers.Add(2)
 	go func() {
+ defer workers.Done()
 		if err := ipLocateSvc.Ensure(ctx); err != nil {
 			logger.Warn("ip2region init failed; geo labels disabled until database is available", "module", "IPLOCATE", "error", err.Error())
 		} else {
 			logger.Info("ip2region ready", "module", "IPLOCATE", "path", ipLocateSvc.DBPath())
 		}
 	}()
-	go certExportSvc.SyncAllEnabled(ctx)
+	go func(){defer workers.Done();certExportSvc.SyncAllEnabled(ctx)}()
 
 	app := &App{
 		cfg:        cfg,
@@ -257,6 +269,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		scheduler:  sched,
 		shutdownFn: cancel,
 		db:         conn,
+ ingest:ingestSvc,traffic:trafficCollector,workers:workers,
 	}
 	backupSvc.SetOnRestored(func() {
 		time.Sleep(2 * time.Second)
@@ -298,28 +311,35 @@ func (a *App) Run() error {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	a.logger.Info("application shutting down", "module", "SYSTEM")
-	if a.shutdownFn != nil {
-		a.shutdownFn()
-	}
-	if err := a.server.Shutdown(ctx); err != nil {
-		return err
-	}
-	if a.scheduler != nil {
-		if err := a.scheduler.Wait(ctx); err != nil { return fmt.Errorf("wait for scheduler: %w", err) }
-	}
-	if err := a.nginx.Stop(ctx); err != nil {
-		a.logger.Error("nginx stop failed", "module", "NGINX", "error", err.Error())
-	}
-	if a.frp != nil {
-		if err := a.frp.Stop(ctx); err != nil {
-			a.logger.Error("frpc stop failed", "module", "FRP", "error", err.Error())
-		}
-	}
-	if a.db != nil {
-		return a.db.Close()
-	}
-	return nil
+ a.shutdownMu.Lock()
+ defer a.shutdownMu.Unlock()
+ if a.closed{return nil}
+ a.logger.Info("application shutting down","module","SYSTEM")
+ if a.shutdownFn!=nil{a.shutdownFn()}
+ var result error
+ if err:=a.server.Shutdown(ctx);err!=nil{
+  result=errors.Join(result,err,a.server.Close())
+ }
+ workersStopped:=true
+ wait:=func(err error){if err!=nil{workersStopped=false;result=errors.Join(result,err)}}
+ if a.scheduler!=nil{wait(a.scheduler.Wait(ctx))}
+ if a.ingest!=nil{wait(a.ingest.Wait(ctx))}
+ if a.traffic!=nil{
+  wait(a.traffic.Wait(ctx))
+  if workersStopped{result=errors.Join(result,a.traffic.Flush(ctx))}
+ }
+ if a.workers!=nil{
+  done:=make(chan struct{})
+  go func(){a.workers.Wait();close(done)}()
+  select{case <-done:case <-ctx.Done():wait(ctx.Err())}
+ }
+ // A timeout in one subsystem must not skip child-process cleanup.
+ cleanup,cancel:=context.WithTimeout(context.WithoutCancel(ctx),5*time.Second)
+ defer cancel()
+ if a.nginx!=nil{result=errors.Join(result,a.nginx.Stop(cleanup))}
+ if a.frp!=nil{result=errors.Join(result,a.frp.Stop(cleanup))}
+ if workersStopped&&a.db!=nil{result=errors.Join(result,a.db.Close());a.closed=true}
+ return result
 }
 
 func ResolveMigrationsDir() (string, error) {

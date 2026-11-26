@@ -220,11 +220,17 @@ func (s *Store) ApplyGeo(ctx context.Context, ip string, row FactRow) error {
 }
 
 func (s *Store) PurgeBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM access_facts WHERE ts < ?`, cutoff.UTC().Format(time.RFC3339))
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
+	const chunk=2000
+ var total int64
+ for {
+  if err:=ctx.Err();err!=nil{return total,err}
+  res,err:=s.db.ExecContext(ctx,"DELETE FROM access_facts WHERE id IN (SELECT id FROM access_facts WHERE ts < ? ORDER BY ts LIMIT ?)",cutoff.UTC().Format(time.RFC3339),chunk)
+  if err!=nil{return total,err}
+  n,err:=res.RowsAffected();if err!=nil{return total,err}
+  total+=n
+  if n<chunk{return total,nil}
+  select{case <-ctx.Done():return total,ctx.Err();case <-time.After(10*time.Millisecond):}
+ }
 }
 
 // ParsedLine is exported for traffic subscribers.

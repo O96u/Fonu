@@ -7,6 +7,10 @@ services:
     image: muxui/fonu:latest
     container_name: fonu
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
     network_mode: host
     volumes:
       - fonu-data:/data

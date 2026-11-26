@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+umask 077
 
 APP_BIN="${TRIM_APPDEST}/fonu"
 PID_FILE="${TRIM_PKGVAR}/fonu.pid"
@@ -144,10 +145,19 @@ start_app() {
   fi
   log_msg "Starting Fonu..."
   cd "${TRIM_APPDEST}"
-  nohup "$APP_BIN" >>"$LOG_FILE" 2>&1 &
+  nohup "$APP_BIN" >>"$LOG_FILE" 2>&1 9>&- &
   local pid=$!
-  printf '%s\n' "$pid" >"$PID_FILE"
+  local pid_tmp
+  pid_tmp="$(mktemp "${PID_FILE}.XXXXXX")"
+  printf '%s\n' "$pid" >"$pid_tmp"
+  mv -f -- "$pid_tmp" "$PID_FILE"
   admin_port="${FONU_LISTEN##*:}"
+  local scheme=http
+  local -a tls_args=()
+  if [ -n "${FONU_TLS_CERT_FILE:-}" ] || [ -n "${FONU_TLS_KEY_FILE:-}" ]; then
+    scheme=https
+    tls_args=(-k)
+  fi
   ready=0
   count=0
   # Allow nohup to exec the binary before checking /proc/exe.
@@ -157,7 +167,7 @@ start_app() {
       log_msg "Fonu failed to start; see ${LOG_FILE}"
       exit 1
     fi
-    if command -v curl >/dev/null 2>&1 && [ "$(curl -fsS --max-time 1 "http://127.0.0.1:${admin_port}/healthz" 2>/dev/null)" = ok ]; then
+    if command -v curl >/dev/null 2>&1 && [ "$(curl -fsS --noproxy '*' --max-time 1 "${tls_args[@]}" "${scheme}://127.0.0.1:${admin_port}/healthz" 2>/dev/null)" = ok ]; then
       ready=1
       break
     fi
@@ -191,6 +201,13 @@ stop_app() {
   stop_child_pidfile "$NGINX_PID" "nginx" "${FONU_NGINX_BIN:-${TRIM_APPDEST}/Nginx}"
   stop_child_pidfile "$FRPC_PID" "frpc" "${FONU_FRPC_BIN:-${TRIM_APPDEST}/frpc}"
 }
+
+if [[ "${1:-}" = start || "${1:-}" = stop ]]; then
+  mkdir -p "${TRIM_PKGVAR}"
+  command -v flock >/dev/null 2>&1 || { echo 'flock required for safe lifecycle' >&2; exit 1; }
+  exec 9>"${TRIM_PKGVAR}/.lifecycle.lock"
+  flock -w 60 9 || { echo 'Fonu lifecycle operation busy' >&2; exit 1; }
+fi
 
 case "${1:-}" in
   start)
