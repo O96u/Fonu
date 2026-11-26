@@ -4,7 +4,7 @@
       <div class="diag-auto"><div><strong>当前面板自动检测</strong><small>默认关闭。开启后每 60 秒检测一次，关闭详情或离开页面即停止。</small></div><n-switch :value="auto" :disabled="loading" @update:value="setAuto"/></div>
       <n-alert type="info" :bordered="false">由 Fonu 后端向已保存的上游发出 HEAD 请求，最多 5 秒，不跟随重定向、不携带认证信息。使用系统 CA 验证 TLS，与 Nginx 手动配置或跳过验证策略可能不同。检测结果不影响规则启停或保存。</n-alert>
       <n-alert v-if="error" type="error" :bordered="false">{{error}}</n-alert>
-      <div v-if="latest" class="diag-latest"><div class="diag-heading"><n-tag :type="kind(latest.state)" :bordered="false">{{label(latest.state)}}</n-tag><small>{{formatTime(latest.checked_at)}}</small></div><strong>{{latest.http_status?'HTTP '+latest.http_status+' · ':''}}{{latest.duration_ms}} ms</strong><p>{{latest.detail}}</p></div>
+      <div v-if="latest" class="diag-latest"><div class="diag-heading"><n-tag :type="kind(latest.state)" :bordered="false">{{label(latest.state)}}</n-tag><small>{{formatTime(latest.checked_at)}}</small></div><strong>{{latest.http_status?'HTTP '+latest.http_status+' · ':''}}{{latest.duration_ms}} ms</strong><p>{{latest.detail}}</p><div class="diag-metrics"><div v-for="metric in metrics" :key="metric.label"><small>{{metric.label}}</small><strong>{{metric.value}}</strong></div></div><small>阶段耗时来自同一次 HEAD 请求；未执行或未成功的阶段显示 —。</small></div>
       <div v-else class="diag-empty">{{loading?'正在读取诊断记录…':'尚未检测当前目标地址'}}</div>
     </div>
     <div class="diag-section"><div class="diag-heading"><h3>最近检测记录</h3><small>最多 5 条</small></div><div v-for="row in history" :key="row.id" class="diag-record"><div><n-tag size="small" :type="kind(row.state)" :bordered="false">{{label(row.state)}}</n-tag><strong>{{row.http_status?'HTTP '+row.http_status+' · ':''}}{{row.duration_ms}} ms</strong><small>{{formatTime(row.checked_at)}}</small></div><small>{{row.upstream}}{{row.upstream!==rule.upstream?'（旧目标）':''}}</small><p>{{row.detail}}</p></div><div v-if="!history.length&&!loading" class="diag-empty">暂无检测记录</div></div>
@@ -19,6 +19,11 @@ import type {ProxyDiagnostic,ProxyRule,NginxApplyStatus} from '../../api/types'
 const props=defineProps<{rule:ProxyRule}>()
 const history=ref<ProxyDiagnostic[]>([]),loading=ref(false),running=ref(false),error=ref(''),auto=ref(false)
 const latest=computed(()=>history.value.find(r=>r.upstream===props.rule.upstream))
+const metrics=computed(()=>{
+ const m=latest.value?.metrics
+ const ms=(n?:number)=>n===undefined?'—':n+' ms'
+ return [{label:'实际连接地址',value:m?.remote_address||'—'},{label:'HTTP 协议',value:m?.protocol||'—'},{label:'DNS 解析',value:ms(m?.dns_ms)},{label:'TCP 建连',value:ms(m?.tcp_ms)},{label:'TLS 握手',value:ms(m?.tls_ms)},{label:'首字节 TTFB（总耗时）',value:ms(m?.ttfb_ms)},{label:'TLS 版本',value:m?.tls_version||'—'},{label:'上游证书到期',value:m?.certificate_expires?formatTime(m.certificate_expires):'—'}]
+})
 const publication=ref<NginxApplyStatus|null>(null),publicationLoading=ref(false),publicationError=ref('')
 let controller:AbortController|undefined, generation=0, timer:ReturnType<typeof setTimeout>|undefined,alive=true
 function label(s:string){return ({reachable:'HTTP 可达',http_error:'上游 5xx',tls_error:'证书校验失败',dns_error:'DNS 失败',timeout:'超时',invalid:'无效目标',failed:'连接失败'} as Record<string,string>)[s]||s}
@@ -38,4 +43,5 @@ onUnmounted(()=>{alive=false;++generation;controller?.abort();stopTimer();docume
 </script>
 <style scoped>
 .diagnostics-panel{display:grid;gap:12px;padding:14px;min-width:0}.diag-section{display:grid;gap:12px;padding:14px;border:1px solid var(--fonu-border);border-radius:10px;background:var(--fonu-surface);min-width:0}.diag-heading,.diag-auto,.diag-record>div{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}.diag-heading>div,.diag-auto>div{flex:1;min-width:0}.diag-heading h3{font-size:15px;margin:0}.diag-section small{display:block;font-size:12px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}.diag-auto{background:var(--fonu-bg-muted);border-radius:8px;padding:10px}.diag-auto strong{font-size:13px}.diag-auto :deep(.n-switch){flex-shrink:0}.diag-latest,.diag-record{display:grid;gap:6px;min-width:0}.diag-latest{padding:12px;border:1px solid var(--fonu-border);border-radius:8px}.diag-latest>strong{font-size:22px;font-variant-numeric:tabular-nums}.diag-record{border-top:1px solid var(--fonu-border);padding-top:10px}.diag-record strong{font-size:12px}.diag-section p{margin:0;font-size:12px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}.diag-empty{font-size:13px;color:var(--fonu-text-muted);padding:12px 0}
+.diag-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.diag-metrics>div{padding:9px;border-radius:6px;background:var(--fonu-bg-muted);min-width:0}.diag-metrics strong{display:block;font-size:12px;overflow-wrap:anywhere;margin-top:3px;font-variant-numeric:tabular-nums}
 </style>

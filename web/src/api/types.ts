@@ -752,4 +752,4 @@ export interface ProxyBusinessState { groups: ProxyBusinessGroup[]; members: {ru
 export interface ProxyBusinessChange { action:'create'|'rename'|'delete'|'assign'|'reorder'; id?:number; name?:string; rule_ids?:number[]; ids?:number[] }
 
 export interface ProxyTrafficSnapshot {rules:ProxyTraffic[];total:ProxyTraffic;sampled_at:string;active_window_seconds:number;rate_window_seconds:number}
-export interface ProxyDiagnostic {id:number;upstream:string;checked_at:string;state:string;duration_ms:number;http_status:number;detail:string}
+export interface ProxyDiagnostic {id:number;upstream:string;checked_at:string;state:string;duration_ms:number;http_status:number;detail:string;metrics?:{dns_ms?:number;tcp_ms?:number;tls_ms?:number;ttfb_ms?:number;remote_address?:string;protocol?:string;tls_version?:string;certificate_expires?:string}}

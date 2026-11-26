@@ -49,9 +49,9 @@ func (s *Service) Export(ctx context.Context) (string, error) {
 
 func(s *Service) exportLocked(ctx context.Context)(string,error){
  tmpDir := filepath.Join(s.dataDir, "backups")
-	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
-		return "", err
-	}
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {return "",err}
+ info,err:=os.Lstat(tmpDir);if err!=nil{return "",err};if !info.IsDir()||info.Mode()&os.ModeSymlink!=0{return "",fmt.Errorf("备份目录无效")}
+ if err:=os.Chmod(tmpDir,0700);err!=nil{return "",err}
 	name := fmt.Sprintf("fonu-backup-%s-*.tar.gz", time.Now().Format("20060102-His"))
 	file, err := os.CreateTemp(tmpDir, name)
 	if err != nil {
@@ -91,7 +91,8 @@ func(s *Service) exportLocked(ctx context.Context)(string,error){
 	if err := gw.Close(); err != nil {
 		return "", err
 	}
-	if err := file.Close(); err != nil { return "", err }
+	if err:=file.Sync();err!=nil{return "",err}
+ if err := file.Close(); err != nil { return "", err }
 	success = true
 	return outPath, nil
 }
