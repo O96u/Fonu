@@ -42,26 +42,36 @@
     </n-spin></FonuCard>
     <div class="workspace-grid"><div class="workspace-main"><FonuCard class="traffic-panel"><AnalyticsInsightSection v-model:range="awarenessRange" compact :show-kpis="true" :show-map="false" section-title="访问趋势" :data="analyticsOverview" :loading="awarenessLoading" :error="awarenessError" @retry="refreshAwareness(true)" /><div class="chart-caption"><span>{{ awarenessTrendTitle }}</span><span>{{ awarenessTrendTag }} · 更新于 {{ awarenessUpdatedLabel }}</span></div><AwarenessTrendChart v-if="analyticsOverview" :labels="analyticsOverview.series.labels" :requests="analyticsOverview.series.requests" :uniqueIPs="analyticsOverview.series.unique_ips" :current-bucket="analyticsOverview.series.current_bucket" /><EmptyState v-else title="正在读取访问趋势" description="统计数据加载后将显示访问趋势。"/></FonuCard>
     <div class="rank-grid">
-      <FonuCard title="来源排行"><template #header><button class="text-link" @click="selectTab('access')">查看分析 →</button></template><div v-for="r in sourceRanking" :key="r.country" class="rank-row"><span>{{ r.country }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,sourceRanking[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!sourceRanking.length" title="暂无来源数据" description="当前统计范围内没有可展示的来源。"/></FonuCard>
-      <FonuCard title="服务排行"><template #header><button class="text-link" @click="selectTab('access')">查看全部 →</button></template><div v-for="r in awarenessServices.slice(0,5)" :key="r.service" class="rank-row service-rank"><span class="service-name"><ServiceFavicon :rule-id="serviceIconRules.get(r.service)" />{{ r.service }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,awarenessServices[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div><EmptyState v-if="!awarenessServices.length" title="暂无已识别服务" description="当前统计范围内没有可展示的已识别服务。"/></FonuCard>
+      <FonuCard title="来源排行" class="rank-card" data-testid="dashboard-source-rank">
+        <template #header><button class="text-link" @click="selectTab('access')">查看分析 →</button></template>
+        <div v-for="r in sourceRanking" :key="r.country" class="rank-row"><span :title="r.country">{{ r.country }}</span><div class="rank-track"><i :style="{width:rankPercent(r.requests,sourceRanking[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div>
+        <div v-for="n in Math.max(0, HOME_PREVIEW_LIMIT-sourceRanking.length)" :key="'source-empty-'+n" class="rank-row rank-placeholder" aria-hidden="true"><span>—</span><div class="rank-track"/><span>—</span></div>
+        <p v-if="!sourceRanking.length" class="rank-empty-label">{{ awarenessLoading ? '正在统计…' : '暂无来源数据' }}</p>
+      </FonuCard>
+      <FonuCard title="服务排行" class="rank-card" data-testid="dashboard-service-rank">
+        <template #header><button class="text-link" @click="selectTab('access')">查看全部 →</button></template>
+        <div v-for="r in servicePreview" :key="r.service" class="rank-row service-rank"><span class="service-name"><ServiceFavicon :rule-id="serviceIconRules.get(r.service)" /><span :title="r.service">{{ r.service }}</span></span><div class="rank-track"><i :style="{width:rankPercent(r.requests,servicePreview[0]?.requests)}"/></div><strong>{{ r.requests.toLocaleString() }}</strong></div>
+        <div v-for="n in Math.max(0, HOME_PREVIEW_LIMIT-servicePreview.length)" :key="'service-empty-'+n" class="rank-row rank-placeholder" aria-hidden="true"><span>—</span><div class="rank-track"/><span>—</span></div>
+        <p v-if="!servicePreview.length" class="rank-empty-label">{{ awarenessLoading ? '正在统计…' : '暂无已识别服务' }}</p>
+      </FonuCard>
     </div>
-        <FonuCard title="最近访问" subtitle="最近 5 条 · 当前统计范围">
+      </div>
+      <aside class="workspace-side">
+        <RuntimePanel/>
+        <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
+        <FonuCard title="待处理事项"><div v-for="notice in notices.slice(0, HOME_PREVIEW_LIMIT)" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p><p v-if="notices.length > HOME_PREVIEW_LIMIT" class="muted">另有 {{ notices.length - HOME_PREVIEW_LIMIT }} 项，请前往证书或反代管理查看。</p></FonuCard>
+      </aside>
+    </div>
+        <FonuCard title="最近访问" class="recent-full" data-testid="dashboard-recent" subtitle="最近 5 条 · 当前统计范围">
           <template #header><router-link class="text-link" :to="{name:'logs',query:{tab:'access'}}">查看日志 →</router-link></template>
-          <div v-for="(event,index) in awarenessEvents.slice(0,5)" :key="event.at+'-'+index" class="recent-row">
+          <div v-for="(event,index) in recentPreview" :key="event.at+'-'+index" class="recent-row">
             <div class="recent-service"><strong :title="event.service || event.domain">{{event.service || event.domain || '未识别服务'}}</strong><small :title="event.path">{{event.path || '/'}}</small></div>
             <div class="recent-client"><span :title="event.client_ip">{{event.client_ip || '—'}}</span><small>{{event.geo ? displayGeoLabel(event.geo) : '—'}}</small></div>
             <n-tag size="small" :bordered="false" :type="httpStatusKind(event.status)==='success'?'success':httpStatusKind(event.status)==='warning'?'warning':'error'">{{event.status}}</n-tag>
             <small class="recent-time">{{formatRelativeTime(event.at) || formatLogTime(event.at,{timeZone:logTimeZone})}}</small>
           </div>
-          <p v-if="!awarenessEvents.length" class="muted recent-empty">{{awarenessLoading?'正在读取访问记录…':'当前统计范围暂无访问记录'}}</p>
+          <div v-for="n in Math.max(0, HOME_PREVIEW_LIMIT - recentPreview.length)" :key="'recent-empty-'+n" class="recent-row recent-placeholder" :aria-hidden="n > 1 ? 'true' : undefined"><span>{{ n === 1 ? (awarenessLoading ? '正在读取访问记录…' : recentPreview.length ? '暂无更多访问记录' : '当前统计范围暂无访问记录') : '—' }}</span></div>
         </FonuCard>
-      </div>
-      <aside class="workspace-side">
-        <RuntimePanel/>
-        <FonuCard title="快捷操作"><div class="quick-links"><router-link v-for="item in quickEntries" :key="item.route" :to="{name:item.route}"><n-icon :component="item.icon"/><span>{{ item.label }}</span></router-link></div></FonuCard>
-        <FonuCard title="待处理事项"><div v-for="notice in notices" :key="notice.title" class="notice-row"><n-icon :component="ShieldCheckmarkOutline"/><router-link :to="{name:notice.route}"><strong>{{ notice.title }}</strong><small>{{ notice.detail }}</small></router-link></div><p v-if="!notices.length" class="muted">{{ status ? '暂无待处理事项' : '正在获取状态' }}</p></FonuCard>
-      </aside>
-    </div>
 
   </template>
   <template v-else-if="activeTab === 'access'">
@@ -281,7 +291,10 @@ watch(activeTab, async tab => {
   try { iconRules.value = asList(await api.listProxies()) } catch { iconRulesLoaded = false }
 }, { immediate: true })
 const awarenessServices = computed(() => (analyticsOverview.value?.by_service ?? []).filter(r => { const name = r.service.trim(); return !!name && !/^(?:_|\*|):\d+$/.test(name) && name !== '_' && name !== '*' }))
-const sourceRanking = computed(() => (analyticsOverview.value?.by_country ?? []).filter(r => r.country && r.country !== '未知' && r.requests > 0).slice().sort((a,b)=>b.requests-a.requests).slice(0,5))
+const HOME_PREVIEW_LIMIT = 5
+const servicePreview = computed(() => awarenessServices.value.slice(0, HOME_PREVIEW_LIMIT))
+const recentPreview = computed(() => awarenessEvents.value.slice(0, HOME_PREVIEW_LIMIT))
+const sourceRanking = computed(() => (analyticsOverview.value?.by_country ?? []).filter(r => r.country && r.country !== '未知' && r.requests > 0).slice().sort((a,b)=>b.requests-a.requests).slice(0,HOME_PREVIEW_LIMIT))
 function rankPercent(value:number,max?:number) { return (max && max > 0 ? Math.min(100,value/max*100) : 0) + '%' }
 
 /** Backend returns at most 20 services sorted by request volume. */
@@ -534,4 +547,18 @@ onUnmounted(pauseDashboard)
 @container(max-width:820px){.stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-row :deep(.stat-card:nth-child(2)){border-right:0}.workspace-grid,.rank-grid{grid-template-columns:1fr}}
 @container(max-width:400px){.stats-row{grid-template-columns:1fr}.stats-row :deep(.stat-card){border-right:0}}
 .service-table-volume{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-variant-numeric:tabular-nums}.service-table-bar{width:70px;height:5px;background:var(--fonu-bg-muted);border-radius:5px;overflow:hidden}.service-table-bar i{display:block;height:100%;background:var(--fonu-brand);border-radius:5px}.service-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Fixed overview preview slots; the detail tabs keep their original limits. */
+.rank-grid { align-items:stretch; }
+.rank-card :deep(.fonu-card__body) { position:relative; }
+.rank-card .rank-row { min-height:44px; box-sizing:border-box; padding:6px 0; grid-template-columns:minmax(75px,1fr) minmax(25px,1.45fr) auto; }
+.rank-placeholder { color:var(--fonu-text-muted); opacity:.55; }
+.rank-empty-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); margin:0; padding:6px 10px; white-space:nowrap; background:var(--fonu-surface); color:var(--fonu-text-secondary); font-size:12px; }
+.rank-card .service-name { min-width:0; }
+.rank-card .service-name > span:last-child { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.recent-full { width:100%; min-width:0; }
+.recent-full .recent-row { min-height:52px; box-sizing:border-box; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(60px,auto) minmax(80px,auto); }
+.recent-full .recent-placeholder { color:var(--fonu-text-muted); }
+.recent-placeholder > span { grid-column:1/-1; }
+@container(max-width:460px) { .recent-full .recent-row { min-height:64px; grid-template-columns:minmax(0,1fr) auto auto; } }
 </style>

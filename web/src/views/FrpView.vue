@@ -67,26 +67,28 @@
               <section class="dashboard-panel dash-web">
                 <header class="dash-heading"><h3><n-icon :component="GlobeOutline" />Web 穿透</h3><n-button text type="primary" @click="routeTab = 'web'">管理域名 <n-icon :component="ChevronForwardOutline" /></n-button></header>
                 <div class="dash-counts"><div><strong>{{ domainCount }}</strong><small>已配置域名</small></div><div><strong :class="{ 'good-text': httpGatewayOn || httpsGatewayOn }">{{ Number(httpGatewayOn) + Number(httpsGatewayOn) }}</strong><small>网关已注册</small></div><div><strong>{{ 2 - Number(httpGatewayOn) - Number(httpsGatewayOn) }}</strong><small>网关未注册</small></div></div>
-                <div v-if="!domainList.length" class="dash-empty">暂无穿透域名，可同步反代或手动添加。</div>
+                <div class="dash-preview-list"><div v-if="!domainList.length" class="dash-empty">暂无穿透域名，可同步反代或手动添加。</div>
                 <div v-for="domain in domainList.slice(0, 3)" :key="domain" class="dash-service-row">
                   <div class="dash-service-icon"><n-icon :component="GlobeOutline" /></div><div class="dash-service-name"><strong :title="domain">{{ domain }}</strong><small>Web · Fonu Nginx</small></div>
                   <StatusBadge :kind="!frpStatus.enabled ? 'disabled' : httpGatewayOn && httpsGatewayOn ? 'success' : 'unknown'" :text="!frpStatus.enabled ? '未启用' : httpGatewayOn && httpsGatewayOn ? '网关已注册' : '待确认'" />
                   <n-button v-if="!domain.startsWith('*.')" text tag="a" :href="'https://' + domain" target="_blank" rel="noopener noreferrer" aria-label="打开域名"><n-icon :component="OpenOutline" /></n-button>
                   <n-button text :disabled="busy" aria-label="编辑域名" @click="openDomainEditor(domain)"><n-icon :component="CreateOutline" /></n-button>
                 </div>
-                <footer class="dash-footer"><n-button size="small" :disabled="busy" @click="openDomainEditor()"><template #icon><n-icon :component="AddOutline" /></template>新增域名</n-button></footer>
+                <div v-for="n in Math.max(0, 3 - domainList.length)" :key="'web-slot-'+n" class="dash-preview-placeholder" aria-hidden="true"></div></div>
+                <footer class="dash-footer"><n-button size="small" type="primary" secondary :disabled="busy" @click="openDomainEditor()"><template #icon><n-icon :component="AddOutline" /></template>新增域名</n-button></footer>
               </section>
               <section class="dashboard-panel dash-tcp">
                 <header class="dash-heading"><h3><n-icon :component="SwapHorizontalOutline" />端口穿透</h3><n-button text type="primary" @click="routeTab = 'tcp'">管理隧道 <n-icon :component="ChevronForwardOutline" /></n-button></header>
                 <div class="dash-counts"><div><strong>{{ tcpProxies.length }}</strong><small>已配置隧道</small></div><div><strong class="good-text">{{ registeredTunnelCount }}</strong><small>已注册</small></div><div><strong :class="{ 'warn-text': failedTunnelCount }">{{ failedTunnelCount }}</strong><small>注册失败</small></div></div>
-                <div v-if="!tcpProxies.length" class="dash-empty">暂无端口隧道，可添加 TCP / UDP 服务。</div>
+                <div class="dash-preview-list"><div v-if="!tcpProxies.length" class="dash-empty">暂无端口隧道，可添加 TCP / UDP 服务。</div>
                 <div v-for="row in tcpProxies.slice(0, 3)" :key="row.id" class="dash-service-row">
                   <div class="dash-service-icon"><n-icon :component="SwapHorizontalOutline" /></div><div class="dash-service-name"><strong>{{ row.name }}</strong><small>{{ tunnelProtocolOf(row).toUpperCase() }} · {{ tcpMappingLabel(row) }}</small></div>
                   <StatusBadge :kind="tcpStatusBadge(row).kind" :text="tcpStatusBadge(row).text" />
                   <n-switch size="small" :value="row.enabled" :disabled="busy" @update:value="value => toggleTcpEnabled(row.id, value)" />
                   <n-button text :disabled="busy" aria-label="编辑隧道" @click="openTcpModal(row)"><n-icon :component="CreateOutline" /></n-button>
                 </div>
-                <footer class="dash-footer"><n-button size="small" :disabled="busy" @click="openTcpModal()"><template #icon><n-icon :component="AddOutline" /></template>添加隧道</n-button></footer>
+                <div v-for="n in Math.max(0, 3 - tcpProxies.length)" :key="'tcp-slot-'+n" class="dash-preview-placeholder" aria-hidden="true"></div></div>
+                <footer class="dash-footer"><n-button size="small" type="primary" secondary :disabled="busy" data-testid="frp-add-tunnel" @click="openTcpModal()"><template #icon><n-icon :component="AddOutline" /></template>添加隧道</n-button></footer>
               </section>
               <aside class="dash-side">
                 <section class="dashboard-panel"><header class="dash-heading"><h3><n-icon :component="FlashOutline" />快捷操作</h3></header>
@@ -478,92 +480,29 @@
     <div class="modal-actions"><n-button @click="showSync = false">取消</n-button><n-button type="primary" :loading="saving" :disabled="!selectedDomains.length" data-testid="frp-import-selected" @click="applySelectedDomains">导入 {{ selectedDomains.length }} 个域名</n-button></div>
   </n-modal>
 
-  <n-modal
-    v-model:show="showTcpModal"
-    preset="card"
-    :title="tcpModalTitle"
-    style="width: min(520px, 92vw)"
-  >
-    <div class="settings-fields">
-      <div class="settings-field">
-        <div class="settings-field__label">
-          协议 <span class="required">*</span>
+  <n-modal v-model:show="showTcpModal" :mask-closable="!busy" :close-on-esc="!busy" transform-origin="center">
+    <div class="tunnel-editor" role="dialog" aria-modal="true" :aria-label="tcpModalTitle" data-testid="frp-tunnel-editor">
+      <header class="tunnel-editor-head">
+        <div class="tunnel-editor-heading"><div class="tunnel-editor-icon"><n-icon :component="SwapHorizontalOutline" /></div><div><h3>{{ tcpModalTitle }}</h3><p>将 VPS 端口转发到本地 TCP / UDP 服务</p></div></div>
+        <n-button text :disabled="busy" aria-label="关闭弹窗" @click="showTcpModal = false"><n-icon :component="CloseOutline" size="22" /></n-button>
+      </header>
+      <div class="tunnel-editor-body">
+        <div v-if="!tcpEditingId" class="tunnel-presets"><span>常用服务</span><n-button v-for="preset in tunnelPresets" :key="preset.name" size="tiny" :disabled="busy" @click="applyTunnelPreset(preset)">{{ preset.label }}</n-button></div>
+        <div class="tunnel-form-grid">
+          <div class="settings-field"><div class="settings-field__label">协议 <span class="required">*</span></div><n-select v-model:value="tcpForm.protocol" :options="tunnelProtocolOptions" :disabled="busy" /></div>
+          <div class="settings-field"><div class="settings-field__label">名称 <span class="required">*</span></div><n-input v-model:value="tcpForm.name" placeholder="如 ssh、dns" :maxlength="32" :disabled="busy" /><small class="tunnel-hint">字母、数字、下划线或连字符</small></div>
+          <div class="settings-field"><div class="settings-field__label">本地地址</div><n-input v-model:value="tcpForm.local_ip" placeholder="127.0.0.1" :disabled="busy" /></div>
+          <div class="settings-field"><div class="settings-field__label">本地端口 <span class="required">*</span></div><n-input-number v-model:value="tcpForm.local_port" :min="1" :max="65535" class="settings-field__input-full" :disabled="busy" /></div>
+          <div class="settings-field"><div class="settings-field__label">远程端口 <span class="required">*</span></div><n-input-number v-model:value="tcpForm.remote_port" :min="0" :max="65535" class="settings-field__input-full" :disabled="busy" /><small class="tunnel-hint">0 自动分配，或指定 1–65535</small></div>
+          <div class="settings-field"><div class="settings-field__label">隧道状态</div><div class="tunnel-enable"><span>{{ tcpForm.enabled ? '已启用' : '已停用' }}</span><n-switch v-model:value="tcpForm.enabled" :disabled="busy" /></div></div>
         </div>
-        <n-select
-          v-model:value="tcpForm.protocol"
-          :options="tunnelProtocolOptions"
-          :disabled="busy"
-        />
+        <div class="tunnel-port-preview"><div><small>VPS 远程端口</small><strong>{{ tcpForm.remote_port || '自动分配' }}</strong></div><n-icon :component="SwapHorizontalOutline" /><div><small>本地服务</small><strong>{{ tcpForm.local_ip || '127.0.0.1' }}:{{ tcpForm.local_port || '—' }}</strong></div></div>
+        <p class="tunnel-hint tunnel-note">自动端口从 Fonu 未使用的 1024–65535 中分配，不保证 VPS 端口空闲；请在 VPS 防火墙放行相应协议和端口。</p>
       </div>
-      <div class="settings-field">
-        <div class="settings-field__label">
-          名称 <span class="required">*</span>
-        </div>
-        <n-input
-          v-model:value="tcpForm.name"
-          placeholder="如 ssh、dns"
-          :disabled="busy"
-        />
-        <p class="field-hint field-hint--inline">
-          仅字母、数字、下划线和连字符
-        </p>
-      </div>
-      <div class="settings-field">
-        <div class="settings-field__label">本地地址</div>
-        <n-input
-          v-model:value="tcpForm.local_ip"
-          placeholder="127.0.0.1"
-          :disabled="busy"
-        />
-      </div>
-      <div class="settings-field">
-        <div class="settings-field__label">
-          本地端口 <span class="required">*</span>
-        </div>
-        <n-input-number
-          v-model:value="tcpForm.local_port"
-          :min="1"
-          :max="65535"
-          class="settings-field__input-full"
-          :disabled="busy"
-        />
-      </div>
-      <div class="settings-field">
-        <div class="settings-field__label">
-          远程端口 <span class="required">*</span>
-        </div>
-        <n-input-number
-          v-model:value="tcpForm.remote_port"
-          :min="0"
-          :max="65535"
-          class="settings-field__input-full"
-          :disabled="busy"
-        />
-        <p class="field-hint field-hint--inline">
-          填 0 表示从 Fonu 未使用的端口中随机分配（1024–65535），不保证 VPS 端口空闲；也可手动指定 1–65535
-          的固定端口
-        </p>
-      </div>
-      <div class="form-switch-row">
-        <div class="form-switch-row__text">
-          <div class="form-switch-row__label">启用隧道</div>
-        </div>
-        <n-switch
-          v-model:value="tcpForm.enabled"
-          :disabled="busy"
-        />
-      </div>
-    </div>
-    <div class="modal-actions">
-      <n-button @click="showTcpModal = false">取消</n-button>
-      <n-button
-        type="primary"
-        :loading="saving"
-        :disabled="busy"
-        @click="saveTcpModal"
-      >
-        保存隧道
-      </n-button>
+      <footer class="tunnel-editor-footer">
+        <span class="tunnel-hint">{{ tcpEditingId ? '修改后重新应用隧道' : '保存后应用隧道配置' }}</span>
+        <div><n-button :disabled="busy" @click="showTcpModal = false">取消</n-button><n-button v-if="!tcpEditingId" :disabled="busy" @click="saveTcpModal(true)">保存并继续</n-button><n-button type="primary" :loading="saving" :disabled="busy" data-testid="frp-save-tunnel" @click="saveTcpModal()">保存隧道</n-button></div>
+      </footer>
     </div>
   </n-modal>
 </template>
@@ -605,6 +544,7 @@ import {
 import {
   AddOutline,
   CopyOutline,
+  CloseOutline,
   FlashOutline,
   HomeOutline,
   OpenOutline,
@@ -1004,6 +944,22 @@ function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
   frpStatus.value = data.status;
 }
 
+const tunnelPresets = [
+  { label: "SSH", name: "ssh", protocol: "tcp" as const, port: 22 },
+  { label: "RDP", name: "rdp", protocol: "tcp" as const, port: 3389 },
+  { label: "MySQL", name: "mysql", protocol: "tcp" as const, port: 3306 },
+  { label: "DNS", name: "dns", protocol: "udp" as const, port: 53 },
+];
+function applyTunnelPreset(preset: typeof tunnelPresets[number]) {
+  if (busy.value || tcpEditingId.value) return;
+  tcpForm.protocol = preset.protocol;
+  tcpForm.local_port = preset.port;
+  if (!tcpForm.name.trim() || tunnelPresets.some(item => item.name === tcpForm.name)) {
+    let name = preset.name, i = 2;
+    while (tcpProxies.value.some(item => item.name.toLowerCase() === name)) name = preset.name + "-" + i++;
+    tcpForm.name = name;
+  }
+}
 function resetTcpForm() {
   tcpForm.protocol = "tcp";
   tcpForm.name = "";
@@ -1058,6 +1014,8 @@ function validateTcpForm() {
     return false;
   }
   if (
+    tcpForm.remote_port == null ||
+    !Number.isInteger(tcpForm.remote_port) ||
     tcpForm.remote_port < 0 ||
     (tcpForm.remote_port > 0 &&
       (tcpForm.remote_port < 1 || tcpForm.remote_port > 65535))
@@ -1088,7 +1046,7 @@ function validateTcpForm() {
   return true;
 }
 
-async function saveTcpModal() {
+async function saveTcpModal(continueAdding = false) {
   if (busy.value || !validateTcpForm()) return;
   const payload: FRPTCPProxy = {
     id: tcpEditingId.value ?? createId(),
@@ -1108,7 +1066,8 @@ async function saveTcpModal() {
     tcpProxies.value = [...tcpProxies.value, payload];
   }
   if (await save({ quiet: true, routesOnly: true, successText: "隧道已保存" })) {
-    showTcpModal.value = false;
+    if (continueAdding && !tcpEditingId.value) resetTcpForm();
+    else showTcpModal.value = false;
   } else {
     tcpProxies.value = previous;
   }
@@ -1982,4 +1941,33 @@ onUnmounted(() => {
   .dash-side,.dash-logs { grid-column:auto; grid-row:auto; }
   .dashboard-panel { padding:10px; }
 }
+
+/* Same row footprint and footer alignment even when service counts differ. */
+.dash-web,.dash-tcp { align-self:stretch; grid-template-rows:auto auto 1fr auto; }
+.dash-preview-list { display:flex; flex-direction:column; gap:0; min-width:0; position:relative; }
+.dash-preview-list .dash-service-row { box-sizing:border-box; min-height:62px; padding:8px 0; }
+.dash-preview-placeholder { min-height:62px; box-sizing:border-box; border-bottom:1px solid var(--fonu-border); opacity:.45; }
+.dash-preview-list .dash-empty { position:absolute; inset:0; display:grid; place-items:center; padding:12px; background:var(--fonu-surface); }
+.dash-footer { align-self:end; }
+.tunnel-editor { width:min(640px,calc(100vw - 24px)); max-height:calc(100vh - 24px); max-height:calc(100dvh - 24px); display:flex; flex-direction:column; min-height:0; overflow:hidden; background:var(--fonu-surface); color:var(--fonu-text); border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); box-shadow:0 16px 50px #0003; }
+.tunnel-editor-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-bottom:1px solid var(--fonu-border); flex-shrink:0; }
+.tunnel-editor-heading { display:flex; align-items:center; gap:10px; min-width:0; }
+.tunnel-editor-icon { display:grid; place-items:center; width:36px; height:36px; flex-shrink:0; background:var(--fonu-brand-soft); color:var(--fonu-brand-text); border-radius:9px; font-size:21px; }
+.tunnel-editor-head h3 { font-size:17px; margin:0; }
+.tunnel-editor-head p { font-size:12px; color:var(--fonu-text-secondary); margin:3px 0 0; }
+.tunnel-editor-body { padding:16px 20px; overflow:auto; overscroll-behavior:contain; min-height:0; flex:1 1 auto; display:flex; flex-direction:column; gap:12px; }
+.tunnel-presets { display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:12px; color:var(--fonu-text-secondary); }
+.tunnel-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; }
+.tunnel-form-grid .settings-field { min-width:0; }
+.tunnel-form-grid .settings-field__label { font-size:13px; margin-bottom:6px; }
+.tunnel-hint { font-size:11px; color:var(--fonu-text-secondary); line-height:1.5; display:block; margin-top:4px; }
+.tunnel-enable { height:34px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 10px; border:1px solid var(--fonu-border); border-radius:8px; background:var(--fonu-bg-muted); font-size:12px; }
+.tunnel-port-preview { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1.5fr); gap:10px; align-items:center; background:var(--fonu-bg-muted); border:1px solid var(--fonu-border); border-radius:8px; padding:9px 12px; }
+.tunnel-port-preview > div { display:grid; gap:3px; min-width:0; }
+.tunnel-port-preview small { color:var(--fonu-text-secondary); font-size:11px; }
+.tunnel-port-preview strong { font-size:13px; overflow-wrap:anywhere; }
+.tunnel-note { margin:0; }
+.tunnel-editor-footer { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:12px 20px; border-top:1px solid var(--fonu-border); }
+.tunnel-editor-footer > div { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; }
+@media(max-width:480px) { .tunnel-editor-head,.tunnel-editor-footer { padding:10px 12px; } .tunnel-editor-body { padding:12px; } .tunnel-form-grid { grid-template-columns:minmax(0,1fr); gap:10px; } .tunnel-editor-footer > .tunnel-hint { display:none; } }
 </style>
