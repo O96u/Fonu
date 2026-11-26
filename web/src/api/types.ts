@@ -726,3 +726,6 @@ export interface NginxApplyStatus {
 export interface ProxyBusinessGroup { id: number; name: string }
 export interface ProxyBusinessState { groups: ProxyBusinessGroup[]; members: {rule_id:number;group_id:number}[] }
 export interface ProxyBusinessChange { action:'create'|'rename'|'delete'|'assign'|'reorder'; id?:number; name?:string; rule_ids?:number[]; ids?:number[] }
+
+export interface ProxyTrafficSnapshot {rules:ProxyTraffic[];total:ProxyTraffic;sampled_at:string;active_window_seconds:number;rate_window_seconds:number}
+export interface ProxyDiagnostic {id:number;upstream:string;checked_at:string;state:string;duration_ms:number;http_status:number;detail:string}

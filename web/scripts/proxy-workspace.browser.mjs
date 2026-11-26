@@ -41,6 +41,8 @@ try{
   else if(url.pathname==='/api/proxies'&&method==='GET')data=rules
   else if(url.pathname==='/api/proxy-entries')data=entries
   else if(url.pathname==='/api/proxies/traffic')data=traffic
+  else if(url.pathname==='/api/proxies/traffic/snapshot')data={rules:traffic,total:{rule_id:0,connections:2,upload_rate:65536,download_rate:1048576,upload_total:1073741824,download_total:5368709120},sampled_at:new Date().toISOString(),active_window_seconds:65,rate_window_seconds:5}
+  else if(/^\/api\/proxies\/\d+\/diagnostics$/.test(url.pathname))data=method==='POST'?{id:1,upstream:'http://192.168.1.10:5666',checked_at:new Date().toISOString(),state:'reachable',duration_ms:10,http_status:200,detail:'上游已响应 HTTP'}:[]
   else if(url.pathname==='/api/discovery/scan')data=[{name:'测试服务',port:8080,host:'127.0.0.1',upstream:'http://127.0.0.1:8080',detected:true,platform:'test'}]
   else if(url.pathname==='/api/proxies/batch'&&method==='POST'){
    const payload=route.request().postDataJSON();batches.push(payload)
@@ -177,6 +179,15 @@ try{
  assert.ok(frameBounds.width<=520&&frameBounds.height<=780,JSON.stringify(frameBounds))
  await page.screenshot({path:'ui-screenshots/narrow-editor.png',fullPage:true})
  await editor.getByRole('button',{name:'取消',exact:true}).click()
+ await page.setViewportSize({width:1440,height:980})
+ await page.locator('.service-row').filter({hasText:'nas.example.com'}).getByRole('button',{name:'详情',exact:true}).click()
+ await page.getByRole('button',{name:'运行诊断',exact:true}).click()
+ const diag=page.locator('.diagnostics-panel')
+ await diag.getByText('尚未检测当前目标地址').waitFor()
+ assert.equal(await diag.locator('[role=switch]').getAttribute('aria-checked'),'false')
+ await diag.getByRole('button',{name:'立即检测'}).click()
+ await diag.locator('.diag-latest').getByText('HTTP 可达').waitFor()
+ await page.screenshot({path:'ui-screenshots/diagnostics.png',fullPage:true})
  assert.deepEqual(errors,[])
  console.log('Proxy workspace: independent toggles, domain search, group creation, list/cards, narrow width and screenshot capture passed')
 }finally{

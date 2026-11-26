@@ -144,10 +144,10 @@ defineExpose({ scrollToBottom })
 
 <style scoped>
 .proxy-log-box {
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--fonu-bg-muted);
+  color: var(--fonu-text);
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
   padding: var(--fonu-space-3);
   font-family: var(--fonu-mono);
   font-size: 12px;
@@ -206,7 +206,9 @@ defineExpose({ scrollToBottom })
   line-height: 1.45;
   border: 1px solid transparent;
   white-space: nowrap;
-  min-width: max-content;
+  min-width: 0;
+  flex-wrap:wrap;
+  white-space:normal;
 }
 
 .proxy-log-entry + .proxy-log-entry {
@@ -220,7 +222,7 @@ defineExpose({ scrollToBottom })
 
 .proxy-log-entry__time {
   flex: 0 0 auto;
-  color: #94a3b8;
+  color: var(--fonu-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -245,10 +247,11 @@ defineExpose({ scrollToBottom })
 
 .proxy-log-entry__path {
   flex: 1 1 auto;
-  min-width: 120px;
+  min-width: 0;
+  overflow-wrap:anywhere;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #e2e8f0;
+  color: var(--fonu-text);
 }
 
 .proxy-log-entry__status {
@@ -257,23 +260,23 @@ defineExpose({ scrollToBottom })
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  color: #86efac;
+  color: var(--fonu-success);
 }
 
-.proxy-log-entry.is-warn .proxy-log-entry__status { color: #fbbf24; }
-.proxy-log-entry.is-error .proxy-log-entry__status { color: #f87171; }
+.proxy-log-entry.is-warn .proxy-log-entry__status { color: var(--fonu-warning); }
+.proxy-log-entry.is-error .proxy-log-entry__status { color: var(--fonu-error); }
 
 .proxy-log-entry__ms {
   flex: 0 0 auto;
   min-width: 52px;
-  color: #94a3b8;
+  color: var(--fonu-text-secondary);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .proxy-log-entry__client {
   flex: 0 0 auto;
-  color: #cbd5e1;
+  color: var(--fonu-text-secondary);
 }
 
 .proxy-log-entry__upstream {
@@ -286,7 +289,7 @@ defineExpose({ scrollToBottom })
   white-space: pre-wrap;
   word-break: break-all;
   padding: 6px 10px;
-  color: #cbd5e1;
+  color: var(--fonu-text-secondary);
 }
 
 .proxy-log-line--raw + .proxy-log-entry,
@@ -297,7 +300,7 @@ defineExpose({ scrollToBottom })
 .proxy-log-empty {
   padding: var(--fonu-space-5);
   text-align: center;
-  color: #94a3b8;
+  color: var(--fonu-text-secondary);
   white-space: normal;
 }
 

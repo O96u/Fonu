@@ -12,7 +12,7 @@
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
   <template v-else>
-    <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" />
+    <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" :sampled-at="trafficSampledAt" :error="trafficError" />
 
     <n-alert v-if="businessError" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
     <ProxyServiceWorkspace :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled"  :change-business="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder"/>
@@ -158,6 +158,7 @@
         >
           概览
         </button>
+        <button type="button" class="proxy-detail__tab" :class="{'proxy-detail__tab--active':detailTab==='diagnostics'}" @click="switchDetailTab('diagnostics')">运行诊断</button>
         <button
           type="button"
           class="proxy-detail__tab"
@@ -178,7 +179,7 @@
 
       <div class="proxy-detail__scroll">
         <ProxyOverviewPanel
-          v-show="detailTab === 'overview'"
+          v-if="detailTab === 'overview'"
           :selected-rule="selectedRule"
           :hosts="ruleHosts(selectedRule)"
           :listen="listenLabel(selectedRule)"
@@ -187,20 +188,26 @@
           :traffic-chart="trafficChart"
           :client-rows="clientRows"
           :clients-loading="clientsLoading"
+          :clients-error="clientsError"
+          :traffic-error="trafficError"
+          :sampled-at="trafficSampledAt"
           @refresh-clients="loadClients"
         />
 
-        <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
+        <ProxyDiagnosticsPanel v-if="showDetailPanel&&detailTab==='diagnostics'" :key="selectedRule.id" :rule="selectedRule"/>
+        <div v-if="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
                 <span class="text-muted">实时访问日志 · {{ logStreamState === 'open' ? '已连接' : logStreamState === 'retrying' ? '重连中' : logStreamState === 'paused' ? '已暂停' : '连接中' }}</span>
                 <div class="log-panel-actions">
-                  <n-button size="tiny" quaternary @click="openLogFullscreen">全屏</n-button>
+                  <n-button size="small" quaternary @click="toggleLogPause">{{logPaused?'继续显示':'暂停显示'}}</n-button>
+                  <n-button size="small" quaternary @click="openLogFullscreen">全屏</n-button>
                   <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
                 </div>
               </div>
+              <div class="log-filters"><n-input v-model:value="logQuery" size="small" clearable placeholder="搜索路径、IP、域名…"/><n-select v-model:value="logStatus" size="small" :options="logStatusOptions"/><small>{{visibleLogLines.length}} / {{displayLogLines.length}} 条</small></div>
               <ProxyAccessLogBox
                 ref="logBox"
-                :lines="logLines"
+                :lines="visibleLogLines"
                 embedded
                 @scroll="onLogBoxScroll"
               />
@@ -239,13 +246,14 @@
           <span class="proxy-log-fullscreen__rule">{{ ruleName(selectedRule) }}</span>
         </div>
         <div class="log-panel-actions">
-          <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
-          <n-button size="tiny" quaternary @click="logFullscreen = false">退出全屏</n-button>
+          <n-button size="small" quaternary @click="toggleLogPause">{{logPaused?'继续显示':'暂停显示'}}</n-button>
+          <n-button size="small" quaternary @click="clearLogLines">清空</n-button>
+          <n-button size="small" quaternary @click="logFullscreen = false">退出全屏</n-button>
         </div>
       </div>
       <ProxyAccessLogBox
         ref="logBoxFullscreen"
-        :lines="logLines"
+        :lines="visibleLogLines"
         fullscreen
         @scroll="onLogBoxScroll"
       />
@@ -325,6 +333,8 @@ import {
   NButton,
   NDrawer,
   NIcon,
+  NInput,
+  NSelect,
   NModal,
   NPopover,
   NSpace,
@@ -351,7 +361,7 @@ import {
 import { api, asList } from '../api/client'
 import { createProxyPoll } from '../composables/proxy/useProxyPoll'
 import { useProxyLogStream } from '../composables/proxy/useProxyLogStream'
-import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic, ProxyBusinessState, ProxyBusinessChange } from '../api/types'
+import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic, ProxyTrafficSnapshot, ProxyBusinessState, ProxyBusinessChange } from '../api/types'
 import {
   applyEntryListen,
   buildProxyEntryGroups,
@@ -377,6 +387,7 @@ import ProxyBasicEditor from '../components/proxy/ProxyBasicEditor.vue'
 import ProxyEditorFrame from '../components/proxy/ProxyEditorFrame.vue'
 import ProxyNginxEditor from '../components/proxy/ProxyNginxEditor.vue'
 import ProxyOverviewPanel from '../components/proxy/ProxyOverviewPanel.vue'
+import ProxyDiagnosticsPanel from '../components/proxy/ProxyDiagnosticsPanel.vue'
 import ProxyEntryGroupCard from '../components/proxy/ProxyEntryGroup.vue'
 import ProxyRuleTable from '../components/proxy/ProxyRuleTable.vue'
 import { defaultSecurityForm } from '../composables/proxy/securityDraft'
@@ -561,7 +572,7 @@ watch(layoutRef, el => {
 }, { flush: 'post' })
 const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
-const detailTab = ref<'overview' | 'logs' | 'nginx'>('overview')
+const detailTab = ref<'overview' | 'diagnostics' | 'logs' | 'nginx'>('overview')
 const nginxLoading = ref(false)
 const nginxSaving = ref(false)
 const nginxEditMode = ref<'auto' | 'custom'>('auto')
@@ -577,10 +588,22 @@ const logBox = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
 const logBoxFullscreen = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
 const logFullscreen = ref(false)
 const logStickToBottom = ref(true)
+const logPaused=ref(false),pausedLines=ref<string[]>([]),logQuery=ref(''),logStatus=ref('all')
+const logStatusOptions=[{label:'全部状态',value:'all'},...['2','3','4','5'].map(v=>({label:v+'xx',value:v}))]
+const displayLogLines=computed(()=>logPaused.value?pausedLines.value:logLines.value)
+const visibleLogLines=computed(()=>{const q=logQuery.value.trim().toLowerCase();return displayLogLines.value.filter(line=>{const fields=line.trim().split(/\s+/);const status=fields[/^\d+$/.test(fields[2]??'')?5:4]??'';return (!q||line.toLowerCase().includes(q))&&(logStatus.value==='all'||status.startsWith(logStatus.value))})})
+function toggleLogPause(){if(!logPaused.value){pausedLines.value=[...logLines.value];logPaused.value=true}else{logPaused.value=false;pausedLines.value=[];logStickToBottom.value=true;void nextTick().then(()=>scrollLogToBottom(true))}}
 const LOG_SCROLL_BOTTOM_THRESHOLD = 24
 const trafficByRule = ref<Record<number, ProxyTraffic>>({})
 const clientRows = ref<ProxyClientConn[]>([])
 const clientsLoading = ref(false)
+const clientsError=ref('')
+let clientsController:AbortController|undefined
+let clientsGeneration=0
+const trafficSnapshot=ref<ProxyTrafficSnapshot|null>(null)
+const trafficError=ref('')
+const trafficSampledAt=computed(()=>trafficSnapshot.value?.sampled_at??'')
+let viewAlive=true
 type RatePoint = { at: number; upload: number; download: number }
 const rateHistory = ref<RatePoint[]>([])
 const RATE_HISTORY_MS = 5 * 60 * 1000
@@ -646,19 +669,8 @@ const enabledCount = computed(() => rules.value.filter((r) => r.enabled).length)
 const disabledCount = computed(() => rules.value.length - enabledCount.value)
 
 const trafficTotals = computed(() => {
-  let upload = 0
-  let download = 0
-  let uploadRate = 0
-  let downloadRate = 0
-  let connections = 0
-  for (const stats of Object.values(trafficByRule.value)) {
-    upload += stats.upload_total
-    download += stats.download_total
-    uploadRate += stats.upload_rate
-    downloadRate += stats.download_rate
-    connections += stats.connections
-  }
-  return { upload, download, uploadRate, downloadRate, connections }
+ const t=trafficSnapshot.value?.total
+ return {upload:t?.upload_total??0,download:t?.download_total??0,uploadRate:t?.upload_rate??0,downloadRate:t?.download_rate??0,connections:t?.connections??0}
 })
 
 const showEntryGroups = computed(() => viewMode.value === 'grouped')
@@ -810,14 +822,14 @@ const selectedSecurityFeatures = computed(() =>
 const trafficChart = computed(() => {
   const now = Date.now()
   const labels: string[] = []
-  const upload: number[] = []
-  const download: number[] = []
-  for (let i = 5; i >= 0; i--) {
-    const bucketEnd = now - i * 60 * 1000
-    const bucketStart = bucketEnd - 60 * 1000
+  const upload: (number|null)[] = []
+  const download: (number|null)[] = []
+  for (let i = 29; i >= 0; i--) {
+    const bucketEnd = now - i * 10 * 1000
+    const bucketStart = bucketEnd - 10 * 1000
     const points = rateHistory.value.filter((p) => p.at > bucketStart && p.at <= bucketEnd)
     const avg = (key: 'upload' | 'download') =>
-      points.length ? points.reduce((sum, p) => sum + p[key], 0) / points.length : 0
+      points.length ? points.reduce((sum, p) => sum + p[key], 0) / points.length : null
     upload.push(avg('upload'))
     download.push(avg('download'))
     const d = new Date(bucketEnd)
@@ -1150,12 +1162,11 @@ watch(filteredRules, (list) => {
   }
 })
 
-function openDetail(rule: ProxyRule, tab: 'overview' | 'logs' | 'nginx' = 'overview') {
+function openDetail(rule: ProxyRule, tab: 'overview' | 'diagnostics' | 'logs' | 'nginx' = 'overview') {
   selectedRuleId.value = rule.id
   detailTab.value = tab
   showDetailPanel.value = true
   clearRateHistory()
-  recordRateSample(rule.id)
   if (tab === 'nginx') {
     void loadRuleNginxPreview()
   }
@@ -1178,7 +1189,7 @@ function confirmDiscardNginxDraft(): Promise<boolean> {
   })
 }
 
-async function switchDetailTab(tab: 'overview' | 'logs' | 'nginx') {
+async function switchDetailTab(tab: 'overview' | 'diagnostics' | 'logs' | 'nginx') {
   if (tab === detailTab.value) return
   detailTab.value = tab
   if (tab === 'nginx') {
@@ -1410,7 +1421,7 @@ function hostAccessUrl(rule: ProxyRule, hostPart: string): string {
     return `${scheme}://${hostPart}`
   }
 
-  const defaultPort = rule.https_enabled ? nginxHttpsPort.value : nginxHttpPort.value
+  const defaultPort = rule.https_enabled ? 443 : 80
   if (rule.listen_port !== defaultPort) {
     return `${scheme}://${hostPart}:${rule.listen_port}`
   }
@@ -1737,12 +1748,14 @@ function onLogFullscreenKeydown(event: KeyboardEvent) {
 }
 
 function clearLogLines() {
+  pausedLines.value=[]
   clearStreamLines()
   logStickToBottom.value = true
 }
 
 watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab]) => {
   stopLogStream()
+  logPaused.value=false;pausedLines.value=[];logQuery.value='';logStatus.value='all'
   if (!visible || !id || tab !== 'logs') return
   clearLogLines()
   startLogStream(id)
@@ -1751,7 +1764,7 @@ watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab]) =
 })
 
 watch(
-  () => logLines.value.length,
+  () => visibleLogLines.value,
   async () => {
     if (detailTab.value !== 'logs' || !logStickToBottom.value) return
     await nextTick()
@@ -1774,17 +1787,21 @@ async function refreshTraffic() {
   if (document.hidden || trafficPending) return
   trafficPending = true
   try {
-    const rows = asList(await api.getProxyTraffic())
+    const snapshot=await api.getProxyTrafficSnapshot()
+    if(!viewAlive)return
+    const rows = asList(snapshot.rules)
     const next: Record<number, ProxyTraffic> = {}
     for (const row of rows) {
       next[row.rule_id] = row
     }
     trafficByRule.value = next
-    if (showDetailPanel.value && selectedRuleId.value && detailTab.value === 'overview') {
+    trafficSnapshot.value=snapshot
+    trafficError.value=''
+    if (showDetailPanel.value && selectedRuleId.value) {
       recordRateSample(selectedRuleId.value)
     }
-  } catch {
-    // ignore polling errors
+  } catch(error) {
+    if(viewAlive)trafficError.value=error instanceof Error?error.message:'流量采集请求失败'
   } finally {
     trafficPending = false
   }
@@ -1803,35 +1820,22 @@ function stopTrafficPoll() {
 }
 
 async function loadClients() {
-  const rule = selectedRule.value
-  if (!rule || document.hidden) return
-  clientsLoading.value = true
-  try {
-    const rows = asList(await api.getProxyClients(rule.id))
-    if (selectedRuleId.value === rule.id && showDetailPanel.value && detailTab.value === 'overview') {
-      clientRows.value = rows
-    }
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '读取连接失败')
-  } finally {
-    clientsLoading.value = false
-  }
+ const rule=selectedRule.value
+ if(!rule||document.hidden||clientsLoading.value)return
+ const c=new AbortController();clientsController=c
+ const g=++clientsGeneration;clientsLoading.value=true
+ try{
+  const rows=asList(await api.getProxyClients(rule.id,c.signal))
+  if(g===clientsGeneration&&showDetailPanel.value&&selectedRuleId.value===rule.id&&detailTab.value==='overview'){clientRows.value=rows;clientsError.value=''}
+ }catch(e){if(g===clientsGeneration&&!c.signal.aborted)clientsError.value=e instanceof Error?e.message:'读取客户端失败'}
+ finally{if(g===clientsGeneration)clientsLoading.value=false}
 }
-
-function startClientsPoll() {
-  clientsPoll.start(true)
-}
-
-function stopClientsPoll() {
-  clientsPoll.stop()
-}
-
-watch([showDetailPanel, selectedRuleId, detailTab], ([visible, id, tab]) => {
-  if (!visible || !id || tab !== 'overview') {
-    stopClientsPoll()
-    return
-  }
-  startClientsPoll()
+function startClientsPoll(){clientsPoll.start(true);void loadClients()}
+function stopClientsPoll(){clientsPoll.stop();++clientsGeneration;clientsController?.abort();clientsLoading.value=false}
+watch([showDetailPanel,selectedRuleId,detailTab],([visible,id,tab],[,previousId])=>{
+ stopClientsPoll()
+ if(!visible||id!==previousId){clientRows.value=[];clientsError.value=''}
+ if(visible&&id&&tab==='overview')startClientsPoll()
 })
 
 async function loadDefaults() {
@@ -2330,10 +2334,12 @@ async function deleteRule(){
 onMounted(async () => {
   await loadDefaults()
   await load()
+  if(!viewAlive)return
   await refreshTraffic()
-  startTrafficPoll()
+  if(viewAlive)startTrafficPoll()
 })
 onUnmounted(() => {
+  viewAlive=false
   ++editorRequest;++detailRequest
   if(nginxRefreshTimer)clearTimeout(nginxRefreshTimer)
   layoutObserver?.disconnect()
@@ -3598,4 +3604,5 @@ onUnmounted(() => {
 @media(max-width:600px){.editor-tabs button{font-size:12px;padding:6px 8px}}
 
 .proxy-detail-modal{width:100%;max-height:none;height:100%;border-radius:0;box-shadow:none;container:proxy-detail / inline-size}.proxy-detail-modal__header{padding:16px;flex-wrap:wrap;gap:10px}.proxy-detail-modal__intro{flex:1 1 200px;flex-wrap:wrap;gap:8px}.detail-title{min-width:0;flex:1 1 130px}.detail-title small{display:block;font-size:11px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}.proxy-detail-modal__title{overflow-wrap:anywhere}.proxy-detail__scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}.proxy-detail__tabbar{padding-inline:16px}.proxy-detail__pane--logs,.proxy-detail__pane--nginx{min-height:350px;flex-shrink:0}.delete-review{display:grid;gap:12px}.delete-identity{display:flex;align-items:center;gap:10px}.delete-identity strong,.delete-identity small{display:block}.delete-identity small{font-size:12px;color:var(--fonu-text-secondary)}.delete-review dl{margin:0;display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px;border:1px solid var(--fonu-border);border-radius:8px;padding:12px;font-size:13px}.delete-review dt{color:var(--fonu-text-secondary)}.delete-review dd{grid-column:2;margin:0;overflow-wrap:anywhere}
+.log-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.log-filters :deep(.n-input){flex:1 1 140px;min-width:0}.log-filters :deep(.n-select){width:110px}.log-filters small{font-size:11px;color:var(--fonu-text-secondary)}.proxy-detail__tabbar{flex-wrap:wrap;gap:8px}
 </style>

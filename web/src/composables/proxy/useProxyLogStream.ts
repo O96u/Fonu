@@ -34,8 +34,7 @@ export function useProxyLogStream() {
     current.addEventListener('log', (event: MessageEvent<string>) => {
       if (source !== current) return
       attempts = 0
-      lines.value.push(event.data)
-      if (lines.value.length > 500) lines.value = lines.value.slice(-400)
+      lines.value = [...lines.value.slice(-499),event.data]
     })
     current.onerror = () => {
       if (source !== current) return

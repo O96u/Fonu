@@ -17,8 +17,8 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 const props = withDefaults(
   defineProps<{
     labels: string[]
-    upload: number[]
-    download: number[]
+    upload: (number|null)[]
+    download: (number|null)[]
     compact?: boolean
   }>(),
   { compact: false },
@@ -35,7 +35,7 @@ function axisRate(value: number): string {
 const option = computed(() => {
   const textColor = palette.value.secondary
   const splitColor = palette.value.border
-  const peak = Math.max(0, ...props.upload, ...props.download)
+  const peak = Math.max(0, ...props.upload.map(v=>v??0), ...props.download.map(v=>v??0))
   const idle = peak <= 1
 
   return {
@@ -45,9 +45,9 @@ const option = computed(() => {
       backgroundColor: palette.value.surface,
       borderColor: palette.value.border,
       textStyle: { color: palette.value.text, fontSize: 12 },
-      formatter: (params: { seriesName: string; value: number; axisValue: string }[]) => {
+      formatter: (params: { seriesName: string; value: number|null; axisValue: string }[]) => {
         const time = params[0]?.axisValue ?? ''
-        const lines = params.map((p) => `${p.seriesName} ${formatRate(p.value)}`)
+        const lines = params.map((p) => `${p.seriesName} ${p.value==null?'未采样':formatRate(p.value)}`)
         return `${time}<br/>${lines.join('<br/>')}`
       },
     },
@@ -57,7 +57,7 @@ const option = computed(() => {
       data: props.labels,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: textColor, fontSize: 11 },
+      axisLabel: { color: textColor, fontSize: 11, hideOverlap:true },
     },
     yAxis: {
       type: 'value',
@@ -76,7 +76,8 @@ const option = computed(() => {
       {
         name: '上传',
         type: 'line',
-        smooth: true,
+        smooth: false,
+        connectNulls: false,
         showSymbol: false,
         data: props.upload,
         lineStyle: { width: 2, color: palette.value.brand },
@@ -97,7 +98,8 @@ const option = computed(() => {
       {
         name: '下载',
         type: 'line',
-        smooth: true,
+        smooth: false,
+        connectNulls: false,
         showSymbol: false,
         data: props.download,
         lineStyle: { width: 2, color: palette.value.chartSecondary },

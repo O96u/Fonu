@@ -162,7 +162,10 @@ export const api = {
   reorderProxies: (ids: number[]) =>
     request<void>('/api/proxies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   getProxyTraffic: () => request<ProxyTraffic[]>('/api/proxies/traffic'),
-  getProxyClients: (id: number) => request<ProxyClientConn[]>(`/api/proxies/${id}/clients`),
+  getProxyTrafficSnapshot: () => request<import('./types').ProxyTrafficSnapshot>('/api/proxies/traffic/snapshot'),
+  getProxyDiagnostics: (id:number,signal?:AbortSignal) => request<import('./types').ProxyDiagnostic[]>(`/api/proxies/${id}/diagnostics`,{signal}),
+  runProxyDiagnostic: (id:number,signal?:AbortSignal) => request<import('./types').ProxyDiagnostic>(`/api/proxies/${id}/diagnostics`,{method:'POST',signal}),
+  getProxyClients: (id: number,signal?:AbortSignal) => request<ProxyClientConn[]>(`/api/proxies/${id}/clients`,{signal}),
   getProxyNginx: (id: number) => request<RuleNginxView>(`/api/proxies/${id}/nginx`),
   saveProxyNginx: (id: number, payload: { mode: 'auto' | 'custom'; content?: string }) =>
     request<RuleNginxView>(`/api/proxies/${id}/nginx`, { method: 'PUT', body: JSON.stringify(payload) }),

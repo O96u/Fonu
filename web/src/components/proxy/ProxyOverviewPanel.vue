@@ -45,18 +45,19 @@
               <section class="overview-card overview-card--chart">
                 <div class="overview-card__head">
                   <h4>实时流量 <span class="overview-card__sub">最近 5 分钟</span></h4>
-                  <span class="live-badge"><span class="live-badge__dot" />实时</span>
+                  <span class="live-badge">{{trafficError?'采样失败':sampledAt?'实时':'未采样'}}</span>
                 </div>
                 <div class="traffic-live-legend traffic-live-legend--compact">
                   <span class="traffic-live-legend__item traffic-live-legend__item--up">
                     <span class="traffic-live-legend__dot" />
-                    上传 {{ formatRate(selectedTraffic?.upload_rate ?? 0) }}
+                    上传 {{ selectedTraffic?formatRate(selectedTraffic.upload_rate):"—" }}
                   </span>
                   <span class="traffic-live-legend__item traffic-live-legend__item--down">
                     <span class="traffic-live-legend__dot" />
-                    下载 {{ formatRate(selectedTraffic?.download_rate ?? 0) }}
+                    下载 {{ selectedTraffic?formatRate(selectedTraffic.download_rate):"—" }}
                   </span>
                 </div>
+                <small class="overview-card__sub">仅显示本次详情打开后的采样；空白表示未采样，速率来自已完成访问日志。</small>
                 <MiniTrafficChart
                   class="overview-chart"
                   :labels="trafficChart.labels"
@@ -69,19 +70,19 @@
                 <section class="overview-metrics">
                   <div class="overview-metric">
                     <div class="overview-metric__label">总上传</div>
-                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.upload_total ?? 0) }}</div>
+                    <div class="overview-metric__value">{{ selectedTraffic?formatBytes(selectedTraffic.upload_total):"—" }}</div>
                   </div>
                   <div class="overview-metric">
                     <div class="overview-metric__label">总下载</div>
-                    <div class="overview-metric__value">{{ formatBytes(selectedTraffic?.download_total ?? 0) }}</div>
+                    <div class="overview-metric__value">{{ selectedTraffic?formatBytes(selectedTraffic.download_total):"—" }}</div>
                   </div>
                   <div class="overview-metric">
                     <div class="overview-metric__label">当前上传</div>
-                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.upload_rate ?? 0) }}</div>
+                    <div class="overview-metric__value">{{ selectedTraffic?formatRate(selectedTraffic.upload_rate):"—" }}</div>
                   </div>
                   <div class="overview-metric">
                     <div class="overview-metric__label">当前下载</div>
-                    <div class="overview-metric__value">{{ formatRate(selectedTraffic?.download_rate ?? 0) }}</div>
+                    <div class="overview-metric__value">{{ selectedTraffic?formatRate(selectedTraffic.download_rate):"—" }}</div>
                   </div>
                 </section>
 
@@ -93,35 +94,47 @@
                     </h4>
                     <n-button size="tiny" quaternary :loading="clientsLoading" @click="emit('refreshClients')">刷新</n-button>
                   </div>
+                  <div v-if="clientsError" class="overview-empty">{{clientsError}} · {{clientRows.length?'保留上次数据':'暂无数据'}}</div>
                   <div class="overview-client-list">
                     <template v-if="clientRows.length > 0">
-                      <div v-for="row in clientRows" :key="row.ip" class="overview-client-row">
+                      <div v-for="row in pagedClients" :key="row.ip" class="overview-client-row">
                         <span class="mono">{{ row.ip }}</span>
                         <span class="overview-client-row__time">{{ formatRelativeTime(row.last_seen) }}</span>
                       </div>
                     </template>
-                    <p v-else class="overview-empty">暂无访问记录</p>
+                    <p v-else class="overview-empty">{{clientsLoading?'读取中…':clientsError?'未获取到数据':'暂无访问记录'}}</p>
                   </div>
+                  <n-pagination v-if="clientRows.length>10" v-model:page="page" :page-count="pageCount" :page-slot="5" size="small"/>
+                  <small class="overview-card__sub">近期 IP 不是在线人数或 TCP 连接数。</small>
                 </section>
               </aside>
             </div>
         </div>
 </template>
 <script setup lang="ts">
-import {NTag,NButton} from 'naive-ui'
+import {computed,ref,watch} from 'vue'
+import {NTag,NButton,NPagination} from 'naive-ui'
 import MiniTrafficChart from '../MiniTrafficChart.vue'
 import type {ProxyRule,ProxyTraffic,ProxyClientConn} from '../../api/types'
 import {formatBytes,formatRate,formatRelativeTime} from '../../utils/format'
-defineProps<{
+const props=defineProps<{
  selectedRule:ProxyRule
  hosts:string[]
  listen:string
  selectedSecurityFeatures:string[]
  selectedTraffic?:ProxyTraffic
- trafficChart:{labels:string[];upload:number[];download:number[]}
+ trafficChart:{labels:string[];upload:(number|null)[];download:(number|null)[]}
+ clientsError:string
+ trafficError:string
+ sampledAt:string
  clientRows:ProxyClientConn[]
  clientsLoading:boolean
 }>()
+const page=ref(1)
+const pageCount=computed(()=>Math.max(1,Math.ceil(props.clientRows.length/10)))
+const pagedClients=computed(()=>props.clientRows.slice((page.value-1)*10,page.value*10))
+watch(pageCount,n=>page.value=Math.min(page.value,n))
+watch(()=>props.selectedRule.id,()=>page.value=1)
 const emit=defineEmits<{refreshClients:[]}>()
 </script>
 <style scoped>

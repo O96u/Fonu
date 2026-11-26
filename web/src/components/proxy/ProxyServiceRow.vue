@@ -16,9 +16,9 @@
       </div>
     </div>
     <div class="service-target"><span :title="rule.upstream">{{ rule.upstream }}</span><small v-if="rule.listen_port!==443 || !rule.https_enabled || rule.listen_ipv6 || !rule.listen_ipv4">{{ rule.listen_port }} · {{ rule.https_enabled?'HTTPS':'HTTP' }} · {{ rule.listen_ipv4?'IPv4':'' }}{{ rule.listen_ipv4&&rule.listen_ipv6?'/':'' }}{{ rule.listen_ipv6?'IPv6':'' }}</small></div>
-    <button type="button" class="service-visitors" title="近期访问 IP 数（非实时 TCP 连接数）" @click="emit('detail')"><n-icon :component="PeopleOutline"/><span>{{ traffic?.connections??0 }}</span></button>
-    <div class="service-rate"><span>↑ {{ formatRate(traffic?.upload_rate??0) }}</span><span>↓ {{ formatRate(traffic?.download_rate??0) }}</span></div>
-    <div class="service-total"><span>↑ {{ formatBytes(traffic?.upload_total??0) }}</span><span>↓ {{ formatBytes(traffic?.download_total??0) }}</span></div>
+    <button type="button" class="service-visitors" title="近期访问 IP 数（非实时 TCP 连接数）" @click="emit('detail')"><n-icon :component="PeopleOutline"/><span>{{ traffic?.connections??'—' }}</span></button>
+    <div class="service-rate"><span>↑ {{ traffic?formatRate(traffic.upload_rate):'—' }}</span><span>↓ {{ traffic?formatRate(traffic.download_rate):'—' }}</span></div>
+    <div class="service-total"><span>↑ {{ traffic?formatBytes(traffic.upload_total):'—' }}</span><span>↓ {{ traffic?formatBytes(traffic.download_total):'—' }}</span></div>
     <div class="service-security"><n-tag v-for="tag in tags" :key="tag" size="small" :bordered="false">{{tag}}</n-tag><span v-if="!tags.length">—</span></div>
     <div class="service-status"><n-switch size="small" :value="rule.enabled" :loading="busy" :disabled="toggleLocked" :aria-label="rule.enabled?'停用规则':'启用规则'" @update:value="emit('toggle',$event)"/></div>
     <div class="service-actions">

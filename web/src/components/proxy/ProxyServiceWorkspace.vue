@@ -26,9 +26,9 @@
             <span><strong>{{block.name}}</strong><small>{{block.rules.length}} 条独立规则 · {{domainCount(block.rules)}} 个域名</small></span>
           </button>
           <div class="summary-metrics">
-            <span title="各规则近期访问 IP 数相加，非全局去重"><n-icon :component="PeopleOutline"/> {{sum(block.rules).connections}}</span>
-            <span>↑ {{formatRate(sum(block.rules).upload_rate)}}<br/>↓ {{formatRate(sum(block.rules).download_rate)}}</span>
-            <span title="累计上传与下载">↑ {{formatBytes(sum(block.rules).upload_total)}}<br/>↓ {{formatBytes(sum(block.rules).download_total)}}</span>
+            <span title="各规则近期访问 IP 数相加，非全局去重"><n-icon :component="PeopleOutline"/> {{block.rules.every(r=>traffic[r.id])?sum(block.rules).connections:'—'}}</span>
+            <span>↑ {{block.rules.every(r=>traffic[r.id])?formatRate(sum(block.rules).upload_rate):'—'}}<br/>↓ {{block.rules.every(r=>traffic[r.id])?formatRate(sum(block.rules).download_rate):'—'}}</span>
+            <span title="累计上传与下载">↑ {{block.rules.every(r=>traffic[r.id])?formatBytes(sum(block.rules).upload_total):'—'}}<br/>↓ {{block.rules.every(r=>traffic[r.id])?formatBytes(sum(block.rules).download_total):'—'}}</span>
             <span class="summary-state">{{block.rules.filter(r=>r.enabled).length}} / {{block.rules.length}} 启用</span>
           </div>
           <div class="summary-actions">
