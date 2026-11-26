@@ -20,7 +20,7 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rangeKey := r.URL.Query().Get("range")
-	out, err := h.svc.Overview(r.Context(), rangeKey)
+	out, err := h.svc.OverviewFor(r.Context(),rangeKey,r.URL.Query().Get("scope")=="summary")
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取访问统计失败", err)
 		return

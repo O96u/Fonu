@@ -166,8 +166,8 @@ const certWildcard = computed(() => {
 })
 const certDisplayName = computed(() => certWildcard.value || primaryCert.value?.domain || '')
 
-const publicIPv4Label = computed(() => status.value?.public_ipv4 || '-')
-const publicIPv6Label = computed(() => status.value?.public_ipv6 ? 'IPv6 '+status.value.public_ipv6 : status.value ? 'IPv6 未检测到' : 'IPv6 检测中')
+const publicIPv4Label = computed(() => status.value?.public_ipv4 || status.value?.public_ipv6 || '-')
+const publicIPv6Label = computed(() => status.value?.public_ipv6 ? (status.value.public_ipv4?'IPv6 '+status.value.public_ipv6:'IPv4 未检测到') : status.value ? 'IPv6 未检测到' : 'IPv6 检测中')
 const publicIPSourceLabel = computed(() => {
   switch (status.value?.public_ip_source) {
     case 'ddns':
@@ -263,7 +263,8 @@ const awarenessTrendTag = computed(() => {
 })
 
 
-watch(awarenessRange, () => {
+watch([awarenessRange,activeTab], ([,tab],[,previousTab]) => {
+  if(tab!==previousTab)analyticsOverview.value=null
   cancelAwareness()
   awarenessLoading.value = true
   awarenessError.value = ''
@@ -428,13 +429,14 @@ function cancelAwareness() {
 async function refreshAwareness(force = false) {
   if (!dashboardActive || document.hidden || awarenessController) return
   const range = awarenessRange.value
+  const tab = activeTab.value
   const controller = new AbortController()
   awarenessController = controller
   if (force || !analyticsOverview.value) awarenessLoading.value = true
   awarenessError.value = ''
   try {
-    const overview = await api.getAnalyticsOverview(range, controller.signal)
-    if (!controller.signal.aborted && awarenessRange.value === range && dashboardActive) {
+    const overview = await api.getAnalyticsOverview(range, controller.signal, tab==='overview')
+    if (!controller.signal.aborted && awarenessRange.value === range && activeTab.value===tab && dashboardActive) {
       analyticsOverview.value = overview
     }
   } catch (error) {
@@ -467,8 +469,11 @@ async function load() {
   const background = status.value != null
   if (!background) loading.value = true
   try {
-    status.value = await api.getStatus()
+    const next=await api.getStatus()
+    if(!dashboardActive)return
+    status.value=next
     loadError.value = ''
+    if(!next.public_ipv4||!next.public_ipv6){void api.getPublicIP().then(ips=>{if(!dashboardActive||status.value!==next)return;const v4=next.public_ipv4||ips.public_ipv4,v6=next.public_ipv6||ips.public_ipv6;if(v4!==next.public_ipv4||v6!==next.public_ipv6)status.value={...next,public_ipv4:v4,public_ipv6:v6,public_ip_source:next.public_ip_source==='ddns'?'mixed':'detect'}}).catch(()=>{})}
   } catch (error) {
     if (!background) {
       loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'

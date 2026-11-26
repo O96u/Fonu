@@ -30,8 +30,15 @@ func (s *Service) querySeries(ctx context.Context, period awareness.Period, ipFi
 			buckets=append(buckets,bucket{d,d.AddDate(0,0,1),d.Format("01-02")})
 		}
 	}
-	current := -1
-	for i, b := range buckets {
+ // Avoid hundreds of empty index/rollup queries on new installations or
+ // when log retention is shorter than the selected year.
+ var earliest,latest string
+ rangeStart:=period.Start.UTC().Format(time.RFC3339)
+ rangeEnd:=period.End.UTC().Format(time.RFC3339)
+ err:=s.db.QueryRowContext(ctx,`SELECT COALESCE((SELECT ts FROM access_facts WHERE ts>=? AND ts<=? ORDER BY ts ASC LIMIT 1),''),COALESCE((SELECT ts FROM access_facts WHERE ts>=? AND ts<=? ORDER BY ts DESC LIMIT 1),'')`,rangeStart,rangeEnd,rangeStart,rangeEnd).Scan(&earliest,&latest)
+ if err!=nil{return out,-1,err}
+ current := -1
+ for i, b := range buckets {
 		out.Labels=append(out.Labels,b.label)
 		out.Requests=append(out.Requests,0)
 		out.UniqueIPs=append(out.UniqueIPs,0)
@@ -41,6 +48,7 @@ func (s *Service) querySeries(ctx context.Context, period awareness.Period, ipFi
 		end := b.end
 		if cap := period.End.Add(time.Second); cap.Before(end) { end=cap }
 		if !end.After(b.start) { continue }
+  if earliest==""||b.start.UTC().Format(time.RFC3339)>latest||end.UTC().Format(time.RFC3339)<=earliest{continue}
 		var err error
 		if rollupExists > 0 {
 			err = s.querySeriesBucket(ctx,b.start,end,ipFilter,&out.Requests[i],&out.UniqueIPs[i],&out.Bytes[i])

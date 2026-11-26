@@ -35,6 +35,7 @@ type StatusHandler struct {
 	publicIPSource   string
 	publicIPCachedAt time.Time
  publicIPFlight chan struct{}
+ publicIPDetect func(context.Context)(string,string,error)
  runtimeMu sync.Mutex
  runtimeVersions map[string]string
  runtimeVersionAt time.Time
@@ -146,26 +147,33 @@ func(h *StatusHandler) resolvePublicIPs(ctx context.Context)(ipv4,ipv6,source st
 }
 func(h *StatusHandler) detectPublicIPs(ctx context.Context,force bool)(v4,v6 string,checked time.Time){
  h.publicIPMu.Lock()
- if !force&&!h.publicIPCachedAt.IsZero()&&time.Since(h.publicIPCachedAt)<time.Minute{
+ if !force&&h.publicIPFlight==nil&&!h.publicIPCachedAt.IsZero()&&time.Since(h.publicIPCachedAt)<time.Minute{
   v4,v6,checked=h.publicIPv4,h.publicIPv6,h.publicIPCachedAt;h.publicIPMu.Unlock();return
  }
- if flight:=h.publicIPFlight;flight!=nil{
-  h.publicIPMu.Unlock()
-  select{case <-flight:case <-ctx.Done():}
-  h.publicIPMu.Lock();v4,v6,checked=h.publicIPv4,h.publicIPv6,h.publicIPCachedAt;h.publicIPMu.Unlock();return
+ flight:=h.publicIPFlight
+ if flight==nil{
+  flight=make(chan struct{});h.publicIPFlight=flight
+  detect:=h.publicIPDetect;if detect==nil{detect=publicip.Detect}
+  // Dashboard callers have a short budget, but a shared probe can finish
+  // independently for DDNS and subsequent requests. At most one is active.
+  go func(done chan struct{}){
+   probeCtx,cancel:=context.WithTimeout(context.Background(),6*time.Second);defer cancel()
+   a,b,_:=detect(probeCtx)
+   h.publicIPMu.Lock()
+   h.publicIPv4,h.publicIPv6=a,b;h.publicIPCachedAt=time.Now()
+   h.publicIPFlight=nil;close(done);h.publicIPMu.Unlock()
+  }(flight)
  }
- done:=make(chan struct{});h.publicIPFlight=done;h.publicIPMu.Unlock()
- v4,v6,_=publicip.Detect(ctx)
- h.publicIPMu.Lock()
- h.publicIPv4,h.publicIPv6=v4,v6
- checked=time.Now();h.publicIPCachedAt=checked
- h.publicIPFlight=nil;close(done);h.publicIPMu.Unlock()
+ h.publicIPMu.Unlock()
+ select{case <-flight:case <-ctx.Done():}
+ h.publicIPMu.Lock();v4,v6,checked=h.publicIPv4,h.publicIPv6,h.publicIPCachedAt;h.publicIPMu.Unlock()
  return
 }
 func(h *StatusHandler) PublicIP(w http.ResponseWriter,r *http.Request){
  v4,v6,checked:=h.detectPublicIPs(r.Context(),r.URL.Query().Get("refresh")=="1")
  w.Header().Set("Cache-Control","no-store")
- writeJSON(w,http.StatusOK,map[string]string{"public_ipv4":v4,"public_ipv6":v6,"checked_at":checked.UTC().Format(time.RFC3339)})
+ at:="";if !checked.IsZero(){at=checked.UTC().Format(time.RFC3339)}
+ writeJSON(w,http.StatusOK,map[string]string{"public_ipv4":v4,"public_ipv6":v6,"checked_at":at})
 }
 
 func summarizeCertificates(records []certstore.Record) (status string, days int, count int, summary string) {

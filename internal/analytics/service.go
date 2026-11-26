@@ -152,11 +152,16 @@ type StatusRow struct {
 }
 
 func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, error) {
-	rangeKey = awareness.NormalizeRange(rangeKey)
+ return s.OverviewFor(ctx,rangeKey,false)
+}
+
+// OverviewFor keeps dashboard-only queries separate from detailed analytics.
+func (s *Service) OverviewFor(ctx context.Context,rangeKey string,compact bool)(Overview,error){
+ rangeKey = awareness.NormalizeRange(rangeKey)
 	loc, tz := s.location(ctx)
 	excludePrivate := false
 	if s.settings != nil { excludePrivate, _ = s.settings.GetBool(ctx, settings.KeyAnalyticsExcludePrivateIPs) }
-	cacheKey := rangeKey + "|" + tz + "|" + strconv.FormatBool(excludePrivate)
+	cacheKey := rangeKey + "|" + tz + "|" + strconv.FormatBool(excludePrivate)+"|"+strconv.FormatBool(compact)
 	s.overviewMu.Lock()
 	for key, item := range s.overviewCache { if time.Since(item.at) >= rangeCacheTTL(strings.SplitN(key,"|",2)[0]) { delete(s.overviewCache, key) } }
 	if item, ok := s.overviewCache[cacheKey]; ok && time.Since(item.at) < rangeCacheTTL(rangeKey) {
@@ -183,7 +188,7 @@ func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, erro
  var err error
  select{
  case s.overviewGate<-struct{}{}:
-  ov,err=s.computeOverview(ctx,rangeKey,loc,tz,excludePrivate)
+  ov,err=s.computeOverview(ctx,rangeKey,loc,tz,excludePrivate,compact)
   <-s.overviewGate
  case <-ctx.Done():err=ctx.Err()
  }
@@ -202,7 +207,8 @@ func (s *Service) Overview(ctx context.Context, rangeKey string) (Overview, erro
 	return ov, err
 }
 
-func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *time.Location, tz string, excludePrivate bool) (Overview, error) {
+func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *time.Location, tz string, excludePrivate bool, compactOnly ...bool) (Overview, error) {
+ compact:=len(compactOnly)>0&&compactOnly[0]
 	rangeKey = awareness.NormalizeRange(rangeKey)
 	now := time.Now().In(loc)
 	period := awareness.PeriodForRange(rangeKey, now, loc)
@@ -235,6 +241,7 @@ func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *tim
 		seriesErr error
 		provinces []ProvinceRow
 		countries []CountryRow
+  countryErr,serviceErr,recentErr error
 		regions   []RegionVisitorRow
 		topIPs    []TopIPRow
 		clients   []ClientRow
@@ -257,9 +264,10 @@ func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *tim
 	}
 	spawn(func() { kpi, funnel, kpiErr = s.queryKPI(ctx, start, end, ipFilter) })
 	spawn(func() { series, seriesAt, seriesErr = s.querySeries(ctx, period, ipFilter) })
-	spawn(func() { provinces, _ = s.queryProvinces(ctx, start, end, ipFilter) })
-	spawn(func() { countries, _ = s.queryCountries(ctx, start, end, ipFilter) })
-	spawn(func() { regions, _ = s.queryRegionVisitors(ctx, start, end, ipFilter, 60) })
+ spawn(func() { countries, countryErr = s.queryCountries(ctx, start, end, ipFilter) })
+ if !compact{
+ spawn(func() { provinces, _ = s.queryProvinces(ctx, start, end, ipFilter) })
+ spawn(func() { regions, _ = s.queryRegionVisitors(ctx, start, end, ipFilter, 60) })
 	spawn(func() { topIPs, _ = s.queryTopIPs(ctx, start, end, ipFilter, 15) })
 	spawn(func() { clients, _ = s.queryClients(ctx, start, end, ipFilter) })
 	spawn(func() { statuses, _ = s.queryStatus(ctx, start, end, ipFilter) })
@@ -268,17 +276,21 @@ func (s *Service) computeOverview(ctx context.Context, rangeKey string, loc *tim
 		anomaly, err = s.queryAnomaly(ctx, now, loc, ipFilter)
 		anomalyOK = err == nil
 	})
-	spawn(func() { recent, _ = s.recentEvents(ctx, start, end, ipFilter, 30) })
-	spawn(func() { services, _ = s.byService(ctx, start, end, ipFilter) })
+ }
+ limit:=30;if compact{limit=5}
+ spawn(func() { recent, recentErr = s.recentEvents(ctx, start, end, ipFilter, limit) })
+ spawn(func() { services, serviceErr = s.byService(ctx, start, end, ipFilter) })
 	if rangeKey == awareness.RangeToday {
 		yStart := startOfDay(now.AddDate(0, 0, -1), loc).UTC().Format(time.RFC3339)
 		yEnd := startOfDay(now, loc).Add(-time.Second).UTC().Format(time.RFC3339)
 		spawn(func() { yKPI, yFunnel, _ = s.queryKPI(ctx, yStart, yEnd, ipFilter) })
 	}
-	if s.serverGeo != nil {
+	if !compact && s.serverGeo != nil {
 		spawn(func() { server = s.serverGeo(ctx) })
 	}
 	wg.Wait()
+ if err:=ctx.Err();err!=nil{return out,err}
+ if compact{for _,err:=range []error{countryErr,serviceErr,recentErr}{if err!=nil{return out,err}}}
 	if kpiErr != nil {
 		return out, kpiErr
 	}

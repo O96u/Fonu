@@ -2,6 +2,8 @@ package api
 
 import (
 	"testing"
+ "context"
+ "sync/atomic"
  "strings"
  "os"
  "runtime"
@@ -86,4 +88,17 @@ func TestRuntimeSamplingSoak(t *testing.T){
  runtime.GC();runtime.ReadMemStats(&after);f1,_:=os.ReadDir("/proc/self/fd")
  t.Logf("samples=%d heap_before=%d heap_after=%d goroutines_before=%d after=%d fd_before=%d after=%d",count,before.HeapAlloc,after.HeapAlloc,g0,runtime.NumGoroutine(),len(f0),len(f1))
  if runtime.NumGoroutine()>g0+4||len(f1)>len(f0)+4||after.HeapAlloc>before.HeapAlloc+8*1024*1024{t.Fatal("runtime sampling resource growth")}
+}
+
+func TestPublicIPProbeSurvivesShortDashboardDeadline(t *testing.T){
+ h:=&StatusHandler{}
+ var calls atomic.Int32
+ release:=make(chan struct{})
+ h.publicIPDetect=func(ctx context.Context)(string,string,error){calls.Add(1);select{case <-release:return "8.8.8.8","2606:4700::1111",nil;case <-ctx.Done():return "","",ctx.Err()}}
+ ctx,cancel:=context.WithTimeout(context.Background(),10*time.Millisecond);defer cancel()
+ _,_,at:=h.detectPublicIPs(ctx,false);if !at.IsZero(){t.Fatal("unfinished probe marked complete")}
+ close(release)
+ ctx2,cancel2:=context.WithTimeout(context.Background(),time.Second);defer cancel2()
+ a,b,at:=h.detectPublicIPs(ctx2,false);if a!="8.8.8.8"||b!="2606:4700::1111"||at.IsZero()||calls.Load()!=1{t.Fatalf("probe result %q %q %v calls=%d",a,b,at,calls.Load())}
+ _,_,_=h.detectPublicIPs(ctx2,true);if calls.Load()!=2{t.Fatal("forced refresh reused stale result")}
 }

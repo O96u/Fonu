@@ -137,8 +137,11 @@ export const api = {
     const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
     return request<AwarenessLiveSnapshot>(`/api/awareness/live${q}`)
   },
-  getAnalyticsOverview: (range: AwarenessRange = 'today', signal?: AbortSignal) => {
-    const q = range && range !== 'today' ? `?range=${encodeURIComponent(range)}` : ''
+  getAnalyticsOverview: (range: AwarenessRange = 'today', signal?: AbortSignal, compact=false) => {
+    const params=new URLSearchParams()
+    if(range!=='today')params.set('range',range)
+    if(compact)params.set('scope','summary')
+    const q=params.size?'?'+params.toString():''
     return request<AnalyticsOverview>(`/api/analytics/overview${q}`, { signal }, 120_000)
   },
   getProxyBusiness: () => request<ProxyBusinessState>('/api/proxy-groups'),
