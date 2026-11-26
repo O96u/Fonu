@@ -268,7 +268,7 @@
         <button v-for="tab in editorTabs" :key="tab.key" type="button" role="tab" :aria-selected="formTab===tab.key" :disabled="saving||nginxSaving" @click="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count">{{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot"/></button>
       </div>
     </template>
-    <ProxyBasicEditor v-if="formTab==='basic'||formTab==='https'" :section="formTab" :form="form" :bind-entry-listen="bindEntryListen" :entry-id="formEntryId" :entry-options="editorEntryOptions" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="Object.assign(form,$event)" @entry="selectEditorEntry" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
+    <ProxyBasicEditor v-if="formTab==='basic'||formTab==='https'" :section="formTab" :form="form" :bind-entry-listen="bindEntryListen" :entry-id="formEntryId" :entry-options="editorEntryOptions" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @entry="selectEditorEntry" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
     <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
@@ -384,7 +384,6 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { copyToClipboard } from '../utils/clipboard'
 import {
   collectDdnsHostOptions,
-  flattenDdnsOptionValues,
   normalizeFrontendHostValues,
   validateUpstreamInput,
   type DdnsHostSelectOption,
@@ -624,6 +623,12 @@ const formEntryId = ref<number | null>(null)
 const bindEntryListen = computed(() => formEntryId.value != null)
 const editorBusinessOptions=computed(()=>[{label:'未分组',value:0},...business.value.groups.map(g=>({label:g.name,value:g.id}))])
 const editorEntryOptions=computed(()=>[{label:'自定义监听',value:0},...entries.value.map(e=>({label:(e.name?e.name+' · ':'')+e.listen_port+' · '+(e.https_enabled?'HTTPS':'HTTP'),value:e.id}))])
+function patchBasicDraft(patch:Partial<typeof form>){
+  const changeProtocol=patch.https_enabled!==undefined&&patch.https_enabled!==form.https_enabled&&!bindEntryListen.value
+  const standardPort=form.listen_port===nginxHttpPort.value||form.listen_port===nginxHttpsPort.value
+  Object.assign(form,patch)
+  if(changeProtocol&&standardPort)form.listen_port=defaultListenPort(form.https_enabled)
+}
 function selectEditorEntry(id:number){
   const entry=entries.value.find(e=>e.id===id)
   formEntryId.value=entry?.id??null
@@ -1026,7 +1031,7 @@ function patchDiscoveryRow(id: string, patch: Partial<DiscoveryRow>) {
 }
 
 function onDiscoverySelectAll(checked: boolean) {
-  if (discoveryLoading.value) return
+  if (discoveryLoading.value||discoveryAdding.value) return
   for (const row of discoveryRows.value) {
     row.selected = checked
   }
@@ -1063,6 +1068,7 @@ async function runDiscoveryScan() {
 async function submitDiscovery() {
   if(discoveryAdding.value||discoveryLoading.value)return
   discoveryError.value=''
+  if(discoveryScanHost.value!==discoveryHost.value.trim()&&discoveryHost.value.trim()){discoveryError.value='扫描地址已变更，请先重新扫描';return}
   const selected = discoveryRows.value.filter(row=>row.selected)
   if(selected.some(row=>!row.hostname.trim())){discoveryError.value='请为每个已选服务填写前端域名';return}
   if (selected.length === 0) {
@@ -1192,20 +1198,23 @@ function closeModal(){
   }else finishEditor()
 }
 
+let detailRequest=0
 async function loadRuleNginxPreview() {
   const rule = selectedRule.value
-  if (!rule) return
+  if (!rule||!showDetailPanel.value||showModal.value) return
+  const request=++detailRequest
   nginxLoading.value = true
   try {
     const view = await api.getProxyNginx(rule.id)
+    if(request!==detailRequest||!showDetailPanel.value||selectedRuleId.value!==rule.id||showModal.value)return
     nginxServerMode.value = view.mode
     nginxGenerated.value = view.generated
     nginxEnabled.value = view.enabled
     nginxDraft.value = view.mode === 'custom' ? view.content : view.generated
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
+    if(request===detailRequest&&showDetailPanel.value)message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
   } finally {
-    nginxLoading.value = false
+    if(request===detailRequest&&!showModal.value)nginxLoading.value = false
   }
 }
 
@@ -1288,7 +1297,8 @@ async function saveRuleNginx() {
 
 async function rollbackRuleNginx(backup?: string) {
   const ruleId = editing.value?.id
-  if (!ruleId) return
+  if (!ruleId||nginxSaving.value||nginxLoading.value||ruleDraftDirty.value) return
+  if(!(await confirmDiscardNginxDraft()))return
   nginxSaving.value = true
   try {
     const view = await api.rollbackProxyNginx(ruleId, backup)
@@ -1307,6 +1317,7 @@ async function rollbackRuleNginx(backup?: string) {
 }
 
 function resetRuleNginxAuto() {
+  if(nginxSaving.value||nginxLoading.value||ruleDraftDirty.value)return
   dialog.warning({
     title: '恢复自动生成',
     content: '将切回自动生成模式，手动保存的配置文件仍保留在备份中。',
@@ -1335,6 +1346,8 @@ function resetRuleNginxAuto() {
 }
 
 function closeDetail() {
+  ++detailRequest
+  if(nginxRefreshTimer){clearTimeout(nginxRefreshTimer);nginxRefreshTimer=null}
   logFullscreen.value = false
   showDetailPanel.value = false
   detailTab.value = 'overview'
@@ -2244,6 +2257,7 @@ async function save() {
   if(saving.value||nginxSaving.value)return
   saveError.value=''
   if(nginxDirty.value&&!(await confirmDiscardNginxDraft()))return
+  if(saving.value||nginxSaving.value)return
   saving.value = true
   try {
     const basePayload = buildPayload()
@@ -2294,7 +2308,7 @@ async function save() {
   }
 }
 
-function confirmDelete(rule:ProxyRule){deleteTarget.value=rule;deleteError.value=''}
+function confirmDelete(rule:ProxyRule){if(deleteBusy.value)return;deleteTarget.value=rule;deleteError.value=''}
 async function deleteRule(){
   const rule=deleteTarget.value
   if(!rule||deleteBusy.value)return
@@ -2313,14 +2327,6 @@ async function deleteRule(){
   }finally{deleteBusy.value=false}
 }
 
-watch(
-  () => form.https_enabled,
-  (httpsEnabled) => {
-    if (!showModal.value || bindEntryListen.value) return
-    if(form.listen_port===nginxHttpPort.value||form.listen_port===nginxHttpsPort.value)form.listen_port=defaultListenPort(httpsEnabled)
-  },
-)
-
 onMounted(async () => {
   await loadDefaults()
   await load()
@@ -2328,6 +2334,8 @@ onMounted(async () => {
   startTrafficPoll()
 })
 onUnmounted(() => {
+  ++editorRequest;++detailRequest
+  if(nginxRefreshTimer)clearTimeout(nginxRefreshTimer)
   layoutObserver?.disconnect()
   sortableGeneration++
   destroyRowSortable()

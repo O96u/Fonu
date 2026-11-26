@@ -48,6 +48,7 @@
                     size="small"
                     quaternary
                     :loading="nginxSaving"
+                    :disabled="ruleDirty||nginxLoading"
                     @click="emit('rollback')"
                   >
                     回滚
@@ -57,6 +58,7 @@
                     size="small"
                     quaternary
                     :loading="nginxSaving"
+                    :disabled="ruleDirty||nginxLoading"
                     @click="emit('reset')"
                   >
                     恢复自动生成
@@ -67,7 +69,7 @@
                 <NginxCodeEditor
                   :model-value="nginxDraft"
                   embedded
-                  :readonly="nginxEditMode === 'auto'"
+                  :readonly="nginxEditMode === 'auto'||nginxLoading||nginxSaving"
                   placeholder="server { ... }"
                   @update:model-value="emit('update:nginxDraft', $event)"
                 />
