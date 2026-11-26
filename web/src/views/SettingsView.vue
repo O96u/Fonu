@@ -269,7 +269,7 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="Device Key"
-                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
+                :configured="hasSavedWebhookSecret"
                 placeholder="Bark Device Key"
               />
             </template>
@@ -285,12 +285,12 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="访问令牌（可选）"
-                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
+                :configured="hasSavedWebhookSecret"
                 placeholder="Bearer Token"
               />
             </template>
             <template v-else-if="['wecom','dingtalk','feishu'].includes(notifyWebhook.provider)">
-              <ConfiguredSecretField v-model="notifyWebhookKey" label="机器人 Webhook 地址" :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider" placeholder="粘贴完整 HTTPS Webhook 地址" />
+              <ConfiguredSecretField v-model="notifyWebhookKey" label="机器人 Webhook 地址" :configured="hasSavedWebhookSecret" placeholder="粘贴完整 HTTPS Webhook 地址" />
               <p class="field-hint">在群聊中添加自定义机器人，复制 Webhook。钉钉、飞书若采用关键词安全校验，请使用 Fonu；暂不支持加签。建议同时配置可信出口 IP（平台支持时）。</p>
             </template>
             <template v-else-if="notifyWebhook.provider === 'gotify'">
@@ -301,7 +301,7 @@
               <ConfiguredSecretField
                 v-model="notifyWebhookKey"
                 label="App Token"
-                :configured="notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider"
+                :configured="hasSavedWebhookSecret"
                 placeholder="Gotify App Token"
               />
             </template>
@@ -883,6 +883,7 @@ const notifyWebhook = reactive({
   url: '',
   has_secret: false,
 })
+const hasSavedWebhookSecret = computed(() => notifyWebhook.has_secret && notifyWebhook.provider === savedWebhookProvider.value)
 const notifyTelegram = reactive({
   chat_id: '',
   proxy_url: '',
@@ -1387,7 +1388,7 @@ function buildNotifyWebhookJSON(): string {
     key: '',
     topic: notifyWebhook.topic.trim(),
     url: notifyWebhook.url.trim(),
-    has_secret: (notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider) || Boolean(notifyWebhookKey.value.trim()),
+    has_secret: hasSavedWebhookSecret.value || Boolean(notifyWebhookKey.value.trim()),
   }
   return JSON.stringify(payload)
 }
@@ -1429,7 +1430,7 @@ function buildNotifyTestPayload(): NotifyTestPayload {
     login_failure_threshold: notifyLoginFailureThreshold.value,
     login_failure_window_sec: notifyLoginFailureWindowSec.value,
     smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
-    webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider),
+    webhook_secret: resolveSecretInput(notifyWebhookKey.value, hasSavedWebhookSecret.value),
     telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
   }
 }
@@ -1459,7 +1460,7 @@ function buildSavePayload() {
     notify_email_json: buildNotifyEmailJSON(),
     notify_smtp_password: resolveSecretInput(notifySMTPPassword.value, notifyEmail.has_password),
     notify_webhook_json: buildNotifyWebhookJSON(),
-    notify_webhook_secret: resolveSecretInput(notifyWebhookKey.value, notifyWebhook.has_secret && notifyWebhook.provider===savedWebhookProvider),
+    notify_webhook_secret: resolveSecretInput(notifyWebhookKey.value, hasSavedWebhookSecret.value),
     notify_telegram_json: buildNotifyTelegramJSON(),
     notify_telegram_token: resolveSecretInput(notifyTelegramToken.value, notifyTelegram.has_bot_token),
     notify_on_ddns_ip_change: notifyEventFlags.on_ddns_ip_change ? '1' : '0',
