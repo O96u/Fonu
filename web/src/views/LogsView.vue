@@ -8,7 +8,7 @@
 
   <div v-else class="log-workspace">
     <div class="log-source-grid">
-      <button v-for="item in sourceCards" :key="item.key" type="button" class="log-source" :class="{ 'is-active': tab === item.key }" :aria-pressed="tab === item.key" @click="tab = item.key">
+      <button v-for="item in sourceCards" :key="item.key" type="button" class="log-source" :data-testid="'log-source-'+item.key" :class="{ 'is-active': tab === item.key }" :aria-pressed="tab === item.key" @click="tab = item.key">
         <span class="source-heading"><n-icon :component="item.icon" />{{ item.label }}<n-icon v-if="tab === item.key" :component="CheckmarkCircleOutline" class="source-check" /></span>
         <strong>{{ loaded[item.key] ? item.count : '—' }}</strong>
         <small>{{ errors[item.key] ? '读取失败' : loaded[item.key] ? '已读取记录 · 最近片段' : '点击查看日志' }}</small>
@@ -151,7 +151,7 @@
   <n-drawer v-model:show="showDetail" :width="'min(520px, 94vw)'">
     <n-drawer-content title="日志详情" closable>
       <template v-if="detail">
-        <div class="detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
+        <div class="detail-fields" data-testid="log-detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
         <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
         <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button></div>
       </template>
@@ -688,7 +688,7 @@ function detailRowProps(kind: LogTab, row: unknown) {
 function openDetail(kind: LogTab, row: unknown) {
   const fields: { label:string;value:string }[] = []
   const add = (label:string, value:unknown) => fields.push({label,value:String(value ?? '')})
-  let raw = JSON.stringify(row,null,2), rawLabel = '记录字段（JSON）', ip:string|undefined
+  let raw = JSON.stringify(row,null,2) ?? '', rawLabel = '记录字段（JSON）', ip:string|undefined
   if (kind === 'access') {
     const r = row as AccessLogEntry
     add('访问时间', formatLogTime(r.time,{timeZone:logTimeZone.value}));add('服务',resolveAccessServiceLabel(r,proxyBindingIndex.value));add('域名',r.domain);add('端口',r.server_port);add('请求方法',r.method);add('路径',r.path);add('客户端 IP',r.client_ip);add('归属地',r.geo ? displayGeoLabel(r.geo) : '');add('HTTP 状态',r.status);add('响应耗时',formatMs(r.response_time));add('上游',r.upstream);add('拦截原因（推测）',r.block_reason);ip=r.client_ip
@@ -729,7 +729,7 @@ let accessRequestKey = ''
 let accessDebounce: ReturnType<typeof setTimeout> | undefined
 let disposed = false
 async function loadAccess() {
-  const params = {limit:usesServerAccessFilter.value ? 200 : 100, keyword:accessKeyword.value.trim() || undefined, status:accessStatus.value || undefined, kind:accessKind.value.trim() || undefined, ip:accessClientIP.value.trim() || undefined}
+  const params = {limit:usesServerAccessFilter.value ? 200 : 100, keyword:usesServerAccessFilter.value ? accessKeyword.value.trim() || undefined : undefined, status:usesServerAccessFilter.value ? accessStatus.value || undefined : undefined, kind:accessKind.value.trim() || undefined, ip:accessClientIP.value.trim() || undefined}
   const key=JSON.stringify(params)
   if (loadingAccess.value && key === accessRequestKey) return
   const generation=++accessGeneration
@@ -778,6 +778,7 @@ function loadCurrent() {
 function loadAll() {pageError.value='';loadCurrent()}
 function scheduleAccess() {
   clearTimeout(accessDebounce)
+  if (loadingAccess.value) { accessGeneration++; loadingAccess.value=false }
   accessDebounce=setTimeout(()=>{if(tab.value==='access' && !disposed) void loadAccess()},250)
 }
 watch([accessKeyword,accessStatus],()=>{accessPage.value=1;if(tab.value==='access' && usesServerAccessFilter.value) scheduleAccess()})

@@ -34,6 +34,9 @@ jobs:
       - name: Test proxy service visual grouping and order
         run: node --test scripts/proxy-services.test.mjs
         working-directory: web
+      - name: Test current and legacy live access log parsing
+        working-directory: web
+        run: node --experimental-strip-types --test scripts/live-access-log.test.mjs
       - run: pnpm run build
         working-directory: web
       - name: Install isolated browser test runner
@@ -50,7 +53,12 @@ jobs:
         env:
           FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
         run: node scripts/frp-workspace.browser.mjs
-      - name: Upload proxy and FRP workspace screenshots
+      - name: Verify log workspace in real Chromium
+        working-directory: web
+        env:
+          FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
+        run: node scripts/log-workspace.browser.mjs
+      - name: Upload proxy, FRP and log workspace screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:

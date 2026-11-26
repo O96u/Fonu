@@ -36,19 +36,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import HttpStatusBadge from './HttpStatusBadge.vue'
+import { parseAccessLog, type AccessLogEntry } from '../utils/liveAccessLog'
 import { useAppTimezone } from '../composables/useAppTimezone'
 import { formatLogTime as formatLogTimeInZone } from '../utils/format'
-
-type AccessLogEntry = {
-  time: string
-  host: string
-  method: string
-  path: string
-  status: number
-  ms: string
-  client: string
-  upstream: string
-}
 
 const props = withDefaults(
   defineProps<{
@@ -68,45 +58,6 @@ const emit = defineEmits<{
 
 const root = ref<HTMLElement | null>(null)
 const logTimeZone = useAppTimezone()
-
-const accessLineReWithPort =
-  /^(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+|-)\s+(\d+|-))?(?:\s+"(?:[^"\\]|\\.)*")?$/
-const accessLineReLegacy =
-  /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{3})\s+([\d.]+)\s+(\S+)\s+(\S+)(?:\s+(\d+|-)\s+(\d+|-))?(?:\s+"(?:[^"\\]|\\.)*")?$/
-
-function parseAccessLog(line: string): AccessLogEntry | null {
-  let m = line.match(accessLineReWithPort)
-  if (m) {
-    const [, time, host, , method, path, status, rt, client, upstream] = m
-    return buildEntry(time, host, method, path, status, rt, client, upstream)
-  }
-  m = line.match(accessLineReLegacy)
-  if (!m) return null
-  const [, time, host, method, path, status, rt, client, upstream] = m
-  return buildEntry(time, host, method, path, status, rt, client, upstream)
-}
-
-function buildEntry(
-  time: string,
-  host: string,
-  method: string,
-  path: string,
-  status: string,
-  rt: string,
-  client: string,
-  upstream: string,
-): AccessLogEntry {
-  return {
-    time,
-    host,
-    method,
-    path,
-    status: Number(status),
-    ms: (parseFloat(rt) * 1000).toFixed(1),
-    client,
-    upstream,
-  }
-}
 
 const parsedLines = computed(() =>
   props.lines.map((raw) => ({ raw, parsed: parseAccessLog(raw) })),
