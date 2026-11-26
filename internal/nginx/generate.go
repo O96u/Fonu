@@ -11,6 +11,8 @@ import (
 )
 
 func Generate(cfg config.Config, rules []proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
+	if err:=validateGenerateSecurity(opts);err!=nil{return "",err}
+	if opts.certificateResolver==nil{opts.certificateResolver=newCertificateResolver(cfg.CertsDir(),certs)}
 	var b strings.Builder
 
 	b.WriteString(`worker_processes auto;
@@ -49,14 +51,15 @@ http {
 `)
 
 	writeRealIPDirectives(&b, opts.TrustedProxy)
-	writeGlobalAllowList(&b, opts.GlobalIPWhitelist)
 	writeGlobalDenyList(&b, opts.GlobalIPBlacklist)
+	writeGlobalAllowList(&b, opts.GlobalIPWhitelist)
 	writeLimitZones(&b, rules)
 	writeChinaGeoBlocks(&b, cfg, opts, rules)
 	writeChinaOnlyBypassGeo(&b, rules, opts)
-	writeGlobalCustomInclude(&b, cfg, opts)
+	if err := writeGlobalCustomInclude(&b, cfg, opts); err != nil { return "", err }
 
-	catchAllEndpoints := collectListenEndpoints(rules, cfg.CertsDir(), certs)
+	catchAllEndpoints := collectListenEndpointsWithResolver(rules, opts.certificateResolver)
+	if err := validateListenProtocols(catchAllEndpoints); err != nil { return "",err }
 
 	for _, rule := range rules {
 		if !rule.Enabled {
@@ -84,6 +87,8 @@ http {
 }
 
 func GenerateRuleBlocks(cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) (string, error) {
+	if err:=validateGenerateSecurity(opts);err!=nil{return "",err}
+	if opts.certificateResolver==nil{opts.certificateResolver=newCertificateResolver(cfg.CertsDir(),certs)}
 	var b strings.Builder
 	writeRulePreambleComments(&b, rule)
 	if err := writeRuleBlocks(&b, cfg, rule, certs, opts); err != nil {
@@ -96,17 +101,29 @@ func GenerateRuleBlocks(cfg config.Config, rule proxy.Rule, certs []CertSource, 
 	return content, nil
 }
 
-func writeGlobalCustomInclude(b *strings.Builder, cfg config.Config, opts GenerateOptions) {
-	if strings.TrimSpace(opts.GlobalCustomOverride) != "" {
+func writeGlobalCustomInclude(b *strings.Builder, cfg config.Config, opts GenerateOptions) error {
+	if opts.GlobalCustomMode == "auto" {
+		writeIndentedHTTPSnippet(b, DefaultGlobalHTTPSnippet())
+		return nil
+	}
+	if opts.GlobalCustomOverrideSet || strings.TrimSpace(opts.GlobalCustomOverride) != "" {
 		writeIndentedHTTPSnippet(b, opts.GlobalCustomOverride)
-		return
+		return nil
+	}
+	if opts.GlobalCustomMode == "custom" {
+		// Embed the selected version so a later file write cannot mutate active config.
+		content, err := ReadGlobalCustom(cfg)
+		if err != nil { return err }
+		writeIndentedHTTPSnippet(b, content)
+		return nil
 	}
 	if globalCustomShouldInclude(cfg, opts) {
 		path := globalCustomPath(cfg, opts)
 		b.WriteString(fmt.Sprintf("    include %s;\n\n", absNginxPath(path)))
-		return
+		return nil
 	}
 	writeIndentedHTTPSnippet(b, DefaultGlobalHTTPSnippet())
+	return nil
 }
 
 func writeIndentedHTTPSnippet(b *strings.Builder, content string) {
@@ -129,18 +146,21 @@ func writeCustomRuleBlocks(b *strings.Builder, cfg config.Config, ruleID int64, 
 }
 
 func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	if strings.HasPrefix(rule.Upstream,"https://") && rule.Security.ProxySSLVerifyConfigured && !rule.Security.ProxySSLVerifyOff && systemCABundle() == "" {
+		return fmt.Errorf("系统 CA 证书文件不可用，请安装 CA 证书或明确关闭上游 TLS 验证")
+	}
 	for _, group := range rule.PortGroups() {
 		if len(group.Hostnames) == 0 {
 			continue
 		}
 		serverNames := strings.Join(group.Hostnames, " ")
-		cert := findCertificateForHosts(cfg.CertsDir(), group.Hostnames, certs)
-		useHTTPS := rule.HTTPSEnabled && certUsable(cert)
-
 		wroteBlock := false
-		if useHTTPS {
-			if !appendSSLServerBlock(b, cfg, group.Port, serverNames, cert, rule, opts) {
-				return fmt.Errorf("HTTPS 证书文件不可用，请重新导入证书或关闭 HTTPS")
+		if rule.HTTPSEnabled {
+			for _, hostname := range group.Hostnames {
+				cert := opts.certificateResolver.find([]string{hostname})
+				if !appendSSLServerBlock(b, cfg, group.Port, hostname, cert, rule, opts) {
+					return HTTPSCoverageError(hostname, certs)
+				}
 			}
 			wroteBlock = true
 		}
@@ -205,20 +225,19 @@ func writeProxyLocationBody(b *strings.Builder, upstream string, sec proxy.Secur
 	}
 	sslBlock := ""
 	if strings.HasPrefix(upstream, "https://") {
-		if sec.ProxySSLVerifyOff {
+		if !sec.ProxySSLVerifyConfigured || sec.ProxySSLVerifyOff {
 			sslBlock = `        proxy_ssl_verify off;
         proxy_ssl_server_name on;
 `
 		} else {
-			sslBlock = `        proxy_ssl_server_name on;
-`
+			sslBlock = fmt.Sprintf("        proxy_ssl_server_name on;\n        proxy_ssl_verify on;\n        proxy_ssl_trusted_certificate %s;\n        proxy_ssl_verify_depth 5;\n",systemCABundle())
 		}
 	}
 	b.WriteString(fmt.Sprintf(`%s        proxy_pass %s;
         proxy_http_version 1.1;
         proxy_set_header Host %s;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Forwarded-Port $server_port;
@@ -255,7 +274,7 @@ type certFiles struct {
 
 func findCertificate(certsDir, domain string) *certFiles {
 	parts := strings.Split(domain, ".")
-	for i := 0; i < len(parts)-1; i++ {
+	for i := 1; i < len(parts)-1 && i == 1; i++ {
 		wildcard := "*." + strings.Join(parts[i:], ".")
 		if c := certAt(certsDir, wildcard); c != nil {
 			return c
@@ -281,4 +300,11 @@ func certAt(certsDir, name string) *certFiles {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+func systemCABundle() string {
+	for _, path := range []string{"/etc/ssl/certs/ca-certificates.crt","/etc/pki/tls/certs/ca-bundle.crt","/etc/ssl/cert.pem"} {
+		if fileExists(path) { return path }
+	}
+	return ""
 }

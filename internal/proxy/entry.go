@@ -252,11 +252,13 @@ func (s *Store) CloneEntry(ctx context.Context, sourceID int64, in EntryCloneInp
 		return Entry{}, nil, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Entry{}, nil, err
+	tx := s.tx
+	ownsTx := tx == nil
+	if ownsTx {
+		tx, err = s.db.BeginTx(ctx, nil)
+		if err != nil { return Entry{}, nil, err }
+		defer tx.Rollback()
 	}
-	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO proxy_entries(name, listen_port, listen_ipv4, listen_ipv6, https_enabled, http_redirect, sort_order, updated_at)
@@ -294,8 +296,8 @@ func (s *Store) CloneEntry(ctx context.Context, sourceID int64, in EntryCloneInp
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return Entry{}, nil, err
+	if ownsTx {
+		if err := tx.Commit(); err != nil { return Entry{}, nil, err }
 	}
 	entry, err := s.GetEntry(ctx, newEntryID)
 	if err != nil {

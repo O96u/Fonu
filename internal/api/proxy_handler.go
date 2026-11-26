@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -59,30 +60,8 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hosts := req.hosts()
-	if len(hosts) == 0 {
-		writeError(r, w, http.StatusBadRequest, "至少需要一个前端域名")
-		return
-	}
-
-	listenPort := intDefault(req.ListenPort, h.cfg.DefaultListenPort(boolDefault(req.HTTPSEnabled, true)))
-	name := ""
-	if resolved := req.resolveName(); resolved != nil {
-		name = *resolved
-	}
-	in := proxy.CreateInput{
-		EntryID:      req.EntryID,
-		Upstream:     req.Upstream,
-		ListenPort:   listenPort,
-		ListenIPv4:   boolDefault(req.ListenIPv4, true),
-		ListenIPv6:   boolDefault(req.ListenIPv6, false),
-		Hosts:        hosts,
-		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
-		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
-		Enabled:      boolDefault(req.Enabled, true),
-		Name:         name,
-		Security:     req.securityInput(),
-	}
+	in,err:=h.createInput(req)
+	if err!=nil{writeError(r,w,http.StatusBadRequest,err.Error());return}
 
 	rule, err := h.svc.Create(r.Context(), in)
 	if err != nil {
@@ -105,41 +84,7 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	in := proxy.UpdateInput{}
-	if req.EntryID != nil {
-		in.EntryID = req.EntryID
-	}
-	if req.Upstream != "" {
-		in.Upstream = &req.Upstream
-	}
-	if req.ListenPort != nil {
-		in.ListenPort = req.ListenPort
-	}
-	if req.ListenIPv4 != nil {
-		in.ListenIPv4 = req.ListenIPv4
-	}
-	if req.ListenIPv6 != nil {
-		in.ListenIPv6 = req.ListenIPv6
-	}
-	if hosts := req.hosts(); len(hosts) > 0 {
-		in.Hosts = &hosts
-	}
-	if req.HTTPSEnabled != nil {
-		in.HTTPSEnabled = req.HTTPSEnabled
-	}
-	if req.HTTPRedirect != nil {
-		in.HTTPRedirect = req.HTTPRedirect
-	}
-	if req.Enabled != nil {
-		in.Enabled = req.Enabled
-	}
-	if resolved := req.resolveName(); resolved != nil {
-		in.Name = resolved
-	}
-	if req.Security != nil {
-		sec := req.securityInput()
-		in.Security = &sec
-	}
+	in:=req.updateInput()
 
 	rule, err := h.svc.Update(r.Context(), id, in)
 	if err != nil {
@@ -154,7 +99,7 @@ func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []traffic.RuleTraffic{})
 		return
 	}
-	rules, err := h.svc.List(r.Context())
+	rules, err := h.svc.ListTrafficRules(r.Context())
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取反向代理规则失败")
 		return
@@ -409,4 +354,97 @@ func boolDefault(v *bool, fallback bool) bool {
 		return fallback
 	}
 	return *v
+}
+
+func(h *ProxyHandler) createInput(req proxyRequest)(proxy.CreateInput,error){
+	hosts := req.hosts()
+	if len(hosts) == 0 {
+		return proxy.CreateInput{}, fmt.Errorf("至少需要一个前端域名")
+	}
+
+	listenPort := intDefault(req.ListenPort, h.cfg.DefaultListenPort(boolDefault(req.HTTPSEnabled, true)))
+	name := ""
+	if resolved := req.resolveName(); resolved != nil {
+		name = *resolved
+	}
+	return proxy.CreateInput{
+		EntryID:      req.EntryID,
+		Upstream:     req.Upstream,
+		ListenPort:   listenPort,
+		ListenIPv4:   boolDefault(req.ListenIPv4, true),
+		ListenIPv6:   boolDefault(req.ListenIPv6, false),
+		Hosts:        hosts,
+		HTTPSEnabled: boolDefault(req.HTTPSEnabled, true),
+		HTTPRedirect: boolDefault(req.HTTPRedirect, true),
+		Enabled:      boolDefault(req.Enabled, true),
+		Name:         name,
+		Security:     req.securityInput(),
+	},nil
+}
+
+func(req proxyRequest) updateInput()proxy.UpdateInput{
+	in := proxy.UpdateInput{}
+	if req.EntryID != nil {
+		in.EntryID = req.EntryID
+	}
+	if req.Upstream != "" {
+		in.Upstream = &req.Upstream
+	}
+	if req.ListenPort != nil {
+		in.ListenPort = req.ListenPort
+	}
+	if req.ListenIPv4 != nil {
+		in.ListenIPv4 = req.ListenIPv4
+	}
+	if req.ListenIPv6 != nil {
+		in.ListenIPv6 = req.ListenIPv6
+	}
+	if hosts := req.hosts(); len(hosts) > 0 {
+		in.Hosts = &hosts
+	}
+	if req.HTTPSEnabled != nil {
+		in.HTTPSEnabled = req.HTTPSEnabled
+	}
+	if req.HTTPRedirect != nil {
+		in.HTTPRedirect = req.HTTPRedirect
+	}
+	if req.Enabled != nil {
+		in.Enabled = req.Enabled
+	}
+	if resolved := req.resolveName(); resolved != nil {
+		in.Name = resolved
+	}
+	if req.Security != nil {
+		sec := req.securityInput()
+		in.Security = &sec
+	}
+
+
+	return in
+}
+
+func(h *ProxyHandler) SaveBatch(w http.ResponseWriter,r *http.Request){
+	r.Body=http.MaxBytesReader(w,r.Body,1<<20)
+	var req struct{
+		UpdateID int64 `json:"update_id"`
+		Update *proxyRequest `json:"update"`
+		Create []proxyRequest `json:"create"`
+	}
+	if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{
+		writeError(r,w,http.StatusBadRequest,"请求格式无效");return
+	}
+	if (req.Update==nil)!=(req.UpdateID==0)||req.UpdateID<0||len(req.Create)>100{
+		writeError(r,w,http.StatusBadRequest,"无效的批量操作");return
+	}
+	creates:=make([]proxy.CreateInput,0,len(req.Create))
+	for _,item:=range req.Create{
+		in,err:=h.createInput(item)
+		if err!=nil{writeError(r,w,http.StatusBadRequest,err.Error());return}
+		creates=append(creates,in)
+	}
+	var update *proxy.UpdateInput
+	if req.Update!=nil{in:=req.Update.updateInput();update=&in}
+	rows,err:=h.svc.SaveBatch(r.Context(),req.UpdateID,update,creates)
+	if err!=nil{writeError(r,w,http.StatusBadRequest,err.Error());return}
+	writeJSON(w,http.StatusOK,proxy.RulesForAPI(rows))
 }

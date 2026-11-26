@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fonu/fonu/internal/nginx"
@@ -53,7 +56,7 @@ func (s *ProxyService) GetRuleNginx(ctx context.Context, id int64) (RuleNginxVie
 	}
 	opts := s.loadGenerateOptions(ctx)
 	generated, err := nginx.GenerateRuleBlocks(s.cfg, rule, certs, opts)
-	if err != nil {
+	if err != nil && rule.NginxMode != "custom" {
 		return RuleNginxView{}, err
 	}
 	mode := rule.NginxMode
@@ -85,86 +88,41 @@ func (s *ProxyService) GetRuleNginx(ctx context.Context, id int64) (RuleNginxVie
 }
 
 func (s *ProxyService) SaveRuleNginx(ctx context.Context, id int64, in SaveRuleNginxInput) (RuleNginxView, error) {
-	rule, err := s.Get(ctx, id)
-	if err != nil {
-		return RuleNginxView{}, err
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return s.saveRuleNginxLocked(ctx,id,in)
+}
+
+func (s *ProxyService) saveRuleNginxLocked(ctx context.Context, id int64, in SaveRuleNginxInput) (RuleNginxView, error) {
+	rule, err := s.Get(ctx,id)
+	if err != nil { return RuleNginxView{}, err }
 	mode := strings.TrimSpace(in.Mode)
-	if mode == "" {
-		mode = rule.NginxMode
+	if mode == "" { mode = rule.NginxMode }
+	if mode != "auto" && mode != "custom" { return RuleNginxView{}, fmt.Errorf("无效的 nginx 模式") }
+	var override func(*nginx.GenerateOptions)
+	var persist, restore func() error
+	if mode == "custom" {
+		if in.Content == nil || strings.TrimSpace(*in.Content) == "" { return RuleNginxView{}, fmt.Errorf("Nginx 配置不能为空") }
+		content := *in.Content
+		if err := s.validateRuleNginxPending(ctx,rule,content); err != nil { return RuleNginxView{}, err }
+		override = func(opts *nginx.GenerateOptions) { opts.RuleCustomOverrides = map[int64]string{id:content} }
+		restore, err = snapshotCustom(s.cfg.NginxRuleCustomPath(id))
+		if err != nil { return RuleNginxView{}, err }
+		persist = func() error { _, err := nginx.SaveRuleCustomWithBackup(s.cfg,id,content); return err }
 	}
-	if mode != "auto" && mode != "custom" {
-		return RuleNginxView{}, fmt.Errorf("无效的 nginx 模式")
-	}
-
-	if mode == "auto" {
-		if err := s.store.SetNginxMode(ctx, id, "auto"); err != nil {
-			return RuleNginxView{}, err
-		}
-		if err := s.applyNginx(ctx); err != nil {
-			return RuleNginxView{}, err
-		}
-		return s.GetRuleNginx(ctx, id)
-	}
-
-	if in.Content == nil {
-		return RuleNginxView{}, fmt.Errorf("手动模式需要提供配置内容")
-	}
-	content := *in.Content
-	if strings.TrimSpace(content) == "" {
-		return RuleNginxView{}, fmt.Errorf("Nginx 配置不能为空")
-	}
-
-	if err := s.validateRuleNginxPending(ctx, rule, content); err != nil {
-		return RuleNginxView{}, err
-	}
-	if _, err := nginx.SaveRuleCustomWithBackup(s.cfg, id, content); err != nil {
-		return RuleNginxView{}, err
-	}
-	if err := s.store.SetNginxMode(ctx, id, "custom"); err != nil {
-		return RuleNginxView{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return RuleNginxView{}, err
-	}
-	return s.GetRuleNginx(ctx, id)
+	_, err = mutateProxyWithFiles(ctx,s,func(store *proxy.Store,_ *sql.Tx)(struct{},error){
+		return struct{}{},store.SetNginxMode(ctx,id,mode)
+	},override,persist,restore)
+	if err != nil { return RuleNginxView{},err }
+	return s.GetRuleNginx(ctx,id)
 }
 
 func (s *ProxyService) RollbackRuleNginx(ctx context.Context, id int64, backupName string) (RuleNginxView, error) {
-	if _, err := s.Get(ctx, id); err != nil {
-		return RuleNginxView{}, err
-	}
-	backups, err := nginx.ListBackups(s.cfg.NginxRuleBackupsDir(id))
-	if err != nil {
-		return RuleNginxView{}, err
-	}
-	if len(backups) == 0 {
-		return RuleNginxView{}, fmt.Errorf("没有可回滚的备份")
-	}
-	if backupName == "" {
-		backupName = backups[0].Name
-	}
-	if err := nginx.RestoreBackup(s.cfg.NginxRuleBackupsDir(id), backupName, s.cfg.NginxRuleCustomPath(id)); err != nil {
-		return RuleNginxView{}, err
-	}
-	custom, err := nginx.ReadRuleCustom(s.cfg, id)
-	if err != nil {
-		return RuleNginxView{}, err
-	}
-	rule, err := s.Get(ctx, id)
-	if err != nil {
-		return RuleNginxView{}, err
-	}
-	if err := s.validateRuleNginxPending(ctx, rule, custom); err != nil {
-		return RuleNginxView{}, err
-	}
-	if err := s.store.SetNginxMode(ctx, id, "custom"); err != nil {
-		return RuleNginxView{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return RuleNginxView{}, err
-	}
-	return s.GetRuleNginx(ctx, id)
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	content, err := readNginxBackup(s.cfg.NginxRuleBackupsDir(id),backupName)
+	if err != nil { return RuleNginxView{},err }
+	return s.saveRuleNginxLocked(ctx,id,SaveRuleNginxInput{Mode:"custom",Content:&content})
 }
 
 func (s *ProxyService) GetGlobalNginx(ctx context.Context) (GlobalNginxView, error) {
@@ -193,75 +151,75 @@ func (s *ProxyService) GetGlobalNginx(ctx context.Context) (GlobalNginxView, err
 }
 
 func (s *ProxyService) SaveGlobalNginx(ctx context.Context, in SaveGlobalNginxInput) (GlobalNginxView, error) {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return s.saveGlobalNginxLocked(ctx,in)
+}
+
+func (s *ProxyService) saveGlobalNginxLocked(ctx context.Context, in SaveGlobalNginxInput) (GlobalNginxView, error) {
 	mode := strings.TrimSpace(in.Mode)
 	if mode == "" {
 		var err error
-		mode, err = s.settings.Get(ctx, settings.KeyNginxGlobalMode)
-		if err != nil {
-			return GlobalNginxView{}, err
-		}
+		mode, err = s.settings.Get(ctx,settings.KeyNginxGlobalMode)
+		if err != nil { return GlobalNginxView{},err }
 	}
-	if mode != "auto" && mode != "custom" {
-		return GlobalNginxView{}, fmt.Errorf("无效的 nginx 模式")
+	if mode != "auto" && mode != "custom" { return GlobalNginxView{},fmt.Errorf("无效的 nginx 模式") }
+	var content string
+	var persist, restore func() error
+	if mode == "custom" {
+		if in.Content == nil { return GlobalNginxView{},fmt.Errorf("手动模式需要提供配置内容") }
+		content = *in.Content
+		var err error
+		restore, err = snapshotCustom(s.cfg.NginxGlobalCustomPath())
+		if err != nil { return GlobalNginxView{},err }
+		persist = func() error { _,err := nginx.SaveGlobalCustomWithBackup(s.cfg,content); return err }
 	}
-
-	if mode == "auto" {
-		if err := s.settings.Set(ctx, settings.KeyNginxGlobalMode, "auto"); err != nil {
-			return GlobalNginxView{}, err
-		}
-		if err := s.applyNginx(ctx); err != nil {
-			return GlobalNginxView{}, err
-		}
-		return s.GetGlobalNginx(ctx)
+	override := func(opts *nginx.GenerateOptions) {
+		opts.GlobalCustomMode = mode
+		opts.GlobalCustomOverride = content
+		opts.GlobalCustomOverrideSet = mode == "custom"
 	}
-
-	if in.Content == nil {
-		return GlobalNginxView{}, fmt.Errorf("手动模式需要提供配置内容")
-	}
-	content := *in.Content
-	if err := s.validateGlobalNginxPending(ctx, content); err != nil {
-		return GlobalNginxView{}, err
-	}
-	if _, err := nginx.SaveGlobalCustomWithBackup(s.cfg, content); err != nil {
-		return GlobalNginxView{}, err
-	}
-	if err := s.settings.Set(ctx, settings.KeyNginxGlobalMode, "custom"); err != nil {
-		return GlobalNginxView{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return GlobalNginxView{}, err
-	}
+	_, err := mutateProxyWithFiles(ctx,s,func(_ *proxy.Store,tx *sql.Tx)(struct{},error){
+		_,err := tx.ExecContext(ctx,`INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,settings.KeyNginxGlobalMode,mode)
+		return struct{}{},err
+	},override,persist,restore)
+	if err != nil { return GlobalNginxView{},err }
 	return s.GetGlobalNginx(ctx)
 }
 
 func (s *ProxyService) RollbackGlobalNginx(ctx context.Context, backupName string) (GlobalNginxView, error) {
-	backups, err := nginx.ListBackups(s.cfg.NginxGlobalBackupsDir())
-	if err != nil {
-		return GlobalNginxView{}, err
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	content,err := readNginxBackup(s.cfg.NginxGlobalBackupsDir(),backupName)
+	if err != nil { return GlobalNginxView{},err }
+	return s.saveGlobalNginxLocked(ctx,SaveGlobalNginxInput{Mode:"custom",Content:&content})
+}
+
+// Resolve a backup by membership in the known list, not by user-provided paths.
+func readNginxBackup(dir,name string)(string,error){
+	backups,err := nginx.ListBackups(dir)
+	if err != nil { return "",err }
+	if name == "" && len(backups)>0 { name=backups[0].Name }
+	for _,backup := range backups {
+		if backup.Name == name {
+			data,err := os.ReadFile(filepath.Join(dir,name))
+			return string(data),err
+		}
 	}
-	if len(backups) == 0 {
-		return GlobalNginxView{}, fmt.Errorf("没有可回滚的备份")
+	return "",fmt.Errorf("备份不存在")
+}
+
+func snapshotCustom(path string)(func() error,error){
+	data,err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return func()error{
+			err:=os.Remove(path)
+			if os.IsNotExist(err){return nil}
+			return err
+		},nil
 	}
-	if backupName == "" {
-		backupName = backups[0].Name
-	}
-	if err := nginx.RestoreBackup(s.cfg.NginxGlobalBackupsDir(), backupName, s.cfg.NginxGlobalCustomPath()); err != nil {
-		return GlobalNginxView{}, err
-	}
-	content, err := nginx.ReadGlobalCustom(s.cfg)
-	if err != nil {
-		return GlobalNginxView{}, err
-	}
-	if err := s.validateGlobalNginxPending(ctx, content); err != nil {
-		return GlobalNginxView{}, err
-	}
-	if err := s.settings.Set(ctx, settings.KeyNginxGlobalMode, "custom"); err != nil {
-		return GlobalNginxView{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return GlobalNginxView{}, err
-	}
-	return s.GetGlobalNginx(ctx)
+	if err != nil {return nil,err}
+	return func()error{return nginx.WriteCustomAtomic(path,string(data))},nil
 }
 
 func (s *ProxyService) validateRuleNginxPending(ctx context.Context, rule proxy.Rule, content string) error {

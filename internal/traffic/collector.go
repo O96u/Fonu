@@ -21,7 +21,7 @@ const (
 	rateWindow       = 5 * time.Second
 	activeWindow     = 65 * time.Second
 	persistInterval  = 30 * time.Second
-	maxSamplesPerHost = 256
+	sampleBucket = 250 * time.Millisecond
 )
 
 type RuleTraffic struct {
@@ -48,6 +48,8 @@ type Collector struct {
 }
 
 type hostState struct {
+	persistedUpload int64
+	persistedDownload int64
 	uploadTotal   int64
 	downloadTotal int64
 	clients       map[string]time.Time
@@ -85,6 +87,8 @@ func (c *Collector) Start(ctx context.Context) {
 			st := c.ensureHost(host)
 			st.uploadTotal = t.Upload
 			st.downloadTotal = t.Download
+			st.persistedUpload=t.Upload
+			st.persistedDownload=t.Download
 		}
 		c.mu.Unlock()
 	}
@@ -166,10 +170,19 @@ func (c *Collector) persist(ctx context.Context) error {
 	c.mu.RLock()
 	snapshot := make(map[string]hostTotals, len(c.hosts))
 	for host, st := range c.hosts {
-		snapshot[host] = hostTotals{Upload: st.uploadTotal, Download: st.downloadTotal}
+		if st.uploadTotal!=st.persistedUpload||st.downloadTotal!=st.persistedDownload{
+			snapshot[host] = hostTotals{Upload: st.uploadTotal, Download: st.downloadTotal}
+		}
 	}
 	c.mu.RUnlock()
-	return c.store.SaveTotals(ctx, snapshot)
+	if len(snapshot)==0{return nil}
+	if err:=c.store.SaveTotals(ctx,snapshot);err!=nil{return err}
+	c.mu.Lock()
+	for host,t:=range snapshot{
+		if st:=c.hosts[host];st!=nil{st.persistedUpload=t.Upload;st.persistedDownload=t.Download}
+	}
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *Collector) ingestLine(line string, trackLive bool) {
@@ -195,20 +208,24 @@ func (c *Collector) ingestEntry(entry logstore.AccessEntry, trackLive bool) {
 	st.downloadTotal += down
 	if trackLive {
 		if up > 0 || down > 0 {
-			st.samples = append(st.samples, sample{at: now, up: up, down: down})
-			if len(st.samples) > maxSamplesPerHost {
-				st.samples = st.samples[len(st.samples)-maxSamplesPerHost:]
+			bucket:=now.Truncate(sampleBucket)
+			n:=len(st.samples)
+			if n>0&&st.samples[n-1].at.Equal(bucket){
+				st.samples[n-1].up+=up
+				st.samples[n-1].down+=down
+			}else{
+				st.samples=append(st.samples,sample{at:bucket,up:up,down:down})
 			}
 		}
 		if entry.ClientIP != "" && entry.ClientIP != "-" {
 			st.clients[entry.ClientIP] = now
-			if c.notify != nil {
-				c.notify.RecordAccessHit(context.Background(), entry.ClientIP)
-			}
 		}
 		c.pruneHost(st, now)
 	}
 	c.mu.Unlock()
+	// Notification may query settings or perform other work; never hold
+	// the traffic lock while it runs.
+	if trackLive&&c.notify!=nil&&entry.ClientIP!=""&&entry.ClientIP!="-"{c.notify.RecordAccessHit(context.Background(),entry.ClientIP)}
 }
 
 func (c *Collector) ensureHost(host string) *hostState {
@@ -222,13 +239,9 @@ func (c *Collector) ensureHost(host string) *hostState {
 
 func (c *Collector) pruneHost(st *hostState, now time.Time) {
 	cutoff := now.Add(-rateWindow)
-	for i := 0; i < len(st.samples); {
-		if st.samples[i].at.Before(cutoff) {
-			st.samples = append(st.samples[:i], st.samples[i+1:]...)
-			continue
-		}
-		i++
-	}
+	i:=0
+	for i<len(st.samples)&&!st.samples[i].at.Add(sampleBucket).After(cutoff){i++}
+	if i>0{st.samples=st.samples[i:]}
 	activeCutoff := now.Add(-activeWindow)
 	for ip, seen := range st.clients {
 		if seen.Before(activeCutoff) {
@@ -242,8 +255,7 @@ func (c *Collector) aggregateEndpoints(endpoints []proxy.Endpoint, now time.Time
 	defer c.mu.RUnlock()
 
 	var upSamples, downSamples int64
-	var oldest time.Time
-	clientSet := map[string]time.Time{}
+	 clientSet := map[string]time.Time{}
 
 	for _, ep := range endpoints {
 		key := EndpointKey(ep.Hostname, ep.Port)
@@ -255,14 +267,11 @@ func (c *Collector) aggregateEndpoints(endpoints []proxy.Endpoint, now time.Time
 		downloadTotal += st.downloadTotal
 		cutoff := now.Add(-rateWindow)
 		for _, s := range st.samples {
-			if s.at.Before(cutoff) {
+			if !s.at.Add(sampleBucket).After(cutoff) {
 				continue
 			}
 			upSamples += s.up
 			downSamples += s.down
-			if oldest.IsZero() || s.at.Before(oldest) {
-				oldest = s.at
-			}
 		}
 		activeCutoff := now.Add(-activeWindow)
 		for ip, seen := range st.clients {
@@ -275,10 +284,9 @@ func (c *Collector) aggregateEndpoints(endpoints []proxy.Endpoint, now time.Time
 		}
 	}
 
-	span := now.Sub(oldest).Seconds()
-	if span < 0.5 {
-		span = 0.5
-	}
+	// A fixed rolling window avoids exaggerated rates after isolated
+	// requests and keeps all high-frequency samples within that window.
+	span:=rateWindow.Seconds()
 	if upSamples > 0 {
 		uploadRate = float64(upSamples) / span
 	}

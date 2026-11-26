@@ -10,11 +10,14 @@ import (
 )
 
 type GenerateOptions struct {
+	certificateResolver *certificateResolver
 	TrustedProxy               TrustedProxyConfig
 	GlobalIPBlacklist          []string
 	GlobalIPWhitelist          []string
 	ChinaCIDRAvailable         bool
 	ChinaCIDRPathOverride      string
+	GlobalCustomMode           string
+	GlobalCustomOverrideSet    bool
 	GlobalCustomOverride       string
 	GlobalCustomPathOverride   string
 	RuleCustomOverrides        map[int64]string
@@ -53,10 +56,10 @@ func writeLimitZones(b *strings.Builder, rules []proxy.Rule) {
 		}
 		if rule.Security.RateLimitEnabled() {
 			rl := rule.Security.RateLimit
-			b.WriteString(fmt.Sprintf("    limit_req_zone $binary_remote_addr zone=fonu_rule_%d_req:10m rate=%dr/s;\n", rule.ID, rl.Rate))
+			b.WriteString(fmt.Sprintf("    limit_req_zone $binary_remote_addr zone=fonu_rule_%d_req:2m rate=%dr/s;\n", rule.ID, rl.Rate))
 		}
 		if rule.Security.ConnLimitEnabled() {
-			b.WriteString(fmt.Sprintf("    limit_conn_zone $binary_remote_addr zone=fonu_rule_%d_conn:10m;\n", rule.ID))
+			b.WriteString(fmt.Sprintf("    limit_conn_zone $binary_remote_addr zone=fonu_rule_%d_conn:2m;\n", rule.ID))
 		}
 	}
 	if hasLimitZones(rules) {
@@ -216,12 +219,21 @@ func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rul
 	sec := rule.Security.Normalize()
 	writeLocationSecurityComments(b, rule, opts)
 
+	// Location-level access rules replace inherited http-level rules.
+	for _, cidr := range opts.GlobalIPBlacklist {
+		b.WriteString(fmt.Sprintf("        deny %s;\n", cidr))
+	}
 	for _, cidr := range sec.IPBlacklist {
 		b.WriteString(fmt.Sprintf("        deny %s;\n", cidr))
 	}
 
 	writeChinaOnlyCheck(b, rule, opts)
 
+	if !sec.WhitelistEnabled() {
+		for _, cidr := range proxy.ChinaBypassCIDRs(opts.GlobalIPWhitelist) {
+			b.WriteString(fmt.Sprintf("        allow %s;\n", cidr))
+		}
+	}
 	if sec.WhitelistEnabled() {
 		for _, cidr := range sec.IPWhitelist {
 			b.WriteString(fmt.Sprintf("        allow %s;\n", cidr))

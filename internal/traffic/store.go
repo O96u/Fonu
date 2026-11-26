@@ -40,6 +40,8 @@ func (s *Store) SaveTotals(ctx context.Context, hosts map[string]hostTotals) err
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	updatedAt:=time.Now().UTC().Format(time.RFC3339)
 	for host, totals := range hosts {
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO proxy_traffic(host, upload_bytes, download_bytes, updated_at)
@@ -48,7 +50,7 @@ func (s *Store) SaveTotals(ctx context.Context, hosts map[string]hostTotals) err
 				upload_bytes = excluded.upload_bytes,
 				download_bytes = excluded.download_bytes,
 				updated_at = excluded.updated_at
-		`, host, totals.Upload, totals.Download, time.Now().UTC().Format(time.RFC3339))
+		`, host, totals.Upload, totals.Download, updatedAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return err

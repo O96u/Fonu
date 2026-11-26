@@ -4,8 +4,7 @@ package nginx
 
 import "context"
 
-func prepareStartPlatform(m *Manager, ctx context.Context) {
-	stopOrphanMasters(m.cfg.NginxDir())
-	_ = m.runNginx(ctx, []string{"-c", m.cfg.NginxConfigPath(), "-s", "quit"}, "")
+func prepareStartPlatform(m *Manager, _ context.Context) {
+	m.terminateMaster()
 	removePIDFile(m.cfg.NginxPIDFile)
 }

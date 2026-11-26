@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fonu/fonu/internal/config"
 	"github.com/fonu/fonu/internal/proxy"
@@ -16,12 +17,7 @@ func TestGenerateUnmatchedHostReturns404(t *testing.T) {
 	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(certDir, "fullchain.pem"), []byte("cert"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(certDir, "privatekey.pem"), []byte("key"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestCertificate(t, certDir, []string{"*.example.com", "example.com"}, time.Now().Add(time.Hour))
 
 	cfg := config.Config{
 		DataDir:        dir,

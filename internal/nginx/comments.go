@@ -112,7 +112,7 @@ func writeProxyBodyComments(b *strings.Builder, upstream string, sec proxy.Secur
 		writeCommentLine(b, 8, "Host 头：使用上游地址（$proxy_host）")
 	}
 	if strings.HasPrefix(upstream, "https://") {
-		if sec.ProxySSLVerifyOff {
+		if !sec.ProxySSLVerifyConfigured || sec.ProxySSLVerifyOff {
 			writeCommentLine(b, 8, "上游 HTTPS：跳过证书校验")
 		} else {
 			writeCommentLine(b, 8, "上游 HTTPS：启用 SNI")

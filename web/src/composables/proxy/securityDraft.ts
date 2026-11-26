@@ -1,0 +1,21 @@
+export const defaultSecurityForm = () => ({
+  ip_blacklist_text: '',
+  ip_blacklist_mode: false,
+  ip_whitelist_text: '',
+  ip_whitelist_mode: false,
+  china_only: false,
+  basic_auth_enabled: false,
+  basic_auth_username: '',
+  basic_auth_password: '',
+  rate_limit_enabled: false,
+  rate_limit_rate: 10,
+  rate_limit_burst: 20,
+  conn_limit_enabled: false,
+  conn_limit_max: 20,
+  proxy_ssl_verify_off: false,
+  proxy_host_upstream: false,
+  tls_min_13_only: false,
+  security_headers: false,
+})
+
+export type ProxySecurityDraft = ReturnType<typeof defaultSecurityForm>

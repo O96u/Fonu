@@ -714,9 +714,11 @@ export interface GlobalNginxView {
 }
 
 export interface NginxApplyStatus {
-  state: 'unknown' | 'applying' | 'failed' | 'saved' | 'reload_requested'
+  state: 'unknown' | 'applying' | 'failed' | 'saved' | 'reload_requested' | 'confirmed'
   desired_revision?: string
   last_requested_revision?: string
+  confirmed_revision?: string
+  history?: { state: string; revision?: string; created_at: string; unchanged?: boolean }[]
   last_error?: string
   updated_at?: string
 }

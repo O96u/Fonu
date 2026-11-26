@@ -124,18 +124,18 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := h.store.SetMany(r.Context(), filtered); err != nil {
-		writeError(r, w, http.StatusInternalServerError, "保存设置失败", err)
-		return
-	}
 	_, trustedChanged := filtered[settings.KeyTrustedProxy]
 	_, blacklistChanged := filtered[settings.KeyGlobalIPBlacklist]
 	_, whitelistChanged := filtered[settings.KeyGlobalIPWhitelist]
+	var saveErr error
 	if h.proxy != nil && (trustedChanged || blacklistChanged || whitelistChanged) {
-		if err := h.proxy.ReloadAll(r.Context()); err != nil {
-			writeError(r, w, http.StatusInternalServerError, "设置已保存，但 Nginx 重载失败："+err.Error(), err)
-			return
-		}
+		saveErr = h.proxy.SaveSettingsWithPublication(r.Context(), filtered)
+	} else {
+		saveErr = h.store.SetMany(r.Context(), filtered)
+	}
+	if saveErr != nil {
+		writeError(r,w,http.StatusBadRequest,"保存设置失败："+saveErr.Error(),saveErr)
+		return
 	}
 	values, err := h.store.List(r.Context())
 	if err != nil {

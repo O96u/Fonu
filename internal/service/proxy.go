@@ -45,87 +45,74 @@ func (s *ProxyService) ListEntries(ctx context.Context) ([]proxy.Entry, error) {
 }
 
 func (s *ProxyService) ReorderEntries(ctx context.Context, ids []int64) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	return s.store.ReorderEntries(ctx, ids)
 }
 
 func (s *ProxyService) CreateEntry(ctx context.Context, in proxy.EntryCreateInput) (proxy.Entry, error) {
-	entry, err := s.store.CreateEntry(ctx, in)
-	if err != nil {
-		return proxy.Entry{}, err
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil { return proxy.Entry{}, err }
+	defer tx.Rollback()
+	entry, err := proxy.NewStoreWithTx(tx).CreateEntry(ctx, in)
+	if err != nil { return proxy.Entry{}, err }
+	if err := tx.Commit(); err != nil { return proxy.Entry{}, err }
 	return entry, nil
 }
 
 func (s *ProxyService) UpdateEntry(ctx context.Context, id int64, in proxy.EntryUpdateInput) (proxy.Entry, error) {
-	entry, err := s.store.UpdateEntry(ctx, id, in)
-	if err != nil {
-		return proxy.Entry{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return entry, fmt.Errorf("入口已保存，但 Nginx 重载失败：%w", err)
-	}
-	return entry, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Entry, error) {
+		return store.UpdateEntry(ctx, id, in)
+	})
 }
 
 func (s *ProxyService) DeleteEntry(ctx context.Context, id int64) error {
-	ruleIDs, err := s.store.RuleIDsByEntry(ctx, id)
-	if err != nil {
-		return err
-	}
-	for _, ruleID := range ruleIDs {
-		_ = nginx.RemoveRuleCustom(s.cfg, ruleID)
-	}
-	if err := s.store.DeleteEntry(ctx, id); err != nil {
-		return err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return fmt.Errorf("入口已删除，但 Nginx 重载失败：%w", err)
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	ids, err := mutateProxy(ctx, s, func(store *proxy.Store) ([]int64, error) {
+		ids, err := store.RuleIDsByEntry(ctx, id)
+		if err != nil { return nil, err }
+		return ids, store.DeleteEntry(ctx, id)
+	})
+	if err != nil { return err }
+	for _, id := range ids { _ = nginx.RemoveRuleCustom(s.cfg, id) }
 	return nil
 }
 
 func (s *ProxyService) CloneEntry(ctx context.Context, sourceID int64, in proxy.EntryCloneInput) (proxy.Entry, int, error) {
-	all, err := s.store.List(ctx)
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	var copied []int64
+	count := 0
+	entry, err := mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Entry, error) {
+		entry, idMap, err := store.CloneEntry(ctx, sourceID, in)
+		if err != nil { return proxy.Entry{}, err }
+		count = len(idMap)
+		for oldID, newID := range idMap {
+			content, err := nginx.ReadRuleCustom(s.cfg, oldID)
+			if err != nil { return proxy.Entry{}, err }
+			if strings.TrimSpace(content) == "" { continue }
+			// A custom server block may contain the source port, host and auth paths.
+			// Require explicit conversion/edit instead of copying an active conflicting block.
+			old, err := store.Get(ctx, oldID)
+			if err != nil { return proxy.Entry{}, err }
+			if old.NginxMode == "custom" && old.Enabled {
+				return proxy.Entry{}, fmt.Errorf("入口包含启用的手动 Nginx 规则，请先切换为自动模式后复制")
+			}
+			copied = append(copied, newID)
+			if err := nginx.WriteRuleCustom(s.cfg, newID, content); err != nil { return proxy.Entry{}, err }
+		}
+		return entry, nil
+	})
 	if err != nil {
+		for _, id := range copied { _ = nginx.RemoveRuleCustom(s.cfg, id) }
 		return proxy.Entry{}, 0, err
 	}
-	hostnames := make([]string, 0)
-	for _, rule := range all {
-		if rule.EntryID == nil || *rule.EntryID != sourceID {
-			continue
-		}
-		for _, host := range rule.Hosts {
-			hostnames = append(hostnames, host.Hostname)
-		}
-	}
-	if in.HTTPSEnabled {
-		if err := s.validateHTTPSInput(ctx, hostnames, true); err != nil {
-			return proxy.Entry{}, 0, err
-		}
-	}
-
-	entry, idMap, err := s.store.CloneEntry(ctx, sourceID, in)
-	if err != nil {
-		return proxy.Entry{}, 0, err
-	}
-
-	for oldID, newID := range idMap {
-		content, err := nginx.ReadRuleCustom(s.cfg, oldID)
-		if err != nil {
-			return entry, len(idMap), fmt.Errorf("入口已复制，但读取自定义 Nginx 配置失败：%w", err)
-		}
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		if err := nginx.WriteRuleCustom(s.cfg, newID, content); err != nil {
-			return entry, len(idMap), fmt.Errorf("入口已复制，但写入自定义 Nginx 配置失败：%w", err)
-		}
-	}
-
-	if err := s.applyNginx(ctx); err != nil {
-		return entry, len(idMap), fmt.Errorf("入口已复制，但 Nginx 重载失败：%w", err)
-	}
-	return entry, len(idMap), nil
+	return entry, count, nil
 }
 
 func (s *ProxyService) List(ctx context.Context) ([]proxy.Rule, error) {
@@ -137,59 +124,35 @@ func (s *ProxyService) Get(ctx context.Context, id int64) (proxy.Rule, error) {
 }
 
 func (s *ProxyService) Create(ctx context.Context, in proxy.CreateInput) (proxy.Rule, error) {
-	if err := s.validateHTTPSInput(ctx, in.Hosts, in.HTTPSEnabled); err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rule, err := s.store.Create(ctx, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
-	}
-	return rule, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Rule, error) {
+		return store.Create(ctx, in)
+	})
 }
 
 func (s *ProxyService) Update(ctx context.Context, id int64, in proxy.UpdateInput) (proxy.Rule, error) {
-	current, err := s.Get(ctx, id)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	httpsEnabled := current.HTTPSEnabled
-	if in.HTTPSEnabled != nil {
-		httpsEnabled = *in.HTTPSEnabled
-	}
-	hosts := hostsFromRule(current)
-	if in.Hosts != nil {
-		hosts = *in.Hosts
-	}
-	if err := s.validateHTTPSInput(ctx, hosts, httpsEnabled); err != nil {
-		return proxy.Rule{}, err
-	}
-
-	rule, err := s.store.Update(ctx, id, in)
-	if err != nil {
-		return proxy.Rule{}, err
-	}
-	if err := s.applyNginx(ctx); err != nil {
-		return rule, fmt.Errorf("规则已保存，但 Nginx 重载失败：%w", err)
-	}
-	return rule, nil
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx, s, func(store *proxy.Store) (proxy.Rule, error) {
+		return store.Update(ctx, id, in)
+	})
 }
 
 func (s *ProxyService) Reorder(ctx context.Context, ids []int64) error {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
 	return s.store.Reorder(ctx, ids)
 }
 
 func (s *ProxyService) Delete(ctx context.Context, id int64) error {
-	if err := s.store.Delete(ctx, id); err != nil {
-		return err
-	}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	_, err := mutateProxy(ctx, s, func(store *proxy.Store) (struct{}, error) {
+		return struct{}{}, store.Delete(ctx, id)
+	})
+	if err != nil { return err }
 	_ = nginx.RemoveRuleCustom(s.cfg, id)
-	if err := s.applyNginx(ctx); err != nil {
-		return fmt.Errorf("规则已删除，但 Nginx 重载失败：%w", err)
-	}
 	return nil
 }
 
@@ -200,6 +163,7 @@ func (s *ProxyService) ReloadAll(ctx context.Context) error {
 func (s *ProxyService) applyNginx(ctx context.Context) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	if err := s.recoverPendingLocked(ctx); err != nil { return err }
 	return s.applyNginxLocked(ctx)
 }
 
@@ -277,10 +241,12 @@ func (s *ProxyService) validateHTTPSInput(ctx context.Context, hosts []string, h
 		}
 		parsedHosts = append(parsedHosts, hostname)
 	}
-	if nginx.HasCertificateForHosts(s.cfg.CertsDir(), parsedHosts, certs) {
-		return nil
+	for _, hostname := range parsedHosts {
+		if !nginx.HasCertificateForHosts(s.cfg.CertsDir(), []string{hostname}, certs) {
+			return nginx.HTTPSCoverageError(hostname, certs)
+		}
 	}
-	return nginx.HTTPSCoverageError(parsedHosts[0], certs)
+	return nil
 }
 
 func (s *ProxyService) loadCertSources(ctx context.Context) ([]nginx.CertSource, error) {
@@ -308,11 +274,13 @@ func (s *ProxyService) NginxApplyStatus() nginx.ApplyStatus {
 func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	if err := s.recoverPendingLocked(ctx); err != nil { return err }
 	rules, err := s.store.ListEnabled(ctx)
 	if err != nil { return err }
 	certs, err := s.loadCertSources(ctx)
 	if err != nil { return err }
 	final := s.cfg.ChinaCIDRPath()
+	if err:=os.MkdirAll(filepath.Dir(final),0755);err!=nil{return err}
 	old, err := os.ReadFile(final)
 	hadOld := err == nil
 	if err != nil && !os.IsNotExist(err) { return err }
@@ -323,20 +291,26 @@ func (s *ProxyService) ApplyChinaCIDR(ctx context.Context, body string) error {
 	opts.ChinaCIDRPathOverride = tmp
 	opts.ChinaCIDRAvailable = true
 	if err := s.nginx.ValidateOnlyWithOptions(ctx, rules, certs, opts); err != nil { return err }
-	if err := os.Rename(tmp, final); err != nil { return err }
-	if err := s.applyNginxLocked(ctx); err != nil {
-		var rollbackErr error
-		if hadOld {
-			var staged string
-			staged, rollbackErr = writeCIDRTemp(filepath.Dir(final), old)
-			if rollbackErr == nil { defer os.Remove(staged); rollbackErr = os.Rename(staged, final) }
-		} else { rollbackErr = os.Remove(final) }
-		if rollbackErr != nil { return errors.Join(err, fmt.Errorf("CIDR rollback: %w", rollbackErr)) }
-		rollbackCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if _, reloadErr := s.nginx.ApplyWithOptions(rollbackCtx, rules, certs, s.loadGenerateOptions(rollbackCtx)); reloadErr != nil { return errors.Join(err, reloadErr) }
-		return err
+
+	journal,err:=s.beginProxyJournalWithCIDR(&cidrSnapshot{Exists:hadOld,Body:old})
+	if err!=nil{return err}
+	if err := os.Rename(tmp, final); err != nil { return s.abortProxyJournal(journal,err) }
+
+	applyErr:=s.applyNginxLocked(ctx)
+	if applyErr==nil {
+		// The commit token is persisted only after the new CIDR publication
+		// succeeds. An interrupted update restores the previous file.
+		_,applyErr=s.db.ExecContext(ctx,`INSERT INTO proxy_publication_commit(id,token) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token`,journal.Token)
 	}
+	if applyErr!=nil {
+		if err:=s.restoreJournalFiles(journal);err!=nil{return errors.Join(applyErr,err)}
+		recovery,cancel:=context.WithTimeout(context.Background(),20*time.Second)
+		defer cancel()
+		if err:=s.applyNginxLocked(recovery);err!=nil{return errors.Join(applyErr,err)}
+		return errors.Join(applyErr,s.clearProxyJournal())
+	}
+	// A committed journal left behind is safe to reconcile on next startup.
+	_ = s.clearProxyJournal()
 	return nil
 }
 
@@ -344,8 +318,77 @@ func writeCIDRTemp(dir string, body []byte) (string, error) {
 	f, err := os.CreateTemp(dir, "cidr-*.conf")
 	if err != nil { return "", err }
 	if err = f.Chmod(0644); err == nil { _, err = f.Write(body) }
+	if err==nil{err=f.Sync()}
 	closeErr := f.Close()
 	if err == nil { err = closeErr }
 	if err != nil { os.Remove(f.Name()); return "", err }
 	return f.Name(), nil
+}
+
+// SaveBatch applies the entire edit/create set in one SQLite transaction
+// and one Nginx publication. No partial success is returned.
+func (s *ProxyService) SaveBatch(ctx context.Context, id int64, update *proxy.UpdateInput, creates []proxy.CreateInput)([]proxy.Rule,error){
+	count:=len(creates)
+	if update!=nil{count++}
+	if count<1||count>100{return nil,fmt.Errorf("单次批量操作支持 1–100 条规则")}
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	return mutateProxy(ctx,s,func(store *proxy.Store)([]proxy.Rule,error){
+		out:=make([]proxy.Rule,0,count)
+		if update!=nil{
+			r,err:=store.Update(ctx,id,*update)
+			if err!=nil{return nil,err}
+			out=append(out,r)
+		}
+		for _,in:=range creates{
+			r,err:=store.Create(ctx,in)
+			if err!=nil{return nil,err}
+			out=append(out,r)
+		}
+		return out,nil
+	})
+}
+
+func (s *ProxyService) ListTrafficRules(ctx context.Context)([]proxy.Rule,error){
+	return s.store.ListTrafficRules(ctx)
+}
+
+
+// LockCertificateMutation protects the short local certificate file/record
+// replacement phase from configuration generation. Do not hold it during
+// ACME network operations or call ReloadAll before releasing it.
+func (s *ProxyService) LockCertificateMutation() func(){
+	if s==nil{return func(){}}
+	s.applyMu.Lock()
+	var once sync.Once
+	return func(){once.Do(s.applyMu.Unlock)}
+}
+
+// CheckCertificateDeletionLocked conservatively protects enabled HTTPS rules
+// and direct references in the current generated configuration.
+func (s *ProxyService) CheckCertificateDeletionLocked(ctx context.Context,rec certificate.Record)error{
+	if s==nil{return nil}
+	rules,err:=s.store.ListEnabled(ctx)
+	if err!=nil{return err}
+	domains:=rec.Domains
+	if len(domains)==0{domains=[]string{rec.Domain};if rec.Wildcard{domains=append(domains,"*."+rec.Domain)}}
+	for _,rule:=range rules{
+		if !rule.HTTPSEnabled{continue}
+		for _,host:=range rule.Hostnames(){
+			for _,domain:=range domains{
+				hostLower,domainLower:=strings.ToLower(host),strings.ToLower(domain)
+				if hostLower==domainLower||(strings.HasPrefix(domainLower,"*.")&&strings.HasSuffix(hostLower,domainLower[1:])&&!strings.Contains(strings.TrimSuffix(hostLower,domainLower[1:]),".")){
+					return fmt.Errorf("证书关联已启用的 HTTPS 规则 %d（%s），请先调整或停用规则",rule.ID,host)
+				}
+			}
+		}
+	}
+	content,err:=os.ReadFile(s.cfg.NginxConfigPath())
+	if err!=nil&&!os.IsNotExist(err){return err}
+	normalized:=filepath.ToSlash(string(content))
+	for _,name:=range certificate.RecordStorageNames(rec){
+		path:=filepath.ToSlash(filepath.Join(s.cfg.CertsDir(),name))+"/"
+		if strings.Contains(normalized,path){return fmt.Errorf("当前 Nginx 配置仍引用证书 %s，请先调整规则",rec.Domain)}
+	}
+	return nil
 }

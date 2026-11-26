@@ -24,7 +24,8 @@ type faviconEntry struct {
 var faviconCache = struct {
  sync.Mutex
  entries map[string]faviconEntry
-}{entries: make(map[string]faviconEntry)}
+ inflight map[string]chan struct{}
+}{entries: make(map[string]faviconEntry), inflight: make(map[string]chan struct{})}
 var faviconSlots = make(chan struct{}, 4)
 
 // Only public addresses are allowed, including after DNS resolution.
@@ -89,22 +90,47 @@ func (h *ProxyHandler) Favicon(w http.ResponseWriter,r *http.Request) {
  if len(rule.Hosts)>0 {domain=rule.Hosts[0].Hostname;if rule.Hosts[0].ListenPort!=nil {port=*rule.Hosts[0].ListenPort}}
  target,ok:=faviconURL(domain,port,rule.HTTPSEnabled)
  if !ok {http.NotFound(w,r);return}
- faviconCache.Lock()
- entry,found:=faviconCache.entries[target]
- faviconCache.Unlock()
- if !found || time.Now().After(entry.expires) {
-  select {case faviconSlots<-struct{}{}: defer func(){<-faviconSlots}();default:w.WriteHeader(http.StatusServiceUnavailable);return}
-  entry=fetchFavicon(r.Context(),target)
-  if r.Context().Err()==nil {
-   faviconCache.Lock()
-   if len(faviconCache.entries)>=128 { for k,v:=range faviconCache.entries {if time.Now().After(v.expires){delete(faviconCache.entries,k)}};if len(faviconCache.entries)>=128{for k:=range faviconCache.entries{delete(faviconCache.entries,k);break}} }
-   faviconCache.entries[target]=entry
-   faviconCache.Unlock()
-  }
- }
+ entry,ok:=cachedFavicon(r.Context(),target)
+ if !ok {w.Header().Set("Retry-After","2");w.WriteHeader(http.StatusServiceUnavailable);return}
  if len(entry.data)==0 {w.Header().Set("Cache-Control","private, max-age=900");http.NotFound(w,r);return}
  w.Header().Set("Content-Type",entry.mime)
  w.Header().Set("X-Content-Type-Options","nosniff")
  w.Header().Set("Cache-Control","private, max-age=86400")
  _,_=w.Write(entry.data)
+}
+
+// Concurrent requests for the same URL share a bounded fetch. A canceled
+// browser request does not cancel the other waiters' shared result.
+func cachedFavicon(ctx context.Context,target string)(faviconEntry,bool){
+ for {
+  faviconCache.Lock()
+  if entry,ok:=faviconCache.entries[target];ok && time.Now().Before(entry.expires){
+   faviconCache.Unlock();return entry,true
+  }
+  if done,ok:=faviconCache.inflight[target];ok{
+   faviconCache.Unlock()
+   select{case <-done:continue;case <-ctx.Done():return faviconEntry{},false}
+  }
+  select{
+  case faviconSlots<-struct{}{}:
+  default:faviconCache.Unlock();return faviconEntry{},false
+  }
+  done:=make(chan struct{})
+  faviconCache.inflight[target]=done
+  faviconCache.Unlock()
+  fetchCtx,cancel:=context.WithTimeout(context.Background(),4*time.Second)
+  entry:=fetchFavicon(fetchCtx,target)
+  cancel()
+  faviconCache.Lock()
+  if len(faviconCache.entries)>=128 {
+   for k,v:=range faviconCache.entries{if time.Now().After(v.expires){delete(faviconCache.entries,k)}}
+   if len(faviconCache.entries)>=128{for k:=range faviconCache.entries{delete(faviconCache.entries,k);break}}
+  }
+  faviconCache.entries[target]=entry
+  delete(faviconCache.inflight,target)
+  close(done)
+  <-faviconSlots
+  faviconCache.Unlock()
+  return entry,true
+ }
 }

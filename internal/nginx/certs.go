@@ -1,9 +1,12 @@
 package nginx
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fonu/fonu/internal/proxy"
 )
@@ -26,26 +29,59 @@ func HasCertificateForHosts(certsDir string, hostnames []string, certs []CertSou
 	return certUsable(findCertificateForHosts(certsDir, hostnames, certs))
 }
 
-func findCertificateForHosts(certsDir string, hostnames []string, certs []CertSource) *certFiles {
-	for _, hostname := range hostnames {
-		for _, source := range certs {
-			if !hostCoveredByCert(hostname, source.Domains) {
-				continue
-			}
-			if cert := certFromSource(source); cert != nil {
-				return cert
-			}
-			for _, domain := range source.Domains {
-				if cert := certAt(certsDir, storageDirName(domain)); cert != nil && certUsable(cert) {
-					return cert
-				}
-			}
-		}
-		if cert := findCertificate(certsDir, hostname); cert != nil && certUsable(cert) {
-			return cert
+// A resolver lives for one generation/publication only. Each certificate/key
+// pair is parsed at most once; subsequent host matches use its actual SANs.
+type certificateResolver struct {
+	dir string
+	sources []CertSource
+	leaves map[certFiles]*x509.Certificate
+	disk []os.DirEntry
+	scanned bool
+}
+func newCertificateResolver(dir string,sources []CertSource)*certificateResolver{
+	return &certificateResolver{dir:dir,sources:sources,leaves:make(map[certFiles]*x509.Certificate)}
+}
+func (r *certificateResolver) find(hosts []string)*certFiles{
+	if len(hosts)==0{return nil}
+	for _,source:=range r.sources{
+		if cert:=certFromSource(source);r.covers(cert,hosts){return cert}
+		for _,domain:=range source.Domains{
+			if cert:=certAt(r.dir,storageDirName(domain));r.covers(cert,hosts){return cert}
 		}
 	}
-	return scanCertDirectories(certsDir, hostnames)
+	if !r.scanned{r.disk,_=osReadDir(r.dir);r.scanned=true}
+	for _,entry:=range r.disk{
+		if !entry.IsDir(){continue}
+		if cert:=certAt(r.dir,entry.Name());r.covers(cert,hosts){return cert}
+	}
+	return nil
+}
+func(r *certificateResolver) covers(cert *certFiles,hosts []string)bool{
+	if len(hosts)==0||cert==nil{return false}
+	leaf,ok:=r.leaves[*cert]
+	if !ok{
+		leaf=loadCertificateLeaf(cert)
+		r.leaves[*cert]=leaf
+	}
+	if leaf==nil{return false}
+	now:=time.Now()
+	if now.Before(leaf.NotBefore)||!now.Before(leaf.NotAfter){return false}
+	for _,host:=range hosts{if leaf.VerifyHostname(host)!=nil{return false}}
+	return true
+}
+func loadCertificateLeaf(cert *certFiles)*x509.Certificate{
+	if !certUsable(cert){return nil}
+	pair,err:=tls.LoadX509KeyPair(cert.CertPath,cert.KeyPath)
+	if err!=nil||len(pair.Certificate)==0{return nil}
+	leaf,err:=x509.ParseCertificate(pair.Certificate[0])
+	if err!=nil{return nil}
+	return leaf
+}
+func findCertificateForHosts(certsDir string,hostnames []string,certs []CertSource)*certFiles{
+	return newCertificateResolver(certsDir,certs).find(hostnames)
+}
+func certificateCovers(cert *certFiles,hosts []string)bool{
+	return newCertificateResolver("",nil).covers(cert,hosts)
 }
 
 func storageDirName(domain string) string {
@@ -79,7 +115,7 @@ func hostCoveredByCert(hostname string, domains []string) bool {
 		}
 		if strings.HasPrefix(domain, "*.") {
 			suffix := strings.TrimPrefix(domain, "*.")
-			if hostname == suffix || strings.HasSuffix(hostname, "."+suffix) {
+			if strings.HasSuffix(hostname, "."+suffix) && !strings.Contains(strings.TrimSuffix(hostname, "."+suffix), ".") {
 				return true
 			}
 		}
@@ -89,24 +125,11 @@ func hostCoveredByCert(hostname string, domains []string) bool {
 
 func scanCertDirectories(certsDir string, hostnames []string) *certFiles {
 	entries, err := osReadDir(certsDir)
-	if err != nil {
-		return nil
-	}
+	if err != nil { return nil }
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		pattern := dirNameToPattern(entry.Name())
-		for _, hostname := range hostnames {
-			if !hostCoveredByCert(hostname, []string{pattern, entry.Name()}) {
-				continue
-			}
-			if cert := certAt(certsDir, pattern); cert != nil && certUsable(cert) {
-				return cert
-			}
-			if cert := certAt(certsDir, entry.Name()); cert != nil && certUsable(cert) {
-				return cert
-			}
+		if !entry.IsDir() { continue }
+		if cert := certAt(certsDir, entry.Name()); certificateCovers(cert, hostnames) {
+			return cert
 		}
 	}
 	return nil
@@ -145,20 +168,29 @@ func HTTPSCoverageError(hostname string, certs []CertSource) error {
 }
 
 func ValidateHTTPSRules(rules []proxy.Rule, certs []CertSource, certsDir string) error {
+	resolver:=newCertificateResolver(certsDir,certs)
 	for _, rule := range rules {
 		if !rule.Enabled || !rule.HTTPSEnabled {
 			continue
 		}
 		for _, group := range rule.PortGroups() {
-			cert := findCertificateForHosts(certsDir, group.Hostnames, certs)
-			if certUsable(cert) {
-				continue
-			}
 			if len(group.Hostnames) == 0 {
 				return fmt.Errorf("启用 HTTPS 的规则缺少前端域名")
 			}
-			return HTTPSCoverageError(group.Hostnames[0], certs)
+			for _, hostname := range group.Hostnames {
+				if resolver.find([]string{hostname})==nil {
+					return HTTPSCoverageError(hostname, certs)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+func allHostsCovered(hosts, domains []string) bool {
+	if len(hosts) == 0 { return false }
+	for _, host := range hosts {
+		if !hostCoveredByCert(host, domains) { return false }
+	}
+	return true
 }
