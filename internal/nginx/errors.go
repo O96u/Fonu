@@ -110,8 +110,14 @@ func copyFileIfChanged(src, dst string) error {
 	return err
 }
 
-// Self-contained, no remote fonts, images or JavaScript; works even when upstream is down.
+// Uses the original bundled illustrations only; no remote resources or JavaScript.
 func errorPageHTML(code int, title, message, hint string) string {
+ // Match the original 2×2 sprite layout. 502 and 503 share the last illustration.
+ illustration := `<img class="error-illustration" src="/fonu-errors/429.png" alt="" decoding="async">`
+ if code != 429 {
+  position := map[int]string{403:"0% 0%",404:"100% 0%",500:"0% 100%",502:"100% 100%",503:"100% 100%"}[code]
+  illustration = fmt.Sprintf(`<div class="error-illustration sprite" style="background-position:%s" aria-hidden="true"></div>`,position)
+ }
  return fmt.Sprintf(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -122,9 +128,9 @@ func errorPageHTML(code int, title, message, hint string) string {
 <style>
 :root{color-scheme:light dark;--bg:#f8fafc;--panel:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--brand:#047857;--soft:#ecfdf5;--line:#10b981}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-main{width:min(100%%,560px);border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:32px;box-shadow:0 12px 36px rgba(15,23,42,.05)}
+main{width:min(100%%,640px);border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:32px;box-shadow:0 12px 36px rgba(15,23,42,.05)}
 .brand{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:700}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--soft);color:var(--brand)}.label{margin-left:auto;color:var(--muted);font-size:12px;font-weight:400}
-.status{display:flex;align-items:center;gap:14px;margin:36px 0 8px}.code{font-size:64px;font-weight:750;line-height:1;letter-spacing:-.06em;color:var(--brand);font-variant-numeric:tabular-nums}.status span:last-child{color:var(--muted);font-size:12px;border-left:1px solid var(--border);padding-left:14px;letter-spacing:.08em}
+.art{display:grid;place-items:center;margin:22px auto 8px;max-width:100%%}.error-illustration{display:block;width:min(100%%,320px);height:auto;object-fit:contain}.sprite{aspect-ratio:280/186;background-image:url(/fonu-errors/error.png);background-repeat:no-repeat;background-size:200%% 200%%}.status{display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0 8px}.error-copy{text-align:center}.code{font-size:64px;font-weight:750;line-height:1;letter-spacing:-.06em;color:var(--brand);font-variant-numeric:tabular-nums}.status span:last-child{color:var(--muted);font-size:12px;border-left:1px solid var(--border);padding-left:14px;letter-spacing:.08em}
 h1{font-size:25px;line-height:1.4;margin:16px 0 10px;font-weight:700}p{color:var(--muted);margin:0;overflow-wrap:anywhere}.hint{margin:24px 0 0;padding:14px 16px;border-left:3px solid var(--line);border-radius:6px;background:var(--soft);color:var(--text);font-size:13px}.hint strong{display:block;margin-bottom:3px;color:var(--brand)}footer{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:28px;padding-top:16px;color:var(--muted);font-size:12px}
 @media(prefers-color-scheme:dark){:root{--bg:#0f172a;--panel:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--border:#334155;--brand:#6ee7b7;--soft:#17392f;--line:#10b981}}
 @media(max-width:420px){body{padding:16px}main{padding:24px}.code{font-size:54px}h1{font-size:22px}.label{display:none}}
@@ -133,12 +139,13 @@ h1{font-size:25px;line-height:1.4;margin:16px 0 10px;font-weight:700}p{color:var
 <body>
 <main>
 <div class="brand"><span class="mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="13" width="7" height="7" rx="2"/><path d="M10 7.5h5a3 3 0 0 1 3 3V13M14 16.5H9a3 3 0 0 1-3-3V11"/></svg></span>Fonu<span class="label">反向代理</span></div>
+<div class="art">%s</div>
 <div class="status"><span class="code">%d</span><span>HTTP<br>STATUS</span></div>
-<h1>%s</h1>
-<p>%s</p>
+<div class="error-copy"><h1>%s</h1>
+<p>%s</p></div>
 <div class="hint"><strong>你可以尝试</strong>%s</div>
 <footer><span>Fonu · 服务访问提示</span><span>HTTP %d</span></footer>
 </main>
 </body>
-</html>`,code,title,code,title,message,hint,code)
+</html>`,code,title,illustration,code,title,message,hint,code)
 }

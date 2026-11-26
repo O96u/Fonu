@@ -4,9 +4,9 @@
       <ServiceFavicon v-if="!child" :rule-id="rule.id"/>
       <n-icon v-else :component="GlobeOutline" class="domain-icon"/>
       <div class="service-identity__body">
-        <button v-if="!child" class="service-name" type="button" @click="emit('detail')">{{ name }}</button>
+        <button v-if="!child" class="service-name" :title="name" type="button" @click="emit('detail')">{{ name }}</button>
         <div class="service-hosts">
-          <a :href="accessUrl(rule,hosts[0]||rule.domain)" target="_blank" rel="noopener noreferrer" :title="accessUrl(rule,hosts[0]||rule.domain)">{{ accessUrl(rule,hosts[0]||rule.domain).replace(/^https?:\/\//, '') }}</a>
+          <a class="primary-host" :href="accessUrl(rule,hosts[0]||rule.domain)" target="_blank" rel="noopener noreferrer" :title="accessUrl(rule,hosts[0]||rule.domain)">{{ accessUrl(rule,hosts[0]||rule.domain).replace(/^https?:\/\//, '') }}</a>
           <a class="open-link" :href="accessUrl(rule,hosts[0]||rule.domain)" target="_blank" rel="noopener noreferrer" title="在新窗口打开（含监听端口）" aria-label="在新窗口打开"><n-icon :component="OpenOutline"/></a>
           <n-button size="tiny" quaternary aria-label="复制链接" title="复制链接" @click="emit('copy-link',accessUrl(rule,hosts[0]||rule.domain))"><template #icon><n-icon :component="CopyOutline"/></template></n-button>
           <n-popover v-if="hosts.length>1" trigger="click" placement="bottom-start">
@@ -51,7 +51,7 @@ function selectAction(key:string|number){if(key==='delete')emit('delete');else i
 </script>
 <style scoped>
 .service-row{display:grid;grid-template-columns:minmax(150px,1.5fr) minmax(120px,1.35fr) 54px minmax(86px,.75fr) minmax(78px,.7fr) minmax(80px,.65fr) 48px 112px;align-items:center;gap:8px;padding:12px 10px;min-width:0}
-.service-identity{display:flex;align-items:center;gap:9px;min-width:0}.service-identity__body{min-width:0;flex:1}
+ .service-identity{display:flex;align-items:center;gap:9px;min-width:0}.service-identity__body{min-width:0;flex:1}
 .service-identity :deep(.service-favicon){width:34px;height:34px;border-radius:8px}.service-identity :deep(.service-favicon img){width:26px;height:26px}
 .service-name{display:block;max-width:100%;text-align:left;border:0;background:none;padding:0;color:var(--fonu-text);font:inherit;font-weight:650;cursor:pointer;overflow-wrap:anywhere}
 .service-hosts{display:flex;align-items:center;flex-wrap:wrap;gap:2px;min-width:0;font-size:12px}.service-hosts a,.host-popover a{color:var(--fonu-brand-text);text-decoration:none;overflow-wrap:anywhere;min-width:0}.service-hosts a:hover,.host-popover a:hover{text-decoration:underline}
@@ -62,7 +62,7 @@ function selectAction(key:string|number){if(key==='delete')emit('delete');else i
 .service-actions{display:flex;align-items:center;justify-content:flex-end;gap:1px;flex-wrap:wrap}.service-actions :deep(.n-button){width:26px;padding:0}
 .domain-icon{color:var(--fonu-text-secondary);font-size:16px;flex-shrink:0}.host-popover{display:flex;align-items:center;gap:6px;overflow-wrap:anywhere;max-width:320px}
 .service-row--child{background:var(--fonu-surface)}.service-row--child .service-identity{padding-left:12px}
-.service-row--card{grid-template-columns:minmax(0,1fr) minmax(0,auto);grid-template-rows:auto auto 1fr auto auto;gap:8px;padding:12px;min-height:216px}.service-row--card .service-identity{grid-column:1}.service-row--card .service-status{grid-column:2;grid-row:1}.service-row--card .service-target{grid-column:1/-1}.service-row--card .service-visitors{grid-column:1}.service-row--card .service-security{grid-column:2;justify-content:flex-end}.service-row--card .service-rate{grid-column:1}.service-row--card .service-total{grid-column:2;text-align:right}.service-row--card .service-actions{grid-column:1/-1;border-top:1px solid var(--fonu-border);padding-top:6px}
+.service-row--card{grid-template-columns:minmax(0,1fr) minmax(0,auto);grid-template-rows:auto auto 1fr auto auto;gap:8px;padding:12px;min-height:216px}.service-row--card .service-identity{grid-column:1;align-items:flex-start;min-height:48px;align-self:start}.service-row--card .service-identity :deep(.service-favicon){flex:0 0 34px;width:34px;height:34px;margin-top:1px}.service-row--card .service-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:20px}.service-row--card .service-hosts{flex-wrap:nowrap;align-items:center;min-height:23px}.service-hosts .primary-host{display:block;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}.service-hosts :deep(.n-button){flex-shrink:0}.service-row--card .service-hosts :deep(.n-button){width:22px;padding:0}.service-row--card .service-hosts .open-link{width:20px;flex-basis:20px}.service-row--card .service-status{align-self:start;margin-top:8px}.service-row--card .service-status{grid-column:2;grid-row:1}.service-row--card .service-target{grid-column:1/-1}.service-row--card .service-visitors{grid-column:1}.service-row--card .service-security{grid-column:2;justify-content:flex-end}.service-row--card .service-rate{grid-column:1}.service-row--card .service-total{grid-column:2;text-align:right}.service-row--card .service-actions{grid-column:1/-1;border-top:1px solid var(--fonu-border);padding-top:6px}
 @container proxy-workspace (max-width:960px){
  .service-row:not(.service-row--card){grid-template-columns:minmax(0,1fr) minmax(0,1fr) 48px;gap:7px;padding:10px}
  .service-row:not(.service-row--card) .service-identity{grid-column:1/3}.service-row:not(.service-row--card) .service-status{grid-column:3;grid-row:1}

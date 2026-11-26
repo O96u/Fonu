@@ -38,7 +38,13 @@ func TestEnsureErrorPagesWritesAssets(t *testing.T) {
 		for _,want:=range []string{"<title>"+num,">"+num+"</span>","prefers-color-scheme:dark","Fonu","noindex,nofollow","viewport"} {
 			if !strings.Contains(body,want){t.Fatalf("%s.html missing %q",num,want)}
 		}
-		for _,unwanted:=range []string{"/fonu-errors/","<script","https://","<img"} {
+		if code==429 {
+			if !strings.Contains(body,`src="/fonu-errors/429.png"`){t.Fatal("missing original 429 illustration")}
+		} else {
+			position:=map[int]string{403:"0% 0%",404:"100% 0%",500:"0% 100%",502:"100% 100%",503:"100% 100%"}[code]
+			if !strings.Contains(body,"background-image:url(/fonu-errors/error.png)")||!strings.Contains(body,"background-position:"+position){t.Fatalf("%d: original sprite not restored",code)}
+		}
+		for _,unwanted:=range []string{"<script","https://","http://"} {
 			if strings.Contains(body,unwanted){t.Fatalf("%s.html has external dependency %q",num,unwanted)}
 		}
 	}

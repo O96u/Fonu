@@ -163,7 +163,7 @@
 
         <div v-if="!isDnsheAccountSelected && panelTask" class="task-detail__head">
           <div class="task-detail__toolbar">
-            <div class="settings-switches">
+            <div v-if="!editingPanelFlags" class="settings-switches">
               <div class="settings-switch">
                 <span>IPv4</span>
                 <n-switch
@@ -536,7 +536,8 @@ const panelTask = computed(() => {
   return selectedTask.value
 })
 
-const headIpTogglesEnabled = computed(() => !!panelTask.value && !isDraftSelected.value)
+const editingPanelFlags = computed(() => !isDnsheAccountSelected.value && typeof taskEditMode.value === 'number' && panelTask.value?.id === taskEditMode.value)
+const headIpTogglesEnabled = computed(() => !!panelTask.value && !isDraftSelected.value && !editingPanelFlags.value)
 
 const headIpToggleLoading = computed(() => {
   const task = panelTask.value

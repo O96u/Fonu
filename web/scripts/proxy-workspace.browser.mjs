@@ -124,6 +124,21 @@ try{
  await page.screenshot({path:'ui-screenshots/narrow-list.png',fullPage:true})
  await page.getByRole('button',{name:'卡片',exact:true}).click()
  await page.screenshot({path:'ui-screenshots/narrow-cards.png',fullPage:true})
+ // A long domain cannot push the favicon or link controls to another line.
+ const longRule=rules.find(r=>r.id===6)
+ longRule.domain='very-long-service-subdomain-for-responsive-layout.example.net'
+ longRule.hosts=[{id:6,hostname:longRule.domain}]
+ await page.reload()
+ await page.locator('.service-row--card').filter({hasText:longRule.domain}).waitFor()
+ const longCard=page.locator('.service-row--card').filter({hasText:longRule.domain})
+ const layout=await longCard.evaluate(el=>{
+  const box=s=>el.querySelector(s).getBoundingClientRect()
+  return {icon:box('.service-favicon'),name:box('.service-name'),host:box('.primary-host'),open:box('.open-link'),copy:box('[aria-label="复制链接"]')}
+ })
+ assert.ok(Math.abs(layout.icon.top-layout.name.top)<5,JSON.stringify(layout))
+ assert.ok(Math.abs(layout.open.top-layout.copy.top)<5,JSON.stringify(layout))
+ assert.equal(await longCard.getByRole('link',{name:'在新窗口打开'}).getAttribute('href'),'https://'+longRule.domain)
+ await page.screenshot({path:'ui-screenshots/narrow-long-domain.png',fullPage:true})
  await page.evaluate(()=>{localStorage.setItem('fonu-theme','dark')})
  await page.setViewportSize({width:1440,height:980})
  // A second init script switches to dark on the next navigation.
