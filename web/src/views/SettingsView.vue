@@ -55,7 +55,7 @@
           <n-select v-model:value="form.timezone" :options="timezoneOptions" />
           <p class="field-hint">影响日志、证书到期时间等显示</p>
         </div>
-      </FonuCard><FonuCard title="自动任务" subtitle="公网 IP 检查">
+      </FonuCard><FonuCard title="自动任务" subtitle="公网 IP 检查与本地备份">
         <div class="settings-fields">
           <div class="settings-field">
             <div class="settings-field__row">
@@ -64,6 +64,8 @@
             </div>
             <p class="field-hint">每隔 N 分钟检查公网 IP 是否变化并更新 DNS</p>
           </div>
+          <div class="settings-field"><div class="settings-field__row"><span class="settings-field__label">自动本地备份</span><n-switch v-model:value="localBackupEnabled"/></div><p class="field-hint">开启并保存后，每 24 小时自动保存一份备份到本机。关闭后不删除已保存的备份。</p></div>
+          <div v-if="localBackupEnabled" class="settings-field"><div class="settings-field__row"><span class="settings-field__label">自动备份保留数量</span><n-input-number v-model:value="localBackupKeep" :min="1" :max="30" class="settings-field__input"/></div><p class="field-hint">仅清理超出数量的自动备份，不影响手动备份。</p></div>
 
         </div>
       </FonuCard></div>
@@ -514,7 +516,7 @@
           </n-upload>
         </div>
         <n-alert type="warning" :bordered="false" class="backup-warning">备份包含账号数据和敏感凭据，请妥善保管，不要上传到不受信任的服务。</n-alert><p class="field-hint data-note">恢复前会先确认。完成后会退出登录，请使用备份中的账号重新登录。</p>
-      </FonuCard></div>
+      </FonuCard><LocalBackups :disabled="restoring||exporting" @restore="restoreLocal"/></div>
         <div v-else-if="settingsTab==='advanced'" class="settings-grid settings-grid--single"><FonuCard title="Nginx 全局配置" subtitle="http 块内自定义片段"><div v-if="nginxLoadError" class="settings-load-error"><span>{{ nginxLoadError }}</span><n-button size="small" @click="loadGlobalNginx">重试</n-button></div><n-spin :show="nginxLoading"><fieldset :disabled="!nginxLoaded || globalNginxSaving" class="settings-content">
         <NginxApplyBanner/>
         <p class="field-hint">
@@ -776,6 +778,7 @@ import ConfiguredSecretField from '../components/ConfiguredSecretField.vue'
 import { ACME_APPLY_LINKS } from '../constants/acmeApplyLinks'
 import FonuCard from '../components/FonuCard.vue'
 import NotifyHistory from '../components/NotifyHistory.vue'
+import LocalBackups from '../components/LocalBackups.vue'
 import SettingsVersionCard from '../components/SettingsVersionCard.vue'
 import NginxCodeEditor from '../components/NginxCodeEditor.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
@@ -943,6 +946,8 @@ const notifyTelegram = reactive({
   has_bot_token: false,
 })
 const ddnsInterval = ref(5)
+const localBackupEnabled=ref(false)
+const localBackupKeep=ref<number|null>(7)
 const certThreshold = ref(30)
 const logRetention = ref(30)
 const analyticsRetention = ref(30)
@@ -1074,6 +1079,8 @@ function applySettingsToForm(settings: Record<string, string>, group?:SettingsGr
   if(applies('general')){
     Object.assign(form,{theme:settings.theme ?? themeMode.value,timezone:settings.timezone ?? 'Asia/Shanghai'})
     ddnsInterval.value=Number(settings.ddns_check_interval_minutes??5)
+    localBackupEnabled.value=settings.local_backup_enabled==='true'
+    localBackupKeep.value=Number(settings.local_backup_keep??7)
   }
   if(applies('notify'))applyNotifySettings(settings)
   if(applies('logs')){
@@ -1540,6 +1547,8 @@ function buildSavePayload() {
     notify_login_failure_threshold: String(notifyLoginFailureThreshold.value || DEFAULT_LOGIN_FAILURE_THRESHOLD),
     notify_login_failure_window_sec: String(notifyLoginFailureWindowSec.value || DEFAULT_LOGIN_FAILURE_WINDOW_SEC),
     ddns_check_interval_minutes: String(ddnsInterval.value),
+    local_backup_enabled:String(localBackupEnabled.value),
+    local_backup_keep:String(localBackupKeep.value??7),
     cert_renew_threshold_days: String(certThreshold.value),
     log_retention_days: String(logRetention.value),
     analytics_retention_days: String(analyticsRetention.value),
@@ -1620,7 +1629,7 @@ function buildSavePayload() {
 
 function groupPayload(group:SettingsGroup):Record<string,string>{
   const belongs=(key:string)=>{
-    if(group==='general')return ['theme','timezone','ddns_check_interval_minutes'].includes(key)
+    if(group==='general')return ['theme','timezone','ddns_check_interval_minutes','local_backup_enabled','local_backup_keep'].includes(key)
     if(group==='security')return ['trusted_proxy_json','global_ip_blacklist','global_ip_whitelist','china_cidr_update_interval_hours'].includes(key)
     if(group==='notify')return key.startsWith('notify_')
     if(group==='logs')return key==='log_retention_days'||key.startsWith('analytics_')
@@ -1749,6 +1758,13 @@ async function exportBackup() {
   }
 }
 
+async function restoreLocal(name:string){
+ if(restoring.value||exporting.value)return
+ restoring.value=true;restorePhase.value='check'
+ try{await api.restoreLocalBackup(name);restoring.value=false;initialized.value=false;await router.push({name:'login',state:{restored:true}})}
+ catch(e){message.error(e instanceof Error?e.message:'恢复失败')}
+ finally{restoring.value=false}
+}
 function restoreRequest({ file, onFinish, onError }: UploadCustomRequestOptions) {
   const raw = file.file
   if(restoring.value||exporting.value){onError();return}

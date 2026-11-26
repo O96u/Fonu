@@ -63,6 +63,7 @@
       <header class="topbar">
         <div class="topbar__context"><span class="topbar__page">{{ route.name === 'dashboard' ? '仪表盘' : route.meta.title }}</span></div>
         <div class="topbar__right">
+          <n-button tag="a" :href="GITHUB_REPO_URL" target="_blank" rel="noopener noreferrer" quaternary circle title="GitHub 项目" aria-label="GitHub 项目"><template #icon><n-icon :component="LogoGithub"/></template></n-button>
           <n-button v-if="embedded" tag="a" :href="standaloneUrl" target="_blank" rel="noopener noreferrer" quaternary circle title="独立网页打开" aria-label="独立网页打开"><template #icon><n-icon :component="OpenOutline"/></template></n-button>
           <n-popover trigger="click" placement="bottom-end" :show-arrow="false">
             <template #trigger><n-button quaternary circle aria-label="主题颜色" title="主题颜色" class="theme-trigger"><template #icon><n-icon :component="ColorPaletteOutline" /></template></n-button></template>

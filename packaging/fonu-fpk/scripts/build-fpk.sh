@@ -11,7 +11,7 @@ set -euo pipefail
 ARCH="${1:?usage: build-fpk.sh amd64|arm64 [version]}"
 VERSION="${2:-dev}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ || "$VERSION" = dev ]] || { echo "Invalid package version" >&2; exit 1; }
-FRP_VERSION="${FRP_VERSION:-0.71.0}"
+FRP_VERSION="${FRP_VERSION:-0.72.0}"
 # Pin the previously tested release and its official release asset SHA-256.
 NGINX_VERSION="${NGINX_VERSION:-1.30.8}"
 NGINX_SHA256="${NGINX_SHA256:-}"
@@ -260,8 +260,8 @@ echo "==> Downloading frpc v${FRP_VERSION} (${FRP_ARCH})"
 FRP_SHA256="${FRP_SHA256:-}"
 if [ -z "$FRP_SHA256" ]; then
   case "${FRP_VERSION}:${FRP_ARCH}" in
-    0.71.0:amd64) FRP_SHA256=84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716 ;;
-    0.71.0:arm64) FRP_SHA256=f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266 ;;
+    0.72.0:amd64) FRP_SHA256=daf719b32ca2778770bb92955e231a07414d754378b9af328aa2642862479804 ;;
+    0.72.0:arm64) FRP_SHA256=02180b857480302fd934e9ddbd50fe2f73229f99062f88756abc6de9df5e95cf ;;
     *) echo "Set FRP_SHA256 for custom FRP version" >&2; exit 1 ;;
   esac
 fi

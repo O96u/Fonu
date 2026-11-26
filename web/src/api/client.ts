@@ -466,6 +466,10 @@ export const api = {
     return request<FsDirListResponse>(`/api/fs/directories${suffix}`)
   },
 
+  listLocalBackups: (signal?:AbortSignal) => request<{name:string;kind:'manual'|'auto';size:number;created_at:string}[]>('/api/backup/local',{signal}),
+  createLocalBackup: () => request<{name:string}>('/api/backup/local',{method:'POST'}),
+  deleteLocalBackup: (name:string) => request<{message:string}>('/api/backup/local/'+encodeURIComponent(name),{method:'DELETE'}),
+  restoreLocalBackup: (name:string) => request<{message:string}>('/api/backup/local/'+encodeURIComponent(name)+'/restore',{method:'POST'}),
   async exportBackup() {
     const filename = `fonu-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`
     const url = `/api/backup/export?t=${Date.now()}`

@@ -56,7 +56,7 @@ Fonu 集成反向代理、DDNS、HTTPS 证书、内网穿透及访问分析，�
 | 前端 | Vue 3.5、TypeScript 5.9、Vite 6、Naive UI 2、ECharts 6、CodeMirror 6 |
 | 反向代理 | Nginx（FPK 内置 1.30 系列；Docker 使用发行版软件包） |
 | 证书 | go-acme/lego v4（ACME）、SFTP |
-| 内网穿透 | FRP 0.71 系列 |
+| 内网穿透 | FRP 0.72 系列 |
 | 构建与部署 | Node.js 22、pnpm 10、GitHub Actions、fnOS FPK、Docker（amd64 / arm64） |
 
 ## 安装部署
@@ -122,7 +122,7 @@ git clone -b v2 https://github.com/O96u/Fonu.git
 cd Fonu
 corepack enable
 cd web
-pnpm install --frozen-lockfile
+pnpm i
 pnpm run build
 cd ..
 mkdir -p cmd/fonu/web/dist
