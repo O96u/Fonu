@@ -107,6 +107,12 @@ func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.traffic.SnapshotForRules(rules))
 }
 
+func (h *ProxyHandler) TrafficSnapshot(w http.ResponseWriter,r *http.Request){
+ if h.traffic==nil{writeError(r,w,http.StatusServiceUnavailable,"流量采集器未启用");return}
+ rules,err:=h.svc.ListTrafficRules(r.Context());if err!=nil{writeError(r,w,http.StatusInternalServerError,"读取反向代理规则失败");return}
+ writeJSON(w,http.StatusOK,h.traffic.SnapshotAll(rules))
+}
+
 func (h *ProxyHandler) Clients(w http.ResponseWriter, r *http.Request) {
 	if h.traffic == nil {
 		writeJSON(w, http.StatusOK, []traffic.ClientConn{})

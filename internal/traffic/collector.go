@@ -253,12 +253,19 @@ func (c *Collector) pruneHost(st *hostState, now time.Time) {
 func (c *Collector) aggregateEndpoints(endpoints []proxy.Endpoint, now time.Time) (uploadTotal, downloadTotal int64, uploadRate, downloadRate float64, connections int) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.aggregateLocked(endpoints,now)
+}
+
+func (c *Collector) aggregateLocked(endpoints []proxy.Endpoint, now time.Time) (uploadTotal, downloadTotal int64, uploadRate, downloadRate float64, connections int) {
 
 	var upSamples, downSamples int64
-	 clientSet := map[string]time.Time{}
+	clientSet := map[string]time.Time{}
+	seenEndpoints:=map[string]bool{}
 
 	for _, ep := range endpoints {
 		key := EndpointKey(ep.Hostname, ep.Port)
+		if seenEndpoints[key]{continue}
+		seenEndpoints[key]=true
 		st, ok := c.hosts[key]
 		if !ok {
 			continue
@@ -315,6 +322,31 @@ func (c *Collector) SnapshotForRules(rules []proxy.Rule) []RuleTraffic {
 	return out
 }
 
+// A coherent snapshot of all rules and globally deduplicated endpoints/IPs.
+type Snapshot struct {
+ Rules []RuleTraffic `json:"rules"`
+ Total RuleTraffic `json:"total"`
+ SampledAt string `json:"sampled_at"`
+ ActiveWindowSeconds int `json:"active_window_seconds"`
+ RateWindowSeconds int `json:"rate_window_seconds"`
+}
+func (c *Collector) SnapshotAll(rules []proxy.Rule) Snapshot {
+ c.mu.RLock()
+ defer c.mu.RUnlock()
+ now:=time.Now()
+ out:=Snapshot{Rules:make([]RuleTraffic,0,len(rules)),SampledAt:now.UTC().Format(time.RFC3339Nano),ActiveWindowSeconds:int(activeWindow.Seconds()),RateWindowSeconds:int(rateWindow.Seconds())}
+ endpoints:=[]proxy.Endpoint{}
+ for _,r:=range rules{
+  eps:=r.Endpoints()
+  endpoints=append(endpoints,eps...)
+  up,down,ur,dr,n:=c.aggregateLocked(eps,now)
+  out.Rules=append(out.Rules,RuleTraffic{RuleID:r.ID,UploadTotal:up,DownloadTotal:down,UploadRate:ur,DownloadRate:dr,Connections:n})
+ }
+ up,down,ur,dr,n:=c.aggregateLocked(endpoints,now)
+ out.Total=RuleTraffic{UploadTotal:up,DownloadTotal:down,UploadRate:ur,DownloadRate:dr,Connections:n}
+ return out
+}
+
 func (c *Collector) ClientsForRule(rule proxy.Rule) []ClientConn {
 	now := time.Now()
 	activeCutoff := now.Add(-activeWindow)
@@ -343,6 +375,7 @@ func (c *Collector) ClientsForRule(rule proxy.Rule) []ClientConn {
 		out = append(out, ClientConn{IP: ip, LastSeen: seen.UTC().Format(time.RFC3339)})
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].LastSeen==out[j].LastSeen{return out[i].IP<out[j].IP}
 		return out[i].LastSeen > out[j].LastSeen
 	})
 	return out
