@@ -16,6 +16,8 @@
                 <button
                   type="button"
                   class="proxy-entry-card__toggle"
+                  :aria-expanded="!collapsed"
+                  :aria-label="collapsed?'展开入口':'收起入口'"
                   @click="emit('toggle')"
                 >
                   <n-icon :component="collapsed ? ChevronForwardOutline : ChevronDownOutline" />
@@ -30,7 +32,7 @@
                 >
                   <div class="proxy-entry-card__title-row">
                     <span class="proxy-entry-card__name">{{ entryGroupDisplayName(group) }}</span>
-                    <n-tag size="small" round :bordered="false" type="info">{{ group.listen.listen_port }}</n-tag>
+                    <n-tag size="small" round :bordered="false">{{ group.listen.listen_port }}</n-tag>
                     <n-tag size="small" round :bordered="false" :type="group.listen.https_enabled ? 'success' : 'default'">
                       {{ group.listen.https_enabled ? 'HTTPS' : 'HTTP' }}
                     </n-tag>
@@ -350,4 +352,14 @@ const emit=defineEmits<{toggle:[];create:[];discover:[];edit:[];duplicate:[];del
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) { color:var(--fonu-brand-hover); background:var(--fonu-brand-soft); }
 @media(min-width:960px){.proxy-entry-card__stats{display:flex}}
 @media(max-width:760px){.proxy-entry-card__head{flex-wrap:wrap}.proxy-entry-card__intro{flex:1 1 150px}.proxy-entry-card__actions{max-width:100%}}
+
+.proxy-entry-card__head{background:var(--fonu-surface);gap:8px}
+.proxy-entry-card:not(.proxy-entry-card--collapsed) .proxy-entry-card__head{background:var(--fonu-bg-muted)}
+.proxy-entry-card__name{font-size:14px;font-weight:600}
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--danger){color:var(--fonu-text-secondary)}
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--danger:hover){color:var(--fonu-error)}
+.proxy-entry-card__actions :deep(.proxy-entry-card__action-btn){width:28px;height:28px}
+.proxy-entry-card__stats{font-variant-numeric:tabular-nums}
+.proxy-entry-card__toggle:focus-visible{outline:2px solid var(--fonu-brand)}
+@media(max-width:760px){.proxy-entry-card__head{padding:9px 8px;gap:5px}.proxy-entry-card__intro{flex:1 1 140px}.proxy-entry-card__actions{flex:1 1 100%;display:flex;justify-content:flex-end}.proxy-entry-card__title-row{gap:4px}}
 </style>

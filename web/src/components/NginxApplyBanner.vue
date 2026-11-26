@@ -1,5 +1,5 @@
 <template>
-  <n-alert v-if="status && status.state !== 'unknown'" :type="kind" :title="title" style="margin-bottom: 16px">
+  <n-alert v-if="status && status.state !== 'unknown' && status.state !== 'confirmed'" :type="kind" :title="title" style="margin-bottom: 16px">
     <div v-if="status.last_error">{{ status.last_error }}</div>
     <div v-if="status.desired_revision">目标版本：{{ status.desired_revision.slice(0, 12) }}</div>
     <div v-if="status.confirmed_revision">已确认 worker 版本：{{ status.confirmed_revision.slice(0, 12) }}</div>
@@ -13,6 +13,13 @@
       </div>
     </details>
   </n-alert>
+  <details v-else-if="status?.state==='confirmed'" class="apply-compact">
+    <summary><span class="apply-dot"/>Nginx 配置已确认 <span class="apply-version">{{ status.confirmed_revision?.slice(0,8) }}</span><span class="apply-expand">发布记录</span></summary>
+    <div class="apply-history">
+      <div v-for="(item,index) in status.history?.slice(0,5)" :key="item.created_at+'-'+index" class="apply-history__row"><span>{{ historyLabel(item.state) }}</span><span>{{ item.revision?.slice(0,12) || '—' }}</span><span>{{ formatDate(item.created_at) }}</span></div>
+      <div v-if="!status.history?.length">暂无发布记录</div>
+    </div>
+  </details>
 </template>
 
 <script setup lang="ts">
@@ -64,4 +71,9 @@ onUnmounted(stop)
 .apply-history{margin-top:6px}
 .apply-history summary{cursor:pointer}
 .apply-history__row{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:6px 0}
+.apply-compact{margin-bottom:12px;border:1px solid var(--fonu-border);border-radius:var(--fonu-radius);background:var(--fonu-surface);padding:8px 12px;color:var(--fonu-text-secondary);font-size:12px}
+.apply-compact summary{cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
+.apply-dot{width:7px;height:7px;background:var(--fonu-success);border-radius:50%;flex-shrink:0}
+.apply-version{font-family:var(--fonu-mono)}
+.apply-expand{margin-left:auto;color:var(--fonu-brand-text)}
 </style>

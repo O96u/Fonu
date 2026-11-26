@@ -1,13 +1,21 @@
 <template>
   <PageHeader
     title="反向代理"
-    description="通过 Nginx 反向代理，让内网服务可以通过域名安全访问"
+    description="管理监听入口、域名和内网服务"
   >
     <template #actions>
-      <n-button type="primary" @click="openEntryCreate">
+      <n-button @click="openEntryCreate">
         <template #icon><n-icon :component="AddOutline" /></template>
         新建入口
       </n-button>
+      <n-popover v-if="entryGroups.length > 1" trigger="click" placement="bottom-end">
+        <template #trigger><n-button type="primary"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button></template>
+        <div class="proxy-entry-picker">
+          <span class="text-secondary">选择监听入口</span>
+          <n-button v-for="group in entryGroups" :key="group.key" block quaternary @click="openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
+        </div>
+      </n-popover>
+      <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button>
     </template>
   </PageHeader>
   <NginxApplyBanner />
@@ -17,8 +25,9 @@
   <template v-else>
     <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" />
 
-    <div class="proxy-layout">
-      <FonuCard flush class="proxy-panel" title="代理入口与规则">
+    <div ref="layoutRef" class="proxy-layout">
+      <FonuCard flush class="proxy-panel" title="代理规则">
+        <template #header><span class="proxy-result-count">{{ filteredRules.length }} / {{ rules.length }} 条规则 · {{ entryGroups.length }} 个入口</span></template>
         <ProxyToolbar
           v-model:search="search"
           v-model:status-filter="statusFilter"
@@ -26,6 +35,12 @@
           :status-options="statusOptions"
           :https-options="httpsOptions"
           :loading="loading"
+          v-model:view-mode="viewMode"
+          :grouped="showEntryGroups"
+          :can-expand="visibleEntryGroups.length > 0"
+          :all-expanded="allEntriesExpanded"
+          @toggle-all="toggleAllEntries"
+          @clear="clearFilters"
           @refresh="refreshAll"
         />
 
@@ -33,14 +48,14 @@
           <n-spin size="medium" />
         </div>
 
-        <template v-else-if="showEntryGroups && entryGroups.length > 0">
+        <template v-else-if="showEntryGroups && visibleEntryGroups.length > 0">
           <div
             ref="entryStackRef"
             class="proxy-entry-stack"
             :class="{ 'proxy-entry-stack--sortable': canReorderEntries }"
           >
             <ProxyEntryGroupCard
-              v-for="group in entryGroups"
+              v-for="group in visibleEntryGroups"
               :key="group.key"
               :group="group"
               :collapsed="isEntryCollapsed(group.key)"
@@ -60,6 +75,7 @@
                   nested
                   :sortable="canReorderInGroups && group.rules.length > 1"
                   :columns="entryGroupColumnsFor(group)"
+                  :compact="compactTable"
                   :data="group.rules"
                   :row-props="rowProps"
                 />
@@ -74,23 +90,23 @@
           </div>
         </template>
 
-        <template v-else-if="tableRules.length > 0">
+        <template v-else-if="!showEntryGroups && tableRules.length > 0">
           <div ref="tableWrapRef" class="proxy-table-wrap">
             <ProxyRuleTable
               
               :sortable="canReorderGlobally"
               :columns="columns"
               :data="tableRules"
-              :scroll-x="canReorderGlobally ? 1460 : 1420"
+              :compact="compactTable"
               :row-props="rowProps"
             />
           </div>
         </template>
 
         <EmptyState
-          v-else-if="rules.length === 0"
+          v-else-if="rules.length === 0 && entries.length === 0"
           title="还没有反向代理规则"
-          description="同一内网服务多个域名：一条规则多行域名即可。同一端口多个不同服务：先建入口，再在同一入口下新增规则。"
+          description="先新建监听入口，或直接新增规则。一个入口可以管理多个内网服务。"
         >
           <template #action>
             <n-button type="primary" @click="openEntryCreate">新建入口</n-button>
@@ -101,7 +117,7 @@
           v-else
           title="没有匹配的规则"
           description="试试调整搜索关键词或筛选条件。"
-        />
+        ><template #action><n-button @click="clearFilters">清除筛选</n-button></template></EmptyState>
       </FonuCard>
     </div>
   </template>
@@ -458,6 +474,7 @@ import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
+import ServiceFavicon from '../components/ServiceFavicon.vue'
 import ProxyToolbar from '../components/proxy/ProxyToolbar.vue'
 import ProxyEntryEditor from '../components/proxy/ProxyEntryEditor.vue'
 import ProxyDiscovery from '../components/proxy/ProxyDiscovery.vue'
@@ -588,6 +605,22 @@ const editing = ref<ProxyRule | null>(null)
 const search = ref('')
 const statusFilter = ref<string | null>(null)
 const httpsFilter = ref<string | null>(null)
+type ViewMode = 'grouped' | 'flat'
+function readViewMode(): ViewMode { try { return localStorage.getItem('fonu.proxy.view') === 'flat' ? 'flat' : 'grouped' } catch { return 'grouped' } }
+const viewMode = ref<ViewMode>(readViewMode())
+watch(viewMode, value => { try { localStorage.setItem('fonu.proxy.view',value) } catch { /* storage unavailable */ } })
+const layoutRef = ref<HTMLElement | null>(null)
+const compactTable = ref(false)
+let layoutObserver: ResizeObserver | undefined
+watch(layoutRef, el => {
+  layoutObserver?.disconnect()
+  if (!el) return
+  compactTable.value = el.clientWidth < 820
+  if (typeof ResizeObserver !== 'undefined') {
+    layoutObserver = new ResizeObserver(([entry]) => { if (entry) compactTable.value = entry.contentRect.width < 820 })
+    layoutObserver.observe(el)
+  }
+}, { flush: 'post' })
 const selectedRuleId = ref<number | null>(null)
 const showDetailPanel = ref(false)
 const detailTab = ref<'overview' | 'logs' | 'nginx'>('overview')
@@ -624,8 +657,8 @@ function defaultListenPort(httpsEnabled: boolean) {
 }
 
 const statusOptions = [
-  { label: '运行中', value: 'enabled' },
-  { label: '已停止', value: 'disabled' },
+  { label: '已启用', value: 'enabled' },
+  { label: '已停用', value: 'disabled' },
 ]
 const httpsOptions = [
   { label: 'HTTPS', value: 'on' },
@@ -672,54 +705,63 @@ const trafficTotals = computed(() => {
   return { upload, download, uploadRate, downloadRate, connections }
 })
 
-const showEntryGroups = computed(
-  () =>
-    !search.value.trim() &&
-    !statusFilter.value &&
-    !httpsFilter.value &&
-    (entries.value.length > 0 || rules.value.length > 0),
-)
-
-const canReorder = computed(
-  () => !search.value.trim() && !statusFilter.value && !httpsFilter.value && rules.value.length > 1,
-)
-
+const showEntryGroups = computed(() => viewMode.value === 'grouped')
+const hasFilters = computed(() => !!(search.value.trim() || statusFilter.value || httpsFilter.value))
+const canReorder = computed(() => !hasFilters.value && !reordering.value && rules.value.length > 1)
 const canReorderGlobally = computed(() => canReorder.value && !showEntryGroups.value)
 const canReorderInGroups = computed(() => canReorder.value && showEntryGroups.value)
-const canReorderEntries = computed(
-  () =>
-    canReorderInGroups.value &&
-    entries.value.length > 0 &&
-    entryGroups.value.length > 1 &&
-    entryGroups.value.every((group) => group.entryId != null) &&
-    entryGroups.value.length === entries.value.length,
-)
-
-const filteredRules = computed(() =>
-  rules.value.filter((rule) => {
-    const q = search.value.toLowerCase()
-    const hostText = ruleHosts(rule).join(' ').toLowerCase()
-    const name = (rule.name ?? '').toLowerCase()
-    if (q && !hostText.includes(q) && !rule.upstream.toLowerCase().includes(q) && !name.includes(q)) return false
-    if (statusFilter.value === 'enabled' && !rule.enabled) return false
-    if (statusFilter.value === 'disabled' && rule.enabled) return false
-    if (httpsFilter.value === 'on' && !rule.https_enabled) return false
-    if (httpsFilter.value === 'off' && rule.https_enabled) return false
-    return true
-  }),
-)
+const canReorderEntries = computed(() => !hasFilters.value && !reordering.value && showEntryGroups.value &&
+  entries.value.length > 1 && entryGroups.value.length === entries.value.length &&
+  entryGroups.value.every(group => group.entryId != null))
 
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
-
+const ruleEntryNames = computed(() => {
+  const names = new Map<number,string>()
+  for (const group of entryGroups.value) for (const rule of group.rules) names.set(rule.id,entryGroupDisplayName(group))
+  return names
+})
+const filteredRules = computed(() => rules.value.filter(rule => {
+  const q = search.value.trim().toLowerCase()
+  const haystack = [rule.name, rule.upstream, ruleHosts(rule).join(' '), ruleEntryNames.value.get(rule.id), String(rule.listen_port)].join(' ').toLowerCase()
+  if (q && !haystack.includes(q)) return false
+  if (statusFilter.value === 'enabled' && !rule.enabled) return false
+  if (statusFilter.value === 'disabled' && rule.enabled) return false
+  if (httpsFilter.value === 'on' && !rule.https_enabled) return false
+  if (httpsFilter.value === 'off' && rule.https_enabled) return false
+  return true
+}))
+const visibleEntryGroups = computed(() => {
+  if (!hasFilters.value) return entryGroups.value
+  const ids = new Set(filteredRules.value.map(rule => rule.id))
+  return entryGroups.value.map(group => {
+    const matched = group.rules.filter(rule => ids.has(rule.id))
+    return {...group,rules:matched,enabledCount:matched.filter(rule=>rule.enabled).length}
+  }).filter(group => group.rules.length > 0)
+})
+// Filtering uses a temporary expansion state, never overwrites the user's normal groups.
+const filterCollapsedKeys = ref(new Set<string>())
+watch([search,statusFilter,httpsFilter], () => { filterCollapsedKeys.value = new Set() })
 function isEntryCollapsed(key: string): boolean {
-  return !expandedEntryKeys.value.has(key)
+  return hasFilters.value ? filterCollapsedKeys.value.has(key) : !expandedEntryKeys.value.has(key)
 }
-
 function toggleEntryCollapsed(key: string) {
-  const next = new Set(expandedEntryKeys.value)
+  const target = hasFilters.value ? filterCollapsedKeys : expandedEntryKeys
+  const next = new Set(target.value)
   if (next.has(key)) next.delete(key)
   else next.add(key)
-  expandedEntryKeys.value = next
+  target.value = next
+}
+const allEntriesExpanded = computed(() => visibleEntryGroups.value.length > 0 && visibleEntryGroups.value.every(group => !isEntryCollapsed(group.key)))
+function toggleAllEntries() {
+  const keys = visibleEntryGroups.value.map(group => group.key)
+  if (hasFilters.value) filterCollapsedKeys.value = new Set(allEntriesExpanded.value ? keys : [])
+  else expandedEntryKeys.value = new Set(allEntriesExpanded.value ? [] : keys)
+}
+function clearFilters() { search.value='';statusFilter.value=null;httpsFilter.value=null }
+function openQuickCreate() {
+  const group=entryGroups.value[0]
+  if(group) openCreateWithEntry(group.listen,group.entryId)
+  else openCreateWithEntry({listen_port:nginxHttpsPort.value,https_enabled:true,http_redirect:true,listen_ipv4:true,listen_ipv6:false})
 }
 
 function entryGroupTraffic(group: ProxyEntryGroup) {
@@ -1536,31 +1578,6 @@ function defaultRuleNameForHost(host: string): string {
   return parseHostname(trimmed) || trimmed
 }
 
-function renderEntryGroupRuleNameCell(rule: ProxyRule, _group: ProxyEntryGroup): VNode {
-  const label = ruleName(rule)
-  return h('div', { class: 'domain-cell domain-cell--compact' }, [
-    h('div', { class: 'domain-cell__main domain-cell__main--one-line', title: label }, label),
-  ])
-}
-
-function renderEntryGroupFrontendCell(rule: ProxyRule): VNode {
-  const hosts = ruleHosts(rule)
-  if (hosts.length === 0) {
-    return h('span', { class: 'text-muted' }, '—')
-  }
-  const text = hosts.join('、')
-  const links = renderDomainAccessLinks(rule, {
-    displayHostOnly: true,
-    showWhenSingleHost: true,
-  })
-  if (links) {
-    return h('div', { class: 'domain-cell domain-cell--compact domain-cell--hosts' }, [links])
-  }
-  return h('div', { class: 'domain-cell domain-cell--compact domain-cell--hosts' }, [
-    h('span', { class: 'domain-cell__hosts-line mono text-secondary', title: text }, text),
-  ])
-}
-
 function parseHostname(line: string): string {
   const raw = line.trim()
   if (!raw) return ''
@@ -1627,9 +1644,9 @@ function findHostConflict(
 function renderProtocol(row: ProxyRule): VNode {
   const tags: VNode[] = []
   if (row.https_enabled) {
-    tags.push(h(NTag, { size: 'small', type: 'info', bordered: false, round: true }, () => 'HTTPS'))
+    tags.push(h(NTag, { size: 'small', type: 'success', bordered: false }, () => 'HTTPS'))
   } else {
-    tags.push(h(NTag, { size: 'small', type: 'success', bordered: false, round: true }, () => 'HTTP'))
+    tags.push(h(NTag, { size: 'small', bordered: false }, () => 'HTTP'))
   }
   return h('div', { class: 'proto-tags' }, tags)
 }
@@ -1661,185 +1678,67 @@ function renderRuleEnabledSwitch(row: ProxyRule): VNode {
         size: 'small',
         loading: togglingRuleId.value === row.id,
         onUpdateValue: (enabled: boolean) => toggleRuleEnabled(row, enabled),
-        'aria-label': row.enabled ? '启用规则' : '停用规则',
+        'aria-label': row.enabled ? '停用规则' : '启用规则',
       }),
     ],
   )
 }
 
-const columns = computed<DataTableColumns<ProxyRule>>(() => {
-  const cols: DataTableColumns<ProxyRule> = []
-
-  if (canReorderGlobally.value) {
-    cols.push({
-      title: '',
-      key: 'sort',
-      width: 40,
-      render: () =>
-        h('span', { class: 'proxy-drag-handle', title: '拖动排序' }, [
-          h(NIcon, { component: ReorderThreeOutline, size: 16 }),
-        ]),
-    })
+function renderServiceCell(row: ProxyRule, nested: boolean): VNode {
+  return h('div',{class:'proxy-service-cell'},[
+    h(ServiceFavicon,{ruleId:row.id}),
+    h('div',{class:'proxy-service-cell__content'},[
+      h('button',{type:'button',class:'proxy-service-name',title:ruleName(row),onClick:()=>openDetail(row)},ruleName(row)),
+      renderDomainAccessLinks(row,{displayHostOnly:true,showWhenSingleHost:true}),
+      !nested && h('span',{class:'proxy-service-entry'},ruleEntryNames.value.get(row.id) ?? listenLabel(row)),
+    ]),
+  ])
+}
+function renderTrafficCell(row:ProxyRule):VNode {
+  const traffic=trafficByRule.value[row.id]
+  return h('div',{class:'proxy-cell-lines proxy-traffic-cell'},[
+    h('span',{title:'当前上传 / 下载'},'↑ '+formatRate(traffic?.upload_rate ?? 0)+'  ↓ '+formatRate(traffic?.download_rate ?? 0)),
+    h('span',{class:'proxy-cell-muted',title:'累计上传 / 下载'},'↑ '+formatBytes(traffic?.upload_total ?? 0)+'  ↓ '+formatBytes(traffic?.download_total ?? 0)),
+    h('span',{class:'proxy-cell-muted'},'近期访问 IP '+String(traffic?.connections ?? 0)),
+  ])
+}
+function renderSecurityCell(row:ProxyRule):VNode {
+  const tags=securityTags(row)
+  return h('div',{class:'proxy-security-tags'},tags.length?tags.map(tag=>h(NTag,{size:'small',bordered:false},{default:()=>tag})): [h('span',{class:'proxy-cell-muted'},'—')])
+}
+function renderActions(row:ProxyRule):VNode {
+  return renderTableRowActions([
+    {label:'详情',icon:InformationCircleOutline,onClick:()=>openDetail(row)},
+    {label:'编辑',icon:CreateOutline,type:'primary',onClick:()=>openEdit(row)},
+    {label:'复制',icon:CopyOutline,onClick:()=>openDuplicate(row)},
+    {label:'删除',icon:TrashOutline,type:'error',onClick:()=>confirmDelete(row)},
+  ])
+}
+function makeColumns(nested:boolean, sortable:boolean):DataTableColumns<ProxyRule>{
+  const cols:DataTableColumns<ProxyRule>=[]
+  if(sortable)cols.push({title:'',key:'sort',width:30,render:()=>h('span',{class:'proxy-drag-handle',title:'拖动排序'},[h(NIcon,{component:ReorderThreeOutline,size:16})])})
+  if(compactTable.value){
+    cols.push({title:'服务 / 域名 / 目标',key:'service',render:row=>h('div',{class:'proxy-mobile-service'},[
+      renderServiceCell(row,nested),
+      h('div',{class:'proxy-mobile-meta'},[h('span',{class:'proxy-target',title:row.upstream},row.upstream),renderProtocol(row),h('span',{class:'proxy-cell-muted'},listenLabel(row))]),
+      renderSecurityCell(row),renderTrafficCell(row)
+    ])},
+    {title:'状态 / 操作',key:'actions',width:116,render:row=>h('div',{class:'proxy-mobile-actions'},[renderRuleEnabledSwitch(row),renderActions(row)])})
+    return cols
   }
-
-  cols.push({
-    title: '名称',
-    key: 'name',
-    minWidth: 260,
-    render: (row) =>
-      h('div', { class: 'domain-cell' }, [
-        h('div', { class: 'domain-cell__main' }, ruleName(row)),
-        renderDomainAccessLinks(row),
-      ]),
-  })
-
   cols.push(
-  {
-    title: '监听端口',
-    key: 'listen_port',
-    width: 128,
-    render: (row) => h('span', { class: 'mono text-secondary' }, listenLabel(row)),
-  },
-  {
-    title: '目标地址',
-    key: 'upstream',
-    minWidth: 180,
-    render: (row) => h('span', { class: 'mono text-secondary' }, row.upstream),
-  },
-  {
-    title: '协议',
-    key: 'https_enabled',
-    width: 88,
-    render: (row) => renderProtocol(row),
-  },
-  {
-    title: '安全',
-    key: 'security',
-    width: 120,
-    render: (row) => {
-      const tags = securityTags(row)
-      if (tags.length === 0) return h('span', { class: 'text-muted' }, '—')
-      return h(
-        'div',
-        { class: 'proxy-security-tags' },
-        tags.map((tag) => h(NTag, { size: 'small', bordered: false, round: true }, { default: () => tag })),
-      )
-    },
-  },
-  {
-    title: '状态',
-    key: 'enabled',
-    width: 72,
-    render: (row) => renderRuleEnabledSwitch(row),
-  },
-  {
-    title: '当前连接',
-    key: 'connections',
-    width: 88,
-    render: (row) => h('span', { class: 'mono' }, String(trafficByRule.value[row.id]?.connections ?? 0)),
-  },
-  {
-    title: '当前上传',
-    key: 'upload_rate',
-    width: 96,
-    render: (row) => h('span', { class: 'mono text-secondary' }, formatRate(trafficByRule.value[row.id]?.upload_rate ?? 0)),
-  },
-  {
-    title: '当前下载',
-    key: 'download_rate',
-    width: 96,
-    render: (row) => h('span', { class: 'mono text-secondary' }, formatRate(trafficByRule.value[row.id]?.download_rate ?? 0)),
-  },
-  {
-    title: '总上传',
-    key: 'upload_total',
-    width: 96,
-    render: (row) => h('span', { class: 'mono' }, formatBytes(trafficByRule.value[row.id]?.upload_total ?? 0)),
-  },
-  {
-    title: '总下载',
-    key: 'download_total',
-    width: 96,
-    render: (row) => h('span', { class: 'mono' }, formatBytes(trafficByRule.value[row.id]?.download_total ?? 0)),
-  },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 208,
-      fixed: 'right',
-      render: (row) =>
-        renderTableRowActions([
-          { label: '复制', onClick: () => openDuplicate(row) },
-          { label: '详情', onClick: () => openDetail(row) },
-          { label: '编辑', type: 'primary', onClick: () => openEdit(row) },
-          { label: '删除', type: 'error', onClick: () => confirmDelete(row) },
-        ]),
-    },
+    {title:'服务 / 前端域名',key:'name',minWidth:190,render:row=>renderServiceCell(row,nested)},
+    {title:'目标地址',key:'upstream',minWidth:130,render:row=>h('div',{class:'proxy-cell-lines'},[h('span',{class:'proxy-target',title:row.upstream},row.upstream),...(!nested?[h('span',{class:'proxy-cell-muted'},listenLabel(row))]:[])])},
+    {title:'协议 / 安全',key:'security',width:112,render:row=>h('div',{class:'proxy-cell-lines'},[renderProtocol(row),renderSecurityCell(row)])},
+    {title:'流量',key:'traffic',width:160,render:renderTrafficCell},
+    {title:'启用',key:'enabled',width:62,render:renderRuleEnabledSwitch},
+    {title:'操作',key:'actions',width:132,render:renderActions},
   )
-
   return cols
-})
-
-function entryGroupColumnsFor(group: ProxyEntryGroup): DataTableColumns<ProxyRule> {
-  const cols = columns.value
-    .filter((col) => {
-      if (!('key' in col)) return true
-      const key = String(col.key ?? '')
-      return key !== 'listen_port' && key !== 'https_enabled'
-    })
-    .map((col) => {
-      if ('key' in col && col.key === 'name') {
-        return {
-          ...col,
-          title: '名称',
-          width: 200,
-          minWidth: 160,
-          render: (row: ProxyRule) => renderEntryGroupRuleNameCell(row, group),
-        }
-      }
-      if ('key' in col && col.key === 'actions') {
-        return {
-          ...col,
-          width: 148,
-          render: (row: ProxyRule) =>
-            renderTableRowActions([
-              { label: '复制', icon: CopyOutline, onClick: () => openDuplicate(row) },
-              { label: '详情', icon: InformationCircleOutline, onClick: () => openDetail(row) },
-              { label: '编辑', icon: CreateOutline, type: 'primary', onClick: () => openEdit(row) },
-              { label: '删除', icon: TrashOutline, type: 'error', onClick: () => confirmDelete(row) },
-            ]),
-        }
-      }
-      return col
-    })
-
-  const nameIdx = cols.findIndex((col) => 'key' in col && col.key === 'name')
-  const frontendCol: DataTableColumns<ProxyRule>[number] = {
-    title: '前端域名',
-    key: 'frontend_hosts',
-    minWidth: 168,
-    render: (row: ProxyRule) => renderEntryGroupFrontendCell(row),
-  }
-  if (nameIdx >= 0) {
-    cols.splice(nameIdx + 1, 0, frontendCol)
-  } else {
-    cols.unshift(frontendCol)
-  }
-
-  if (!canReorderInGroups.value || group.rules.length < 2) return cols
-
-  return [
-    {
-      title: '',
-      key: 'sort',
-      width: 40,
-      render: () =>
-        h('span', { class: 'proxy-drag-handle', title: '拖动排序' }, [
-          h(NIcon, { component: ReorderThreeOutline, size: 16 }),
-        ]),
-    },
-    ...cols,
-  ]
+}
+const columns=computed(()=>makeColumns(false,canReorderGlobally.value))
+function entryGroupColumnsFor(group:ProxyEntryGroup):DataTableColumns<ProxyRule>{
+  return makeColumns(true,canReorderInGroups.value && group.rules.length>1)
 }
 
 function isLogAtBottom(el: HTMLElement): boolean {
@@ -2310,7 +2209,7 @@ async function setupEntryStackSortable() {
 async function setupRowSortable() {
   destroyRowSortable()
   destroyEntryStackSortable()
-  if (!canReorder.value) return
+  if (!canReorder.value && !canReorderEntries.value) return
   await nextTick()
 
   if (canReorderGlobally.value) {
@@ -2326,11 +2225,11 @@ async function setupRowSortable() {
     return
   }
 
-  if (!canReorderInGroups.value) return
+  if (!canReorderInGroups.value) { await setupEntryStackSortable(); return }
 
   for (const group of entryGroups.value) {
     if (group.rules.length < 2) continue
-    const body = document.querySelector(
+    const body = entryStackRef.value?.querySelector(
       `.proxy-entry-card__body[data-entry-key="${CSS.escape(group.key)}"] .n-data-table-tbody`,
     ) as HTMLElement | null
     if (!body) continue
@@ -2348,7 +2247,7 @@ async function setupRowSortable() {
   await setupEntryStackSortable()
 }
 
-watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys], () => {
+watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable], () => {
   void setupRowSortable()
 })
 
@@ -2467,6 +2366,7 @@ onMounted(async () => {
   startTrafficPoll()
 })
 onUnmounted(() => {
+  layoutObserver?.disconnect()
   destroyRowSortable()
   destroyEntryStackSortable()
   stopLogStream()
@@ -2857,7 +2757,7 @@ onUnmounted(() => {
 
 .proxy-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  min-width: 0;
 }
 
 .proxy-table { width: 100%; }
@@ -3703,4 +3603,13 @@ onUnmounted(() => {
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent) { color:var(--fonu-brand); }
 .proxy-entry-card__actions :deep(.proxy-entry-card__action-btn--accent:hover) { color:var(--fonu-brand-hover); background:var(--fonu-brand-soft); }
 @media(max-width:760px) { .proxy-entry-card__head { flex-wrap:wrap; } .proxy-entry-card__intro { flex:1 1 150px; } .proxy-entry-card__actions { max-width:100%; } }
+
+.proxy-layout { width:100%; min-width:0; }
+.proxy-entry-stack { padding:12px; gap:10px; }
+.proxy-entry-card__body { min-width:0; }
+.proxy-result-count { font-size:12px; color:var(--fonu-text-secondary); }
+.proxy-entry-picker { display:grid; gap:6px; max-height:300px; overflow:auto; min-width:180px; }
+.proxy-panel :deep(.fonu-card__header) { align-items:center; padding:12px 14px; }
+.proxy-panel :deep(.fonu-card__body) { padding:0; }
+@media(max-width:760px){.proxy-entry-stack{padding:8px;gap:8px}}
 </style>
