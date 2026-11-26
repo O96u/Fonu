@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 统一主题配色：证书域名标签、申请步骤、反代流量与链接、FRP 功能图标、DNSHE 选中状态、备份入口及通用组件跟随主题色；保留正常、警告、错误与第三方品牌色。新增主题切换浏览器回归检查。
+
 ## [v2.0.0] - 2026-11-26
 
 ### 主要更新

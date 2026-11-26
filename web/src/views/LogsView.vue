@@ -539,11 +539,11 @@ function filterDetailIP() {
 }
 
 .logs-card :deep(.log-table .n-data-table-tr.log-row--error .n-data-table-td) {
-  background: color-mix(in srgb, #ef4444 7%, transparent);
+  background: color-mix(in srgb, var(--fonu-error) 7%, transparent);
 }
 
 .logs-card :deep(.log-table .n-data-table-tr.log-row--warn .n-data-table-td) {
-  background: color-mix(in srgb, #f59e0b 7%, transparent);
+  background: color-mix(in srgb, var(--fonu-warning) 7%, transparent);
 }
 
 .logs-card :deep(.log-table .n-data-table-tr.log-row:hover .n-data-table-td) {
@@ -636,12 +636,12 @@ function filterDetailIP() {
 }
 
 .log-duration--slow {
-  color: #d97706;
+  color: var(--fonu-warning);
   font-weight: 600;
 }
 
 .log-duration--critical {
-  color: #dc2626;
+  color: var(--fonu-error);
   font-weight: 600;
 }
 

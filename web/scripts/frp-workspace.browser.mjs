@@ -60,6 +60,29 @@ try {
   await page.getByTestId('frp-dashboard').waitFor({ state: 'visible' })
   await page.locator('.dash-web .dash-service-row').filter({ hasText: 'nas.example.com' }).waitFor()
   await page.locator('.dash-log-preview').filter({ hasText: 'login success' }).waitFor()
+  // Accent changes affect interaction icons, not semantic status indicators.
+  const accentTrigger=page.getByRole('button',{name:'主题颜色',exact:true})
+  const colors=()=>page.evaluate(()=>{
+    const root=getComputedStyle(document.documentElement)
+    const resolve=(token)=>{const el=document.createElement('span');el.style.color='var('+token+')';document.body.append(el);const c=getComputedStyle(el).color;el.remove();return c}
+    return {accent:document.documentElement.dataset.accent,brand:resolve('--fonu-brand-text'),success:resolve('--fonu-success'),warning:resolve('--fonu-warning'),error:resolve('--fonu-error'),icon:getComputedStyle(document.querySelector('.hero-kpi .n-icon')).color,heading:getComputedStyle(document.querySelector('.dash-heading h3 .n-icon')).color}
+  })
+  const initial=await colors()
+  const accents=[['ice','冰川蓝'],['teal','青蓝绿'],['forest','经典翠绿'],['blue','科技蓝'],['purple','星空紫'],['orange','暖橙色'],['graphite','石墨灰'],['brand','经典品牌绿']]
+  for(const [value,label] of accents){
+    const choice=page.locator('.appearance-grid button').filter({hasText:label})
+    if(!await choice.isVisible())await accentTrigger.click()
+    await choice.click()
+    await page.waitForFunction(value=>document.documentElement.dataset.accent===value,value)
+    const c=await colors()
+    assert.equal(c.icon,c.brand,'FRP KPI icon follows '+value)
+    assert.equal(c.heading,c.brand,'FRP heading follows '+value)
+    assert.equal(c.success,initial.success)
+    assert.equal(c.warning,initial.warning)
+    assert.equal(c.error,initial.error)
+  }
+  await page.keyboard.press('Escape')
+  if(await page.locator('.appearance-grid').isVisible())await accentTrigger.click()
   const aligned = await page.locator('.dash-web, .dash-tcp').evaluateAll(els => els.map(el => el.getBoundingClientRect().bottom))
   assert.ok(Math.abs(aligned[0]-aligned[1]) < 2, 'FRP summary cards must align')
   assert.equal(await page.locator('.dash-web .dash-service-row, .dash-web .dash-preview-placeholder').count(), 3)

@@ -52,6 +52,27 @@ try {
   assert.ok(b.scrollWidth<=b.clientWidth+2,JSON.stringify(b))
   await page.screenshot({path:'ui-screenshots/dashboard-'+width+'.png',fullPage:true})
  }
+ // Test the actual overview icon and status badge while changing accent in place.
+ await page.setViewportSize({width:1100,height:800})
+ const statusColors=()=>page.evaluate(()=>{
+  const icon=document.querySelector('.stats-row .stat-card__icon')
+  const badge=document.querySelector('.stats-row .status-badge.success')
+  const target=document.createElement('span')
+  target.style.color='var(--fonu-brand-text)'
+  document.body.append(target)
+  const c={icon:getComputedStyle(icon).color,brand:getComputedStyle(target).color,status:getComputedStyle(badge).color}
+  target.remove()
+  return c
+ })
+ const initial=await statusColors()
+ await page.getByRole('button',{name:'主题颜色',exact:true}).click()
+ await page.locator('.appearance-grid button').filter({hasText:'石墨灰'}).click()
+ await page.waitForFunction(()=>document.documentElement.dataset.accent==='graphite')
+ const graphite=await statusColors()
+ assert.equal(graphite.icon,graphite.brand)
+ assert.notEqual(graphite.icon,initial.icon)
+ assert.equal(graphite.status,initial.status)
+ await page.screenshot({path:'ui-screenshots/dashboard-graphite.png',fullPage:true})
  assert.deepEqual(errors,[])
 } catch(e){if(page)await page.screenshot({path:'ui-screenshots/dashboard-failure.png',fullPage:true}).catch(()=>{});throw e}
 finally{await browser?.close();server.kill()}
