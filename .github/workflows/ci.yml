@@ -36,6 +36,22 @@ jobs:
         working-directory: web
       - run: pnpm run build
         working-directory: web
+      - name: Install isolated browser test runner
+        run: |
+          npm install --prefix "$RUNNER_TEMP/fonu-ui-test" --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/fonu-ui-test/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify reverse proxy workspace in real Chromium
+        working-directory: web
+        env:
+          FONU_UI_TEST_ROOT: ${{ runner.temp }}/fonu-ui-test
+        run: node scripts/proxy-workspace.browser.mjs
+      - name: Upload proxy workspace screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-workspace-ui
+          path: web/ui-screenshots/
+          if-no-files-found: ignore
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/
       - run: go vet ./...
       - name: Install Nginx for real runtime integration
