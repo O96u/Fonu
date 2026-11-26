@@ -40,7 +40,7 @@
           <div v-if="block.rules.length>1" class="child-header"><span>域名（独立规则）</span><span>目标地址</span><span>访问 IP</span><span>实时流量</span><span>累计流量</span><span>安全</span><span>状态</span><span>操作</span></div>
           <div v-for="rule in block.rules" :key="rule.id" class="rule-line" @dragover.stop.prevent @drop.stop.prevent="dropBlock([rule.id])">
             <span v-if="canDrag" draggable="true" class="drag-handle rule-drag" title="拖动独立规则排序" @dragstart.stop="startDrag($event,[rule.id])" @dragend="endDrag"><n-icon :component="ReorderThreeOutline"/></span>
-            <ProxyServiceRow :rule="rule" :name="ruleName(rule)" :hosts="ruleHosts(rule)" :tags="securityTags(rule)" :traffic="traffic[rule.id]" :groups="business.groups" :group-id="block.groupId" :access-url="accessUrl" :child="block.rules.length>1" :card="mode==='card'" :busy="togglingId===rule.id" :toggle-locked="togglingId!==null" @detail="emit('detail',rule)" @edit="emit('edit',rule)" @duplicate="emit('duplicate',rule)" @delete="emit('delete',rule)" @toggle="emit('toggle',rule,$event)" @assign="emit('change',{action:'assign',id:$event,rule_ids:[rule.id]})" @copy-link="emit('copy-link',$event)"/>
+            <ProxyServiceRow :rule="rule" :name="ruleName(rule)" :hosts="ruleHosts(rule)" :tags="securityTags(rule)" :traffic="traffic[rule.id]" :groups="business.groups" :group-id="block.groupId" :access-url="accessUrl" :child="block.rules.length>1" :card="mode==='card'" :busy="togglingId===rule.id" :toggle-locked="togglingId!==null" @detail="emit('detail',rule)" @edit="emit('edit',rule)" @duplicate="emit('duplicate',rule)" @delete="emit('delete',rule)" @toggle="emit('toggle',rule,$event)" @assign="changeBusiness({action:'assign',id:$event,rule_ids:[rule.id]})" @copy-link="emit('copy-link',$event)"/>
           </div>
         </template>
       </article>
@@ -58,8 +58,8 @@ import {buildServiceBlocks,sumServiceTraffic,moveServiceRules} from '../../utils
 import {formatBytes,formatRate} from '../../utils/format'
 import ServiceFavicon from '../ServiceFavicon.vue'
 import ProxyServiceRow from './ProxyServiceRow.vue'
-const props=defineProps<{rules:ProxyRule[];entries:ProxyEntry[];traffic:Record<number,ProxyTraffic>;business:ProxyBusinessState;loading:boolean;groupBusy:boolean;reordering:boolean;togglingId:number|null;ruleName:(r:ProxyRule)=>string;ruleHosts:(r:ProxyRule)=>string[];securityTags:(r:ProxyRule)=>string[];accessUrl:(r:ProxyRule,h:string)=>string}>()
-const emit=defineEmits<{refresh:[];create:[];detail:[r:ProxyRule];edit:[r:ProxyRule];duplicate:[r:ProxyRule];delete:[r:ProxyRule];toggle:[r:ProxyRule,v:boolean];change:[change:ProxyBusinessChange];'select-group':[id:number];'copy-link':[url:string];reorder:[rules:ProxyRule[]]}>()
+const props=defineProps<{rules:ProxyRule[];entries:ProxyEntry[];traffic:Record<number,ProxyTraffic>;business:ProxyBusinessState;loading:boolean;groupBusy:boolean;reordering:boolean;togglingId:number|null;ruleName:(r:ProxyRule)=>string;ruleHosts:(r:ProxyRule)=>string[];securityTags:(r:ProxyRule)=>string[];accessUrl:(r:ProxyRule,h:string)=>string;changeBusiness:(change:ProxyBusinessChange)=>Promise<boolean>}>()
+const emit=defineEmits<{refresh:[];create:[];detail:[r:ProxyRule];edit:[r:ProxyRule];duplicate:[r:ProxyRule];delete:[r:ProxyRule];toggle:[r:ProxyRule,v:boolean]; 'select-group':[id:number];'copy-link':[url:string];reorder:[rules:ProxyRule[]]}>()
 const dialog=useDialog()
 function readMode(){try{return localStorage.getItem('fonu.proxy.services.view')==='card'?'card':'list'}catch{return 'list'}}
 const mode=ref<'list'|'card'>(readMode());watch(mode,v=>{try{localStorage.setItem('fonu.proxy.services.view',v)}catch{/* unavailable */}})
@@ -86,11 +86,11 @@ function toggle(key:string){const next=new Set(opened.value);if(next.has(key))ne
 function domainCount(rules:ProxyRule[]){return rules.reduce((n,r)=>n+props.ruleHosts(r).length,0)}
 function sum(rules:ProxyRule[]){return sumServiceTraffic(rules,props.traffic)}
 function groupMenu(id:number):DropdownOption[]{return [{label:'移至未分组',key:'0',disabled:id===0},...props.business.groups.map(g=>({label:'移至 '+g.name,key:String(g.id),disabled:g.id===id}))]}
-function assignBlock(ids:number[],key:string|number){emit('change',{action:'assign',id:Number(key),rule_ids:ids})}
-function createGroup(){if(!newName.value.trim()||props.groupBusy)return;emit('change',{action:'create',name:newName.value.trim()});newName.value=''}
-function rename(id:number,name:string){const draft=ref(name);dialog.create({title:'重命名分组',content:()=>h(NInput,{value:draft.value,maxlength:60,'onUpdate:value':(v:string)=>draft.value=v}),positiveText:'保存',negativeText:'取消',onPositiveClick:()=>{if(!draft.value.trim())return false;emit('change',{action:'rename',id,name:draft.value.trim()})}})}
-function remove(id:number,name:string){dialog.warning({title:'删除分组「'+name+'」？',content:'规则将移至未分组，不会删除规则或重载 Nginx。',positiveText:'删除分组',negativeText:'取消',onPositiveClick:()=>emit('change',{action:'delete',id})})}
-function moveGroup(i:number,d:number){const ids=props.business.groups.map(g=>g.id);[ids[i],ids[i+d]]=[ids[i+d],ids[i]];emit('change',{action:'reorder',ids})}
+function assignBlock(ids:number[],key:string|number){void props.changeBusiness({action:'assign',id:Number(key),rule_ids:ids})}
+async function createGroup(){if(!newName.value.trim()||props.groupBusy)return;if(await props.changeBusiness({action:'create',name:newName.value.trim()}))newName.value=''}
+function rename(id:number,name:string){const draft=ref(name);dialog.create({title:'重命名分组',content:()=>h(NInput,{value:draft.value,maxlength:60,'onUpdate:value':(v:string)=>draft.value=v}),positiveText:'保存',negativeText:'取消',onPositiveClick:async()=>!!draft.value.trim()&&await props.changeBusiness({action:'rename',id,name:draft.value.trim()})})}
+function remove(id:number,name:string){dialog.warning({title:'删除分组「'+name+'」？',content:'规则将移至未分组，不会删除规则或重载 Nginx。',positiveText:'删除分组',negativeText:'取消',onPositiveClick:()=>props.changeBusiness({action:'delete',id})})}
+function moveGroup(i:number,d:number){const ids=props.business.groups.map(g=>g.id);[ids[i],ids[i+d]]=[ids[i+d],ids[i]];void props.changeBusiness({action:'reorder',ids})}
 const canDrag=computed(()=>!props.reordering&&!search.value.trim()&&status.value==='all'&&protocol.value==='all'&&entry.value===-1)
 const dragging=ref<number[]>([]),dragTarget=ref<string|null>(null)
 function startDrag(event:DragEvent,ids:number[]){if(!canDrag.value)return;dragging.value=ids;event.dataTransfer?.setData('text/plain',ids.join(','));if(event.dataTransfer)event.dataTransfer.effectAllowed='move'}

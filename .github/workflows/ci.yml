@@ -31,6 +31,9 @@ jobs:
       - name: Audit pnpm dependency vulnerabilities
         working-directory: web
         run: pnpm audit --audit-level=high
+      - name: Test proxy service visual grouping and order
+        run: node --test scripts/proxy-services.test.mjs
+        working-directory: web
       - run: pnpm run build
         working-directory: web
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/

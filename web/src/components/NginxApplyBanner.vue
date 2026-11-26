@@ -13,7 +13,7 @@
       </div>
     </details>
   </n-alert>
-  <details v-else-if="status?.state==='confirmed'" class="apply-compact">
+  <details v-else-if="status?.state==='confirmed'" class="apply-compact" :class="{'apply-compact--inline':compact}">
     <summary><span class="apply-dot"/>Nginx 配置已确认 <span class="apply-version">{{ status.confirmed_revision?.slice(0,8) }}</span><span class="apply-expand">发布记录</span></summary>
     <div class="apply-history">
       <div v-for="(item,index) in status.history?.slice(0,5)" :key="item.created_at+'-'+index" class="apply-history__row"><span>{{ historyLabel(item.state) }}</span><span>{{ item.revision?.slice(0,12) || '—' }}</span><span>{{ formatDate(item.created_at) }}</span></div>
@@ -28,6 +28,7 @@ import { NAlert } from 'naive-ui'
 import { api } from '../api/client'
 import type { NginxApplyStatus } from '../api/types'
 
+defineProps<{compact?:boolean}>()
 const status = ref<NginxApplyStatus | null>(null)
 const title = computed(() => ({
   unknown: '配置状态未知',
@@ -76,4 +77,6 @@ onUnmounted(stop)
 .apply-dot{width:7px;height:7px;background:var(--fonu-success);border-radius:50%;flex-shrink:0}
 .apply-version{font-family:var(--fonu-mono)}
 .apply-expand{margin-left:auto;color:var(--fonu-brand-text)}
+.apply-compact--inline{position:relative;margin:0;padding:6px 9px;background:var(--fonu-brand-soft);border:0;color:var(--fonu-brand-text)}
+.apply-compact--inline .apply-version{display:none}.apply-compact--inline .apply-history{position:absolute;z-index:15;top:100%;left:0;min-width:min(320px,75vw);padding:10px;background:var(--fonu-surface);border:1px solid var(--fonu-border);box-shadow:var(--fonu-shadow);border-radius:var(--fonu-radius)}
 </style>

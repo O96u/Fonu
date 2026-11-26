@@ -1,9 +1,7 @@
 <template>
-  <PageHeader
-    title="反向代理"
-    description="管理监听入口、域名和内网服务"
-  >
-    <template #actions>
+  <header class="service-page-header">
+    <div class="service-page-title"><h1>反向代理</h1><NginxApplyBanner compact/></div>
+    <div class="service-page-actions">
       <n-button @click="openDiscoveryModal(defaultEntryGroup)"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="showListenerManager=true">监听入口</n-button>
       <n-button @click="router.push({name:'settings'})">全局设置</n-button>
@@ -15,9 +13,8 @@
         </div>
       </n-popover>
       <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
-    </template>
-  </PageHeader>
-  <NginxApplyBanner />
+    </div>
+  </header>
 
   <LoadError v-if="loadError" :message="loadError" @retry="load" />
 
@@ -25,7 +22,7 @@
     <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" />
 
     <n-alert v-if="businessError" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
-    <ProxyServiceWorkspace :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled" @change="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder"/>
+    <ProxyServiceWorkspace :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled"  :change-business="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder"/>
   </template>
   <n-modal v-model:show="showListenerManager" transform-origin="center">
     <div class="listener-manager">
@@ -489,8 +486,7 @@ import FonuCard from '../components/FonuCard.vue'
 import ProxyAccessLogBox from '../components/ProxyAccessLogBox.vue'
 
 import LoadError from '../components/LoadError.vue'
-import PageHeader from '../components/PageHeader.vue'
-import NginxApplyBanner from '../components/NginxApplyBanner.vue'
+ import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
 import ProxyServiceWorkspace from '../components/proxy/ProxyServiceWorkspace.vue'
 import ServiceFavicon from '../components/ServiceFavicon.vue'
@@ -527,22 +523,32 @@ const showListenerManager=ref(false)
 const business=ref<ProxyBusinessState>({groups:[],members:[]})
 const businessError=ref('')
 const businessBusy=ref(false)
+let businessGeneration=0
 const activeBusinessGroup=ref(-1)
 const draftBusinessGroup=ref(0)
 const discoveryBusinessGroup=ref(0)
 async function loadBusiness(){
   if(businessBusy.value)return
-  try{business.value=await api.getProxyBusiness();businessError.value=''}catch(error){businessError.value=error instanceof Error?error.message:'读取业务分组失败'}
+  const generation=++businessGeneration
+  try{const next=await api.getProxyBusiness();if(generation===businessGeneration){business.value=next;businessError.value=''}}
+  catch(error){if(generation===businessGeneration)businessError.value=error instanceof Error?error.message:'读取业务分组失败'}
 }
-async function changeBusiness(change:ProxyBusinessChange){
-  if(businessBusy.value||businessError.value)return
+async function changeBusiness(change:ProxyBusinessChange):Promise<boolean>{
+  if(businessBusy.value||businessError.value)return false
   businessBusy.value=true
-  try{business.value=await api.changeProxyBusiness(change);message.success('业务分组已更新')}catch(error){message.error(error instanceof Error?error.message:'分组操作失败')}finally{businessBusy.value=false}
+  ++businessGeneration
+  try{business.value=await api.changeProxyBusiness(change);message.success('业务分组已更新');return true}
+  catch(error){message.error(error instanceof Error?error.message:'分组操作失败');return false}
+  finally{businessBusy.value=false}
 }
 async function assignSavedRules(saved:ProxyRule[],groupId:number){
   if(groupId<=0||!saved.length)return
+  if(businessBusy.value||businessError.value){message.warning('代理规则已保存，但业务分组尚未关联，可在列表中重新分组');return}
+  businessBusy.value=true
+  ++businessGeneration
   try{business.value=await api.changeProxyBusiness({action:'assign',id:groupId,rule_ids:saved.map(r=>r.id)})}
   catch{message.warning('代理规则已保存，但业务分组关联失败，可在列表中重新分组')}
+  finally{businessBusy.value=false}
 }
 function ruleBusinessGroup(id:number){return business.value.members.find(m=>m.rule_id===id)?.group_id??0}
 const dialog = useDialog()
@@ -3678,4 +3684,10 @@ onUnmounted(() => {
 .business-error{margin-bottom:12px}
 .listener-manager{width:min(1180px,96vw);max-height:88vh;overflow:auto;background:var(--fonu-surface);border:1px solid var(--fonu-border);border-radius:var(--fonu-radius);padding:14px;box-sizing:border-box}
 .listener-manager__header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}.listener-manager__header>div{flex:1 1 200px}.listener-manager__header h3{margin:0}.listener-manager__header p{font-size:12px;color:var(--fonu-text-secondary);margin:5px 0 0}
+
+.service-page-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--fonu-border)}
+.service-page-title,.service-page-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.service-page-title{flex:1 1 260px}.service-page-title h1{font-size:25px;line-height:1.25;font-weight:650;margin:0;color:var(--fonu-text)}
+.service-page-actions{justify-content:flex-end}
+@media(max-width:760px){.service-page-header{gap:8px;margin-bottom:12px}.service-page-title h1{font-size:21px}.service-page-actions{justify-content:flex-start;gap:6px}}
 </style>
