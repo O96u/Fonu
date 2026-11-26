@@ -8,13 +8,14 @@
               </n-empty>
             </template>
             <template v-else>
+              <n-alert v-if="ruleDirty" type="warning" :bordered="false">基础配置、安全策略或监听尚未保存。请先保存规则，再发布 Nginx 文本。</n-alert>
               <n-alert v-if="nginxEditMode === 'custom'" type="info" :bordered="false" class="nginx-pane-alert">
                 手动模式下，修改基础/安全设置后需先保存规则，再在此处同步 Nginx 文本。
               </n-alert>
               <div class="log-panel-head">
                 <div class="nginx-mode-toggle">
                   <n-button
-                    size="tiny"
+                    size="small"
                     quaternary
                     :type="nginxEditMode === 'auto' ? 'primary' : 'default'"
                     @click="emit('mode','auto')"
@@ -22,7 +23,7 @@
                     自动生成
                   </n-button>
                   <n-button
-                    size="tiny"
+                    size="small"
                     quaternary
                     :type="nginxEditMode === 'custom' ? 'primary' : 'default'"
                     @click="emit('mode','custom')"
@@ -33,18 +34,18 @@
                 <div class="log-panel-actions">
                   <n-button
                     v-if="nginxEditMode === 'custom'"
-                    size="tiny"
+                    size="small"
                     quaternary
                     type="primary"
                     :loading="nginxSaving"
-                    :disabled="!nginxDirty"
+                    :disabled="!nginxDirty||ruleDirty||nginxLoading"
                     @click="emit('save')"
                   >
                     保存 Nginx
                   </n-button>
                   <n-button
                     v-if="nginxEditMode === 'custom' && nginxBackups.length > 0"
-                    size="tiny"
+                    size="small"
                     quaternary
                     :loading="nginxSaving"
                     @click="emit('rollback')"
@@ -53,7 +54,7 @@
                   </n-button>
                   <n-button
                     v-if="nginxEditMode === 'custom' && nginxServerMode === 'custom'"
-                    size="tiny"
+                    size="small"
                     quaternary
                     :loading="nginxSaving"
                     @click="emit('reset')"
@@ -83,6 +84,7 @@ defineProps<{
  nginxEditMode:'auto'|'custom'
  nginxServerMode:'auto'|'custom'
  nginxDraft:string
+ ruleDirty:boolean
  nginxDirty:boolean
  nginxSaving:boolean
  nginxLoading:boolean
@@ -167,4 +169,5 @@ const emit=defineEmits<{basic:[];mode:[value:'auto'|'custom'];save:[];rollback:[
   display: block;
   width: 100%;
 }
+.proxy-modal__pane{padding:0!important;min-width:0}.proxy-modal__pane--nginx{min-height:0;gap:8px}.log-panel-head{flex-wrap:wrap}.nginx-editor-spin--modal{height:min(430px,48dvh);min-height:200px}
 </style>

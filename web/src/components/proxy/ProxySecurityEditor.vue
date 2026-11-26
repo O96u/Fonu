@@ -1,6 +1,6 @@
 <template>
   <div class="security-section">
-              <div class="security-header">
+              <div class="security-header" v-if="section==='security'">
                 <div class="security-header__row">
                   <div class="security-header__status">
                     <span class="security-header__status-label">已启用</span>
@@ -27,8 +27,8 @@
                 </p>
               </div>
 
-              <n-collapse :expanded-names="securityExpanded" @update:expanded-names="updateExpanded" class="security-collapse">
-                <n-collapse-item title="IP 访问控制" name="ip">
+              <n-collapse :expanded-names="section==='advanced'?['advanced']:securityExpanded" @update:expanded-names="updateExpanded" class="security-collapse">
+                <n-collapse-item title="IP 访问控制" name="ip" v-if="section==='security'">
                   <div class="security-panel">
                     <div class="security-option">
                       <div class="security-option__text">
@@ -78,7 +78,7 @@
                   </div>
                 </n-collapse-item>
 
-                <n-collapse-item title="认证" name="auth">
+                <n-collapse-item title="认证" name="auth" v-if="section==='security'">
                   <div class="security-panel">
                   <div class="security-option">
                     <div class="security-option__text">
@@ -120,7 +120,7 @@
                   </div>
                 </n-collapse-item>
 
-                <n-collapse-item title="流量控制" name="traffic">
+                <n-collapse-item title="流量控制" name="traffic" v-if="section==='security'">
                   <div class="security-panel">
                   <div class="security-option">
                     <div class="security-option__text">
@@ -153,12 +153,12 @@
                   </div>
                 </n-collapse-item>
 
-                <n-collapse-item title="高级" name="advanced">
+                <n-collapse-item v-if="section==='advanced'" title="上游与响应设置" name="advanced">
                   <div class="security-panel">
                   <div class="security-option">
                     <div class="security-option__text">
                       <div class="security-option__label">忽略后端 TLS 证书</div>
-                      <div class="security-option__hint">上游为自签 https:// 时使用</div>
+                      <div class="security-option__hint">仅在明确接受自签证书风险时使用；默认验证上游 TLS 证书。</div>
                     </div>
                     <n-switch :value="form.proxy_ssl_verify_off" @update:value="emit('patch', { proxy_ssl_verify_off: Boolean($event) })" size="small" />
                   </div>
@@ -193,6 +193,7 @@ import { FlashOutline } from '@vicons/ionicons5'
 import { CONFIGURED_SECRET_PLACEHOLDER, CONFIGURED_SECRET_TAG } from '../../constants/secretField'
 import type { ProxySecurityDraft } from '../../composables/proxy/securityDraft'
 defineProps<{
+  section:'security'|'advanced'
   form: ProxySecurityDraft & { https_enabled: boolean }
   activeSecurityFeatures: string[]
   securityExpanded: string[]
@@ -380,4 +381,5 @@ function updateExpanded(value: string | number | (string | number)[] | null | un
   align-items: center;
   gap: 8px;
 }
+.security-section{padding:0!important;min-width:0;text-align:left}.security-header{background:var(--fonu-bg-muted);border:1px solid var(--fonu-border);border-radius:8px;padding:12px}.security-option{flex-wrap:wrap;gap:8px}.security-option__text{min-width:0;flex:1 1 180px}.security-panel__fields{min-width:0}.security-collapse :deep(.n-collapse-item){padding:10px;border:1px solid var(--fonu-border);border-radius:8px;margin-top:10px}.security-collapse :deep(.n-collapse-item__header){padding:0!important}
 </style>

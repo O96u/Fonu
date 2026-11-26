@@ -5,14 +5,7 @@
       <n-button @click="openDiscoveryModal(defaultEntryGroup)"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="showListenerManager=true">监听入口</n-button>
       <n-button @click="router.push({name:'settings'})">全局设置</n-button>
-      <n-popover v-if="entryGroups.length > 1" v-model:show="showEntryPicker" trigger="click" placement="bottom-end">
-        <template #trigger><n-button type="primary"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button></template>
-        <div class="proxy-entry-picker">
-          <span class="text-secondary">选择监听入口</span>
-          <n-button v-for="group in preferredEntryGroups" :key="group.key" block quaternary @click="showEntryPicker=false;openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
-        </div>
-      </n-popover>
-      <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
+      <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
     </div>
   </header>
 
@@ -258,150 +251,23 @@
     </div>
   </Teleport>
 
-  <n-modal v-model:show="showModal" :mask-closable="false" transform-origin="center">
-    <div class="proxy-modal">
-      <div class="proxy-modal__form">
-        <div class="proxy-modal__header">
-          <h3 class="modal-title">{{ modalTitle }}</h3>
-          <n-button size="small" quaternary @click="closeModal">
-            <template #icon><n-icon :component="CloseOutline" /></template>
-          </n-button>
-        </div>
-
-        <div class="proxy-modal__tabbar">
-          <button
-            type="button"
-            class="proxy-modal__tab"
-            :class="{ 'proxy-modal__tab--active': formTab === 'basic' }"
-            @click="switchFormTab('basic')"
-          >
-            基础配置
-          </button>
-          <button
-            type="button"
-            class="proxy-modal__tab"
-            :class="{ 'proxy-modal__tab--active': formTab === 'security' }"
-            @click="switchFormTab('security')"
-          >
-            <span class="proxy-modal__tab-label">
-              安全设置
-              <n-tag v-if="activeSecurityFeatures.length" size="tiny" round :bordered="false" type="success">
-                {{ activeSecurityFeatures.length }}
-              </n-tag>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="proxy-modal__tab"
-            :class="{ 'proxy-modal__tab--active': formTab === 'nginx' }"
-            @click="switchFormTab('nginx')"
-          >
-            Nginx
-          </button>
-        </div>
-
-        <div class="proxy-modal__scroll">
-          <ProxyBasicEditor
-            v-show="formTab === 'basic'"
-            :form="form"
-            :bind-entry-listen="bindEntryListen"
-            :editing="!!editing"
-            :ddns-hosts-loading="ddnsHostsLoading"
-            :ddns-host-options-empty="ddnsHostOptionsEmpty"
-            :host-select-options="hostSelectOptions"
-            :filter-ddns-host-option="filterDdnsHostOption"
-            @patch="Object.assign(form,$event)"
-            @load-hosts="loadDdnsHostOptions"
-          />
-
-          <div v-show="formTab === 'security'" class="proxy-modal__pane proxy-modal__pane--security">
-            <ProxySecurityEditor
-              :form="form"
-              :active-security-features="activeSecurityFeatures"
-              v-model:security-expanded="securityExpanded"
-              :has-password="!!editing?.security?.basic_auth?.has_password"
-              @patch="Object.assign(form, $event)"
-              @preset="applySecurityPreset"
-            />
-          </div>
-
-          <ProxyNginxEditor
-            v-show="formTab === 'nginx'"
-            :editing="!!editing"
-            :nginx-edit-mode="nginxEditMode"
-            :nginx-server-mode="nginxServerMode"
-            :nginx-draft="nginxDraft"
-            :nginx-dirty="nginxDirty"
-            :nginx-saving="nginxSaving"
-            :nginx-loading="nginxLoading"
-            :nginx-backups="nginxBackups"
-            @basic="switchFormTab('basic')"
-            @mode="setNginxEditMode"
-            @save="saveRuleNginx"
-            @rollback="rollbackRuleNginx()"
-            @reset="resetRuleNginxAuto"
-            @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"
-          />
-        </div>
-
-        <div class="modal-footer">
-          <n-button @click="closeModal">取消</n-button>
-          <n-button v-if="formTab !== 'nginx'" type="primary" :loading="saving" @click="save">
-            {{ editing ? '保存' : '创建' }}
-          </n-button>
-        </div>
+  <ProxyEditorFrame :show="showModal" :title="modalTitle" :subtitle="editing?'规则 #'+editing.id+' · 独立配置':copySource?'复制后为全新独立规则':'每个域名创建独立代理规则'" :icon="copySource?CopyOutline:editing?CreateOutline:AddOutline" :busy="saving||nginxSaving" wide @close="closeModal">
+    <template #navigation>
+      <div class="editor-tabs" role="tablist" aria-label="代理配置">
+        <button v-for="tab in editorTabs" :key="tab.key" type="button" role="tab" :aria-selected="formTab===tab.key" :disabled="saving||nginxSaving" @click="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='security'&&activeSecurityFeatures.length" class="editor-count">{{activeSecurityFeatures.length}}</span><span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot"/></button>
       </div>
-
-      <div class="proxy-modal__help">
-        <template v-if="formTab === 'basic'">
-          <h4>配置说明</h4>
-          <ol class="proxy-modal__help-ol proxy-modal__help-ol--compact">
-            <li>多域名同一上游 → 「前端域名」多选，将创建多条规则，目标地址填一行。</li>
-            <li>前端域名可手动填写，也可从 DDNS 任务选择；监听端口由入口或上方端口决定。</li>
-            <li>HTTPS 需在「证书」页配置证书。</li>
-          </ol>
-          <div class="proxy-modal__tip">
-            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-            <span>域名需解析到本机，内网服务需可达。</span>
-          </div>
-        </template>
-        <template v-else-if="formTab === 'nginx'">
-          <h4>Nginx 说明</h4>
-          <ol>
-            <li><strong>自动生成</strong>：根据基础配置与安全设置生成，并附带中文注释。</li>
-            <li><strong>手动编辑</strong>：保存前会自动备份，支持回滚。</li>
-            <li>修改基础/安全项后请先点「保存」，再回到此页刷新预览。</li>
-          </ol>
-          <div class="proxy-modal__tip">
-            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-            <span>详情页的 Nginx 页签仅展示当前生效配置。</span>
-          </div>
-          <div class="proxy-modal__tip proxy-modal__tip--warn">
-            <n-icon :component="WarningOutline" class="proxy-modal__tip-icon" />
-            <span>小白勿碰。若保存后 Nginx 启动失败，请点「恢复自动生成」或「回滚」还原配置。</span>
-          </div>
-        </template>
-        <template v-else>
-          <h4>安全说明</h4>
-          <ol>
-            <li>
-              <strong>IP 策略</strong>：经 CDN 访问时，请在「设置」配置信任代理，否则限流与 IP 规则可能不准。
-            </li>
-            <li>
-              <strong>仅中国大陆</strong>：需先在设置页更新中国 IP 段；内网 IP 默认放行，额外豁免 IP 可写在白名单里（无需开启白名单模式）。
-            </li>
-            <li>
-              <strong>一键推荐</strong>：HTTPS + 限流 + 安全响应头，适合公网暴露场景。
-            </li>
-          </ol>
-          <div class="proxy-modal__tip">
-            <n-icon :component="InformationCircleOutline" class="proxy-modal__tip-icon" />
-            <span>安全策略保存后会自动重载 Nginx 配置。</span>
-          </div>
-        </template>
-      </div>
-    </div>
-  </n-modal>
+    </template>
+    <ProxyBasicEditor v-if="formTab==='basic'||formTab==='https'" :section="formTab" :form="form" :bind-entry-listen="bindEntryListen" :entry-id="formEntryId" :entry-options="editorEntryOptions" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="Object.assign(form,$event)" @entry="selectEditorEntry" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
+    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset"/>
+    <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
+    <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
+    <template #footer>
+      <span class="editor-footer-info">{{formTab==='nginx'?'Nginx 文本独立保存，配置发布失败会回滚':ruleDraftDirty?'有未保存的配置':'配置保存后自动发布'}}</span>
+      <n-button :disabled="saving||nginxSaving" @click="closeModal">取消</n-button>
+      <n-button v-if="formTab!=='nginx'" type="primary" :loading="saving" :disabled="nginxSaving" @click="save">{{editing?'保存配置':copySource?'创建副本':'创建代理'}}</n-button>
+      <n-button v-else-if="ruleDraftDirty" type="primary" :loading="saving" @click="save">保存规则配置</n-button>
+    </template>
+  </ProxyEditorFrame>
 
   <ProxyEntryEditor
     v-model:show-entry-modal="showEntryModal"
@@ -495,6 +361,7 @@ import ProxyEntryEditor from '../components/proxy/ProxyEntryEditor.vue'
 import ProxyDiscovery from '../components/proxy/ProxyDiscovery.vue'
 import ProxySecurityEditor from '../components/proxy/ProxySecurityEditor.vue'
 import ProxyBasicEditor from '../components/proxy/ProxyBasicEditor.vue'
+import ProxyEditorFrame from '../components/proxy/ProxyEditorFrame.vue'
 import ProxyNginxEditor from '../components/proxy/ProxyNginxEditor.vue'
 import ProxyOverviewPanel from '../components/proxy/ProxyOverviewPanel.vue'
 import ProxyEntryGroupCard from '../components/proxy/ProxyEntryGroup.vue'
@@ -576,7 +443,6 @@ const hostSelectOptions = computed(() =>
   mergeHostSelectOptions(ddnsHostOptionGroups.value, form.hostsSelected),
 )
 
-const ddnsHostOptionsEmpty = computed(() => flattenDdnsOptionValues(ddnsHostOptionGroups.value).size === 0)
 
 async function loadDdnsHostOptions() {
   if (ddnsHostsLoading.value) return
@@ -640,14 +506,21 @@ const entryModalTitle = computed(() => {
   if (editingEntryId.value) return '编辑入口'
   return '新建入口'
 })
-const modalTitle = computed(() => (editing.value ? '编辑规则' : '新增规则'))
+const copySource=ref<ProxyRule|null>(null)
+const modalTitle = computed(() => editing.value?'编辑代理':copySource.value?'复制代理规则':'新增代理')
 const rules = ref<ProxyRule[]>([])
 const entries = ref<ProxyEntry[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const showModal = ref(false)
-const formTab = ref<'basic' | 'security' | 'nginx'>('basic')
+type EditorTab='basic'|'https'|'security'|'advanced'|'nginx'
+const editorTabs:{key:EditorTab;label:string}[]=[{key:'basic',label:'基础配置'},{key:'https',label:'HTTPS / 监听'},{key:'security',label:'安全策略'},{key:'advanced',label:'高级设置'},{key:'nginx',label:'Nginx'}]
+const formTab=ref<EditorTab>('basic')
+const saveError=ref('')
+const draftBaseline=ref('')
+const nginxLoadedFor=ref<number|null>(null)
+let editorRequest=0
 const securityExpanded = ref<string[]>(['ip'])
 const editing = ref<ProxyRule | null>(null)
 const search = ref('')
@@ -657,7 +530,6 @@ type ViewMode = 'grouped' | 'flat'
 function readViewMode(): ViewMode { try { return localStorage.getItem('fonu.proxy.view') === 'flat' ? 'flat' : 'grouped' } catch { return 'grouped' } }
 const viewMode = ref<ViewMode>(readViewMode())
 watch(viewMode, value => { try { localStorage.setItem('fonu.proxy.view',value) } catch { /* storage unavailable */ } })
-const showEntryPicker = ref(false)
 const layoutRef = ref<HTMLElement | null>(null)
 const compactTable = ref(false)
 let layoutObserver: ResizeObserver | undefined
@@ -732,6 +604,18 @@ const entryStackRef = ref<HTMLElement | null>(null)
 const expandedEntryKeys = ref<Set<string>>(new Set())
 const formEntryId = ref<number | null>(null)
 const bindEntryListen = computed(() => formEntryId.value != null)
+const editorBusinessOptions=computed(()=>[{label:'未分组',value:0},...business.value.groups.map(g=>({label:g.name,value:g.id}))])
+const editorEntryOptions=computed(()=>[{label:'自定义监听',value:0},...entries.value.map(e=>({label:(e.name?e.name+' · ':'')+e.listen_port+' · '+(e.https_enabled?'HTTPS':'HTTP'),value:e.id}))])
+function selectEditorEntry(id:number){
+  const entry=entries.value.find(e=>e.id===id)
+  formEntryId.value=entry?.id??null
+  if(entry)applyEntryListen(form,entry)
+}
+function serializeRuleDraft(){return JSON.stringify({form,entry:formEntryId.value,group:draftBusinessGroup.value})}
+const ruleDraftDirty=computed(()=>draftBaseline.value!==''&&serializeRuleDraft()!==draftBaseline.value)
+function initializeEditor(){++editorRequest;nginxLoadedFor.value=null;nginxDirty.value=false;nginxDraft.value='';nginxGenerated.value='';nginxLoading.value=false;nginxBackups.value=[];saveError.value='';draftBaseline.value=serializeRuleDraft()}
+function finishEditor(){++editorRequest;showModal.value=false;nginxLoadedFor.value=null;nginxDirty.value=false;draftBaseline.value='';copySource.value=null;saveError.value=''}
+
 const reordering = ref(false)
 const togglingRuleId = ref<number | null>(null)
 
@@ -922,6 +806,7 @@ const trafficChart = computed(() => {
 })
 
 function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
+  copySource.value=null
   draftBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
   editingEntryId.value = null
   editing.value = null
@@ -930,6 +815,7 @@ function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
   applyEntryListen(form, listen)
   formEntryId.value = entryId ?? null
   securityExpanded.value = ['ip']
+  initializeEditor()
   void loadDdnsHostOptions()
   showModal.value = true
 }
@@ -1269,31 +1155,16 @@ async function switchDetailTab(tab: 'overview' | 'logs' | 'nginx') {
   }
 }
 
-async function switchFormTab(tab: 'basic' | 'security' | 'nginx') {
-  if (tab === formTab.value) return
-  if (formTab.value === 'nginx') {
-    const ok = await confirmDiscardNginxDraft()
-    if (!ok) return
-  }
-  formTab.value = tab
-  if (tab === 'nginx' && editing.value) {
-    nginxDirty.value = false
-    await loadRuleNginxForEdit(editing.value.id)
-  }
+async function switchFormTab(tab:EditorTab) {
+  if(tab===formTab.value||saving.value||nginxSaving.value)return
+  formTab.value=tab
+  if(tab==='nginx'&&editing.value&&nginxLoadedFor.value!==editing.value.id)await loadRuleNginxForEdit(editing.value.id)
 }
-
-function closeModal() {
-  if (formTab.value === 'nginx' && nginxDirty.value && nginxEditMode.value === 'custom') {
-    void confirmDiscardNginxDraft().then((ok) => {
-      if (ok) {
-        formEntryId.value = null
-        showModal.value = false
-      }
-    })
-    return
-  }
-  formEntryId.value = null
-  showModal.value = false
+function closeModal(){
+  if(saving.value||nginxSaving.value)return
+  if(ruleDraftDirty.value||nginxDirty.value){
+    dialog.warning({title:'放弃未保存的配置？',content:'当前表单或 Nginx 文本尚未保存，关闭后将丢失。',positiveText:'放弃更改',negativeText:'继续编辑',onPositiveClick:finishEditor})
+  }else finishEditor()
 }
 
 async function loadRuleNginxPreview() {
@@ -1314,9 +1185,12 @@ async function loadRuleNginxPreview() {
 }
 
 async function loadRuleNginxForEdit(ruleId: number) {
+  const request=++editorRequest
   nginxLoading.value = true
   try {
     const view = await api.getProxyNginx(ruleId)
+    if(request!==editorRequest||editing.value?.id!==ruleId||!showModal.value)return
+    nginxLoadedFor.value=ruleId
     nginxServerMode.value = view.mode
     nginxEditMode.value = view.mode
     nginxGenerated.value = view.generated
@@ -1329,9 +1203,9 @@ async function loadRuleNginxForEdit(ruleId: number) {
       nginxDraft.value = view.content
     }
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
+    if(request===editorRequest)message.error(error instanceof Error ? error.message : '加载 Nginx 配置失败')
   } finally {
-    nginxLoading.value = false
+    if(request===editorRequest)nginxLoading.value = false
   }
 }
 
@@ -1343,8 +1217,9 @@ function scheduleNginxRefresh() {
   }, 300)
 }
 
-function setNginxEditMode(mode: 'auto' | 'custom') {
-  if (mode === nginxEditMode.value) return
+async function setNginxEditMode(mode: 'auto' | 'custom') {
+  if (mode === nginxEditMode.value||nginxSaving.value||nginxLoading.value) return
+  if(mode==='auto'&&nginxDirty.value&&!(await confirmDiscardNginxDraft()))return
   if (mode === 'custom' && nginxEditMode.value === 'auto') {
     nginxDraft.value = nginxGenerated.value
     nginxDirty.value = nginxServerMode.value !== 'custom'
@@ -1364,7 +1239,8 @@ function onNginxDraftInput() {
 
 async function saveRuleNginx() {
   const ruleId = editing.value?.id
-  if (!ruleId) return
+  if (!ruleId||nginxSaving.value||nginxLoading.value) return
+  if(ruleDraftDirty.value){message.warning('请先保存规则配置，再编辑 Nginx 文本');return}
   nginxSaving.value = true
   try {
     const view = await api.saveProxyNginx(ruleId, {
@@ -2016,15 +1892,14 @@ function buildSecurityPayload() {
 }
 
 function applySecurityPreset() {
-  form.https_enabled = true
-  form.http_redirect = true
+  if(!bindEntryListen.value){form.https_enabled=true;form.http_redirect=true}
   form.rate_limit_enabled = true
   form.rate_limit_rate = 10
   form.rate_limit_burst = 20
   form.security_headers = true
   formTab.value = 'security'
   securityExpanded.value = ['traffic', 'advanced']
-  message.success('已填入推荐配置：HTTPS、限流与安全响应头')
+  message.success('已填入推荐安全配置；监听入口保持不变')
 }
 
 function securityTags(rule: ProxyRule): string[] {
@@ -2092,6 +1967,7 @@ function findEntryGroupForRule(rule: ProxyRule): ProxyEntryGroup | undefined {
 }
 
 function openDuplicate(rule: ProxyRule) {
+  copySource.value=rule
   draftBusinessGroup.value=ruleBusinessGroup(rule.id)
   closeDetail()
   editing.value = null
@@ -2108,7 +1984,7 @@ function openDuplicate(rule: ProxyRule) {
     form.http_redirect = rule.http_redirect
   }
 
-  setFormHostsFromText(form.hostsSelected, hostsToText(rule))
+  form.hostsSelected=[]
   Object.assign(form, {
     upstream: rule.upstream,
     enabled: rule.enabled,
@@ -2117,12 +1993,13 @@ function openDuplicate(rule: ProxyRule) {
   loadSecurityToForm(rule)
   syncSecurityExpanded()
   formTab.value = 'basic'
+  initializeEditor()
   void loadDdnsHostOptions()
   showModal.value = true
-  message.info('已填入复制内容，确认后保存为新规则')
 }
 
 function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
+  copySource.value=null
   draftBusinessGroup.value=ruleBusinessGroup(rule.id)
   closeDetail()
   editingEntryId.value = null
@@ -2151,11 +2028,12 @@ function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic'
   syncSecurityExpanded()
   if (tab === 'nginx') {
     formTab.value = 'nginx'
-  } else if (tab === 'security' || activeSecurityFeatures.value.length > 0) {
+  } else if (tab === 'security') {
     formTab.value = 'security'
   } else {
     formTab.value = 'basic'
   }
+  initializeEditor()
   void loadDdnsHostOptions()
   showModal.value = true
   if (tab === 'nginx') {
@@ -2342,6 +2220,9 @@ function payloadForSingleHost(base: ProxySavePayload, host: string): ProxySavePa
 }
 
 async function save() {
+  if(saving.value||nginxSaving.value)return
+  saveError.value=''
+  if(nginxDirty.value&&!(await confirmDiscardNginxDraft()))return
   saving.value = true
   try {
     const basePayload = buildPayload()
@@ -2352,7 +2233,9 @@ async function save() {
     for (const host of hosts) {
       const conflict = findHostConflict([host], listenPort, excludeRuleId)
       if (conflict) {
-        message.error(formatHostConflictMessage(conflict))
+        saveError.value=formatHostConflictMessage(conflict)
+        formTab.value='basic'
+        message.error(saveError.value)
         return
       }
     }
@@ -2360,25 +2243,29 @@ async function save() {
     if (editing.value) {
       const saved=await api.saveProxyBatch({
         update_id: editing.value.id,
-        update: payloadForSingleHost(basePayload, hosts[0]),
+        update: {...payloadForSingleHost(basePayload, hosts[0]),...(formEntryId.value===null&&editing.value.entry_id?{entry_id:0}:{})},
         create: hosts.slice(1).map(host => payloadForSingleHost(basePayload, host)),
       })
-      await assignSavedRules(saved.filter(r=>r.id!==editing.value?.id),draftBusinessGroup.value)
+      const currentId=editing.value.id
+      if(draftBusinessGroup.value!==ruleBusinessGroup(currentId)){
+        if(!(await changeBusiness({action:'assign',id:draftBusinessGroup.value,rule_ids:saved.map(r=>r.id)})))message.warning('规则已保存，但业务分组关联失败')
+      }else await assignSavedRules(saved.filter(r=>r.id!==currentId),draftBusinessGroup.value)
       message.success(hosts.length > 1 ? `已保存 1 条并新增 ${hosts.length - 1} 条规则` : '规则已保存')
     } else {
       const saved=await api.saveProxyBatch({ create: hosts.map(host => payloadForSingleHost(basePayload, host)) })
       await assignSavedRules(saved,draftBusinessGroup.value)
       message.success(hosts.length > 1 ? `已创建 ${hosts.length} 条规则` : '规则已创建')
     }
-    showModal.value = false
+    finishEditor()
     await load()
   } catch (error) {
     const msg = error instanceof Error ? error.message : '保存失败'
     if (msg.startsWith('规则已保存')) {
       message.warning(msg)
-      showModal.value = false
+      finishEditor()
       await load()
     } else {
+      saveError.value=msg
       message.error(msg)
     }
   } finally {
@@ -2421,8 +2308,8 @@ function confirmDelete(rule: ProxyRule) {
 watch(
   () => form.https_enabled,
   (httpsEnabled) => {
-    if (!showModal.value || editing.value) return
-    form.listen_port = defaultListenPort(httpsEnabled)
+    if (!showModal.value || bindEntryListen.value) return
+    if(form.listen_port===nginxHttpPort.value||form.listen_port===nginxHttpsPort.value)form.listen_port=defaultListenPort(httpsEnabled)
   },
 )
 
@@ -3690,4 +3577,7 @@ onUnmounted(() => {
 .service-page-title{flex:1 1 260px}.service-page-title h1{font-size:25px;line-height:1.25;font-weight:650;margin:0;color:var(--fonu-text)}
 .service-page-actions{justify-content:flex-end}
 @media(max-width:760px){.service-page-header{gap:8px;margin-bottom:12px}.service-page-title h1{font-size:21px}.service-page-actions{justify-content:flex-start;gap:6px}}
+
+.editor-tabs{display:flex;flex-wrap:wrap;gap:5px}.editor-tabs button{font:inherit;font-size:13px;border:0;background:transparent;border-radius:6px;padding:7px 12px;color:var(--fonu-text-secondary);cursor:pointer;display:flex;align-items:center;gap:5px}.editor-tabs button[aria-selected=true]{background:var(--fonu-surface);color:var(--fonu-brand-text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}.editor-tabs button:focus-visible{outline:2px solid var(--fonu-brand)}.editor-count{font-size:11px}.editor-dirty-dot{width:6px;height:6px;background:var(--fonu-brand);border-radius:50%}.editor-footer-info{font-size:12px;color:var(--fonu-text-secondary);margin-right:auto;flex:1 1 150px}.editor-save-error{margin-top:12px}
+@media(max-width:600px){.editor-tabs button{font-size:12px;padding:6px 8px}}
 </style>
