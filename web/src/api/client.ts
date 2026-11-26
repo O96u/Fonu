@@ -405,6 +405,7 @@ export const api = {
   getFRPStatus: () => request<FRPStatus>('/api/frp/status'),
   restartFRP: () => request<{ message: string; status: FRPStatus }>('/api/frp/restart', { method: 'POST' }),
   exportFRPSConfig: () => request<{ config: string }>('/api/frp/export-config', { method: 'POST' }),
+  getFRPDomainCandidates: () => request<{ domains: string[] }>('/api/frp/domain-candidates'),
   syncFRPDomains: () =>
     request<FRPSaveResponse & { domains: string[] }>('/api/frp/sync-domains', {
       method: 'POST',

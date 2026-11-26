@@ -213,7 +213,7 @@
             <div class="form-switch-row__text">
               <div class="form-switch-row__label">启用内网穿透</div>
             </div>
-            <n-switch v-model:value="frpForm.enabled" />
+            <n-switch v-model:value="frpForm.enabled" :disabled="busy" />
           </div>
 
           <div class="settings-fields">
@@ -285,6 +285,7 @@
             </div>
           </div>
 
+          <p v-if="connectionDirty" class="field-hint">连接设置有未保存修改；隧道和域名操作不会自动提交这些修改。</p>
           <div class="save-row">
             <n-button type="primary" :loading="saving" @click="() => save()">
               <template #icon><n-icon :component="LinkOutline" /></template>
@@ -311,13 +312,13 @@
                 <div class="routes-panel__actions">
                   <n-button
                     size="small"
-                    :disabled="!frpForm.enabled"
-                    @click="showDomains = true"
+                    :disabled="busy"
+                    @click="openDomainEditor()"
                   >
                     <template #icon
                       ><n-icon :component="CreateOutline"
                     /></template>
-                    管理域名
+                    新增域名
                   </n-button>
                   <n-button
                     size="small"
@@ -366,7 +367,7 @@
                 <button
                   type="button"
                   class="gateway-item gateway-item--action"
-                  @click="showDomains = true"
+                  @click="openDomainEditor()"
                 >
                   <n-icon :component="LinkOutline" class="gateway-item__icon" />
                   <div class="gateway-item__body">
@@ -383,12 +384,7 @@
                 </button>
               </div>
             </div>
-              <div v-if="domainList.length" class="routes-panel frp-domain-rows">
-                <div v-for="domain in domainList" :key="domain" class="frp-domain-row">
-                  <div class="frp-domain-name"><n-icon :component="GlobeOutline" /><span :title="domain">{{ domain }}</span></div>
-                  <n-button size="small" quaternary @click="copyText(domain, '已复制域名')">复制</n-button>
-                </div>
-              </div>
+              <FrpDomainWorkspace :domains="domainList" :busy="busy" :http-state="frpStatus.http_gateway_state" :https-state="frpStatus.https_gateway_state" @edit="openDomainEditor" @remove="removeDomain" @copy="domain => copyText(domain, '已复制域名')" />
           </n-tab-pane>
 
           <n-tab-pane name="tcp">
@@ -408,37 +404,23 @@
                 </p>
                 <n-button
                   size="small"
-                  :disabled="!frpForm.enabled"
+                  :disabled="busy"
                   @click="openTcpModal()"
                 >
                   添加隧道
                 </n-button>
               </div>
 
-              <n-data-table
-                v-if="tcpProxies.length"
-                :columns="tcpColumns"
-                :data="tcpProxies"
-                :bordered="false"
-                :row-key="(row: FRPTCPProxy) => row.id"
-                size="small"
-                class="route-table"
-              />
-              <EmptyState
-                v-else
-                title="暂无端口隧道"
-                description="添加隧道后，外网可通过 VPS 远程端口访问内网 TCP/UDP 服务。"
-              >
-                <template #action>
-                  <n-button
-                    size="small"
-                    :disabled="!frpForm.enabled"
-                    @click="openTcpModal()"
-                  >
-                    添加隧道
-                  </n-button>
-                </template>
-              </EmptyState>
+              <div class="frp-toolbar">
+                <n-input v-model:value="tunnelSearch" clearable placeholder="搜索名称、地址、端口" />
+                <n-select v-model:value="protocolFilter" :options="[{label:'全部协议',value:'all'}, {label:'TCP',value:'tcp'}, {label:'UDP',value:'udp'}]" />
+                <n-select v-model:value="tunnelLayout" :options="[{label:'自动布局',value:'auto'}, {label:'列表',value:'list'}, {label:'卡片',value:'cards'}]" />
+              </div>
+              <div :class="['frp-tunnel-workspace', 'layout-' + tunnelLayout]" v-if="filteredTunnels.length">
+                <div class="frp-table-mode"><n-data-table :columns="tcpColumns" :data="filteredTunnels" :bordered="false" :row-key="(row: FRPTCPProxy) => row.id" size="small" :scroll-x="800" /></div>
+                <div class="frp-card-mode"><FrpTunnelCards :rows="filteredTunnels" :busy="busy" :status="frpStatus" :server-host="frpServerHost" @edit="openTcpModal" @duplicate="duplicateTunnel" @remove="confirmRemoveTcpProxy" @toggle="toggleTcpEnabled" @copy="row => copyText(tcpExternalAccess(row), '已复制访问地址')" /></div>
+              </div>
+              <EmptyState v-else :title="tcpProxies.length ? '没有匹配的隧道' : '暂无端口隧道'" description="可以在服务停用时预先配置 TCP/UDP 隧道。" />
             </div>
           </n-tab-pane>
 
@@ -530,6 +512,7 @@
                   </n-button>
                 </div>
               </div>
+              <div class="frp-toolbar log-toolbar"><n-input v-model:value="logSearch" clearable placeholder="搜索日志" /><n-select v-model:value="logLevel" :options="[{label:'全部级别',value:'all'},{label:'警告',value:'warn'},{label:'错误',value:'error'}]" /><n-checkbox v-model:checked="logAuto">自动刷新</n-checkbox><n-checkbox v-model:checked="followLogs">跟随滚动</n-checkbox><n-button size="small" @click="copyText(logText, '已复制日志')">复制</n-button></div>
               <n-spin :show="loadingLogs">
                 <pre ref="logPanelRef" class="log-view log-view--panel">{{
                   logText || "暂无日志"
@@ -594,37 +577,18 @@
     </div>
   </n-modal>
 
-  <n-modal
-    v-model:show="showDomains"
-    preset="card"
-    title="穿透域名"
-    style="width: min(520px, 92vw)"
-  >
-    <p class="field-hint field-hint--inline">
-      以下域名将通过 FRP Web 网关暴露，并由 Fonu Nginx
-      按域名分流到反代规则中的上游服务。
-    </p>
-    <n-input
-      v-model:value="frpDomainsText"
-      type="textarea"
-      :rows="8"
-      placeholder="每行一个域名，支持 *.example.com"
-      :disabled="!frpForm.enabled"
-    />
-    <p class="field-hint field-hint--inline">
-      可手动编辑，或点击「同步域名」从已启用的反向代理规则导入。
-    </p>
-    <div class="modal-actions">
-      <n-button @click="showDomains = false">取消</n-button>
-      <n-button
-        type="primary"
-        :loading="saving"
-        :disabled="!frpForm.enabled"
-        @click="saveDomains"
-      >
-        保存
-      </n-button>
-    </div>
+  <n-modal v-model:show="showDomains" preset="card" :title="domainEditing ? '编辑穿透域名' : '新增穿透域名'" style="width: min(520px, 92vw)">
+    <n-input v-model:value="domainDraft" type="textarea" :rows="5" placeholder="每行一个域名，支持 *.example.com" />
+    <p class="field-hint">仅配置 FRP 网关，不会创建反代规则或修改 DNS。</p>
+    <div class="modal-actions"><n-button @click="showDomains = false">取消</n-button><n-button type="primary" :loading="saving" @click="saveDomains">保存</n-button></div>
+  </n-modal>
+  <n-modal v-model:show="showSync" preset="card" title="选择反代域名" style="width: min(560px, 92vw)">
+    <p class="field-hint">仅追加选中的域名，不会删除现有手动配置。</p>
+    <n-checkbox-group v-model:value="selectedDomains"><div class="frp-sync-list">
+      <n-checkbox v-for="domain in syncCandidates" :key="domain" :value="domain" :disabled="domainList.some(d => d.toLowerCase() === domain.toLowerCase())">{{ domain }}<span v-if="domainList.some(d => d.toLowerCase() === domain.toLowerCase())"> · 已添加</span></n-checkbox>
+      <span v-if="!syncCandidates.length">暂无可导入的反代域名</span>
+    </div></n-checkbox-group>
+    <div class="modal-actions"><n-button @click="showSync = false">取消</n-button><n-button type="primary" :loading="saving" :disabled="!selectedDomains.length" @click="applySelectedDomains">导入 {{ selectedDomains.length }} 个域名</n-button></div>
   </n-modal>
 
   <n-modal
@@ -641,7 +605,7 @@
         <n-select
           v-model:value="tcpForm.protocol"
           :options="tunnelProtocolOptions"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
       </div>
       <div class="settings-field">
@@ -651,7 +615,7 @@
         <n-input
           v-model:value="tcpForm.name"
           placeholder="如 ssh、dns"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
         <p class="field-hint field-hint--inline">
           仅字母、数字、下划线和连字符
@@ -662,7 +626,7 @@
         <n-input
           v-model:value="tcpForm.local_ip"
           placeholder="127.0.0.1"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
       </div>
       <div class="settings-field">
@@ -674,7 +638,7 @@
           :min="1"
           :max="65535"
           class="settings-field__input-full"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
       </div>
       <div class="settings-field">
@@ -686,10 +650,10 @@
           :min="0"
           :max="65535"
           class="settings-field__input-full"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
         <p class="field-hint field-hint--inline">
-          填 0 表示自动分配未占用的随机端口（1024–65535），或手动指定 1–65535
+          填 0 表示从 Fonu 未使用的端口中随机分配（1024–65535），不保证 VPS 端口空闲；也可手动指定 1–65535
           的固定端口
         </p>
       </div>
@@ -699,7 +663,7 @@
         </div>
         <n-switch
           v-model:value="tcpForm.enabled"
-          :disabled="!frpForm.enabled"
+          :disabled="busy"
         />
       </div>
     </div>
@@ -708,7 +672,7 @@
       <n-button
         type="primary"
         :loading="saving"
-        :disabled="!frpForm.enabled"
+        :disabled="busy"
         @click="saveTcpModal"
       >
         保存隧道
@@ -731,6 +695,8 @@ import {
 } from "vue";
 import {
   NButton,
+  NCheckbox,
+  NCheckboxGroup,
   NDataTable,
   NIcon,
   NInput,
@@ -773,8 +739,10 @@ import {
   SwapHorizontalOutline,
 } from "@vicons/ionicons5";
 import { api } from "../api/client";
-import type { FRPTCPProxy, FRPStatus } from "../api/types";
+import type { FRPConfig, FRPTCPProxy, FRPStatus } from "../api/types";
 import EmptyState from "../components/EmptyState.vue";
+import FrpDomainWorkspace from "../components/frp/FrpDomainWorkspace.vue";
+import FrpTunnelCards from "../components/frp/FrpTunnelCards.vue";
 import FonuCard from "../components/FonuCard.vue";
 import LoadError from "../components/LoadError.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -793,8 +761,21 @@ const loadingLogs = ref(false);
 const pageError = ref("");
 const showHelp = ref(false);
 const showDomains = ref(false);
+const domainDraft = ref("");
+const domainEditing = ref<string | null>(null);
+const showSync = ref(false);
+const syncCandidates = ref<string[]>([]);
+const selectedDomains = ref<string[]>([]);
+const savedConfig = ref<FRPConfig | null>(null);
+const tunnelLayout = ref<"auto" | "list" | "cards">("auto");
+const tunnelSearch = ref("");
+const protocolFilter = ref("all");
+const logSearch = ref("");
+const logLevel = ref("all");
+const followLogs = ref(true);
+const logAuto = ref(false);
 const showTcpModal = ref(false);
-const routeTab = ref<"connection" | "web" | "tcp" | "advanced" | "logs">("connection");
+const routeTab = ref<"connection" | "web" | "tcp" | "advanced" | "logs">("web");
 const logFullscreen = ref(false);
 const tcpEditingId = ref<string | null>(null);
 
@@ -840,6 +821,9 @@ const tcpHasMore = ref(false);
 let overviewChipObserver: ResizeObserver | null = null;
 
 const domainList = computed(() => parseDomains());
+const busy = computed(() => saving.value || syncing.value || restarting.value);
+const connectionDirty = computed(() => !!savedConfig.value && (frpForm.enabled !== savedConfig.value.enabled || frpForm.server_addr.trim() !== savedConfig.value.server_addr || frpForm.server_port !== savedConfig.value.server_port || frpForm.tls_enabled !== savedConfig.value.tls_enabled || !!frpForm.auth_token.trim()));
+const filteredTunnels = computed(() => tcpProxies.value.filter(row => (protocolFilter.value === "all" || tunnelProtocolOf(row) === protocolFilter.value) && [row.name, row.local_ip, row.local_port, row.remote_port].join(" ").toLowerCase().includes(tunnelSearch.value.trim().toLowerCase())));
 const domainCount = computed(() => domainList.value.length);
 const hasConfiguredRoutes = computed(
   () => domainList.value.length > 0 || tcpProxies.value.length > 0,
@@ -856,7 +840,7 @@ const tcpRemotePorts = computed(() =>
 const tcpModalTitle = computed(() =>
   tcpEditingId.value ? "编辑端口隧道" : "添加端口隧道",
 );
-const logText = computed(() => logLines.value.join("\n"));
+const logText = computed(() => logLines.value.filter(line => line.toLowerCase().includes(logSearch.value.trim().toLowerCase()) && (logLevel.value === "all" || (logLevel.value === "error" ? /error|\[E\]|failed/i.test(line) : /warn|\[W\]/i.test(line)))).join("\n"));
 const httpGatewayOn = computed(
   () => frpForm.enabled && (frpStatus.value.http_gateway_enabled ?? false),
 );
@@ -884,14 +868,13 @@ const displayServerEndpoint = computed(() => {
 });
 
 const frpServerHost = computed(() => {
-  const endpoint = displayServerEndpoint.value;
-  if (endpoint === "—") return "";
-  return endpoint.replace(/:\d+$/, "");
+  const host = savedConfig.value?.server_addr || "";
+  return host.includes(":") && !host.startsWith("[") ? "[" + host + "]" : host;
 });
 
 const frpsConfigPreview = computed(() =>
   buildFrpsConfig({
-    bindPort: frpForm.server_port > 0 ? frpForm.server_port : 7000,
+    bindPort: savedConfig.value?.server_port || 7000,
     httpPort: nginxHttpPort.value,
     httpsPort: nginxHttpsPort.value,
     token: resolveFrpsTokenPreview(),
@@ -901,9 +884,11 @@ const frpsConfigPreview = computed(() =>
 
 function tcpStatusBadge(row: FRPTCPProxy) {
   if (!row.enabled) return { kind: "disabled" as const, text: "已停用" };
-  if (!frpForm.enabled) return { kind: "disabled" as const, text: "未启用" };
-  if (frpStatus.value.connected)
-    return { kind: "warning" as const, text: "待确认" };
+  if (!frpStatus.value.enabled) return { kind: "disabled" as const, text: "服务未启用" };
+  const state = frpStatus.value.tunnel_states?.[row.id];
+  if (frpStatus.value.connected && state === "registered") return { kind: "success" as const, text: "已注册" };
+  if (frpStatus.value.connected && state === "failed") return { kind: "error" as const, text: "注册失败" };
+  if (frpStatus.value.connected) return { kind: "warning" as const, text: "待确认" };
   return { kind: "warning" as const, text: "待连接" };
 }
 
@@ -990,7 +975,7 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
     render: (row) =>
       h(NSwitch, {
         value: row.enabled,
-        disabled: !frpForm.enabled,
+        disabled: busy.value,
         size: "small",
         onUpdateValue: (value: boolean) => toggleTcpEnabled(row.id, value),
       }),
@@ -998,7 +983,7 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
   {
     title: "操作",
     key: "actions",
-    width: 168,
+    width: 210,
     render: (row) =>
       h("div", { class: "route-actions" }, [
         h(
@@ -1015,15 +1000,18 @@ const tcpColumns: DataTableColumns<FRPTCPProxy> = [
           {
             size: "small",
             quaternary: true,
+            disabled: busy.value,
             onClick: () => openTcpModal(row),
           },
           { default: () => "编辑" },
         ),
+        h(NButton, { size: "small", quaternary: true, disabled: busy.value, onClick: () => duplicateTunnel(row) }, { default: () => "克隆" }),
         h(
           NButton,
           {
             size: "small",
             quaternary: true,
+            disabled: busy.value,
             type: "error",
             onClick: () => confirmRemoveTcpProxy(row),
           },
@@ -1091,7 +1079,7 @@ token = "${token}"
 }
 
 function resolveFrpsTokenPreview() {
-  return frpForm.has_auth_token || frpForm.auth_token.trim()
+  return savedConfig.value?.has_auth_token
     ? "********"
     : "请填写 Token 后保存";
 }
@@ -1114,6 +1102,7 @@ function tokenForSave() {
 }
 
 function applyData(data: Awaited<ReturnType<typeof api.getFRP>>) {
+  savedConfig.value = { enabled: data.enabled, server_addr: data.server_addr, server_port: data.server_port, auth_token: "", has_auth_token: data.has_auth_token, tls_enabled: data.tls_enabled, custom_domains: data.custom_domains ?? [], tcp_proxies: data.tcp_proxies ?? [] };
   frpForm.enabled = data.enabled;
   frpForm.server_addr = data.server_addr ?? "";
   frpForm.server_port = data.server_port > 0 ? data.server_port : 7000;
@@ -1139,6 +1128,16 @@ function resetTcpForm() {
   tcpForm.enabled = true;
 }
 
+function duplicateTunnel(row: FRPTCPProxy) {
+  openTcpModal(row);
+  tcpEditingId.value = null;
+  const base = row.name.slice(0, 24);
+  let n = 1;
+  while (tcpProxies.value.some(item => item.name.toLowerCase() === (base + "-copy" + n).toLowerCase())) n++;
+  tcpForm.name = base + "-copy" + n;
+  tcpForm.remote_port = 0;
+}
+
 function openTcpModal(row?: FRPTCPProxy) {
   if (row) {
     tcpEditingId.value = row.id;
@@ -1161,7 +1160,7 @@ function validateTcpForm() {
     message.warning("请填写隧道名称");
     return false;
   }
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+  if (name.length > 32 || !/^[a-zA-Z0-9_-]+$/.test(name)) {
     message.warning("名称仅允许字母、数字、下划线和连字符");
     return false;
   }
@@ -1206,18 +1205,6 @@ function validateTcpForm() {
 
 async function saveTcpModal() {
   if (saving.value || !validateTcpForm()) return;
-  if (!frpForm.enabled) {
-    message.warning("请先启用内网穿透");
-    return;
-  }
-  if (!frpForm.server_addr.trim()) {
-    message.warning("请先填写并保存连接设置");
-    return;
-  }
-  if (!frpForm.has_auth_token && !frpForm.auth_token.trim()) {
-    message.warning("请先填写 Token 并保存连接设置");
-    return;
-  }
   const payload: FRPTCPProxy = {
     id: tcpEditingId.value ?? createId(),
     name: tcpForm.name.trim(),
@@ -1235,7 +1222,7 @@ async function saveTcpModal() {
   } else {
     tcpProxies.value = [...tcpProxies.value, payload];
   }
-  if (await save({ quiet: true, successText: "隧道已保存" })) {
+  if (await save({ quiet: true, routesOnly: true, successText: "隧道已保存" })) {
     showTcpModal.value = false;
   } else {
     tcpProxies.value = previous;
@@ -1259,7 +1246,7 @@ async function removeTcpProxy(id: string) {
   if (saving.value) return;
   const previous = tcpProxies.value;
   tcpProxies.value = tcpProxies.value.filter((item) => item.id !== id);
-  if (!await save({ quiet: true, successText: "隧道已删除" })) tcpProxies.value = previous;
+  if (!await save({ quiet: true, routesOnly: true, successText: "隧道已删除" })) tcpProxies.value = previous;
 }
 
 async function toggleTcpEnabled(id: string, enabled: boolean) {
@@ -1268,7 +1255,7 @@ async function toggleTcpEnabled(id: string, enabled: boolean) {
   tcpProxies.value = tcpProxies.value.map((item) =>
     item.id === id ? { ...item, enabled } : item,
   );
-  if (!await save({ quiet: true })) tcpProxies.value = previous;
+  if (!await save({ quiet: true, routesOnly: true })) tcpProxies.value = previous;
 }
 
 async function load() {
@@ -1276,6 +1263,7 @@ async function load() {
   pageError.value = "";
   try {
     applyData(await api.getFRP());
+    if (!savedConfig.value?.server_addr) routeTab.value = "connection";
   } catch (error) {
     pageError.value =
       error instanceof Error ? error.message : "请检查 Fonu 服务是否正常运行";
@@ -1301,25 +1289,34 @@ function parseDomains() {
 
 async function save(opts?: {
   quiet?: boolean;
+  routesOnly?: boolean;
   successText?: string;
 }): Promise<boolean> {
   if (saving.value || syncing.value || restarting.value) return false;
   saving.value = true;
   try {
-    frpForm.server_addr = normalizeServerAddr(frpForm.server_addr);
+    const conn = opts?.routesOnly ? savedConfig.value : frpForm;
+    if (!conn) return false;
     const domains = parseDomains();
     const tcpList = tcpProxies.value;
     const result = await api.saveFRP({
-      enabled: frpForm.enabled,
-      server_addr: frpForm.server_addr,
-      server_port: frpForm.server_port || 7000,
-      auth_token: tokenForSave(),
-      tls_enabled: frpForm.tls_enabled,
+      enabled: conn.enabled,
+      server_addr: normalizeServerAddr(conn.server_addr),
+      server_port: conn.server_port || 7000,
+      auth_token: opts?.routesOnly ? undefined : tokenForSave(),
+      tls_enabled: conn.tls_enabled,
       custom_domains: domains,
       tcp_proxies: tcpList,
     });
-    frpForm.has_auth_token = result.config.has_auth_token;
-    frpForm.auth_token = "";
+    savedConfig.value = result.config;
+    if (!opts?.routesOnly) {
+      frpForm.enabled = result.config.enabled;
+      frpForm.server_addr = result.config.server_addr;
+      frpForm.server_port = result.config.server_port;
+      frpForm.tls_enabled = result.config.tls_enabled;
+      frpForm.has_auth_token = result.config.has_auth_token;
+      frpForm.auth_token = "";
+    }
     frpDomainsText.value = (result.config.custom_domains ?? []).join("\n");
     tcpProxies.value = (result.config.tcp_proxies ?? []).map((item) => ({
       ...item,
@@ -1346,58 +1343,54 @@ async function save(opts?: {
   }
 }
 
-async function saveDomains() {
-  if (await save()) {
-    showDomains.value = false;
-  }
+function openDomainEditor(domain?: string) {
+  domainEditing.value = domain ?? null;
+  domainDraft.value = domain ?? "";
+  showDomains.value = true;
 }
-
-async function restartFrpc() {
-  if (!frpForm.enabled) {
-    message.warning("请先启用内网穿透");
-    return;
+async function persistDomains(domains: string[]) {
+  if (busy.value) return false;
+  const old = frpDomainsText.value;
+  frpDomainsText.value = [...new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean))].join("\n");
+  if (await save({ routesOnly: true, successText: "域名已保存" })) return true;
+  frpDomainsText.value = old;
+  return false;
+}
+async function saveDomains() {
+  const additions = domainDraft.value.split(/\s+/).map(d => d.trim().toLowerCase()).filter(Boolean);
+  if (!additions.length || additions.some(d => !/^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(d))) {
+    message.warning("请输入有效域名（支持 *.example.com）"); return;
   }
+  if (await persistDomains([...domainList.value.filter(d => d !== domainEditing.value), ...additions])) showDomains.value = false;
+}
+function removeDomain(domain: string) {
+  dialog.warning({ title: "移除穿透域名", content: "确定移除 " + domain + "？不会删除关联的反代规则。", positiveText: "移除", negativeText: "取消", onPositiveClick: async () => { await persistDomains(domainList.value.filter(d => d !== domain)); } });
+}
+async function restartFrpc() {
+  if (busy.value || !frpStatus.value.enabled) return;
   restarting.value = true;
   try {
-    const result = await api.saveFRP({
-      enabled: frpForm.enabled,
-      server_addr: frpForm.server_addr,
-      server_port: frpForm.server_port || 7000,
-      auth_token: tokenForSave(),
-      tls_enabled: frpForm.tls_enabled,
-      custom_domains: parseDomains(),
-      tcp_proxies: tcpProxies.value,
-    });
-    frpForm.has_auth_token = result.config.has_auth_token;
-    frpDomainsText.value = (result.config.custom_domains ?? []).join("\n");
-    tcpProxies.value = (result.config.tcp_proxies ?? []).map((item) => ({
-      ...item,
-      protocol: item.protocol === "udp" ? "udp" : "tcp",
-      local_ip: item.local_ip || "127.0.0.1",
-    }));
-    applyFrpsMeta(result);
+    const result = await api.restartFRP();
     frpStatus.value = result.status;
-    message.success(result.message || "frpc 已重启");
+    message.success(result.message);
   } catch (error) {
     message.error(error instanceof Error ? error.message : "重启失败");
-  } finally {
-    restarting.value = false;
-  }
+  } finally { restarting.value = false; }
 }
-
 async function syncDomains() {
+  if (busy.value) return;
   syncing.value = true;
   try {
-    const result = await api.syncFRPDomains();
-    frpDomainsText.value = (result.domains ?? []).join("\n");
-    applyFrpsMeta(result);
-    frpStatus.value = result.status;
-    message.success(result.message || `已同步 ${result.domains.length} 个域名`);
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : "同步失败");
-  } finally {
-    syncing.value = false;
-  }
+    const result = await api.getFRPDomainCandidates();
+    syncCandidates.value = result.domains ?? [];
+    const existing = new Set(domainList.value.map(d => d.toLowerCase()));
+    selectedDomains.value = syncCandidates.value.filter(d => !existing.has(d.toLowerCase()));
+    showSync.value = true;
+  } catch (error) { message.error(error instanceof Error ? error.message : "读取反代域名失败"); }
+  finally { syncing.value = false; }
+}
+async function applySelectedDomains() {
+  if (await persistDomains([...domainList.value, ...selectedDomains.value])) showSync.value = false;
 }
 
 function scrollLogsToBottom() {
@@ -1409,6 +1402,7 @@ function scrollLogsToBottom() {
 }
 
 async function fetchLogs() {
+  if (loadingLogs.value) return;
   loadingLogs.value = true;
   try {
     logLines.value = await api.getFRPLogs(300);
@@ -1416,7 +1410,7 @@ async function fetchLogs() {
     message.error(error instanceof Error ? error.message : "读取日志失败");
   } finally {
     loadingLogs.value = false;
-    scrollLogsToBottom();
+    if (followLogs.value) scrollLogsToBottom();
   }
 }
 
@@ -1425,7 +1419,7 @@ async function resolveFrpsConfigText() {
 }
 
 function ensureFrpsConfigReady() {
-  if (frpForm.auth_token.trim() || !frpForm.has_auth_token) {
+  if (connectionDirty.value || !savedConfig.value?.has_auth_token) {
     message.warning("请先保存当前 Token");
     return false;
   }
@@ -1545,7 +1539,10 @@ async function refreshStatus() {
 }
 onMounted(() => {
   void load();
-  statusTimer = setInterval(() => { void refreshStatus(); }, 10000);
+  statusTimer = setInterval(() => {
+    void refreshStatus();
+    if (logAuto.value && (routeTab.value === "logs" || logFullscreen.value) && !document.hidden) void fetchLogs();
+  }, 10000);
 });
 
 onUnmounted(() => {
@@ -2387,4 +2384,13 @@ onUnmounted(() => {
 .frp-domain-name .n-icon { flex-shrink: 0; }
 .frp-domain-name span { overflow-wrap: anywhere; min-width: 0; }
 @media (max-width: 800px) { .route-table { overflow-x: auto; } }
+.frp-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.frp-toolbar > .n-input { flex:1; min-width:160px; }
+.frp-toolbar > .n-select { width:124px; }
+.frp-card-mode { display:none; }
+.layout-cards .frp-card-mode { display:block; }
+.layout-cards .frp-table-mode { display:none; }
+.frp-sync-list { display:flex; flex-direction:column; gap:10px; max-height:45vh; overflow:auto; overflow-wrap:anywhere; }
+@media (max-width: 1000px) { .layout-auto .frp-card-mode { display:block; } .layout-auto .frp-table-mode { display:none; } }
+@media (max-width: 540px) { .frp-toolbar > .n-input { flex-basis:100%; } .frp-toolbar > .n-select { flex:1; width:auto; min-width:100px; } }
 </style>

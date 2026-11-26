@@ -125,6 +125,12 @@ func (h *FRPHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.mgr.Status(r.Context()))
 }
 
+func (h *FRPHandler) DomainCandidates(w http.ResponseWriter, r *http.Request) {
+	rules, err := h.proxy.List(r.Context())
+	if err != nil { writeError(r, w, http.StatusInternalServerError, "读取反代规则失败"); return }
+	writeJSON(w, http.StatusOK, map[string]interface{}{"domains": frp.DomainsFromProxyRules(rules)})
+}
+
 func (h *FRPHandler) SyncDomains(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.proxy.List(r.Context())
 	if err != nil {

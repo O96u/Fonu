@@ -146,6 +146,7 @@ func NewRouter(deps Deps) http.Handler {
 		protect("POST /api/frp/restart", frpHandler.Restart)
 		protect("POST /api/frp/export-config", frpHandler.ExportConfig)
 		protect("POST /api/frp/sync-domains", frpHandler.SyncDomains)
+		protect("GET /api/frp/domain-candidates", frpHandler.DomainCandidates)
 		protect("GET /api/frp/logs", frpHandler.Logs)
 	}
 

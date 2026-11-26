@@ -357,6 +357,7 @@ const sessionMarker = "[FONU] frpc session started"
 
 func (m *Manager) runFrpcStart(ctx context.Context, args []string, prefix string) error {
 	if err := ctx.Err(); err != nil { return err }
+	if err := os.MkdirAll(filepath.Dir(m.cfg.FrpLogPath()), 0o755); err != nil { return err }
 	logFile, err := os.OpenFile(m.cfg.FrpLogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil { return err }
 	_, err = fmt.Fprintln(logFile, sessionMarker)
