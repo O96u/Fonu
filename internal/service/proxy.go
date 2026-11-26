@@ -340,3 +340,7 @@ func (s *ProxyService) SaveBatch(ctx context.Context, id int64, update *proxy.Up
 		return out,nil
 	})
 }
+
+func (s *ProxyService) ListTrafficRules(ctx context.Context)([]proxy.Rule,error){
+	return s.store.ListTrafficRules(ctx)
+}

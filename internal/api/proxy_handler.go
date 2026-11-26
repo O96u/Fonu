@@ -99,7 +99,7 @@ func (h *ProxyHandler) Traffic(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []traffic.RuleTraffic{})
 		return
 	}
-	rules, err := h.svc.List(r.Context())
+	rules, err := h.svc.ListTrafficRules(r.Context())
 	if err != nil {
 		writeError(r, w, http.StatusInternalServerError, "读取反向代理规则失败")
 		return

@@ -781,3 +781,27 @@ func (s *Store) Reorder(ctx context.Context, ids []int64) error {
 	}
 	return tx.Commit()
 }
+
+// ListTrafficRules reads only the endpoint mapping required by the hot
+// traffic polling path. The join is a consistent, read-only SQL snapshot.
+func (s *Store) ListTrafficRules(ctx context.Context) ([]Rule,error) {
+	rows,err:=s.querier().QueryContext(ctx,`
+		SELECT r.id,r.listen_port,h.hostname,h.listen_port
+		FROM proxy_rules r JOIN proxy_hosts h ON h.rule_id=r.id
+		ORDER BY r.sort_order,r.id,h.id
+	`)
+	if err!=nil{return nil,err}
+	defer rows.Close()
+	out:=make([]Rule,0)
+	for rows.Next(){
+		var id int64
+		var port int
+		var host Host
+		var override sql.NullInt64
+		if err:=rows.Scan(&id,&port,&host.Hostname,&override);err!=nil{return nil,err}
+		if override.Valid{v:=int(override.Int64);host.ListenPort=&v}
+		if len(out)==0||out[len(out)-1].ID!=id{out=append(out,Rule{ID:id,ListenPort:port})}
+		out[len(out)-1].Hosts=append(out[len(out)-1].Hosts,host)
+	}
+	return out,rows.Err()
+}
