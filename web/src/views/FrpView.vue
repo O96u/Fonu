@@ -4,6 +4,7 @@
     description="通过 VPS + FRP，让你即使没有公网 IP，也能随时访问 NAS 上的服务。"
   >
     <template #actions>
+      <n-button quaternary @click="routeTab = 'connection'">连接设置</n-button>
       <n-button quaternary @click="showHelp = true">
         <template #icon><n-icon :component="HelpCircleOutline" /></template>
         使用说明
@@ -184,6 +185,21 @@
           </div>
         </FonuCard>
 
+
+      </div>
+
+      <FonuCard flush class="routes-card">
+        <n-tabs
+          v-model:value="routeTab"
+          type="line"
+          animated
+          class="routes-tabs"
+        >
+          <n-tab-pane name="connection">
+            <template #tab>
+              <span class="routes-tab"><n-icon :component="SettingsOutline" />连接设置</span>
+            </template>
+            <div class="routes-panel connection-panel">
         <FonuCard
           class="settings-card"
           subtitle="配置与 VPS 上的 frps 连接信息，保存后将自动重连。"
@@ -276,15 +292,8 @@
             </n-button>
           </div>
         </FonuCard>
-      </div>
-
-      <FonuCard flush class="routes-card">
-        <n-tabs
-          v-model:value="routeTab"
-          type="line"
-          animated
-          class="routes-tabs"
-        >
+            </div>
+          </n-tab-pane>
           <n-tab-pane name="web">
             <template #tab>
               <span class="routes-tab">
@@ -374,6 +383,12 @@
                 </button>
               </div>
             </div>
+              <div v-if="domainList.length" class="routes-panel frp-domain-rows">
+                <div v-for="domain in domainList" :key="domain" class="frp-domain-row">
+                  <div class="frp-domain-name"><n-icon :component="GlobeOutline" /><span :title="domain">{{ domain }}</span></div>
+                  <n-button size="small" quaternary @click="copyText(domain, '已复制域名')">复制</n-button>
+                </div>
+              </div>
           </n-tab-pane>
 
           <n-tab-pane name="tcp">
@@ -779,7 +794,7 @@ const pageError = ref("");
 const showHelp = ref(false);
 const showDomains = ref(false);
 const showTcpModal = ref(false);
-const routeTab = ref<"web" | "tcp" | "advanced" | "logs">("web");
+const routeTab = ref<"connection" | "web" | "tcp" | "advanced" | "logs">("connection");
 const logFullscreen = ref(false);
 const tcpEditingId = ref<string | null>(null);
 
@@ -889,7 +904,7 @@ function tcpStatusBadge(row: FRPTCPProxy) {
   if (!row.enabled) return { kind: "disabled" as const, text: "已停用" };
   if (!frpForm.enabled) return { kind: "disabled" as const, text: "未启用" };
   if (frpStatus.value.connected)
-    return { kind: "success" as const, text: "运行中" };
+    return { kind: "warning" as const, text: "待确认" };
   return { kind: "warning" as const, text: "待连接" };
 }
 
@@ -1028,7 +1043,7 @@ const connectionTitle = computed(() => {
 const connectionSubtitle = computed(() => {
   if (!frpForm.enabled) return "内网穿透未开启";
   if (frpStatus.value.connected) {
-    return "当前内网穿透服务运行正常，已连接到 VPS，所有规则已生效。";
+    return "客户端已连接到 VPS；各隧道是否生效仍需单独确认。";
   }
   return "请检查服务器配置，或前往运行日志 Tab 排查";
 });
@@ -1196,7 +1211,7 @@ function validateTcpForm() {
 }
 
 async function saveTcpModal() {
-  if (!validateTcpForm()) return;
+  if (saving.value || !validateTcpForm()) return;
   if (!frpForm.enabled) {
     message.warning("请先启用内网穿透");
     return;
@@ -1218,6 +1233,7 @@ async function saveTcpModal() {
     remote_port: tcpForm.remote_port,
     enabled: tcpForm.enabled,
   };
+  const previous = tcpProxies.value;
   if (tcpEditingId.value) {
     tcpProxies.value = tcpProxies.value.map((item) =>
       item.id === payload.id ? payload : item,
@@ -1227,6 +1243,8 @@ async function saveTcpModal() {
   }
   if (await save({ quiet: true, successText: "隧道已保存" })) {
     showTcpModal.value = false;
+  } else {
+    tcpProxies.value = previous;
   }
 }
 
@@ -1244,25 +1262,19 @@ function confirmRemoveTcpProxy(row: FRPTCPProxy) {
 }
 
 async function removeTcpProxy(id: string) {
+  if (saving.value) return;
+  const previous = tcpProxies.value;
   tcpProxies.value = tcpProxies.value.filter((item) => item.id !== id);
-  if (!canPersistRoutes()) return;
-  await save({ quiet: true, successText: "隧道已删除" });
+  if (!await save({ quiet: true, successText: "隧道已删除" })) tcpProxies.value = previous;
 }
 
 async function toggleTcpEnabled(id: string, enabled: boolean) {
+  if (saving.value) return;
+  const previous = tcpProxies.value;
   tcpProxies.value = tcpProxies.value.map((item) =>
     item.id === id ? { ...item, enabled } : item,
   );
-  if (!canPersistRoutes()) return;
-  await save({ quiet: true });
-}
-
-function canPersistRoutes() {
-  return (
-    frpForm.enabled &&
-    frpForm.server_addr.trim() !== "" &&
-    (frpForm.has_auth_token || frpForm.auth_token.trim() !== "")
-  );
+  if (!await save({ quiet: true })) tcpProxies.value = previous;
 }
 
 async function load() {
@@ -1297,6 +1309,7 @@ async function save(opts?: {
   quiet?: boolean;
   successText?: string;
 }): Promise<boolean> {
+  if (saving.value || syncing.value || restarting.value) return false;
   saving.value = true;
   try {
     frpForm.server_addr = normalizeServerAddr(frpForm.server_addr);
@@ -1518,11 +1531,29 @@ watch(
   { deep: true },
 );
 
+let statusTimer: ReturnType<typeof setInterval> | undefined;
+let statusRequestRunning = false;
+let disposed = false;
+async function refreshStatus() {
+  if (disposed || statusRequestRunning || loading.value || saving.value || restarting.value || syncing.value || document.hidden) return;
+  statusRequestRunning = true;
+  try {
+    const status = await api.getFRPStatus();
+    if (!disposed && !saving.value && !restarting.value && !syncing.value) frpStatus.value = status;
+  } catch {
+    // Keep the last known status on a transient network error.
+  } finally {
+    statusRequestRunning = false;
+  }
+}
 onMounted(() => {
   void load();
+  statusTimer = setInterval(() => { void refreshStatus(); }, 10000);
 });
 
 onUnmounted(() => {
+  disposed = true;
+  if (statusTimer !== undefined) clearInterval(statusTimer);
   overviewChipObserver?.disconnect();
   overviewChipObserver = null;
 });
@@ -2350,4 +2381,13 @@ onUnmounted(() => {
 .status-metric { border:0; border-radius:0; background:var(--fonu-surface); min-width:0; }
 @media(max-width:1000px) { .top-grid { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:640px) { .status-hero__aside { align-items:flex-start; } .status-flow { flex-wrap:wrap; } }
+.top-grid { grid-template-columns: minmax(0, 1fr); }
+.top-grid > .status-card { height: auto; }
+.connection-panel .settings-card { max-width: 780px; }
+.frp-domain-rows { display: grid; gap: 0; padding-top: 0; }
+.frp-domain-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px 0; border-top: 1px solid var(--fonu-border); }
+.frp-domain-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.frp-domain-name .n-icon { flex-shrink: 0; }
+.frp-domain-name span { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 800px) { .route-table { overflow-x: auto; } }
 </style>

@@ -90,17 +90,26 @@ func (m *Manager) Apply(ctx context.Context, in SaveInput) (ApplyResult, error) 
 		return ApplyResult{}, err
 	}
 
-	tmpPath := m.cfg.FrpConfigPath() + ".tmp"
-	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(m.cfg.FrpConfigPath()), "frpc-*.toml")
+	if err != nil {
 		return ApplyResult{}, err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
+		return ApplyResult{}, err
+	}
+	if err := tmp.Close(); err != nil {
+		return ApplyResult{}, err
+	}
+	if m.available() {
+		if err := m.runFrpc(ctx, []string{"verify", "-c", tmpPath}, "FRP 配置校验失败"); err != nil {
+			_ = m.store.SetLastError(ctx, err.Error())
+			return ApplyResult{}, err
+		}
 	}
 	if err := os.Rename(tmpPath, m.cfg.FrpConfigPath()); err != nil {
-		_ = os.Remove(tmpPath)
-		return ApplyResult{}, err
-	}
-
-	if err := m.verifyConfig(ctx); err != nil {
-		_ = m.store.SetLastError(ctx, err.Error())
 		return ApplyResult{}, err
 	}
 

@@ -43,7 +43,7 @@ vhostHTTPSPort = %d
 
 	b.WriteString(fmt.Sprintf(`[auth]
 method = "token"
-token = "%s"
+token = %q
 `, token))
 	return b.String()
 }

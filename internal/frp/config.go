@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fonu/fonu/internal/secret"
@@ -98,28 +99,12 @@ func (s *Store) Save(ctx context.Context, in SaveInput, keepToken bool) error {
 	if err := validateSaveInput(in, keepToken); err != nil {
 		return err
 	}
-	if err := s.settings.SetBool(ctx, settings.KeyFRPEnabled, in.Enabled); err != nil {
-		return err
-	}
-	if err := s.settings.Set(ctx, settings.KeyFRPServerAddr, normalizeServerAddr(in.ServerAddr)); err != nil {
-		return err
-	}
 	port := in.ServerPort
 	if port <= 0 {
 		port = 7000
 	}
-	if err := s.settings.SetInt(ctx, settings.KeyFRPServerPort, port); err != nil {
-		return err
-	}
-	if err := s.settings.SetBool(ctx, settings.KeyFRPTLSEnabled, in.TLSEnabled); err != nil {
-		return err
-	}
-	domains := normalizeDomains(in.CustomDomains)
-	raw, err := json.Marshal(domains)
+	raw, err := json.Marshal(normalizeDomains(in.CustomDomains))
 	if err != nil {
-		return err
-	}
-	if err := s.settings.Set(ctx, settings.KeyFRPCustomDomains, string(raw)); err != nil {
 		return err
 	}
 	tcpProxies, err := prepareTCPProxies(in.TCPProxies)
@@ -130,8 +115,13 @@ func (s *Store) Save(ctx context.Context, in SaveInput, keepToken bool) error {
 	if err != nil {
 		return err
 	}
-	if err := s.settings.Set(ctx, settings.KeyFRPTCPProxies, string(tcpRaw)); err != nil {
-		return err
+	values := map[string]string{
+		settings.KeyFRPEnabled:       strconv.FormatBool(in.Enabled),
+		settings.KeyFRPServerAddr:    normalizeServerAddr(in.ServerAddr),
+		settings.KeyFRPServerPort:    strconv.Itoa(port),
+		settings.KeyFRPTLSEnabled:    strconv.FormatBool(in.TLSEnabled),
+		settings.KeyFRPCustomDomains: string(raw),
+		settings.KeyFRPTCPProxies:    string(tcpRaw),
 	}
 	token := strings.TrimSpace(in.AuthToken)
 	if token != "" && token != maskedToken {
@@ -139,13 +129,11 @@ func (s *Store) Save(ctx context.Context, in SaveInput, keepToken bool) error {
 		if err != nil {
 			return err
 		}
-		if err := s.settings.Set(ctx, settings.KeyFRPAuthToken, enc); err != nil {
-			return err
-		}
+		values[settings.KeyFRPAuthToken] = enc
 	} else if in.Enabled && !keepToken {
 		return fmt.Errorf("请填写 FRP 认证 Token")
 	}
-	return nil
+	return s.settings.SetMany(ctx, values)
 }
 
 func (s *Store) SetLastError(ctx context.Context, msg string) error {
