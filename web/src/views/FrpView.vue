@@ -15,46 +15,42 @@
 
   <n-spin v-else :show="loading">
     <div class="frp-page">
-      <FonuCard flush class="workspace-overview" data-testid="frp-overview">
-        <div class="overview-head">
-          <div class="overview-status" :class="statusHeroClass">
-            <div class="overview-icon"><n-icon :component="statusHeroIcon" /></div>
-            <div class="overview-copy">
-              <div class="overview-kicker">FRP 连接状态</div>
-              <div class="overview-title">{{ connectionTitle }}</div>
-              <div class="overview-sub">{{ connectionSubtitle }}</div>
+      <FonuCard flush class="workspace-overview dashboard-hero" data-testid="frp-overview">
+        <div class="hero-grid">
+          <section class="hero-service" :class="statusHeroClass">
+            <div class="hero-service-head">
+              <div class="overview-icon"><n-icon :component="statusHeroIcon" /></div>
+              <div class="hero-service-title"><div class="hero-title-line"><strong>FRP 服务</strong><StatusBadge :kind="frpStatus.connected ? 'success' : frpStatus.enabled ? 'warning' : 'disabled'" :text="connectionTitle" /></div><small>{{ connectionSubtitle }}</small></div>
+            </div>
+            <dl class="hero-details">
+              <div><dt><n-icon :component="CloudOutline" />服务器地址</dt><dd><code :title="displayServerEndpoint">{{ displayServerEndpoint }}</code><n-button v-if="displayServerEndpoint !== '—'" text size="tiny" aria-label="复制服务器地址" @click="copyText(displayServerEndpoint, '已复制服务器地址')"><n-icon :component="CopyOutline" /></n-button></dd></div>
+              <div><dt><n-icon :component="DesktopOutline" />客户端版本</dt><dd>{{ frpStatus.client_version || '—' }}</dd></div>
+              <div><dt><n-icon :component="TimeOutline" />运行时长</dt><dd :title="connectedAtLabel">{{ uptimeLabel }}</dd></div>
+            </dl>
+            <div class="hero-actions">
+              <n-button v-if="frpStatus.enabled" type="primary" size="small" :loading="restarting" :disabled="busy" data-testid="frp-restart" @click="restartFrpc"><template #icon><n-icon :component="RefreshOutline" /></template>重启服务</n-button>
+              <n-button v-if="frpStatus.enabled" size="small" :disabled="busy" @click="confirmStopService"><template #icon><n-icon :component="PauseCircleOutline" /></template>停止服务</n-button>
+              <n-button v-else type="primary" size="small" @click="routeTab = 'connection'">配置并启用</n-button>
+              <n-button size="small" @click="routeTab = 'connection'"><template #icon><n-icon :component="SettingsOutline" /></template>连接设置</n-button>
+            </div>
+          </section>
+          <div class="hero-right">
+            <div class="hero-kpis">
+              <button class="hero-kpi" type="button" @click="routeTab = 'web'"><span><n-icon :component="GlobeOutline" />Web 穿透</span><strong>{{ domainCount }}</strong><small>配置域名</small></button>
+              <button class="hero-kpi" type="button" @click="routeTab = 'tcp'"><span><n-icon :component="SwapHorizontalOutline" />端口穿透</span><strong>{{ tcpProxies.length }}</strong><small>配置隧道</small></button>
+              <button class="hero-kpi" type="button" @click="routeTab = 'tcp'"><span><n-icon :component="LinkOutline" />隧道注册</span><strong>{{ registeredTunnelCount }}<em> / {{ enabledTunnelCount }}</em></strong><small>已注册 / 已启用</small></button>
+              <button class="hero-kpi" type="button" @click="routeTab = 'logs'"><span><n-icon :component="TimeOutline" />运行时长</span><strong class="hero-uptime">{{ uptimeLabel }}</strong><small>{{ frpStatus.process_running ? '进程运行中' : '进程未运行' }}</small></button>
+            </div>
+            <div class="hero-topology" :class="{ 'topology-connected': frpStatus.connected }">
+              <div class="topology-node"><n-icon :component="PersonOutline" /><strong>外网访问</strong><small>Internet</small></div>
+              <span class="topology-arrow">→</span>
+              <div class="topology-node" :class="{ 'node-active': frpStatus.connected }"><n-icon :component="CloudOutline" /><strong>VPS / frps</strong><small>{{ frpStatus.connected ? '已登录' : '待连接' }}</small></div>
+              <span class="topology-arrow">→</span>
+              <div class="topology-node" :class="{ 'node-active': frpStatus.process_running }"><n-icon :component="DesktopOutline" /><strong>本机 / frpc</strong><small>{{ frpStatus.process_running ? '运行中' : '未运行' }}</small></div>
+              <span class="topology-arrow">→</span>
+              <div class="topology-node"><n-icon :component="ServerOutline" /><strong>内网服务</strong><small>NAS / 应用</small></div>
             </div>
           </div>
-          <div class="overview-actions">
-            <span class="overview-tag" :class="{ 'overview-tag--on': savedConfig?.tls_enabled }">TLS {{ savedConfig?.tls_enabled ? "已开启" : "未开启" }}</span>
-            <span class="overview-tag" :class="{ 'overview-tag--on': frpStatus.process_running }">{{ frpStatus.process_running ? "客户端运行中" : "客户端未运行" }}</span>
-            <n-button v-if="frpStatus.enabled" size="small" :loading="restarting" :disabled="busy" data-testid="frp-restart" @click="restartFrpc">
-              <template #icon><n-icon :component="RefreshOutline" /></template>重启服务
-            </n-button>
-            <n-button v-else size="small" secondary type="primary" @click="routeTab = 'connection'">配置连接</n-button>
-          </div>
-        </div>
-        <div class="overview-grid">
-          <div class="overview-cell overview-server">
-            <div class="overview-label"><n-icon :component="CloudOutline" /> VPS 服务器</div>
-            <code class="overview-value endpoint-value" :title="displayServerEndpoint">{{ displayServerEndpoint }}</code>
-            <small>frpc {{ frpStatus.client_version || "—" }}</small>
-          </div>
-          <button type="button" class="overview-cell overview-link" @click="routeTab = 'web'">
-            <div class="overview-label"><n-icon :component="GlobeOutline" /> Web 域名<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
-            <strong class="overview-number">{{ domainCount }}</strong>
-            <small>{{ frpStatus.enabled ? ((httpGatewayOn ? 1 : 0) + (httpsGatewayOn ? 1 : 0)) + ' / 2 网关已注册' : "服务未启用" }}</small>
-          </button>
-          <button type="button" class="overview-cell overview-link" @click="routeTab = 'tcp'">
-            <div class="overview-label"><n-icon :component="SwapHorizontalOutline" /> 端口隧道<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
-            <strong class="overview-number">{{ tcpProxies.length }}</strong>
-            <small>{{ registeredTunnelCount }} 已注册 · {{ enabledTunnelCount }} 已配置启用</small>
-          </button>
-          <button type="button" class="overview-cell overview-link" @click="routeTab = 'logs'">
-            <div class="overview-label"><n-icon :component="DocumentTextOutline" /> 运行时长<n-icon :component="ChevronForwardOutline" class="overview-chevron" /></div>
-            <strong class="overview-value">{{ uptimeLabel }}</strong>
-            <small :title="connectedAtLabel">{{ frpStatus.connected_at ? '启动于 ' + connectedAtLabel : '暂无运行记录' }}</small>
-          </button>
         </div>
       </FonuCard>
 
@@ -65,6 +61,58 @@
           animated
           class="routes-tabs"
         >
+          <n-tab-pane name="overview">
+            <template #tab><span class="routes-tab" data-testid="frp-tab-overview"><n-icon :component="HomeOutline" />概览</span></template>
+            <div class="dashboard-content" data-testid="frp-dashboard">
+              <section class="dashboard-panel dash-web">
+                <header class="dash-heading"><h3><n-icon :component="GlobeOutline" />Web 穿透</h3><n-button text type="primary" @click="routeTab = 'web'">管理域名 <n-icon :component="ChevronForwardOutline" /></n-button></header>
+                <div class="dash-counts"><div><strong>{{ domainCount }}</strong><small>已配置域名</small></div><div><strong :class="{ 'good-text': httpGatewayOn || httpsGatewayOn }">{{ Number(httpGatewayOn) + Number(httpsGatewayOn) }}</strong><small>网关已注册</small></div><div><strong>{{ 2 - Number(httpGatewayOn) - Number(httpsGatewayOn) }}</strong><small>网关未注册</small></div></div>
+                <div v-if="!domainList.length" class="dash-empty">暂无穿透域名，可同步反代或手动添加。</div>
+                <div v-for="domain in domainList.slice(0, 3)" :key="domain" class="dash-service-row">
+                  <div class="dash-service-icon"><n-icon :component="GlobeOutline" /></div><div class="dash-service-name"><strong :title="domain">{{ domain }}</strong><small>Web · Fonu Nginx</small></div>
+                  <StatusBadge :kind="!frpStatus.enabled ? 'disabled' : httpGatewayOn && httpsGatewayOn ? 'success' : 'unknown'" :text="!frpStatus.enabled ? '未启用' : httpGatewayOn && httpsGatewayOn ? '网关已注册' : '待确认'" />
+                  <n-button v-if="!domain.startsWith('*.')" text tag="a" :href="'https://' + domain" target="_blank" rel="noopener noreferrer" aria-label="打开域名"><n-icon :component="OpenOutline" /></n-button>
+                  <n-button text :disabled="busy" aria-label="编辑域名" @click="openDomainEditor(domain)"><n-icon :component="CreateOutline" /></n-button>
+                </div>
+                <footer class="dash-footer"><n-button size="small" :disabled="busy" @click="openDomainEditor()"><template #icon><n-icon :component="AddOutline" /></template>新增域名</n-button></footer>
+              </section>
+              <section class="dashboard-panel dash-tcp">
+                <header class="dash-heading"><h3><n-icon :component="SwapHorizontalOutline" />端口穿透</h3><n-button text type="primary" @click="routeTab = 'tcp'">管理隧道 <n-icon :component="ChevronForwardOutline" /></n-button></header>
+                <div class="dash-counts"><div><strong>{{ tcpProxies.length }}</strong><small>已配置隧道</small></div><div><strong class="good-text">{{ registeredTunnelCount }}</strong><small>已注册</small></div><div><strong :class="{ 'warn-text': failedTunnelCount }">{{ failedTunnelCount }}</strong><small>注册失败</small></div></div>
+                <div v-if="!tcpProxies.length" class="dash-empty">暂无端口隧道，可添加 TCP / UDP 服务。</div>
+                <div v-for="row in tcpProxies.slice(0, 3)" :key="row.id" class="dash-service-row">
+                  <div class="dash-service-icon"><n-icon :component="SwapHorizontalOutline" /></div><div class="dash-service-name"><strong>{{ row.name }}</strong><small>{{ tunnelProtocolOf(row).toUpperCase() }} · {{ tcpMappingLabel(row) }}</small></div>
+                  <StatusBadge :kind="tcpStatusBadge(row).kind" :text="tcpStatusBadge(row).text" />
+                  <n-switch size="small" :value="row.enabled" :disabled="busy" @update:value="value => toggleTcpEnabled(row.id, value)" />
+                  <n-button text :disabled="busy" aria-label="编辑隧道" @click="openTcpModal(row)"><n-icon :component="CreateOutline" /></n-button>
+                </div>
+                <footer class="dash-footer"><n-button size="small" :disabled="busy" @click="openTcpModal()"><template #icon><n-icon :component="AddOutline" /></template>添加隧道</n-button></footer>
+              </section>
+              <aside class="dash-side">
+                <section class="dashboard-panel"><header class="dash-heading"><h3><n-icon :component="FlashOutline" />快捷操作</h3></header>
+                  <div class="dash-shortcuts">
+                    <button type="button" @click="routeTab = 'connection'"><n-icon :component="SettingsOutline" />连接设置</button>
+                    <button type="button" @click="routeTab = 'diagnostics'"><n-icon :component="PulseOutline" />诊断检测</button>
+                    <button type="button" @click="routeTab = 'advanced'"><n-icon :component="OptionsOutline" />配置预览</button>
+                    <button type="button" :disabled="busy" @click="syncDomains"><n-icon :component="RefreshOutline" />同步域名</button>
+                    <button type="button" @click="downloadFrpsConfig"><n-icon :component="DownloadOutline" />导出配置</button>
+                    <button type="button" @click="routeTab = 'logs'"><n-icon :component="DocumentTextOutline" />运行日志</button>
+                  </div>
+                </section>
+                <section class="dashboard-panel"><header class="dash-heading"><h3><n-icon :component="PulseOutline" />运行状态</h3></header>
+                  <div class="dash-health"><span>frpc 进程</span><StatusBadge :kind="frpStatus.process_running ? 'success' : 'disabled'" :text="frpStatus.process_running ? '运行中' : '未运行'" /></div>
+                  <div class="dash-health"><span>服务器登录</span><StatusBadge :kind="frpStatus.connected ? 'success' : 'unknown'" :text="frpStatus.connected ? '已登录' : '未连接'" /></div>
+                  <div class="dash-health"><span>HTTP 网关</span><StatusBadge :kind="httpGatewayOn ? 'success' : frpStatus.http_gateway_state === 'failed' ? 'error' : 'unknown'" :text="gatewayLabel('http')" /></div>
+                  <div class="dash-health"><span>HTTPS 网关</span><StatusBadge :kind="httpsGatewayOn ? 'success' : frpStatus.https_gateway_state === 'failed' ? 'error' : 'unknown'" :text="gatewayLabel('https')" /></div>
+                  <div class="dash-health"><span>TLS 配置</span><StatusBadge :kind="savedConfig?.tls_enabled ? 'success' : 'disabled'" :text="savedConfig?.tls_enabled ? '已开启' : '未开启'" /></div>
+                </section>
+              </aside>
+              <section class="dashboard-panel dash-logs">
+                <header class="dash-heading"><h3><n-icon :component="DocumentTextOutline" />最近日志</h3><n-button text type="primary" @click="routeTab = 'logs'">查看全部 <n-icon :component="ChevronForwardOutline" /></n-button></header>
+                <pre class="dash-log-preview">{{ logLines.slice(-5).join("\n") || (loadingLogs ? '正在加载日志…' : '暂无运行日志') }}</pre>
+              </section>
+            </div>
+          </n-tab-pane>
           <n-tab-pane name="connection">
             <template #tab>
               <span class="routes-tab" data-testid="frp-tab-connection"><n-icon :component="SettingsOutline" />连接设置</span>
@@ -328,7 +376,7 @@
                     size="small"
                     quaternary
                     :loading="loadingLogs"
-                    @click="fetchLogs"
+                    @click="fetchLogs()"
                   >
                     <template #icon
                       ><n-icon :component="RefreshOutline"
@@ -347,7 +395,6 @@
                   </n-button>
                 </div>
               </div>
-              <FrpDiagnostics />
               <div class="frp-toolbar log-toolbar"><n-input v-model:value="logSearch" clearable placeholder="搜索日志" /><n-select v-model:value="logLevel" :options="[{label:'全部级别',value:'all'},{label:'警告',value:'warn'},{label:'错误',value:'error'}]" /><n-checkbox v-model:checked="logAuto">自动刷新</n-checkbox><n-checkbox v-model:checked="followLogs">跟随滚动</n-checkbox><n-button size="small" @click="copyText(logText, '已复制日志')">复制</n-button></div>
               <n-spin :show="loadingLogs">
                 <pre ref="logPanelRef" class="log-view log-view--panel">{{
@@ -355,6 +402,10 @@
                 }}</pre>
               </n-spin>
             </div>
+          </n-tab-pane>
+          <n-tab-pane name="diagnostics">
+            <template #tab><span class="routes-tab" data-testid="frp-tab-diagnostics"><n-icon :component="PulseOutline" />诊断工具</span></template>
+            <div class="routes-panel"><FrpDiagnostics /></div>
           </n-tab-pane>
         </n-tabs>
       </FonuCard>
@@ -370,7 +421,7 @@
             size="small"
             quaternary
             :loading="loadingLogs"
-            @click="fetchLogs"
+            @click="fetchLogs()"
           >
             <template #icon><n-icon :component="RefreshOutline" /></template>
             刷新
@@ -552,6 +603,13 @@ import {
   CONFIGURED_SECRET_TAG,
 } from "../constants/secretField";
 import {
+  AddOutline,
+  CopyOutline,
+  FlashOutline,
+  HomeOutline,
+  OpenOutline,
+  PulseOutline,
+  TimeOutline,
   AlertCircleOutline,
   CheckmarkCircleOutline,
   ChevronForwardOutline,
@@ -611,7 +669,7 @@ const logLevel = ref("all");
 const followLogs = ref(true);
 const logAuto = ref(false);
 const showTcpModal = ref(false);
-const routeTab = ref<"connection" | "web" | "tcp" | "advanced" | "logs">("web");
+const routeTab = ref<"overview" | "connection" | "web" | "tcp" | "advanced" | "logs" | "diagnostics">("overview");
 const logFullscreen = ref(false);
 const tcpEditingId = ref<string | null>(null);
 
@@ -654,6 +712,7 @@ const filteredTunnels = computed(() => tcpProxies.value.filter(row => (protocolF
 const domainCount = computed(() => domainList.value.length);
 const enabledTunnelCount = computed(() => tcpProxies.value.filter(item => item.enabled).length);
 const registeredTunnelCount = computed(() => frpStatus.value.enabled && frpStatus.value.connected ? tcpProxies.value.filter(item => item.enabled && frpStatus.value.tunnel_states?.[item.id] === "registered").length : 0);
+const failedTunnelCount = computed(() => frpStatus.value.enabled && frpStatus.value.connected ? tcpProxies.value.filter(item => item.enabled && frpStatus.value.tunnel_states?.[item.id] === "failed").length : 0);
 const tcpRemotePorts = computed(() =>
   [
     ...new Set(
@@ -673,6 +732,12 @@ const httpGatewayOn = computed(
 const httpsGatewayOn = computed(
   () => frpStatus.value.enabled && frpStatus.value.https_gateway_state === "registered",
 );
+function gatewayLabel(protocol: "http" | "https") {
+  if (!frpStatus.value.enabled) return "未启用";
+  const state = protocol === "http" ? frpStatus.value.http_gateway_state : frpStatus.value.https_gateway_state;
+  const configured = protocol === "http" ? frpStatus.value.http_gateway_enabled : frpStatus.value.https_gateway_enabled;
+  return state === "registered" ? "已注册" : state === "failed" ? "注册失败" : configured ? "待确认" : "未配置";
+}
 const statusHeroClass = computed(() => {
   if (!frpStatus.value.enabled) return "status-hero--off";
   if (frpStatus.value.connected) return "status-hero--on";
@@ -1083,7 +1148,7 @@ async function load() {
   pageError.value = "";
   try {
     applyData(await api.getFRP());
-    if (!savedConfig.value?.server_addr || !savedConfig.value.enabled) routeTab.value = "connection";
+    if (routeTab.value === "overview") void fetchLogs(true);
   } catch (error) {
     pageError.value =
       error instanceof Error ? error.message : "请检查 Fonu 服务是否正常运行";
@@ -1111,6 +1176,7 @@ async function save(opts?: {
   quiet?: boolean;
   routesOnly?: boolean;
   successText?: string;
+  serviceEnabled?: boolean;
 }): Promise<boolean> {
   if (saving.value || syncing.value || restarting.value) return false;
   saving.value = true;
@@ -1120,7 +1186,7 @@ async function save(opts?: {
     const domains = parseDomains();
     const tcpList = tcpProxies.value;
     const result = await api.saveFRP({
-      enabled: conn.enabled,
+      enabled: opts?.serviceEnabled ?? conn.enabled,
       server_addr: normalizeServerAddr(conn.server_addr),
       server_port: conn.server_port || 7000,
       auth_token: opts?.routesOnly ? undefined : tokenForSave(),
@@ -1129,6 +1195,7 @@ async function save(opts?: {
       tcp_proxies: tcpList,
     });
     savedConfig.value = result.config;
+    if (opts?.serviceEnabled !== undefined) frpForm.enabled = result.config.enabled;
     if (!opts?.routesOnly) {
       frpForm.enabled = result.config.enabled;
       frpForm.server_addr = result.config.server_addr;
@@ -1186,6 +1253,16 @@ async function saveDomains() {
 function removeDomain(domain: string) {
   dialog.warning({ title: "移除穿透域名", content: "确定移除 " + domain + "？不会删除关联的反代规则。", positiveText: "移除", negativeText: "取消", onPositiveClick: async () => { await persistDomains(domainList.value.filter(d => d !== domain)); } });
 }
+function confirmStopService() {
+  if (busy.value || !savedConfig.value?.enabled) return;
+  dialog.warning({
+    title: "停止 FRP 服务",
+    content: "所有穿透服务将断开，已保存的连接、域名和隧道配置将保留。未保存的其他连接修改不会提交。",
+    positiveText: "停止服务",
+    negativeText: "取消",
+    onPositiveClick: async () => { await save({ routesOnly: true, serviceEnabled: false, successText: "已停止 FRP 服务" }); },
+  });
+}
 async function restartFrpc() {
   if (busy.value || !frpStatus.value.enabled) return;
   restarting.value = true;
@@ -1221,13 +1298,13 @@ function scrollLogsToBottom() {
   });
 }
 
-async function fetchLogs() {
+async function fetchLogs(quiet = false) {
   if (loadingLogs.value) return;
   loadingLogs.value = true;
   try {
     logLines.value = await api.getFRPLogs(300);
   } catch (error) {
-    message.error(error instanceof Error ? error.message : "读取日志失败");
+    if (!quiet) message.error(error instanceof Error ? error.message : "读取日志失败");
   } finally {
     loadingLogs.value = false;
     if (followLogs.value) scrollLogsToBottom();
@@ -1278,7 +1355,7 @@ async function downloadFrpsConfig() {
 }
 
 watch(routeTab, (tab) => {
-  if (tab === "logs") fetchLogs();
+  if (tab === "logs" || tab === "overview") void fetchLogs(tab === "overview");
 });
 
 watch(logFullscreen, (open) => {
@@ -1304,7 +1381,8 @@ onMounted(() => {
   void load();
   statusTimer = setInterval(() => {
     void refreshStatus();
-    if (logAuto.value && (routeTab.value === "logs" || logFullscreen.value) && !document.hidden) void fetchLogs();
+    if (!document.hidden && routeTab.value === "overview") void fetchLogs(true);
+    else if (logAuto.value && (routeTab.value === "logs" || logFullscreen.value) && !document.hidden) void fetchLogs();
   }, 10000);
 });
 
@@ -1818,5 +1896,90 @@ onUnmounted(() => {
   .connection-aside { grid-template-columns:minmax(0,1fr); }
   .gateway-grid { grid-template-columns:minmax(0,1fr); }
   .save-row { flex-wrap:wrap; }
+}
+
+.dashboard-hero :deep(.fonu-card__body) { padding:10px; }
+.hero-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2.1fr); gap:12px; }
+.hero-service { min-width:0; display:grid; gap:10px; align-content:start; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); padding:12px; background:var(--fonu-bg-muted); }
+.hero-service.status-hero--on { background:linear-gradient(145deg,color-mix(in srgb,var(--fonu-success) 9%,var(--fonu-surface)),var(--fonu-surface) 65%); }
+.hero-service-head { display:flex; gap:10px; align-items:center; }
+.hero-service-title { min-width:0; flex:1; }
+.hero-title-line { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.hero-title-line strong { font-size:18px; color:var(--fonu-text); }
+.hero-service-title small { display:block; font-size:12px; line-height:1.5; color:var(--fonu-text-secondary); }
+.hero-details { margin:0; display:grid; gap:0; min-width:0; }
+.hero-details > div { display:grid; grid-template-columns:minmax(80px,0.8fr) minmax(0,1.4fr); align-items:center; gap:8px; min-height:30px; border-bottom:1px solid var(--fonu-border); }
+.hero-details dt { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--fonu-text-secondary); }
+.hero-details dd { margin:0; min-width:0; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--fonu-text); }
+.hero-details dd code { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.hero-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.hero-actions > .n-button { flex:1 1 auto; }
+.hero-right { display:grid; min-width:0; gap:10px; grid-template-rows:auto 1fr; }
+.hero-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.hero-kpi { display:grid; gap:3px; min-width:0; padding:10px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); color:var(--fonu-text); background:var(--fonu-surface); text-align:left; font:inherit; cursor:pointer; }
+.hero-kpi:hover { background:var(--fonu-bg-muted); }
+.hero-kpi span { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--fonu-text-secondary); }
+.hero-kpi .n-icon { font-size:17px; color:var(--fonu-success); flex-shrink:0; }
+.hero-kpi strong { font-size:23px; line-height:1.25; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.hero-kpi strong em { font-size:12px; font-style:normal; color:var(--fonu-text-secondary); }
+.hero-kpi .hero-uptime { font-size:16px; }
+.hero-kpi small { color:var(--fonu-text-secondary); font-size:11px; }
+.hero-topology { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:7px; padding:12px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-bg-muted); }
+.topology-node { min-width:0; display:grid; justify-items:center; text-align:center; gap:4px; padding:9px 4px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-surface); }
+.topology-node .n-icon { color:var(--fonu-text-secondary); font-size:22px; }
+.topology-node strong { font-size:12px; overflow-wrap:anywhere; }
+.topology-node small { color:var(--fonu-text-secondary); font-size:11px; }
+.node-active { border-color:color-mix(in srgb,var(--fonu-success) 45%,var(--fonu-border)); background:color-mix(in srgb,var(--fonu-success) 5%,var(--fonu-surface)); }
+.node-active .n-icon,.topology-connected .topology-arrow { color:var(--fonu-success); }
+.topology-arrow { color:var(--fonu-text-secondary); font-size:16px; }
+.dashboard-content { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(210px,0.75fr); gap:12px; padding:12px; align-items:start; }
+.dashboard-panel { min-width:0; display:grid; gap:10px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); padding:12px; background:var(--fonu-surface); }
+.dash-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+.dash-heading h3 { display:flex; align-items:center; gap:7px; margin:0; font-size:15px; font-weight:650; color:var(--fonu-text); }
+.dash-heading h3 .n-icon { color:var(--fonu-success); font-size:20px; }
+.dash-heading > .n-button { font-size:12px; }
+.dash-counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; border-bottom:1px solid var(--fonu-border); padding-bottom:10px; }
+.dash-counts > div { display:grid; gap:2px; }
+.dash-counts strong { font-size:22px; color:var(--fonu-text); line-height:1.3; }
+.dash-counts small { font-size:11px; color:var(--fonu-text-secondary); }
+.dash-counts .good-text { color:var(--fonu-success); }
+.dash-counts .warn-text { color:#b7791f; }
+.dash-service-row { display:flex; gap:7px; align-items:center; min-width:0; border-bottom:1px solid var(--fonu-border); padding:4px 0 9px; flex-wrap:wrap; }
+.dash-service-icon { display:grid; place-items:center; width:32px; height:32px; background:var(--fonu-bg-muted); color:var(--fonu-text-secondary); border-radius:8px; flex-shrink:0; font-size:18px; }
+.dash-service-name { flex:1 1 105px; min-width:0; display:grid; gap:2px; }
+.dash-service-name strong { font-size:13px; overflow-wrap:anywhere; }
+.dash-service-name small { color:var(--fonu-text-secondary); font-size:11px; overflow-wrap:anywhere; }
+.dash-service-row :deep(.n-switch) { flex-shrink:0; }
+.dash-empty { padding:18px 4px; color:var(--fonu-text-secondary); text-align:center; font-size:12px; }
+.dash-footer { display:flex; justify-content:center; padding-top:2px; }
+.dash-side { display:grid; gap:12px; grid-column:3; grid-row:1 / span 2; min-width:0; }
+.dash-shortcuts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.dash-shortcuts button { min-width:0; display:grid; place-items:center; gap:5px; padding:10px 3px; border:1px solid var(--fonu-border); border-radius:var(--fonu-radius); background:var(--fonu-bg-muted); color:var(--fonu-text); font:inherit; font-size:11px; cursor:pointer; }
+.dash-shortcuts button:hover { border-color:var(--fonu-success); }
+.dash-shortcuts button:disabled { opacity:.55; cursor:not-allowed; }
+.dash-shortcuts .n-icon { font-size:21px; color:var(--fonu-text-secondary); }
+.dash-health { display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid var(--fonu-border); }
+.dash-health:last-child { border:0; }
+.dash-logs { grid-column:1 / span 2; }
+.dash-log-preview { margin:0; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; background:#202a38; color:#dbe6ed; padding:12px; border-radius:8px; font-size:12px; line-height:1.7; }
+@container (max-width: 1100px) {
+  .hero-grid { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr); }
+  .hero-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dashboard-content { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dash-side { grid-row:3; grid-column:1/-1; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@container (max-width: 760px) {
+  .hero-grid { grid-template-columns:minmax(0,1fr); }
+  .hero-service { gap:8px; }
+  .hero-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .hero-topology { padding:8px; }
+}
+@container (max-width: 540px) {
+  .hero-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .hero-topology { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .topology-arrow { display:none; }
+  .dashboard-content,.dash-side { grid-template-columns:minmax(0,1fr); }
+  .dash-side,.dash-logs { grid-column:auto; grid-row:auto; }
+  .dashboard-panel { padding:10px; }
 }
 </style>
