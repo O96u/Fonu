@@ -57,3 +57,15 @@ func TestLoadRuntimeIgnoresCorruptSMTPDecryptsTelegram(t *testing.T) {
 		t.Fatalf("telegram token=%q", runtime.TelegramToken)
 	}
 }
+
+func TestCorruptActiveCredentialCanBeReplaced(t *testing.T){
+ ctx:=context.Background()
+ conn,err:=db.Open(filepath.Join(t.TempDir(),"test.db"));if err!=nil{t.Fatal(err)};defer conn.Close()
+ if err:=db.Migrate(ctx,conn,filepath.Join("..","..","migrations"));err!=nil{t.Fatal(err)}
+ st:=settings.NewStore(conn);box,err:=secret.NewBox("test-key");if err!=nil{t.Fatal(err)}
+ if err:=st.SetMany(ctx,map[string]string{settings.KeyNotifyType:"telegram",settings.KeyNotifyTelegramToken:"corrupt",settings.KeyNotifyTelegramJSON:"{\"chat_id\":\"1\",\"has_bot_token\":true}"});err!=nil{t.Fatal(err)}
+ s:=NewStore(st,box)
+ if _,err:=s.LoadRuntime(ctx);err==nil{t.Fatal("corrupt active token ignored")}
+ if err:=s.Save(ctx,SaveInput{Type:NotifyTypeTelegram,Telegram:TelegramConfig{ChatID:"1"},TelegramToken:"replacement"});err!=nil{t.Fatal(err)}
+ runtime,err:=s.LoadRuntime(ctx);if err!=nil||runtime.TelegramToken!="replacement"{t.Fatalf("repair failed: %v",err)}
+}

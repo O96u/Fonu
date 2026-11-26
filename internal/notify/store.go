@@ -33,13 +33,19 @@ func (s *Store) LoadRuntime(ctx context.Context) (RuntimeConfig, error) {
 	return cfg.Runtime(runtime.smtpPassword, runtime.webhookSecret, runtime.telegramToken), nil
 }
 
+// Editing must remain possible when a previously stored credential is corrupt.
+func(s *Store) loadRuntimeForEdit(ctx context.Context)(RuntimeConfig,error){
+ cfg,r,err:=s.load(ctx,true,false);if err!=nil{return RuntimeConfig{},err};return cfg.Runtime(r.smtpPassword,r.webhookSecret,r.telegramToken),nil
+}
+
 type runtimeSecrets struct {
 	smtpPassword   string
 	webhookSecret  string
 	telegramToken  string
 }
 
-func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets, error) {
+func (s *Store) load(ctx context.Context, decrypt bool, strict ...bool) (Config, runtimeSecrets, error) {
+ strictActive:=decrypt&&(len(strict)==0||strict[0])
 	cfg := Config{
 		Email:    EmailConfig{Port: 587, TLS: true},
 		Webhook:  WebhookConfig{Provider: WebhookBark, Server: DefaultBarkServer},
@@ -56,7 +62,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 
 	emailRaw, _ := get(settings.KeyNotifyEmailJSON)
 	if emailRaw != "" {
-		if err:=json.Unmarshal([]byte(emailRaw), &cfg.Email);err!=nil&&decrypt&&cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
+		if err:=json.Unmarshal([]byte(emailRaw), &cfg.Email);err!=nil&&strictActive&&cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 	if cfg.Email.Port <= 0 {
 		cfg.Email.Port = 587
@@ -64,7 +70,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 
 	webhookRaw, _ := get(settings.KeyNotifyWebhookJSON)
 	if webhookRaw != "" {
-		if err:=json.Unmarshal([]byte(webhookRaw), &cfg.Webhook);err!=nil&&decrypt&&cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
+		if err:=json.Unmarshal([]byte(webhookRaw), &cfg.Webhook);err!=nil&&strictActive&&cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 	if cfg.Webhook.Server == "" && cfg.Webhook.Provider == WebhookBark {
 		cfg.Webhook.Server = DefaultBarkServer
@@ -72,7 +78,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 
 	telegramRaw, _ := get(settings.KeyNotifyTelegramJSON)
 	if telegramRaw != "" {
-		if err:=json.Unmarshal([]byte(telegramRaw), &cfg.Telegram);err!=nil&&decrypt&&cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
+		if err:=json.Unmarshal([]byte(telegramRaw), &cfg.Telegram);err!=nil&&strictActive&&cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知配置格式无效")}
 	}
 
 	cfg.IPFrequentThreshold = intValue(settings.KeyNotifyIPFrequentThreshold, DefaultIPFrequentThreshold)
@@ -96,7 +102,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if smtpEnc != "" {
 		cfg.Email.HasPassword = true
 		if decrypt {
-    if s.secret==nil{if cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(smtpEnc);err==nil{secrets.smtpPassword=plain}else if cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+    if s.secret==nil{if strictActive&&cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(smtpEnc);err==nil{secrets.smtpPassword=plain}else if strictActive&&cfg.Type==NotifyTypeEmail{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
   }
 	}
 
@@ -104,7 +110,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if webhookEnc != "" {
 		cfg.Webhook.HasSecret = true
 		if decrypt {
-    if s.secret==nil{if cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(webhookEnc);err==nil{secrets.webhookSecret=plain}else if cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+    if s.secret==nil{if strictActive&&cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(webhookEnc);err==nil{secrets.webhookSecret=plain}else if strictActive&&cfg.Type==NotifyTypeWebhook{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
   }
 	}
 
@@ -112,7 +118,7 @@ func (s *Store) load(ctx context.Context, decrypt bool) (Config, runtimeSecrets,
 	if telegramEnc != "" {
 		cfg.Telegram.HasBotToken = true
 		if decrypt {
-    if s.secret==nil{if cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(telegramEnc);err==nil{secrets.telegramToken=plain}else if cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
+    if s.secret==nil{if strictActive&&cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("通知加密模块不可用")}}else if plain,err:=s.secret.Decrypt(telegramEnc);err==nil{secrets.telegramToken=plain}else if strictActive&&cfg.Type==NotifyTypeTelegram{return cfg,secrets,fmt.Errorf("当前通知凭证无法解密，请重新保存凭证")}
   }
 	}
 
@@ -185,7 +191,9 @@ func (s *Store) PrepareSave(ctx context.Context, in SaveInput) (map[string]strin
  in.Webhook.HasSecret=(in.Webhook.Provider==existing.Webhook.Provider&&existing.Webhook.HasSecret) || (strings.TrimSpace(in.WebhookSecret)!="" && in.WebhookSecret!=MaskedSecret) || (strings.TrimSpace(in.Webhook.Key)!="" && in.Webhook.Key!=MaskedSecret)
  in.Telegram.HasBotToken=existing.Telegram.HasBotToken || (strings.TrimSpace(in.TelegramToken)!="" && in.TelegramToken!=MaskedSecret)
  same:=sameWebhookIdentity(in.Webhook,existing.Webhook)
- runtime,err:=s.LoadRuntime(ctx);if err!=nil{return nil,err}
+ runtime,err:=s.loadRuntimeForEdit(ctx);if err!=nil{return nil,err}
+ if in.Type==NotifyTypeEmail&&runtime.SMTPPassword==""{in.Email.HasPassword=strings.TrimSpace(in.SMTPPassword)!=""&&in.SMTPPassword!=MaskedSecret}
+ if in.Type==NotifyTypeTelegram&&runtime.TelegramToken==""{in.Telegram.HasBotToken=strings.TrimSpace(in.TelegramToken)!=""&&in.TelegramToken!=MaskedSecret}
  input:=in.WebhookSecret
  if (input==""||input==MaskedSecret)&&in.Webhook.Key!=""&&in.Webhook.Key!=MaskedSecret{input=in.Webhook.Key}
  oldSecret:=webhookSecret(runtime)

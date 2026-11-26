@@ -225,7 +225,7 @@ func (s *Service) resolveTestRuntime(ctx context.Context, in TestInput) (Runtime
 		telegramToken == "" || telegramToken == MaskedSecret
 
 	if needStored && s.store != nil {
-		stored, err := s.store.LoadRuntime(ctx)
+		stored, err := s.store.loadRuntimeForEdit(ctx)
 		if err != nil {
 			return RuntimeConfig{}, err
 		}

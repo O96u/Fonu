@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {onMounted,onUnmounted,ref} from 'vue'
+import {NButton,NTag} from 'naive-ui'
 import FonuCard from './FonuCard.vue'
 import {api} from '../api/client'
 const rows=ref<Awaited<ReturnType<typeof api.getNotifyHistory>>>([])

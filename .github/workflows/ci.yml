@@ -80,6 +80,8 @@ jobs:
       - name: Test actual Nginx startup, reload and rejection
         run: go test -v ./internal/nginx -run '^(TestApply(WithNginxIfAvailable|HTTPSWithMultipleCertificates)|TestTrustedProxyRealNginx)$' -count=1
       - run: go test ./...
+      - name: Runtime resource sampling smoke soak (30 seconds)
+        run: FONU_SOAK_SECONDS=30 go test -v ./internal/api -run '^TestRuntimeSamplingSoak$' -count=1
       - name: Benchmark realtime access aggregation
         run: go test ./internal/ingest -run '^$' -bench '^BenchmarkRealtimeRing$' -benchtime=1s -benchmem
       - name: Benchmark million access events

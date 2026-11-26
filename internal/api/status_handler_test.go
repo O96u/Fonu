@@ -3,6 +3,12 @@ package api
 import (
 	"testing"
  "strings"
+ "os"
+ "runtime"
+ "net/http/httptest"
+ "time"
+ "strconv"
+ "github.com/fonu/fonu/internal/config"
 
 	certstore "github.com/fonu/fonu/internal/certificate"
 )
@@ -64,4 +70,20 @@ func TestParseProcessStatWithParentheses(t *testing.T){
  ticks,start,ok:=parseProcessStat("42 (name with ) chars) "+strings.Join(fields," "))
  if !ok||ticks!=43||start!=999{t.Fatalf("ticks=%d start=%d ok=%v",ticks,start,ok)}
  if _,_,ok:=parseProcessStat("broken");ok{t.Fatal("invalid stat accepted")}
+}
+
+func TestRuntimeSamplingSoak(t *testing.T){
+ seconds,err:=strconv.Atoi(os.Getenv("FONU_SOAK_SECONDS"))
+ if err!=nil||seconds<=0{t.Skip("set FONU_SOAK_SECONDS to enable")}
+ if seconds>1800{t.Fatal("soak duration capped at 1800 seconds")}
+ h:=NewStatusHandler(config.Config{DataDir:t.TempDir()},nil,nil,nil,time.Now().UTC().Format(time.RFC3339),"")
+ sample:=func(){r:=httptest.NewRequest("GET","/api/runtime",nil);w:=httptest.NewRecorder();h.Runtime(w,r);if w.Code!=200{t.Fatalf("runtime %d",w.Code)}}
+ sample();runtime.GC()
+ var before,after runtime.MemStats;runtime.ReadMemStats(&before)
+ g0:=runtime.NumGoroutine();f0,_:=os.ReadDir("/proc/self/fd")
+ deadline:=time.Now().Add(time.Duration(seconds)*time.Second);count:=0
+ for time.Now().Before(deadline){sample();count++;time.Sleep(100*time.Millisecond)}
+ runtime.GC();runtime.ReadMemStats(&after);f1,_:=os.ReadDir("/proc/self/fd")
+ t.Logf("samples=%d heap_before=%d heap_after=%d goroutines_before=%d after=%d fd_before=%d after=%d",count,before.HeapAlloc,after.HeapAlloc,g0,runtime.NumGoroutine(),len(f0),len(f1))
+ if runtime.NumGoroutine()>g0+4||len(f1)>len(f0)+4||after.HeapAlloc>before.HeapAlloc+8*1024*1024{t.Fatal("runtime sampling resource growth")}
 }
