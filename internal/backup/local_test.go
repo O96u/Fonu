@@ -5,6 +5,7 @@ func TestLocalBackupLifecycle(t *testing.T){
  conn,err:=db.Open(filepath.Join(dir,"fonu.db"));if err!=nil{t.Fatal(err)}
  if _,err:=conn.Exec("CREATE TABLE testdata(id INTEGER); INSERT INTO testdata VALUES(7)");err!=nil{t.Fatal(err)};defer conn.Close()
  s:=New(dir);row,err:=s.CreateLocal(ctx);if err!=nil{t.Fatal(err)}
+ if !localName.MatchString(row.Name)||row.Kind!="manual"{t.Fatalf("invalid backup metadata: %+v",row)}
  f,err:=s.OpenLocal(row.Name);if err!=nil{t.Fatal(err)};f.Close()
  if _,err:=s.OpenLocal("../fonu.db");err==nil{t.Fatal("traversal accepted")}
  if err:=s.AutoBackup(ctx,1);err!=nil{t.Fatal(err)}
