@@ -32,6 +32,7 @@
         <span v-else-if="discoverySummary" class="discovery-modal__summary">{{ discoverySummary }}</span>
       </div>
 
+      <div class="discovery-options"><span>监听入口</span><n-select :value="discoveryTarget?.key??null" :options="entryOptions" placeholder="默认 HTTPS 入口" size="small" clearable :disabled="discoveryAdding" @update:value="emit('selectEntry',$event)"/><span>业务分组</span><n-select :value="businessGroup" :options="businessOptions" size="small" :disabled="discoveryAdding" @update:value="emit('update:businessGroup',$event)"/></div>
       <div class="discovery-modal__content">
         <div v-if="discoveryLoading && discoveryRows.length === 0" class="discovery-modal__loading">
           <n-spin size="medium" />
@@ -100,14 +101,14 @@
           :disabled="!hasSelectedDiscoveryRows || discoveryLoading"
           @click="emit('submit')"
         >
-          {{ discoveryTarget ? '添加为子规则' : '批量创建规则' }}
+          {{ discoveryTarget ? '批量创建规则' : '批量创建规则' }}
         </n-button>
       </div>
     </div>
   </n-modal>
 </template>
 <script setup lang="ts">
-import { NModal, NButton, NIcon, NInput, NCheckbox, NSpin, NEmpty } from 'naive-ui'
+import { NModal, NButton, NIcon, NInput, NCheckbox, NSpin, NEmpty, NSelect } from 'naive-ui'
 import { CloseOutline } from '@vicons/ionicons5'
 import type { DiscoveredService } from '../../api/types'
 import type { ProxyEntryGroup } from '../../utils/proxyEntries'
@@ -124,6 +125,9 @@ defineProps<{
   showDiscoveryModal: boolean
   discoveryHost: string
   discoveryTarget: ProxyEntryGroup | null
+  entryOptions:{label:string;value:string}[]
+  businessOptions:{label:string;value:number}[]
+  businessGroup:number
   discoveryLoading: boolean
   discoveryScanHost: string
   discoverySummary: string
@@ -136,6 +140,8 @@ defineProps<{
 const emit = defineEmits<{
   'update:showDiscoveryModal': [value: boolean]
   'update:discoveryHost': [value: string]
+  'update:businessGroup':[value:number]
+  selectEntry:[value:string|null]
   scan: []
   selectAll: [checked: boolean]
   patchRow: [id: string, patch: Partial<DiscoveryRow>]
@@ -330,4 +336,5 @@ const emit = defineEmits<{
 .discovery-modal__footer {
   margin-top: var(--fonu-space-4);
 }
+.discovery-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:var(--fonu-text-secondary)}.discovery-options :deep(.n-select){flex:1 1 140px;min-width:0}
 </style>

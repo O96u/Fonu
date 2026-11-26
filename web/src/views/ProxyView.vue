@@ -4,18 +4,17 @@
     description="管理监听入口、域名和内网服务"
   >
     <template #actions>
-      <n-button @click="openEntryCreate">
-        <template #icon><n-icon :component="AddOutline" /></template>
-        新建入口
-      </n-button>
+      <n-button @click="openDiscoveryModal(defaultEntryGroup)"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
+      <n-button @click="showListenerManager=true">监听入口</n-button>
+      <n-button @click="router.push({name:'settings'})">全局设置</n-button>
       <n-popover v-if="entryGroups.length > 1" v-model:show="showEntryPicker" trigger="click" placement="bottom-end">
-        <template #trigger><n-button type="primary"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button></template>
+        <template #trigger><n-button type="primary"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button></template>
         <div class="proxy-entry-picker">
           <span class="text-secondary">选择监听入口</span>
-          <n-button v-for="group in entryGroups" :key="group.key" block quaternary @click="showEntryPicker=false;openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
+          <n-button v-for="group in preferredEntryGroups" :key="group.key" block quaternary @click="showEntryPicker=false;openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
         </div>
       </n-popover>
-      <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button>
+      <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
     </template>
   </PageHeader>
   <NginxApplyBanner />
@@ -25,6 +24,12 @@
   <template v-else>
     <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" />
 
+    <n-alert v-if="businessError" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
+    <ProxyServiceWorkspace :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled" @change="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder"/>
+  </template>
+  <n-modal v-model:show="showListenerManager" transform-origin="center">
+    <div class="listener-manager">
+      <div class="listener-manager__header"><div><h3>监听入口管理</h3><p>监听端口和协议独立于业务分组。删除入口会删除其关联规则。</p></div><n-button type="primary" size="small" @click="openEntryCreate">新建入口</n-button><n-button quaternary @click="showListenerManager=false">关闭</n-button></div>
     <div ref="layoutRef" class="proxy-layout">
       <FonuCard flush class="proxy-panel" title="代理规则">
         <template #header><span class="proxy-result-count">{{ filteredRules.length }} / {{ rules.length }} 条规则 · {{ entryGroups.length }} 个入口</span></template>
@@ -126,7 +131,8 @@
         ><template #action><n-button @click="clearFilters">清除筛选</n-button></template></EmptyState>
       </FonuCard>
     </div>
-  </template>
+    </div>
+  </n-modal>
 
   <n-modal v-model:show="showDetailPanel" :mask-closable="true" transform-origin="center">
     <div v-if="selectedRule" class="proxy-detail-modal">
@@ -415,6 +421,10 @@
     v-model:show-discovery-modal="showDiscoveryModal"
     v-model:discovery-host="discoveryHost"
     :discovery-target="discoveryTarget"
+    :entry-options="preferredEntryGroups.map(g=>({label:entryGroupDisplayName(g),value:g.key}))"
+    @select-entry="discoveryTarget=entryGroups.find(g=>g.key===$event)??null"
+    :business-options="[{label:'未分组',value:0},...business.groups.map(g=>({label:g.name,value:g.id}))]"
+    v-model:business-group="discoveryBusinessGroup"
     :discovery-loading="discoveryLoading"
     :discovery-scan-host="discoveryScanHost"
     :discovery-summary="discoverySummary"
@@ -433,6 +443,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Component, type VNode } from 'vue'
 import Sortable from 'sortablejs'
+import {useRouter} from 'vue-router'
 import {
   NAlert,
   NButton,
@@ -450,6 +461,7 @@ import {
 } from 'naive-ui'
 import {
   AddOutline,
+  GlobeOutline,
   CloseOutline,
   CopyOutline,
   CreateOutline,
@@ -463,7 +475,7 @@ import {
 import { api, asList } from '../api/client'
 import { createProxyPoll } from '../composables/proxy/useProxyPoll'
 import { useProxyLogStream } from '../composables/proxy/useProxyLogStream'
-import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
+import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic, ProxyBusinessState, ProxyBusinessChange } from '../api/types'
 import {
   applyEntryListen,
   buildProxyEntryGroups,
@@ -480,6 +492,7 @@ import LoadError from '../components/LoadError.vue'
 import PageHeader from '../components/PageHeader.vue'
 import NginxApplyBanner from '../components/NginxApplyBanner.vue'
 import ProxyStats from '../components/ProxyStats.vue'
+import ProxyServiceWorkspace from '../components/proxy/ProxyServiceWorkspace.vue'
 import ServiceFavicon from '../components/ServiceFavicon.vue'
 import ProxyToolbar from '../components/proxy/ProxyToolbar.vue'
 import ProxyEntryEditor from '../components/proxy/ProxyEntryEditor.vue'
@@ -508,7 +521,30 @@ import {
 } from '../utils/proxyFormHosts'
 import { renderTableRowActions } from '../utils/tableActions'
 
+const router=useRouter()
 const message = useMessage()
+const showListenerManager=ref(false)
+const business=ref<ProxyBusinessState>({groups:[],members:[]})
+const businessError=ref('')
+const businessBusy=ref(false)
+const activeBusinessGroup=ref(-1)
+const draftBusinessGroup=ref(0)
+const discoveryBusinessGroup=ref(0)
+async function loadBusiness(){
+  if(businessBusy.value)return
+  try{business.value=await api.getProxyBusiness();businessError.value=''}catch(error){businessError.value=error instanceof Error?error.message:'读取业务分组失败'}
+}
+async function changeBusiness(change:ProxyBusinessChange){
+  if(businessBusy.value||businessError.value)return
+  businessBusy.value=true
+  try{business.value=await api.changeProxyBusiness(change);message.success('业务分组已更新')}catch(error){message.error(error instanceof Error?error.message:'分组操作失败')}finally{businessBusy.value=false}
+}
+async function assignSavedRules(saved:ProxyRule[],groupId:number){
+  if(groupId<=0||!saved.length)return
+  try{business.value=await api.changeProxyBusiness({action:'assign',id:groupId,rule_ids:saved.map(r=>r.id)})}
+  catch{message.warning('代理规则已保存，但业务分组关联失败，可在列表中重新分组')}
+}
+function ruleBusinessGroup(id:number){return business.value.members.find(m=>m.rule_id===id)?.group_id??0}
 const dialog = useDialog()
 const showDiscoveryModal = ref(false)
 const discoveryHost = ref('127.0.0.1')
@@ -722,6 +758,8 @@ const canReorderEntries = computed(() => !hasFilters.value && !reordering.value 
   entryGroups.value.every(group => group.entryId != null))
 
 const entryGroups = computed(() => buildProxyEntryGroups(rules.value, entries.value))
+const defaultEntryGroup=computed(()=>entryGroups.value.find(g=>g.listen.https_enabled&&g.listen.listen_port===nginxHttpsPort.value)??entryGroups.value[0])
+const preferredEntryGroups=computed(()=>[...entryGroups.value].sort((a,b)=>Number(b.key===defaultEntryGroup.value?.key)-Number(a.key===defaultEntryGroup.value?.key)))
 const ruleEntryNames = computed(() => {
   const names = new Map<number,string>()
   for (const group of entryGroups.value) for (const rule of group.rules) names.set(rule.id,entryGroupDisplayName(group))
@@ -766,7 +804,7 @@ function toggleAllEntries() {
 }
 function clearFilters() { search.value='';statusFilter.value=null;httpsFilter.value=null }
 function openQuickCreate() {
-  const group=entryGroups.value[0]
+  const group=defaultEntryGroup.value
   if(group) openCreateWithEntry(group.listen,group.entryId)
   else openCreateWithEntry({listen_port:nginxHttpsPort.value,https_enabled:true,http_redirect:true,listen_ipv4:true,listen_ipv6:false})
 }
@@ -878,6 +916,7 @@ const trafficChart = computed(() => {
 })
 
 function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
+  draftBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
   editingEntryId.value = null
   editing.value = null
   formTab.value = 'basic'
@@ -1061,6 +1100,7 @@ function buildDiscoveryRows(items: DiscoveredService[]): DiscoveryRow[] {
 }
 
 function openDiscoveryModal(group?: ProxyEntryGroup) {
+  discoveryBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
   discoveryTarget.value = group ?? null
   discoveryHost.value = '127.0.0.1'
   discoveryRows.value = []
@@ -1132,10 +1172,17 @@ async function submitDiscovery() {
         payload.listen_ipv6 = group.listen.listen_ipv6
         payload.https_enabled = group.listen.https_enabled
         payload.http_redirect = group.listen.http_redirect
+      } else {
+        payload.listen_port=nginxHttpsPort.value
+        payload.https_enabled=true
+        payload.http_redirect=true
+        payload.listen_ipv4=true
+        payload.listen_ipv6=false
       }
       return payload
     })
-    await api.saveProxyBatch({ create })
+    const saved=await api.saveProxyBatch({ create })
+    await assignSavedRules(saved,discoveryBusinessGroup.value)
     message.success(`已添加 ${selected.length} 条规则`)
     showDiscoveryModal.value = false
     await load()
@@ -1893,6 +1940,7 @@ async function load() {
     ])
     rules.value = asList(ruleRows)
     entries.value = asList(entryRows)
+    await loadBusiness()
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '请检查 Fonu 服务是否正常运行'
   } finally {
@@ -2011,7 +2059,7 @@ function buildPayload(): ProxySavePayload {
 }
 
 async function toggleRuleEnabled(row: ProxyRule, enabled: boolean) {
-  if (togglingRuleId.value === row.id || row.enabled === enabled) return
+  if (togglingRuleId.value !== null || row.enabled === enabled) return
   togglingRuleId.value = row.id
   const prev = row.enabled
   rules.value = rules.value.map((rule) => (rule.id === row.id ? { ...rule, enabled } : rule))
@@ -2038,6 +2086,7 @@ function findEntryGroupForRule(rule: ProxyRule): ProxyEntryGroup | undefined {
 }
 
 function openDuplicate(rule: ProxyRule) {
+  draftBusinessGroup.value=ruleBusinessGroup(rule.id)
   closeDetail()
   editing.value = null
   const parentGroup = findEntryGroupForRule(rule)
@@ -2068,6 +2117,7 @@ function openDuplicate(rule: ProxyRule) {
 }
 
 function openEdit(rule: ProxyRule, tab: 'basic' | 'security' | 'nginx' = 'basic') {
+  draftBusinessGroup.value=ruleBusinessGroup(rule.id)
   closeDetail()
   editingEntryId.value = null
   editing.value = rule
@@ -2256,7 +2306,7 @@ async function setupRowSortable() {
   await setupEntryStackSortable(generation)
 }
 
-watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable], () => {
+watch([showListenerManager,canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable], () => {
   void setupRowSortable()
 })
 
@@ -2302,14 +2352,16 @@ async function save() {
     }
 
     if (editing.value) {
-      await api.saveProxyBatch({
+      const saved=await api.saveProxyBatch({
         update_id: editing.value.id,
         update: payloadForSingleHost(basePayload, hosts[0]),
         create: hosts.slice(1).map(host => payloadForSingleHost(basePayload, host)),
       })
+      await assignSavedRules(saved.filter(r=>r.id!==editing.value?.id),draftBusinessGroup.value)
       message.success(hosts.length > 1 ? `已保存 1 条并新增 ${hosts.length - 1} 条规则` : '规则已保存')
     } else {
-      await api.saveProxyBatch({ create: hosts.map(host => payloadForSingleHost(basePayload, host)) })
+      const saved=await api.saveProxyBatch({ create: hosts.map(host => payloadForSingleHost(basePayload, host)) })
+      await assignSavedRules(saved,draftBusinessGroup.value)
       message.success(hosts.length > 1 ? `已创建 ${hosts.length} 条规则` : '规则已创建')
     }
     showModal.value = false
@@ -3622,4 +3674,8 @@ onUnmounted(() => {
 .proxy-panel :deep(.fonu-card__header) { align-items:center; padding:12px 14px; }
 .proxy-panel :deep(.fonu-card__body) { padding:0; }
 @media(max-width:760px){.proxy-entry-stack{padding:8px;gap:8px}}
+
+.business-error{margin-bottom:12px}
+.listener-manager{width:min(1180px,96vw);max-height:88vh;overflow:auto;background:var(--fonu-surface);border:1px solid var(--fonu-border);border-radius:var(--fonu-radius);padding:14px;box-sizing:border-box}
+.listener-manager__header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}.listener-manager__header>div{flex:1 1 200px}.listener-manager__header h3{margin:0}.listener-manager__header p{font-size:12px;color:var(--fonu-text-secondary);margin:5px 0 0}
 </style>
