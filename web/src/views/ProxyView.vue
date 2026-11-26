@@ -39,7 +39,7 @@
             class="proxy-entry-stack"
             :class="{ 'proxy-entry-stack--sortable': canReorderEntries }"
           >
-            <ProxyEntryGroup
+            <ProxyEntryGroupCard
               v-for="group in entryGroups"
               :key="group.key"
               :group="group"
@@ -70,7 +70,7 @@
                   </n-button>
                 </div>
               </div>
-            </ProxyEntryGroup>
+            </ProxyEntryGroupCard>
           </div>
         </template>
 
@@ -464,7 +464,7 @@ import ProxySecurityEditor from '../components/proxy/ProxySecurityEditor.vue'
 import ProxyBasicEditor from '../components/proxy/ProxyBasicEditor.vue'
 import ProxyNginxEditor from '../components/proxy/ProxyNginxEditor.vue'
 import ProxyOverviewPanel from '../components/proxy/ProxyOverviewPanel.vue'
-import ProxyEntryGroup from '../components/proxy/ProxyEntryGroup.vue'
+import ProxyEntryGroupCard from '../components/proxy/ProxyEntryGroup.vue'
 import ProxyRuleTable from '../components/proxy/ProxyRuleTable.vue'
 import { defaultSecurityForm } from '../composables/proxy/securityDraft'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -476,7 +476,7 @@ import {
   validateUpstreamInput,
   type DdnsHostSelectOption,
 } from '../utils/ddnsHosts'
-import { formatBytes, formatRate, formatRateIdle } from '../utils/format'
+import { formatBytes, formatRate } from '../utils/format'
 import {
   formHostsList,
   mergeHostSelectOptions,
