@@ -1,10 +1,10 @@
 <template>
   <n-form label-placement="top" class="basic-editor">
-    <section v-if="section==='basic'" class="editor-section">
+    <section v-show="section==='basic'" class="editor-section">
       <div class="section-heading"><h3>服务信息</h3><p>为服务命名，指定前端域名和目标地址。</p></div>
       <div v-if="copySource" class="source-note"><n-icon :component="CopyOutline"/><div><strong>复制来源：{{copySource.name||copySource.domain}}</strong><small>{{copySource.domain}} · {{copySource.upstream}}</small><small>请填写新域名。认证密码及手动 Nginx 文本不会复制。</small></div></div>
       <div class="field-grid">
-        <n-form-item label="服务名称"><n-input :value="form.name" maxlength="100" placeholder="例如：飞牛影视" @update:value="emit('patch',{name:$event})"/></n-form-item>
+        <n-form-item label="服务名称"><input class="draft-input" :value="form.name" maxlength="100" aria-label="服务名称" placeholder="例如：飞牛影视" @input="updateText('name',$event)"/></n-form-item>
         <n-form-item label="业务分组"><n-select :value="businessGroup" :options="businessOptions" @update:value="emit('business',$event)"/></n-form-item>
       </div>
       <n-form-item label="前端域名" required>
@@ -13,10 +13,10 @@
           <small v-if="form.hostsSelected.length>1" class="domain-count">本次涉及 {{form.hostsSelected.length}} 条独立规则</small>
         </div>
       </n-form-item>
-      <n-form-item label="目标地址" required><div class="field-stack"><n-input :value="form.upstream" placeholder="http://192.168.1.100:8005" @update:value="emit('patch',{upstream:$event})"/><small>支持 HTTP / HTTPS 内网服务。无需连接测试即可保存。</small><div class="target-action"><n-button size="small" :disabled="!validTarget" @click="openTarget">在浏览器打开目标</n-button><small>仅测试当前浏览器能否访问，不代表 Fonu 后端连通。</small></div></div></n-form-item>
+      <n-form-item label="目标地址" required><div class="field-stack"><input class="draft-input" :value="form.upstream" aria-label="目标地址" placeholder="http://192.168.1.100:8005" @input="updateText('upstream',$event)"/><small>支持 HTTP / HTTPS 内网服务。无需连接测试即可保存。</small><div class="target-action"><n-button size="small" :disabled="!validTarget" @click="openTarget">在浏览器打开目标</n-button><small>仅测试当前浏览器能否访问，不代表 Fonu 后端连通。</small></div></div></n-form-item>
       <div class="option-row"><div><strong>启用规则</strong><small>保存后应用该独立代理规则。</small></div><n-switch :value="form.enabled" @update:value="emit('patch',{enabled:$event})"/></div>
     </section>
-    <section v-else class="editor-section">
+    <section v-show="section==='https'" class="editor-section">
       <div class="section-heading"><h3>监听与 HTTPS</h3><p>通常使用默认 HTTPS 入口；特殊端口可单独设置。</p></div>
       <n-form-item label="监听入口"><n-select :value="entryId??0" :options="entryOptions" @update:value="emit('entry',$event)"/></n-form-item>
       <div v-if="bindEntryListen" class="source-note"><n-icon :component="InformationCircleOutline"/><div><strong>{{form.listen_port}} · {{form.https_enabled?'HTTPS':'HTTP'}} · {{form.listen_ipv4?'IPv4':''}}{{form.listen_ipv4&&form.listen_ipv6?' / ':''}}{{form.listen_ipv6?'IPv6':''}}</strong><small>使用入口的网络配置。切换入口只影响当前规则；修改入口请在监听入口管理中操作。</small></div></div>
@@ -31,13 +31,14 @@
 </template>
 <script setup lang="ts">
 import {computed} from 'vue'
-import {NForm,NFormItem,NInput,NInputNumber,NSelect,NCheckbox,NSwitch,NButton,NIcon,type SelectGroupOption} from 'naive-ui'
+import {NForm,NFormItem,NInputNumber,NSelect,NCheckbox,NSwitch,NButton,NIcon,type SelectGroupOption} from 'naive-ui'
 import {CopyOutline,InformationCircleOutline,LockClosedOutline} from '@vicons/ionicons5'
 import type {ProxyRule} from '../../api/types'
 import type {DdnsHostSelectOption} from '../../utils/ddnsHosts'
 interface BasicDraft {name:string;hostsSelected:string[];listen_port:number;listen_ipv4:boolean;listen_ipv6:boolean;https_enabled:boolean;http_redirect:boolean;upstream:string;enabled:boolean}
 const props=defineProps<{section:'basic'|'https';form:BasicDraft;bindEntryListen:boolean;entryId:number|null;entryOptions:{label:string;value:number}[];businessGroup:number;businessOptions:{label:string;value:number}[];copySource:ProxyRule|null;ddnsHostsLoading:boolean;hostSelectOptions:SelectGroupOption[];filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean}>()
 const emit=defineEmits<{patch:[value:Partial<BasicDraft>];loadHosts:[];entry:[value:number];business:[value:number]}>()
+function updateText(key:'name'|'upstream',event:Event){emit('patch',{[key]:(event.target as HTMLInputElement).value})}
 function updateHosts(value:unknown){emit('patch',{hostsSelected:Array.isArray(value)?value.map(String):[]})}
 const validTarget=computed(()=>{try{const u=new URL(props.form.upstream);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password}catch{return false}})
 function openTarget(){if(validTarget.value)window.open(props.form.upstream,'_blank','noopener,noreferrer')}
@@ -47,4 +48,5 @@ function openTarget(){if(validTarget.value)window.open(props.form.upstream,'_bla
 .basic-editor :deep(.n-form-item){margin:0;min-width:0}.basic-editor :deep(.n-input-number),.basic-editor :deep(.n-select){width:100%;min-width:0}.domain-count{color:var(--fonu-brand-text)!important}.source-note,.section-tip{display:flex;align-items:flex-start;gap:8px;border:1px solid var(--fonu-border);border-radius:8px;background:var(--fonu-bg-muted);padding:12px;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.source-note strong{display:block;font-size:13px}.source-note :deep(.n-icon),.section-tip :deep(.n-icon){font-size:17px;color:var(--fonu-brand-text);flex-shrink:0;margin-top:2px}
 .option-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--fonu-border);border-radius:8px;padding:12px}.option-row strong{font-size:13px;font-weight:600}.option-row :deep(.n-switch){flex-shrink:0}.ip-options,.target-action{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.target-action small{flex:1 1 180px}
 @container proxy-editor(max-width:520px){.field-grid{grid-template-columns:1fr;gap:2px}.editor-section{gap:10px}}
+.draft-input{width:100%;min-width:0;box-sizing:border-box;min-height:34px;border:1px solid var(--fonu-border);border-radius:var(--fonu-radius-sm,6px);background:var(--fonu-surface);color:var(--fonu-text);font:inherit;padding:6px 11px;outline:none}.draft-input:focus{border-color:var(--fonu-brand);box-shadow:0 0 0 2px var(--fonu-brand-soft)}.draft-input::placeholder{color:var(--fonu-text-muted)}
 </style>
