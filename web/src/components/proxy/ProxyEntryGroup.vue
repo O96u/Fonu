@@ -71,7 +71,7 @@
                           quaternary
                           circle
                           class="proxy-entry-card__action-btn proxy-entry-card__action-btn--accent"
-                          @click="emit('create')"
+                          aria-label="新增规则" @click="emit('create')"
                         >
                           <template #icon><n-icon :component="AddOutline" :size="16" /></template>
                         </n-button>
@@ -85,7 +85,7 @@
                           quaternary
                           circle
                           class="proxy-entry-card__action-btn"
-                          @click="emit('discover')"
+                          aria-label="发现内网服务" @click="emit('discover')"
                         >
                           <template #icon><n-icon :component="GlobeOutline" :size="16" /></template>
                         </n-button>
@@ -100,7 +100,7 @@
                           circle
                           class="proxy-entry-card__action-btn"
                           :disabled="!group.entryId"
-                          @click="emit('edit')"
+                          aria-label="编辑入口" @click="emit('edit')"
                         >
                           <template #icon><n-icon :component="CreateOutline" :size="16" /></template>
                         </n-button>
@@ -115,7 +115,7 @@
                           circle
                           class="proxy-entry-card__action-btn"
                           :disabled="!group.entryId"
-                          @click="emit('duplicate')"
+                          aria-label="复制入口" @click="emit('duplicate')"
                         >
                           <template #icon><n-icon :component="CopyOutline" :size="16" /></template>
                         </n-button>
@@ -131,7 +131,7 @@
                           type="error"
                           class="proxy-entry-card__action-btn proxy-entry-card__action-btn--danger"
                           :disabled="!group.entryId"
-                          @click="emit('delete')"
+                          aria-label="删除入口" @click="emit('delete')"
                         >
                           <template #icon><n-icon :component="TrashOutline" :size="16" /></template>
                         </n-button>

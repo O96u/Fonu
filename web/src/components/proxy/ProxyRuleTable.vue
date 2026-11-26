@@ -236,4 +236,8 @@ defineProps<{nested?:boolean;compact?:boolean;sortable:boolean;columns:DataTable
 .proxy-table :deep(.domain-cell__link){color:var(--fonu-brand-text)}
 .proxy-table :deep(.domain-cell__link-row){display:flex;min-width:0}
 .proxy-table :deep(.domain-cell__link){max-width:none;flex:1;min-width:0}
+.proxy-table :deep(.domain-cell__link-action){flex:0 0 19px;width:19px;height:20px}
+.proxy-table--compact :deep(.proxy-mobile-actions .n-button){min-width:26px}
+.proxy-table--compact :deep(.proxy-service-cell){gap:5px}
+.proxy-table--compact :deep(.proxy-service-cell .service-favicon){width:21px;height:21px}
 </style>

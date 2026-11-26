@@ -8,11 +8,11 @@
         <template #icon><n-icon :component="AddOutline" /></template>
         新建入口
       </n-button>
-      <n-popover v-if="entryGroups.length > 1" trigger="click" placement="bottom-end">
+      <n-popover v-if="entryGroups.length > 1" v-model:show="showEntryPicker" trigger="click" placement="bottom-end">
         <template #trigger><n-button type="primary"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button></template>
         <div class="proxy-entry-picker">
           <span class="text-secondary">选择监听入口</span>
-          <n-button v-for="group in entryGroups" :key="group.key" block quaternary @click="openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
+          <n-button v-for="group in entryGroups" :key="group.key" block quaternary @click="showEntryPicker=false;openCreateWithEntry(group.listen,group.entryId)">{{ entryGroupDisplayName(group) }}</n-button>
         </div>
       </n-popover>
       <n-button v-else type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增规则</n-button>
@@ -69,7 +69,7 @@
               @duplicate="duplicateEntry(group)"
               @delete="confirmDeleteEntry(group)"
             >
-              <div v-show="!isEntryCollapsed(group.key)" class="proxy-entry-card__body" :data-entry-key="group.key">
+              <div v-if="!isEntryCollapsed(group.key)" class="proxy-entry-card__body" :data-entry-key="group.key">
                 <ProxyRuleTable
                   v-if="group.rules.length > 0"
                   nested
@@ -102,6 +102,12 @@
             />
           </div>
         </template>
+
+        <EmptyState
+          v-else-if="!showEntryGroups && rules.length === 0 && entries.length > 0 && !hasFilters"
+          title="还没有规则"
+          description="入口已经创建，可以直接添加规则，或切换入口视图进行管理。"
+        ><template #action><n-button @click="viewMode='grouped'">查看入口</n-button><n-button type="primary" @click="viewMode='grouped';toggleAllEntries()">展开入口</n-button></template></EmptyState>
 
         <EmptyState
           v-else-if="rules.length === 0 && entries.length === 0"
@@ -609,15 +615,16 @@ type ViewMode = 'grouped' | 'flat'
 function readViewMode(): ViewMode { try { return localStorage.getItem('fonu.proxy.view') === 'flat' ? 'flat' : 'grouped' } catch { return 'grouped' } }
 const viewMode = ref<ViewMode>(readViewMode())
 watch(viewMode, value => { try { localStorage.setItem('fonu.proxy.view',value) } catch { /* storage unavailable */ } })
+const showEntryPicker = ref(false)
 const layoutRef = ref<HTMLElement | null>(null)
 const compactTable = ref(false)
 let layoutObserver: ResizeObserver | undefined
 watch(layoutRef, el => {
   layoutObserver?.disconnect()
   if (!el) return
-  compactTable.value = el.clientWidth < 820
+  compactTable.value = el.clientWidth < 960
   if (typeof ResizeObserver !== 'undefined') {
-    layoutObserver = new ResizeObserver(([entry]) => { if (entry) compactTable.value = entry.contentRect.width < 820 })
+    layoutObserver = new ResizeObserver(([entry]) => { if (entry) compactTable.value = entry.contentRect.width < 960 })
     layoutObserver.observe(el)
   }
 }, { flush: 'post' })
@@ -736,7 +743,7 @@ const visibleEntryGroups = computed(() => {
   return entryGroups.value.map(group => {
     const matched = group.rules.filter(rule => ids.has(rule.id))
     return {...group,rules:matched,enabledCount:matched.filter(rule=>rule.enabled).length}
-  }).filter(group => group.rules.length > 0)
+  }).filter(group => group.rules.length > 0 || (!statusFilter.value && !httpsFilter.value && group.name.toLowerCase().includes(search.value.trim().toLowerCase()) && entryGroups.value.find(original=>original.key===group.key)?.rules.length===0))
 })
 // Filtering uses a temporary expansion state, never overwrites the user's normal groups.
 const filterCollapsedKeys = ref(new Set<string>())
@@ -1140,7 +1147,6 @@ async function submitDiscovery() {
 }
 
 watch(entryGroups, (groups) => {
-  if (!showEntryGroups.value) return
   const validKeys = new Set(groups.map((group) => group.key))
   expandedEntryKeys.value = new Set([...expandedEntryKeys.value].filter((key) => validKeys.has(key)))
 })
@@ -2179,12 +2185,12 @@ async function persistEntryOrder(reorderedGroups: ProxyEntryGroup[]) {
   }
 }
 
-async function setupEntryStackSortable() {
+async function setupEntryStackSortable(generation: number) {
   destroyEntryStackSortable()
   if (!canReorderEntries.value) return
   await nextTick()
   const stack = entryStackRef.value
-  if (!stack) return
+  if (!stack || generation!==sortableGeneration || !canReorderEntries.value) return
 
   entryStackSortable = Sortable.create(stack, {
     handle: '.proxy-entry-drag-handle',
@@ -2206,11 +2212,14 @@ async function setupEntryStackSortable() {
   })
 }
 
+let sortableGeneration = 0
 async function setupRowSortable() {
+  const generation = ++sortableGeneration
   destroyRowSortable()
   destroyEntryStackSortable()
   if (!canReorder.value && !canReorderEntries.value) return
   await nextTick()
+  if(generation!==sortableGeneration)return
 
   if (canReorderGlobally.value) {
     const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
@@ -2225,10 +2234,10 @@ async function setupRowSortable() {
     return
   }
 
-  if (!canReorderInGroups.value) { await setupEntryStackSortable(); return }
+  if (!canReorderInGroups.value) { await setupEntryStackSortable(generation); return }
 
   for (const group of entryGroups.value) {
-    if (group.rules.length < 2) continue
+    if (group.rules.length < 2 || isEntryCollapsed(group.key)) continue
     const body = entryStackRef.value?.querySelector(
       `.proxy-entry-card__body[data-entry-key="${CSS.escape(group.key)}"] .n-data-table-tbody`,
     ) as HTMLElement | null
@@ -2244,7 +2253,7 @@ async function setupRowSortable() {
     })
   }
 
-  await setupEntryStackSortable()
+  await setupEntryStackSortable(generation)
 }
 
 watch([canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable], () => {
@@ -2367,6 +2376,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   layoutObserver?.disconnect()
+  sortableGeneration++
   destroyRowSortable()
   destroyEntryStackSortable()
   stopLogStream()
