@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/fonu/fonu/internal/secret"
 )
 
 type Record struct {
@@ -31,10 +33,13 @@ type Record struct {
 
 type Store struct {
 	db *sql.DB
+	box *secret.Box
 }
 
-func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+func NewStore(db *sql.DB, boxes ...*secret.Box) *Store {
+	s := &Store{db: db}
+	if len(boxes) > 0 { s.box = boxes[0] }
+	return s
 }
 
 func (s *Store) List(ctx context.Context) ([]Record, error) {
@@ -50,7 +55,7 @@ func (s *Store) List(ctx context.Context) ([]Record, error) {
 
 	var records []Record
 	for rows.Next() {
-		rec, err := scanRecord(rows)
+		rec, err := s.scanRecord(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +134,7 @@ func (s *Store) SetName(ctx context.Context, domain, name string) error {
 }
 
 func (s *Store) SetExport(ctx context.Context, domain string, cfg ExportConfig) error {
-	raw, err := cfg.Marshal()
+	raw, err := s.encodeExportConfig(cfg)
 	if err != nil {
 		return err
 	}
@@ -141,7 +146,7 @@ func (s *Store) SetExport(ctx context.Context, domain string, cfg ExportConfig) 
 
 // UpdateMeta updates display name and export mapping for an existing certificate.
 func (s *Store) UpdateMeta(ctx context.Context, domain, name string, cfg ExportConfig) error {
-	raw, err := cfg.Marshal()
+	raw, err := s.encodeExportConfig(cfg)
 	if err != nil {
 		return err
 	}
@@ -172,14 +177,14 @@ func (s *Store) GetByDomain(ctx context.Context, domain string) (Record, error) 
 		       expires_at, last_renew_at, status, COALESCE(last_error, ''), COALESCE(export_json, ''), auto_renew, dns_config_id
 		FROM certificates WHERE domain = ?
 	`, domain)
-	rec, err := scanRecord(row)
+	rec, err := s.scanRecord(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Record{}, fmt.Errorf("证书不存在")
 	}
 	return rec, err
 }
 
-func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
+func (s *Store) scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	var rec Record
 	var wildcard, autoRenew int
 	var domainsJSON string
@@ -188,7 +193,7 @@ func scanRecord(row interface{ Scan(dest ...any) error }) (Record, error) {
 	if err := row.Scan(&rec.ID, &rec.Domain, &rec.Name, &domainsJSON, &wildcard, &rec.ACMECA, &rec.CertPath, &rec.KeyPath, &expiresAt, &lastRenewAt, &rec.Status, &rec.LastError, &exportJSON, &autoRenew, &rec.DNSConfigID); err != nil {
 		return Record{}, err
 	}
-	exportCfg, err := ParseExportConfig(exportJSON)
+	exportCfg, err := s.decodeExportConfig(exportJSON)
 	if err != nil {
 		return Record{}, err
 	}

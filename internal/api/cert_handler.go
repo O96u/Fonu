@@ -250,5 +250,5 @@ func (h *CertHandler) Renew(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, record)
+	writeJSON(w, http.StatusOK, redactCertRecord(record))
 }

@@ -98,7 +98,11 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 	proxyStore := proxy.NewStore(conn)
 	settingsStore := settings.NewStore(conn)
 	ddnsStore := ddns.NewStore(conn)
-	certStore := certificate.NewStore(conn)
+	certStore := certificate.NewStore(conn, secretBox)
+	if err := certStore.MigrateExportSecrets(context.Background()); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("migrate certificate deployment credentials: %w", err)
+	}
 	nginxMgr := nginx.NewManager(cfg, logger.With("module", "NGINX"))
 	if err := nginxMgr.EnsureDirs(); err != nil {
 		conn.Close()

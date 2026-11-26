@@ -91,6 +91,29 @@ func RotateLegacyKey(ctx context.Context, db *sql.DB, dir, current string) (stri
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE settings SET value = ? WHERE key = ?", updated, key); err != nil { return "", err }
 	}
+	// Deployment credentials share the same key as other encrypted settings.
+	certRows, err := tx.QueryContext(ctx, "SELECT id, export_json FROM certificates WHERE export_json IS NOT NULL AND export_json != ''")
+	if err != nil { return "", err }
+	var certItems []item
+	for certRows.Next() {
+		var i item
+		if err := certRows.Scan(&i.id,&i.value); err != nil { certRows.Close();return "",err }
+		certItems=append(certItems,i)
+	}
+	err=certRows.Err();certRows.Close();if err!=nil{return "",err}
+	for _,i:=range certItems {
+		var config map[string]json.RawMessage
+		if err:=json.Unmarshal([]byte(i.value),&config);err!=nil{return "",fmt.Errorf("invalid certificate deployment config %d",i.id)}
+		raw,ok:=config["ssh_secrets_encrypted"];if !ok{continue}
+		var enc string
+		if err:=json.Unmarshal(raw,&enc);err!=nil{return "",err}
+		if enc==""{continue}
+		next,err:=convert(enc);if err!=nil{return "",fmt.Errorf("rotate certificate credential %d: %w",i.id,err)}
+		if next==enc{continue}
+		config["ssh_secrets_encrypted"],err=json.Marshal(next);if err!=nil{return "",err}
+		out,err:=json.Marshal(config);if err!=nil{return "",err}
+		if _,err:=tx.ExecContext(ctx,"UPDATE certificates SET export_json = ? WHERE id = ?",string(out),i.id);err!=nil{return "",err}
+	}
 	if err := tx.Commit(); err != nil { return "", err }
 	if err := SaveStoredKey(dir, next); err != nil { return "", err }
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) { return "", err }
