@@ -2,6 +2,9 @@ package traffic
 
 import (
 	"testing"
+ "context"
+ "path/filepath"
+ "github.com/fonu/fonu/internal/db"
 	"time"
 
 	"github.com/fonu/fonu/internal/proxy"
@@ -50,4 +53,20 @@ func TestEndpointKeyIncludesPort(t *testing.T) {
 	if got := EndpointKey("XXX.com", 6893); got != "xxx.com:6893" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+func TestCollectorWaitAndFlush(t *testing.T){
+ conn,err:=db.Open(filepath.Join(t.TempDir(),"traffic.db"));if err!=nil{t.Fatal(err)};defer conn.Close()
+ if err:=db.Migrate(context.Background(),conn,filepath.Join("..","..","migrations"));err!=nil{t.Fatal(err)}
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+ c:=NewCollector(conn,"",nil)
+ c.Start(ctx);c.Start(ctx)
+ cancel()
+ wait,stop:=context.WithTimeout(context.Background(),3*time.Second);defer stop()
+ if err:=c.Wait(wait);err!=nil{t.Fatal(err)}
+ c.ingestLine("2026-09-17T08:30:00+08:00 example.com 6893 GET / 200 0.010 8.8.8.8 192.168.8.3:6893 100 200",true)
+ if err:=c.Flush(wait);err!=nil{t.Fatal(err)}
+ totals,err:=c.store.LoadTotals(wait);if err!=nil{t.Fatal(err)}
+ got:=totals[EndpointKey("example.com",6893)]
+ if got.Upload!=100||got.Download!=200{t.Fatalf("final totals=%+v",got)}
 }

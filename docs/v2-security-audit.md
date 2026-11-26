@@ -58,3 +58,12 @@ RC 验收：上述关键风险闭环、全量自动测试通过、实测性能�
 - 通知配置先校验、加密，和普通设置通过同一事务保存；涉及 Nginx 发布时沿用发布事务，避免后半段失败而通知已提交。新增混合设置回滚测试。
 - 首页不同统计范围的计算最多同时两个，等待可取消；保持原有同范围请求合并和缓存。尚未验证完整首页 P95、CPU、RSS。
 - 上一轮 90fd663 独立 Go 安全扫描通过，前端构建及 Go vet 已通过；完整测试状态以 Actions 为准。FPK/Docker 权限及长时稳定性仍待专项。
+
+## 第八轮：部署与长期运行
+
+- 第七轮 9d7469b 两个 CI job 成功，双架构 FPK 成功。百万级基准 raw 367.843724 ms/op、rollup 30.890417 ms/op；10 万条 36.877398 ms/op、3.257346 ms/op。聚合核心函数 28.83 ns/op、0 B/op、0 allocs/op。不是整页或真机测量。
+- HTTP 服务与后台任务共享取消信号，退出等待采集/流量持久化/初始任务；即使 HTTP 停止失败也尝试清理 Nginx/FRP，避免在工作任务未停时主动关闭数据库。监听失败执行清理。启动顺序先加载流量历史，再消费新访问日志。
+- 统计清理每事务最多 2000 行，检查取消并让出写锁；WAL autocheckpoint 1000 页，journal_size_limit 64 MiB 是回收后目标而非硬上限。未强制 VACUUM。流量过期客户端定时清理。
+- FPK 启停 flock 互斥、PID 原子发布、HTTPS 本地健康检查、卸载共享路径限制，未知目录保守保留；需要 fnOS 验证 flock 和真实 TRIM 路径。Docker compose 加 init、no-new-privileges 和 30 秒停止宽限；未强制非 root、未改网络和端口。
+- Nginx 固定此前已构建版本 1.30.8，使用官方 release asset SHA-256（GitHub release metadata），下载后校验；自定义版本要求明确摘要，打包验证 payload 三个二进制 SHA-256。FRP/fnpack 原有摘要保留。尚未验证新 release asset 编译、Docker 基础镜像 digest、上游签名链。
+- 新增采集幂等启动/等待、4001 行清理、退出后流量最终落盘测试。未完成 v1 实际数据库迁移演练、长期进程 RSS/FD/goroutine 压测、飞牛真机权限回归。

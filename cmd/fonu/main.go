@@ -36,19 +36,22 @@ func main() {
 		log.Fatalf("start application: %v", err)
 	}
 
-	go func() {
-		if err := application.Run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
-
+	runDone:=make(chan error,1)
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	defer signal.Stop(stop)
+	go func(){runDone<-application.Run()}()
+	var runErr error
+	select{
+	case <-stop:
+	case runErr=<-runDone:
+		if errors.Is(runErr,http.ErrServerClosed){runErr=nil}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := application.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+	if runErr!=nil{log.Fatalf("server error: %v",runErr)}
 }

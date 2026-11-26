@@ -19,7 +19,11 @@ on:
         description: "Package version without v (example: 1.3.0)"
         required: true
       nginx_version:
-        description: "Nginx source version (empty = latest 1.30.x stable)"
+        description: "Nginx source version (empty = pinned 1.30.8)"
+        required: false
+        default: ""
+      nginx_sha256:
+        description: "SHA-256 of official Nginx release asset (required for custom versions)"
         required: false
         default: ""
       build_only:
@@ -96,6 +100,7 @@ jobs:
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       NGINX_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.nginx_version || '' }}
+      NGINX_SHA256: ${{ github.event_name == 'workflow_dispatch' && inputs.nginx_sha256 || '' }}
       FNPACK_URL: ${{ vars.FNPACK_LINUX_AMD64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64' }}
       FNPACK_SHA256: ${{ vars.FNPACK_LINUX_AMD64_SHA256 || '54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93' }}
       FNPACK_ARM64_URL: ${{ vars.FNPACK_LINUX_ARM64_URL || 'https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-arm64' }}

@@ -12,10 +12,9 @@ ARCH="${1:?usage: build-fpk.sh amd64|arm64 [version]}"
 VERSION="${2:-dev}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ || "$VERSION" = dev ]] || { echo "Invalid package version" >&2; exit 1; }
 FRP_VERSION="${FRP_VERSION:-0.71.0}"
-# Official Nginx FPK tracked 1.28/1.29; those branches are EOL. Fonu bundles
-# current stable 1.30.x. Override with NGINX_VERSION=1.30.6 if GitHub is unreachable.
-NGINX_VERSION="${NGINX_VERSION:-}"
-NGINX_VERSION_FALLBACK="1.30.6"
+# Pin the previously tested release and its official release asset SHA-256.
+NGINX_VERSION="${NGINX_VERSION:-1.30.8}"
+NGINX_SHA256="${NGINX_SHA256:-}"
 APP_INSTALL_ROOT="/var/apps/fonu"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,26 +52,16 @@ sed_inplace() {
 }
 
 resolve_nginx_version() {
-  if [ -n "${NGINX_VERSION}" ]; then
-    echo "==> Using NGINX_VERSION=${NGINX_VERSION}"
-    return 0
+  [[ "$NGINX_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid NGINX_VERSION" >&2; return 1; }
+  if [ -z "$NGINX_SHA256" ]; then
+    case "$NGINX_VERSION" in
+      1.30.8) NGINX_SHA256=f867314ada32e717b949930859656c48a72dc6657aec598db58af2f98a40e1c1 ;;
+      1.30.6) NGINX_SHA256=3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8 ;;
+      *) echo "Set NGINX_SHA256 for custom Nginx release assets" >&2; return 1 ;;
+    esac
   fi
-  echo "==> Resolving latest nginx 1.30.x (stable)"
-  local releases="" latest=""
-  if releases="$(curl -fsSL --retry 3 "https://api.github.com/repos/nginx/nginx/releases?per_page=80")"; then
-    if command -v jq >/dev/null 2>&1; then
-      latest="$(printf '%s' "${releases}" | jq -r '.[].tag_name' | sed -n 's/^release-\(1\.30\.[0-9][0-9]*\)$/\1/p' | sort -V | tail -n1)"
-    else
-      latest="$(printf '%s' "${releases}" | grep -oE 'release-1\.30\.[0-9]+' | sed 's/^release-//' | sort -V | tail -n1)"
-    fi
-  fi
-  if [ -z "${latest}" ]; then
-    NGINX_VERSION="${NGINX_VERSION_FALLBACK}"
-    echo "==> Fallback nginx ${NGINX_VERSION}"
-  else
-    NGINX_VERSION="${latest}"
-    echo "==> Latest nginx 1.30.x is ${NGINX_VERSION}"
-  fi
+  [[ "$NGINX_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Invalid NGINX_SHA256" >&2; return 1; }
+  echo "==> Pinned Nginx ${NGINX_VERSION} release asset"
 }
 
 compile_nginx() {
@@ -80,7 +69,9 @@ compile_nginx() {
   local out="$2"
   (
     cd "${src}"
-    ./auto/configure \
+    local configure=./configure
+    [ -x "$configure" ] || configure=./auto/configure
+    "$configure" \
       --prefix="${APP_INSTALL_ROOT}/var" \
       --sbin-path="${APP_INSTALL_ROOT}/target/Nginx" \
       --modules-path="${APP_INSTALL_ROOT}/shares/etc/modules" \
@@ -117,30 +108,21 @@ compile_nginx() {
   install -m 755 "${src}/objs/nginx" "${out}"
 }
 
-bundle_nginx() {
-  local cache="${CACHE_DIR}/nginx-${ARCH}-${NGINX_VERSION}"
-  if [ -f "${cache}/Nginx" ]; then
-    echo "==> Using cached nginx ${NGINX_VERSION}: ${cache}"
-    install -m 755 "${cache}/Nginx" "${STAGING}/app/Nginx"
-    return 0
-  fi
+bundle_nginx() (
   if ! command -v gcc >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1; then
     echo "need gcc and make to compile nginx from source" >&2
     return 1
   fi
-  echo "==> Compiling nginx ${NGINX_VERSION} (${ARCH}) for ${APP_INSTALL_ROOT}"
-  local work tarball
+  echo "==> Compiling verified nginx ${NGINX_VERSION} (${ARCH}) for ${APP_INSTALL_ROOT}"
   work="$(mktemp -d)"
+  trap 'rm -rf -- "$work"' EXIT
   tarball="${work}/nginx-${NGINX_VERSION}.tar.gz"
-  curl -fsSL --retry 3 "https://github.com/nginx/nginx/archive/release-${NGINX_VERSION}.tar.gz" -o "${tarball}"
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 "https://github.com/nginx/nginx/releases/download/release-${NGINX_VERSION}/nginx-${NGINX_VERSION}.tar.gz" -o "$tarball"
+  printf '%s  %s\n' "$NGINX_SHA256" "$tarball" | sha256sum -c -
   mkdir -p "${work}/src"
-  tar -xzf "${tarball}" -C "${work}/src" --strip-components=1
+  tar -xzf "$tarball" -C "${work}/src" --strip-components=1
   compile_nginx "${work}/src" "${STAGING}/app/Nginx"
-  mkdir -p "${cache}"
-  install -m 755 "${STAGING}/app/Nginx" "${cache}/Nginx"
-  rm -rf "${work}"
-  echo "==> Cached nginx: ${cache}"
-}
+)
 
 verify_nginx_binary() {
   if [ ! -x "${STAGING}/app/Nginx" ]; then
@@ -305,11 +287,13 @@ cp -R "${REPO_ROOT}/migrations/." "${STAGING}/app/migrations/"
 
 mkdir -p "${DIST_DIR}/payload-${ARCH}"
 cp "${STAGING}/app/"{fonu,Nginx,frpc} "${DIST_DIR}/payload-${ARCH}/"
+(cd "${DIST_DIR}/payload-${ARCH}" && sha256sum fonu Nginx frpc > SHA256SUMS)
 if [ "$MODE" = payload ]; then
   echo "==> Payload ready: ${DIST_DIR}/payload-${ARCH}"
   exit 0
 fi
 else
+  (cd "${DIST_DIR}/payload-${ARCH}" && sha256sum -c SHA256SUMS)
   cp "${DIST_DIR}/payload-${ARCH}/"{fonu,Nginx,frpc} "${STAGING}/app/"
   cp "${REPO_ROOT}/deploy/nginx/mime.types" "${STAGING}/app/mime.types"
   mkdir -p "${STAGING}/app/migrations"

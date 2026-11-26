@@ -6,9 +6,18 @@ is_fonu_share_path() {
   local p="$1"
   [[ "$p" = /* && "$p" != *'/../'* && "$p" != *'/./'* && "$p" != *'//'* ]] || return 1
   case "$p" in
-    */fonu/etc|*/fonu/www|*/fonu/certs) return 0 ;;
+    */fonu/etc|*/fonu/www|*/fonu/certs) ;;
     *) return 1 ;;
   esac
+  # A symlinked parent must still resolve to the declared package share.
+  local parent
+  parent="$(dirname -- "$p")"
+  if [ -e "$parent" ]; then
+    local resolved
+    resolved="$(readlink -f -- "$parent")" || return 1
+    [ "$(basename -- "$resolved")" = fonu ] || return 1
+  fi
+  return 0
 }
 
 purge_fonu_user_data() {
@@ -25,13 +34,13 @@ purge_fonu_user_data() {
 
   for dir in "${TRIM_PKGVAR:-}" "${TRIM_PKGETC:-}" "${app_root}/var" "${app_root}/etc"; do
     if [ -z "$dir" ]; then continue; fi
-    # Refuse obviously unsafe or noncanonical package paths.
-    case "$dir" in
-      /|/var|/etc|/home|/root|/usr|/tmp|/opt|/mnt|/var/apps|/vol[0-9]*|/volume[0-9]*) 
-        # A volume root alone is unsafe; nested package data paths are allowed.
-        if [[ "$dir" =~ ^/(vol|volume)[0-9]+/[^/]+/.+ ]]; then :; else log_msg "purge: refused unsafe package path"; continue; fi ;;
-    esac
     [[ "$dir" = /* && "$dir" != *'/../'* && "$dir" != *'/./'* && "$dir" != *'//'* && "$dir" != */.. && "$dir" != */. ]] || { log_msg "purge: refused invalid path"; continue; }
+    case "$dir" in
+      "$app_root/var"|"$app_root/etc") ;;
+      */"$app_name"/var|*/"$app_name"/etc|*/"$app_name")
+        [ "$dir" != "$app_root" ] || { log_msg "purge: refused app root"; continue; } ;;
+      *) log_msg "purge: refused unrecognized package directory"; continue ;;
+    esac
     if rm -rf -- "$dir" 2>>"$log"; then
       log_msg "purge: removed ${dir}"
     else
@@ -39,7 +48,14 @@ purge_fonu_user_data() {
     fi
   done
 
-  rm -rf "${app_root}/shares/fonu" "${app_root}/share/fonu" 2>>"$log" || true
+  for share_root in "${app_root}/shares/fonu" "${app_root}/share/fonu"; do
+    for leaf in etc www certs; do
+      if is_fonu_share_path "$share_root/$leaf"; then
+        rm -rf -- "$share_root/$leaf" 2>>"$log" || true
+      fi
+    done
+    rmdir -- "$share_root" 2>/dev/null || true
+  done
 
   if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
     local -a paths=()

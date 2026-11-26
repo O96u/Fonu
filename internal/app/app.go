@@ -53,7 +53,7 @@ type App struct {
 	db         interface{ Close() error }
  ingest *ingest.Service
  traffic *traffic.Collector
- workers *sync.WaitGroup
+ workersDone <-chan struct{}
  shutdownMu sync.Mutex
  closed bool
 }
@@ -259,6 +259,8 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		}
 	}()
 	go func(){defer workers.Done();certExportSvc.SyncAllEnabled(ctx)}()
+ workersDone:=make(chan struct{})
+ go func(){workers.Wait();close(workersDone)}()
 
 	app := &App{
 		cfg:        cfg,
@@ -269,7 +271,7 @@ func New(cfg config.Config, staticFS fs.FS, migrationsDir string) (*App, error) 
 		scheduler:  sched,
 		shutdownFn: cancel,
 		db:         conn,
- ingest:ingestSvc,traffic:trafficCollector,workers:workers,
+ ingest:ingestSvc,traffic:trafficCollector,workersDone:workersDone,
 	}
 	backupSvc.SetOnRestored(func() {
 		time.Sleep(2 * time.Second)
@@ -317,10 +319,11 @@ func (a *App) Shutdown(ctx context.Context) error {
  a.logger.Info("application shutting down","module","SYSTEM")
  if a.shutdownFn!=nil{a.shutdownFn()}
  var result error
+ workersStopped:=true
  if err:=a.server.Shutdown(ctx);err!=nil{
+  workersStopped=false
   result=errors.Join(result,err,a.server.Close())
  }
- workersStopped:=true
  wait:=func(err error){if err!=nil{workersStopped=false;result=errors.Join(result,err)}}
  if a.scheduler!=nil{wait(a.scheduler.Wait(ctx))}
  if a.ingest!=nil{wait(a.ingest.Wait(ctx))}
@@ -328,10 +331,8 @@ func (a *App) Shutdown(ctx context.Context) error {
   wait(a.traffic.Wait(ctx))
   if workersStopped{result=errors.Join(result,a.traffic.Flush(ctx))}
  }
- if a.workers!=nil{
-  done:=make(chan struct{})
-  go func(){a.workers.Wait();close(done)}()
-  select{case <-done:case <-ctx.Done():wait(ctx.Err())}
+ if a.workersDone!=nil{
+  select{case <-a.workersDone:case <-ctx.Done():wait(ctx.Err())}
  }
  // A timeout in one subsystem must not skip child-process cleanup.
  cleanup,cancel:=context.WithTimeout(context.WithoutCancel(ctx),5*time.Second)

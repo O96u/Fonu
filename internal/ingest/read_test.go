@@ -188,3 +188,13 @@ func TestDispatchKeepsPortAndByteCounts(t *testing.T) {
 		t.Fatalf("dispatched entry = %+v", got)
 	}
 }
+
+func TestIngestStartIsIdempotentAndWaits(t *testing.T){
+ conn,err:=db.Open(filepath.Join(t.TempDir(),"test.db"));if err!=nil{t.Fatal(err)};defer conn.Close()
+ if err:=db.Migrate(context.Background(),conn,filepath.Join("..","..","migrations"));err!=nil{t.Fatal(err)}
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+ svc:=NewService(NewStore(conn),filepath.Join(t.TempDir(),"missing.log"),nil,nil,nil,nil,slog.Default())
+ svc.Start(ctx);svc.Start(ctx);cancel()
+ wait,cancelWait:=context.WithTimeout(context.Background(),2*time.Second);defer cancelWait()
+ if err:=svc.Wait(wait);err!=nil{t.Fatal(err)}
+}
