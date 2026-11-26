@@ -1,5 +1,6 @@
 <template>
   <div class="security-section">
+              <div v-if="section==='security'&&customNginx" class="security-header">当前规则采用手动 Nginx 配置，自动生成的安全策略需切换回自动生成模式后才会应用。</div>
               <div class="security-header" v-if="section==='security'">
                 <div class="security-header__row">
                   <div class="security-header__status">
@@ -200,6 +201,7 @@ defineProps<{
   activeSecurityFeatures: string[]
   securityExpanded: string[]
   hasPassword: boolean
+  customNginx?: boolean
 }>()
 const emit = defineEmits<{
   patch: [value: Partial<ProxySecurityDraft>]

@@ -169,15 +169,19 @@ func writeChinaOnlyCheck(b *strings.Builder, rule proxy.Rule, opts GenerateOptio
 }
 
 func writeServerSecurityHeaders(b *strings.Builder, sec proxy.SecurityConfig, https bool) {
-	if !https || !sec.SecurityHeaders {
-		return
-	}
+	legacy := https && sec.SecurityHeaders
+	if !legacy && !sec.SafeHeaders { return }
 	writeSecurityHeadersComment(b)
-	b.WriteString(`    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options "nosniff" always;
+	if legacy {
+		b.WriteString(`    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
-
 `)
+	}
+	b.WriteString("    add_header X-Content-Type-Options \"nosniff\" always;\n")
+	if sec.SafeHeaders {
+		b.WriteString("    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n")
+	}
+	b.WriteString("\n")
 }
 
 func writeTLSProtocols(b *strings.Builder, sec proxy.SecurityConfig) {
@@ -223,15 +227,8 @@ func writeLocationSecurity(b *strings.Builder, cfg config.Config, rule proxy.Rul
 	if sec.BlockSensitivePaths {
 		b.WriteString("        if ($uri ~* \"(^|/)[.](env([./]|$)|git(/|$)|svn(/|$))\") { return 403; }\n")
 	}
-	if len(sec.AllowedMethods)>0 && proxy.ValidateSecurity(sec)==nil {
+	if len(sec.AllowedMethods)>0 {
 		fmt.Fprintf(b, "        if ($request_method !~ \"^(%s)$\") { return 405; }\n", strings.Join(sec.AllowedMethods,"|"))
-	}
-	if sec.SafeHeaders {
-		// Location add_header overrides inherited server headers on older Nginx.
-		if rule.HTTPSEnabled && sec.SecurityHeaders {
-			b.WriteString("        add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n        add_header X-Frame-Options \"SAMEORIGIN\" always;\n")
-		}
-		b.WriteString("        add_header X-Content-Type-Options \"nosniff\" always;\n        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n")
 	}
 	writeLocationSecurityComments(b, rule, opts)
 

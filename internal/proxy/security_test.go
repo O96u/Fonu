@@ -100,3 +100,20 @@ func count(ss []string, s string) int {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestRequestProtectionRoundTrip(t *testing.T) {
+	methods := []string{"GET", "HEAD", "PROPFIND"}
+	body := 256
+	on := true
+	cfg, err := MergeSecurity(SecurityConfig{}, SecurityInput{AllowedMethods: &methods, MaxBodyMB: &body, SafeHeaders: &on, BlockSensitivePaths: &on})
+	if err != nil { t.Fatal(err) }
+	raw, err := cfg.ToJSON()
+	if err != nil { t.Fatal(err) }
+	parsed, err := ParseSecurityJSON(raw)
+	if err != nil || len(parsed.AllowedMethods)!=3 || parsed.MaxBodyMB!=256 || !parsed.SafeHeaders || !parsed.BlockSensitivePaths { t.Fatalf("round trip: %+v %v", parsed, err) }
+	if err := ValidateRequestProtection(SecurityConfig{AllowedMethods: []string{"GET|.*"}}); err == nil { t.Fatal("unsafe method accepted") }
+	if err := ValidateRequestProtection(SecurityConfig{MaxBodyMB: -1}); err == nil { t.Fatal("negative body limit accepted") }
+	empty := []string{}
+	cleared, err := MergeSecurity(parsed, SecurityInput{AllowedMethods: &empty})
+	if err != nil || len(cleared.AllowedMethods)!=0 { t.Fatalf("clear methods: %+v %v", cleared, err) }
+}

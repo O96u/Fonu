@@ -259,8 +259,7 @@ func MergeSecurity(current SecurityConfig, in SecurityInput) (SecurityConfig, er
 	return out, ValidateSecurity(out)
 }
 
-func ValidateSecurity(cfg SecurityConfig) error {
-	cfg = cfg.Normalize()
+func ValidateRequestProtection(cfg SecurityConfig) error {
 	if cfg.MaxBodyMB < 0 || cfg.MaxBodyMB > 1048576 { return fmt.Errorf("请求体大小必须在 0–1048576 MB 范围内") }
 	if len(cfg.AllowedMethods)>16 { return fmt.Errorf("请求方法数量超限") }
 	for _, method := range cfg.AllowedMethods {
@@ -269,6 +268,12 @@ func ValidateSecurity(cfg SecurityConfig) error {
 		default: return fmt.Errorf("不支持的 HTTP 请求方法")
 		}
 	}
+	return nil
+}
+
+func ValidateSecurity(cfg SecurityConfig) error {
+	cfg = cfg.Normalize()
+	if err := ValidateRequestProtection(cfg); err != nil { return err }
 	if err := validate.IPOrCIDRList(cfg.IPBlacklist); err != nil {
 		return fmt.Errorf("IP 黑名单：%w", err)
 	}

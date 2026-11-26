@@ -156,3 +156,29 @@ func TestUpdateEntryRepairsStaleHostListenPort(t *testing.T) {
 		t.Fatalf("host listen_port not repaired: %+v", updated.Hosts)
 	}
 }
+
+func TestEditRuleListenerKeepsOtherRulesIndependent(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "fonu.db"))
+	if err != nil { t.Fatal(err) }
+	defer conn.Close()
+	ctx := context.Background()
+	if err := db.Migrate(ctx, conn, filepath.Join("..", "..", "migrations")); err != nil { t.Fatal(err) }
+	store := NewStore(conn)
+	in := CreateInput{Upstream: "http://127.0.0.1:8080", Hosts: []string{"one.example.com"}, ListenPort: 8009, ListenIPv4: true, HTTPSEnabled: true, Enabled: true}
+	one, err := store.Create(ctx, in)
+	if err != nil { t.Fatal(err) }
+	in.Hosts = []string{"two.example.com"}
+	two, err := store.Create(ctx, in)
+	if err != nil { t.Fatal(err) }
+	if one.EntryID == nil || two.EntryID == nil || *one.EntryID != *two.EntryID { t.Fatal("expected compatible listeners to be reused") }
+	http := false
+	if _, err := store.Update(ctx, one.ID, UpdateInput{HTTPSEnabled: &http}); err == nil { t.Fatal("expected conflict on shared listener") }
+	port := 8010
+	moved, err := store.Update(ctx, one.ID, UpdateInput{ListenPort: &port})
+	if err != nil { t.Fatal(err) }
+	if moved.EntryID == nil || *moved.EntryID == *two.EntryID || moved.ListenPort != port { t.Fatalf("rule not moved: %+v", moved) }
+	still, err := store.Get(ctx, two.ID)
+	if err != nil || still.ListenPort != 8009 || !still.HTTPSEnabled { t.Fatalf("other rule changed: %+v %v", still, err) }
+	moved, err = store.Update(ctx, one.ID, UpdateInput{HTTPSEnabled: &http})
+	if err != nil || moved.HTTPSEnabled { t.Fatalf("sole rule should support protocol edit: %+v %v", moved, err) }
+}

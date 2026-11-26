@@ -149,31 +149,12 @@
       </div>
 
       <div class="proxy-detail__tabbar">
-        <button
-          type="button"
-          class="proxy-detail__tab"
-          :class="{ 'proxy-detail__tab--active': detailTab === 'overview' }"
-          @click="switchDetailTab('overview')"
-        >
-          概览
-        </button>
-        <button type="button" class="proxy-detail__tab" :class="{'proxy-detail__tab--active':detailTab==='diagnostics'}" @click="switchDetailTab('diagnostics')">运行诊断</button>
-        <button
-          type="button"
-          class="proxy-detail__tab"
-          :class="{ 'proxy-detail__tab--active': detailTab === 'logs' }"
-          @click="switchDetailTab('logs')"
-        >
-          日志
-        </button>
-        <button
-          type="button"
-          class="proxy-detail__tab"
-          :class="{ 'proxy-detail__tab--active': detailTab === 'nginx' }"
-          @click="switchDetailTab('nginx')"
-        >
-          Nginx
-        </button>
+        <n-tabs :value="detailTab" type="line" animated @update:value="value=>switchDetailTab(value as 'overview' | 'diagnostics' | 'logs' | 'nginx')">
+          <n-tab name="overview">概览</n-tab>
+          <n-tab name="diagnostics">运行诊断</n-tab>
+          <n-tab name="logs">日志</n-tab>
+          <n-tab name="nginx">Nginx</n-tab>
+        </n-tabs>
       </div>
 
       <div class="proxy-detail__scroll">
@@ -276,7 +257,7 @@
       </n-tabs>
     </template>
     <ProxyBasicEditor v-show="formTab==='basic'||formTab==='https'" :section="formTab==='https'?'https':'basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
-    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings"/>
+    <ProxySecurityEditor v-if="formTab==='security'||formTab==='advanced'" :section="formTab" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
     <template #footer>
@@ -302,7 +283,8 @@
     v-model:show-discovery-modal="showDiscoveryModal"
     v-model:discovery-host="discoveryHost"
     v-model:listen-port="discoveryListenPort"
-    v-model:https-enabled="discoveryHttpsEnabled"
+    :https-enabled="discoveryHttpsEnabled"
+    @update:https-enabled="setDiscoveryProtocol"
     :error="discoveryError"
     :scanned="discoveryScanned"
     :business-options="[{label:'未分组',value:0},...business.groups.map(g=>({label:g.name,value:g.id}))]"
@@ -449,7 +431,7 @@ const discoveryLoading = ref(false)
 const discoveryAdding = ref(false)
 const discoveryListenPort = ref(443)
 const discoveryHttpsEnabled = ref(true)
-watch(discoveryHttpsEnabled, (value,previous)=>{if(discoveryListenPort.value===defaultListenPort(previous))discoveryListenPort.value=defaultListenPort(value)})
+function setDiscoveryProtocol(value:boolean){if(discoveryListenPort.value===defaultListenPort(discoveryHttpsEnabled.value))discoveryListenPort.value=defaultListenPort(value);discoveryHttpsEnabled.value=value}
 
 interface DiscoveryRow {
   id: string
@@ -3585,5 +3567,5 @@ onUnmounted(() => {
 @media(max-width:600px){.editor-tabs button{font-size:12px;padding:6px 8px}}
 
 .proxy-detail-modal{width:100%;max-height:none;height:100%;border-radius:0;box-shadow:none;container:proxy-detail / inline-size}.proxy-detail-modal__header{padding:16px;flex-wrap:wrap;gap:10px}.proxy-detail-modal__intro{flex:1 1 200px;flex-wrap:wrap;gap:8px}.detail-title{min-width:0;flex:1 1 130px}.detail-title small{display:block;font-size:11px;color:var(--fonu-text-secondary);overflow-wrap:anywhere}.proxy-detail-modal__title{overflow-wrap:anywhere}.proxy-detail__scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}.proxy-detail__tabbar{padding-inline:16px}.proxy-detail__pane--logs,.proxy-detail__pane--nginx{min-height:350px;flex-shrink:0}.delete-review{display:grid;gap:12px}.delete-identity{display:flex;align-items:center;gap:10px}.delete-identity strong,.delete-identity small{display:block}.delete-identity small{font-size:12px;color:var(--fonu-text-secondary)}.delete-review dl{margin:0;display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px;border:1px solid var(--fonu-border);border-radius:8px;padding:12px;font-size:13px}.delete-review dt{color:var(--fonu-text-secondary)}.delete-review dd{grid-column:2;margin:0;overflow-wrap:anywhere}
-.log-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.log-filters :deep(.n-input){flex:1 1 140px;min-width:0}.log-filters :deep(.n-select){width:110px}.log-filters small{font-size:11px;color:var(--fonu-text-secondary)}.proxy-detail__tabbar{flex-wrap:wrap;gap:8px}
+.log-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.log-filters :deep(.n-input){flex:1 1 140px;min-width:0}.log-filters :deep(.n-select){width:110px}.log-filters small{font-size:11px;color:var(--fonu-text-secondary)}.proxy-detail__tabbar{display:block;padding-top:0;border-bottom:0;min-width:0}.proxy-detail__tabbar :deep(.n-tabs){width:100%}
 </style>

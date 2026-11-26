@@ -437,6 +437,13 @@ func (s *Store) RuleIDsByEntry(ctx context.Context, entryID int64) ([]int64, err
 }
 
 func (s *Store) findOrCreateEntryForListen(ctx context.Context, listenPort int, listenIPv4, listenIPv6, httpsEnabled, httpRedirect bool) (*int64, error) {
+	return s.findOrCreateEntryForRuleListen(ctx, 0, listenPort, listenIPv4, listenIPv6, httpsEnabled, httpRedirect)
+}
+
+func (s *Store) findOrCreateEntryForRuleListen(ctx context.Context, ruleID int64, listenPort int, listenIPv4, listenIPv6, httpsEnabled, httpRedirect bool) (*int64, error) {
+	if err := validateEntryInput(listenPort, listenIPv4, listenIPv6); err != nil {
+		return nil, err
+	}
 	var id int64
 	err := s.querier().QueryRowContext(ctx, `
 		SELECT id FROM proxy_entries
@@ -445,6 +452,24 @@ func (s *Store) findOrCreateEntryForListen(ctx context.Context, listenPort int, 
 		LIMIT 1
 	`, listenPort, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect)).Scan(&id)
 	if err == nil {
+		return &id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	// Reuse an entry only if no other rule depends on its network settings.
+	err = s.querier().QueryRowContext(ctx, `SELECT id FROM proxy_entries WHERE listen_port = ?`, listenPort).Scan(&id)
+	if err == nil {
+		var otherRules int
+		if err := s.querier().QueryRowContext(ctx, `SELECT COUNT(*) FROM proxy_rules WHERE entry_id = ? AND id != ?`, id, ruleID).Scan(&otherRules); err != nil {
+			return nil, err
+		}
+		if otherRules > 0 {
+			return nil, fmt.Errorf("监听端口 %d 已用于其他规则，协议或 IP 配置不兼容；请选择兼容配置或其他端口", listenPort)
+		}
+		if _, err := s.querier().ExecContext(ctx, `UPDATE proxy_entries SET listen_ipv4 = ?, listen_ipv6 = ?, https_enabled = ?, http_redirect = ?, updated_at = datetime('now') WHERE id = ?`, boolInt(listenIPv4), boolInt(listenIPv6), boolInt(httpsEnabled), boolInt(httpRedirect), id); err != nil {
+			return nil, err
+		}
 		return &id, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {

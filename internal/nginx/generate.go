@@ -146,6 +146,7 @@ func writeCustomRuleBlocks(b *strings.Builder, cfg config.Config, ruleID int64, 
 }
 
 func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, certs []CertSource, opts GenerateOptions) error {
+	if err := proxy.ValidateRequestProtection(rule.Security); err != nil { return fmt.Errorf("规则 %d 请求防护：%w", rule.ID, err) }
 	if strings.HasPrefix(rule.Upstream,"https://") && rule.Security.ProxySSLVerifyConfigured && !rule.Security.ProxySSLVerifyOff && systemCABundle() == "" {
 		return fmt.Errorf("系统 CA 证书文件不可用，请安装 CA 证书或明确关闭上游 TLS 验证")
 	}
@@ -171,6 +172,7 @@ func writeRuleBlocks(b *strings.Builder, cfg config.Config, rule proxy.Rule, cer
 			writeListenComments(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6)
 			writeListenDirectives(b, group.Port, false, rule.ListenIPv4, rule.ListenIPv6, false)
 			b.WriteString(fmt.Sprintf("    server_name %s;\n", serverNames))
+			writeServerSecurityHeaders(b, rule.Security, false)
 			writeErrorPages(b, cfg)
 			writeLocationWithSecurity(b, cfg, rule, opts)
 			b.WriteString("}\n")

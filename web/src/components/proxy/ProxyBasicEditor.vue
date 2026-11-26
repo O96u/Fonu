@@ -30,7 +30,7 @@
 import {computed} from 'vue'
 import ProxyDraftInput from './ProxyDraftInput.vue'
 import {NForm,NFormItem,NInputNumber,NSelect,NCheckbox,NSwitch,NButton,NIcon,type SelectGroupOption} from 'naive-ui'
-import {CopyOutline,InformationCircleOutline,LockClosedOutline} from '@vicons/ionicons5'
+import {CopyOutline,LockClosedOutline} from '@vicons/ionicons5'
 import type {ProxyRule} from '../../api/types'
 import type {DdnsHostSelectOption} from '../../utils/ddnsHosts'
 interface BasicDraft {name:string;hostsSelected:string[];listen_port:number;listen_ipv4:boolean;listen_ipv6:boolean;https_enabled:boolean;http_redirect:boolean;tls_min_13_only:boolean;upstream:string;enabled:boolean}
