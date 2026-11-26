@@ -173,7 +173,7 @@
 
         <div v-show="detailTab === 'logs'" class="proxy-detail__pane proxy-detail__pane--logs">
               <div class="log-panel-head">
-                <span class="text-muted">实时访问日志</span>
+                <span class="text-muted">实时访问日志 · {{ logStreamState === 'open' ? '已连接' : logStreamState === 'retrying' ? '重连中' : logStreamState === 'paused' ? '已暂停' : '连接中' }}</span>
                 <div class="log-panel-actions">
                   <n-button size="tiny" quaternary @click="openLogFullscreen">全屏</n-button>
                   <n-button size="tiny" quaternary @click="clearLogLines">清空</n-button>
@@ -440,6 +440,7 @@ import {
 } from '@vicons/ionicons5'
 import { api, asList } from '../api/client'
 import { createProxyPoll } from '../composables/proxy/useProxyPoll'
+import { useProxyLogStream } from '../composables/proxy/useProxyLogStream'
 import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic } from '../api/types'
 import {
   applyEntryListen,
@@ -600,13 +601,12 @@ const nginxDirty = ref(false)
 const nginxEnabled = ref(true)
 const nginxBackups = ref<{ name: string; created_at: string }[]>([])
 let nginxRefreshTimer: ReturnType<typeof setTimeout> | null = null
-const logLines = ref<string[]>([])
+const { lines: logLines, state: logStreamState, start: startLogStream, stop: stopLogStream, clear: clearStreamLines } = useProxyLogStream()
 const logBox = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
 const logBoxFullscreen = ref<InstanceType<typeof ProxyAccessLogBox> | null>(null)
 const logFullscreen = ref(false)
 const logStickToBottom = ref(true)
 const LOG_SCROLL_BOTTOM_THRESHOLD = 24
-let logEventSource: EventSource | null = null
 const trafficByRule = ref<Record<number, ProxyTraffic>>({})
 const clientRows = ref<ProxyClientConn[]>([])
 const clientsLoading = ref(false)
@@ -1868,41 +1868,16 @@ function onLogFullscreenKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') logFullscreen.value = false
 }
 
-function stopLogStream() {
-  logEventSource?.close()
-  logEventSource = null
-}
-
-function startLogStream() {
-  const rule = selectedRule.value
-  if (!rule || logEventSource) return
-  logEventSource = new EventSource(`/api/proxies/${rule.id}/logs/stream?tail=100`, {
-    withCredentials: true,
-  })
-  logEventSource.addEventListener('log', (event) => {
-    logLines.value.push(event.data)
-    if (logLines.value.length > 500) logLines.value = logLines.value.slice(-400)
-    scrollLogToBottom()
-  })
-  logEventSource.onerror = () => {
-    message.warning('日志连接中断')
-    stopLogStream()
-  }
-}
-
 function clearLogLines() {
-  logLines.value = []
+  clearStreamLines()
   logStickToBottom.value = true
 }
 
-watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab], [wasVisible, wasId]) => {
+watch([showDetailPanel, selectedRuleId, detailTab], async ([visible, id, tab]) => {
   stopLogStream()
   if (!visible || !id || tab !== 'logs') return
-  if (!wasVisible || id !== wasId) {
-    logLines.value = []
-    logStickToBottom.value = true
-  }
-  startLogStream()
+  clearLogLines()
+  startLogStream(id)
   await nextTick()
   scrollLogToBottom(true)
 })

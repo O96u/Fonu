@@ -50,7 +50,7 @@ func mutateProxyWithFiles[T any](ctx context.Context, s *ProxyService,
 		if s.notify != nil {
 			s.notify.Alert(ctx, notify.EventNginxReloadFailure, "Nginx 重载失败", err.Error())
 		}
-		return zero, s.abortProxyJournal(journal,fmt.Errorf("配置发布失败，数据库变更已取消：%w", err))
+		return zero, s.retainFailedPublication(journal,fmt.Errorf("配置发布失败，数据库变更已取消：%w", err))
 	}
 	var commitErr error
 	if persist != nil { commitErr = persist() }

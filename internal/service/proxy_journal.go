@@ -47,6 +47,13 @@ func(s *ProxyService) abortProxyJournal(j proxyJournal,cause error)error{
 	return errors.Join(cause,s.clearProxyJournal())
 }
 
+// Keep the journal if publication failed: a subsequent recovery must verify
+// disk and running configuration against the committed database.
+func(s *ProxyService) retainFailedPublication(j proxyJournal,cause error)error{
+	if err:=nginx.RestorePublicationFiles(s.cfg,j.Files);err!=nil{return errors.Join(cause,err)}
+	return cause
+}
+
 // The token is committed in the same transaction as rule/global mode changes.
 func(s *ProxyService) recoverPendingLocked(ctx context.Context)error{
 	data,err:=os.ReadFile(s.journalPath())
