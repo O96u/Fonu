@@ -5,17 +5,20 @@ import (
 	"time"
 )
 
+// RealtimeRing aggregates access log records by second. Memory is bounded
+// by the time window rather than by the number of incoming requests.
 type RealtimeRing struct {
 	window time.Duration
-	mu     sync.Mutex
-	samples []realtimeSample
+	mu sync.Mutex
+	samples map[int64]realtimeSample
+	lastSweep int64
 }
 
 type realtimeSample struct {
-	at        time.Time
-	requests  int
-	bytes     int64
-	requestMS float64
+	requests int
+	bytes int64
+	sumMS float64
+	msCount int
 }
 
 type RealtimeSnapshot struct {
@@ -26,68 +29,55 @@ type RealtimeSnapshot struct {
 }
 
 func NewRealtimeRing(window time.Duration) *RealtimeRing {
-	if window <= 0 {
-		window = 60 * time.Second
-	}
-	return &RealtimeRing{window: window}
+	if window <= 0 { window = 60 * time.Second }
+	return &RealtimeRing{window:window, samples:make(map[int64]realtimeSample)}
 }
 
-func (r *RealtimeRing) Add(row FactRow) {
+func (r *RealtimeRing) Add(row FactRow) { r.addAt(row, time.Now()) }
+
+func (r *RealtimeRing) addAt(row FactRow, now time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := time.Now()
+	if r.lastSweep != now.Unix() { r.pruneLocked(now); r.lastSweep=now.Unix() }
 	if row.TS.Before(now.Add(-r.window)) || row.TS.After(now) { return }
-	r.samples = append(r.samples, realtimeSample{
-		at:        row.TS,
-		requests:  1,
-		bytes:     row.BytesSent,
-		requestMS: row.RequestMS,
-	})
-	r.pruneLocked(now)
+	key := row.TS.Unix()
+	s := r.samples[key]
+	s.requests++
+	s.bytes += row.BytesSent
+	if row.RequestMS > 0 { s.sumMS += row.RequestMS; s.msCount++ }
+	r.samples[key] = s
 }
 
 func (r *RealtimeRing) Snapshot(now time.Time) RealtimeSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pruneLocked(now)
-	cutoff := now.Add(-r.window)
-	var reqs int
+	r.lastSweep = now.Unix()
+	var reqs, msCount int
 	var bytes int64
 	var sumMS float64
-	var msCount int
 	for _, s := range r.samples {
-		if s.at.Before(cutoff) {
-			continue
-		}
 		reqs += s.requests
 		bytes += s.bytes
-		if s.requestMS > 0 {
-			sumMS += s.requestMS
-			msCount++
-		}
+		sumMS += s.sumMS
+		msCount += s.msCount
 	}
 	span := r.window.Seconds()
-	if span < 1 {
-		span = 1
-	}
+	if span < 1 { span = 1 }
 	out := RealtimeSnapshot{
-		QPS:         float64(reqs) / span,
-		TrafficKBps: float64(bytes) / span / 1024,
-		WindowSec:   int(span),
+		QPS: float64(reqs)/span,
+		TrafficKBps: float64(bytes)/span/1024,
+		WindowSec: int(span),
 	}
-	if msCount > 0 {
-		out.AvgUpstreamMS = sumMS / float64(msCount)
-	}
+	if msCount > 0 { out.AvgUpstreamMS = sumMS/float64(msCount) }
 	return out
 }
 
 func (r *RealtimeRing) pruneLocked(now time.Time) {
-	cutoff := now.Add(-r.window)
-	i := 0
-	for i < len(r.samples) && r.samples[i].at.Before(cutoff) {
-		i++
-	}
-	if i > 0 {
-		r.samples = r.samples[:copy(r.samples, r.samples[i:])]
+	// At most one second of boundary precision is lost: access log records
+	// use second-resolution timestamps. Also discard future buckets on clock rollback.
+	cutoff := now.Add(-r.window).Unix()
+	for at := range r.samples {
+		if at < cutoff || at > now.Unix() { delete(r.samples,at) }
 	}
 }

@@ -72,6 +72,8 @@ jobs:
           if-no-files-found: ignore
       - run: mkdir -p cmd/fonu/web/dist && cp -a web/dist/. cmd/fonu/web/dist/
       - run: go vet ./...
+      - name: Audit Go dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
       - name: Install Nginx for real runtime integration
         run: |
           sudo apt-get update
@@ -80,6 +82,14 @@ jobs:
       - name: Test actual Nginx startup, reload and rejection
         run: go test -v ./internal/nginx -run '^(TestApply(WithNginxIfAvailable|HTTPSWithMultipleCertificates)|TestTrustedProxyRealNginx)$' -count=1
       - run: go test ./...
+      - name: Benchmark realtime access aggregation
+        run: go test ./internal/ingest -run '^
+        run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport
+ -bench '^BenchmarkRealtimeRing
+        run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport
+ -benchtime=1s -benchmem
       - name: Benchmark analytics rollups (100k events)
         run: go test ./internal/analytics -run '^$' -bench '^BenchmarkSeriesRawVsRollup$' -benchtime=3x -benchmem
-      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns
+      - run: go test -race ./internal/auth ./internal/nginx ./internal/secret ./internal/scheduler ./internal/api ./internal/backup ./internal/acme ./internal/ddns ./internal/frp ./internal/notify ./internal/ingest ./internal/certexport

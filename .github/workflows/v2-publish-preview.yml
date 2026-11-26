@@ -1,19 +1,6 @@
 name: Publish V2 FPK prerelease
 on:
-  push:
-    branches: [v2]
-    paths:
-      - '.github/workflows/v2-publish-preview.yml'
-      - '.github/workflows/v2-fpk-preview.yml'
-      - 'web/src/**'
-      - 'web/index.html'
-      - 'web/package.json'
-      - 'web/pnpm-lock.yaml'
-      - 'internal/**'
-      - 'cmd/**'
-      - 'packaging/**'
-      - 'go.mod'
-      - 'go.sum'
+  # Audit commits are verified by CI and preview builds without replacing release tags.
   workflow_dispatch:
     inputs:
       run_id:

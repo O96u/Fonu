@@ -15,3 +15,11 @@ func TestAttackThresholdsAndCooldown(t *testing.T){
  if got:=state.observe(entry,now,false,true);len(got)!=1||got[0].event!=EventCC{t.Fatalf("limited: %+v",got)}
  if got:=state.observe(entry,now.Add(time.Minute),false,true);len(got)!=0{t.Fatal("window not reset")}
 }
+
+func TestAttackSingleSourceHighFrequency(t *testing.T) {
+ now:=time.Now()
+ var state attackState
+ entry:=logstore.AccessEntry{Domain:"nas.example.com",ServerPort:443,ClientIP:"8.8.8.8",Path:"/",Status:200}
+ for i:=0;i<1199;i++{if got:=state.observe(entry,now,false,true);len(got)!=0{t.Fatal("early cc")}}
+ if got:=state.observe(entry,now,false,true);len(got)!=1||got[0].event!=EventCC{t.Fatalf("single source cc: %+v",got)}
+}
