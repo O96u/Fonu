@@ -115,6 +115,12 @@ func (h *FRPHandler) ExportConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"config": content})
 }
 
+func (h *FRPHandler) Restart(w http.ResponseWriter, r *http.Request) {
+	result, err := h.mgr.Restart(r.Context())
+	if err != nil { writeError(r, w, http.StatusBadRequest, err.Error()); return }
+	writeJSON(w, http.StatusOK, map[string]interface{}{"message": result.Message, "status": h.mgr.Status(r.Context())})
+}
+
 func (h *FRPHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.mgr.Status(r.Context()))
 }

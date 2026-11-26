@@ -631,6 +631,10 @@ export interface DDNSTestPayload {
 }
 
 export interface FRPStatus {
+  process_running?: boolean
+  tunnel_states?: Record<string, string>
+  http_gateway_state?: string
+  https_gateway_state?: string
   enabled: boolean
   connected: boolean
   message: string

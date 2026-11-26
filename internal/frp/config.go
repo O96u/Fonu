@@ -136,6 +136,26 @@ func (s *Store) Save(ctx context.Context, in SaveInput, keepToken bool) error {
 	return s.settings.SetMany(ctx, values)
 }
 
+var snapshotKeys = []string{
+	settings.KeyFRPEnabled, settings.KeyFRPServerAddr, settings.KeyFRPServerPort,
+	settings.KeyFRPAuthToken, settings.KeyFRPTLSEnabled, settings.KeyFRPCustomDomains,
+	settings.KeyFRPTCPProxies, settings.KeyFRPStartedAt,
+}
+
+func (s *Store) snapshot(ctx context.Context) (map[string]string, error) {
+	values := make(map[string]string, len(snapshotKeys))
+	for _, key := range snapshotKeys {
+		value, err := s.settings.Get(ctx, key)
+		if err != nil { return nil, err }
+		values[key] = value
+	}
+	return values, nil
+}
+
+func (s *Store) restore(ctx context.Context, values map[string]string) error {
+	return s.settings.SetMany(ctx, values)
+}
+
 func (s *Store) SetLastError(ctx context.Context, msg string) error {
 	return s.settings.Set(ctx, settings.KeyFRPLastError, strings.TrimSpace(msg))
 }

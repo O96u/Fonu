@@ -45,6 +45,11 @@ func normalizeTunnelProtocol(protocol string) string {
 }
 
 func prepareTCPProxies(proxies []TCPProxy) ([]TCPProxy, error) {
+	for _, p := range proxies {
+		protocol := strings.ToLower(strings.TrimSpace(p.Protocol))
+		if protocol != "" && protocol != tunnelProtocolTCP && protocol != tunnelProtocolUDP { return nil, fmt.Errorf("隧道「%s」协议无效", p.Name) }
+		if strings.TrimSpace(p.Name) == "" { return nil, fmt.Errorf("隧道名称不能为空") }
+	}
 	proxies = assignTCPRemotePorts(normalizeTCPProxies(proxies))
 	if err := validateTCPProxies(proxies); err != nil {
 		return nil, err
