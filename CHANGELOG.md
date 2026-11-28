@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 修复 SMTP 中文和 Emoji 主题未按 RFC 2047 编码导致的邮件客户端乱码；使用 UTF-8 Base64 encoded-word 并折行，正文使用 quoted-printable 传输编码，防止邮件头控制字符注入；新增 MIME 解码回归测试。
+
 - 访问日志快捷操作自动选择黑名单范围：唯一匹配当前规则时仅操作该规则；没有匹配服务时提供全局黑名单，加入及解除均需明确确认；范围变化时必须重新确认。保留 CIDR 网段并提示代理节点误封风险。
 
 - 反向代理顶部主操作随视图切换：服务视图显示新增代理，端口分组显示新建入口；移除分组标题旁重复按钮，保留组内新增规则。
