@@ -5,7 +5,6 @@
       <div class="workspace-heading__actions">
         <div class="view-switch" role="group" aria-label="管理视图"><button type="button" :aria-pressed="presentation==='service'" @click="emit('update:presentation','service')">服务视图</button><button type="button" :aria-pressed="presentation==='port'" @click="emit('update:presentation','port')">端口分组</button></div>
         <div v-if="presentation==='service'" class="view-switch" role="group" aria-label="展示方式"><button :aria-pressed="mode==='list'" @click="mode='list'"><n-icon :component="ListOutline"/> 列表</button><button :aria-pressed="mode==='card'" @click="mode='card'"><n-icon :component="GridOutline"/> 卡片</button></div>
-        <slot v-else name="port-actions"/>
       </div>
     </div>
     <template v-if="presentation==='service'">

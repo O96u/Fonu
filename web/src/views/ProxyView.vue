@@ -4,7 +4,8 @@
     <div class="service-page-actions">
       <n-button @click="openDiscoveryModal()"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="router.push({name:'settings',query:{tab:'advanced'}})">全局设置</n-button>
-      <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
+      <n-button v-if="presentation==='service'" type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
+      <n-button v-else type="primary" @click="openEntryCreate"><template #icon><n-icon :component="AddOutline" /></template>新建入口</n-button>
     </div>
   </header>
   <NginxApplyBanner compact/>
@@ -16,7 +17,6 @@
 
     <n-alert v-if="businessError && presentation==='service'" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
     <ProxyServiceWorkspace v-model:presentation="presentation" :entry-count="entryGroups.length" :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled"  :change-business="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder">
-      <template #port-actions><n-button size="small" type="primary" @click="openEntryCreate"><template #icon><n-icon :component="AddOutline"/></template>新建入口</n-button></template>
       <template #port-content>
         <div ref="layoutRef" class="proxy-layout port-workspace">
           <div class="port-workspace__note"><span>按监听端口及协议分组 · 入口独立于业务分组</span><span>删除入口会删除其关联规则</span></div>
