@@ -36,6 +36,8 @@ try {
  })
  await page.addInitScript(()=>{localStorage.setItem('fonu-theme','light')})
  await page.goto(base+'/dashboard')
+ await page.getByRole('link',{name:'GitHub 项目',exact:true}).waitFor()
+ assert.equal(await page.locator('.sider-footer a[href*="github.com"]').count(),0)
  await page.getByTestId('dashboard-recent').getByText('demo-service',{exact:true}).waitFor()
  await page.locator('.workspace-side').getByText('运行状态',{exact:true}).waitFor()
  for(const width of [1720,1100,760]){
