@@ -1,0 +1,21 @@
+name: Request v2.0.1-beta.4 preview (one-time)
+on:
+  push:
+    branches: [release/v2.0.1-beta.4]
+    paths:
+      - '.github/workflows/request-v2.0.1-beta.4-once.yml'
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch gated beta release
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/v2.0.1-beta.4" --jq .object.sha)"
+          [[ "$current" == "$GITHUB_SHA" ]] || { echo 'Preview branch changed; refusing to dispatch another commit'; exit 1; }
+          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref release/v2.0.1-beta.4 -f tag=v2.0.1-beta.4 -f publish=true
