@@ -42,7 +42,7 @@
       <div v-if="loading && !activeRows.length" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
       <template v-if="activeRows.length">
         <n-data-table v-if="tab==='system'" class="log-table" :columns="systemColumns" :data="systemLogs" :loading="loading" :bordered="false" :scroll-x="650" :row-class-name="systemRowClassName" :row-props="row => detailRowProps('system',row)"/>
-        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1120:920" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
+        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1230:1030" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
         <n-data-table v-else-if="tab==='nginx'" class="log-table" :columns="errorColumns" :data="errorLogs" :loading="loading" :bordered="false" :scroll-x="600" :row-class-name="errorRowClassName" :row-props="row => detailRowProps('nginx',row)"/>
         <n-data-table v-else class="log-table" :columns="frpColumns" :data="frpLogs" :loading="loading" :bordered="false" :scroll-x="720" :row-class-name="frpRowClassName" :row-props="row => detailRowProps('frp',row)"/>
       </template>
@@ -58,7 +58,7 @@
       <template v-if="detail">
         <div class="detail-fields" data-testid="log-detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
         <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
-        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button></div>
+        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.server_port" @click="manageBlacklist(detail.access)">管理 IP 黑名单</n-button></div>
       </template>
     </n-drawer-content>
   </n-drawer>
@@ -79,6 +79,7 @@ import {
   NSelect,
   NTag,
   useMessage,
+  useDialog,
   type DataTableColumns,
 } from 'naive-ui'
 import { api } from '../api/client'
@@ -116,7 +117,8 @@ type LogTab = 'system'|'access'|'nginx'|'frp'
 type LogFilter = {keyword:string;service:string;ip:string;kind:string|null;status:number|null;level:string|null;range:string;custom:[number,number]|null}
 const makeFilter=():LogFilter=>({keyword:'',service:'',ip:'',kind:null,status:null,level:null,range:'all',custom:null})
 const filters=reactive<Record<LogTab,LogFilter>>({system:makeFilter(),access:makeFilter(),nginx:makeFilter(),frp:makeFilter()})
-const route=useRoute(),router=useRouter(),message=useMessage(),logTimeZone=useAppTimezone()
+const route=useRoute(),router=useRouter(),message=useMessage(),dialog=useDialog(),logTimeZone=useAppTimezone()
+const blacklistBusy=ref(false)
 function resolveTab(value:unknown):LogTab{
  if(value==='error')return 'nginx'
  if(value==='stream')return 'access'
@@ -348,6 +350,7 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     },
   },
   )
+  cols.push({title:'操作',key:'access_actions',width:110,render:row=>h(NButton,{size:'tiny',quaternary:true,type:'warning',disabled:!row.server_port||!row.domain||!row.client_ip||blacklistBusy.value,title:'管理当前规则的 IP 黑名单',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>'黑名单')})
   return cols
 })
 
@@ -435,7 +438,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
 
 
 const showDetail = ref(false)
-const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string } | null>(null)
+const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string; access?:AccessLogEntry } | null>(null)
 function detailRowProps(kind: LogTab, row: unknown) {
   const open = () => openDetail(kind, row)
   return { tabindex:0, style:'cursor:pointer', onClick:open, onKeydown:(event:KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault();open() } } }
@@ -454,7 +457,7 @@ function openDetail(kind: LogTab, row: unknown) {
     const r = row as ParsedNginxError | ParsedFrpLog
     add('时间',r.time ? formatLogTime(r.time,{timeZone:logTimeZone.value}) : '');add('级别',r.level);if ('source' in r) add('来源',r.source);add('消息',r.message);raw=r.raw;rawLabel='原始日志'
   }
-  detail.value={fields,raw,rawLabel,ip};showDetail.value=true
+  detail.value={fields,raw,rawLabel,ip,access:kind==='access'?row as AccessLogEntry:undefined};showDetail.value=true
 }
 async function copyDetail() {
   if (!detail.value) return
@@ -466,6 +469,43 @@ function filterDetailIP() {
   showDetail.value=false
   filters.access.ip=detail.value.ip
   void router.replace({name:'logs',query:{tab:'access',ip:detail.value.ip}})
+}
+
+async function manageBlacklist(row:AccessLogEntry){
+  if(blacklistBusy.value||!row.server_port)return
+  const input={host:row.domain,port:row.server_port,ip:row.client_ip}
+  blacklistBusy.value=true
+  try{
+    const current=await api.accessBlacklist({...input,action:'inspect'})
+    if(disposed)return
+    if(current.covered&&!current.exact){
+      dialog.info({title:'该 IP 已被规则网段黑名单覆盖',content:'当前规则：'+current.rule_name+'。请在反代安全设置中管理对应 CIDR 网段，快捷操作不会删除整个网段。',positiveText:'知道了'})
+      return
+    }
+    const removing=current.exact
+    dialog.warning({
+      title:removing?'解除 IP 黑名单':'确认加入 IP 黑名单',
+      content:()=>h('div',{class:'blacklist-confirm'},[
+        h('p','IP：'+current.ip),
+        h('p','当前规则：'+current.rule_name+'（'+input.host+':'+input.port+'）'),
+        h('p',removing?'仅移除该 IP 的单地址条目；其他网段、全局限制或白名单仍可能拒绝访问。':'此操作将持续拒绝该 IP 对当前规则所有域名的访问，直到手动解除，不影响其他独立规则。'),
+        h('p','历史日志可能对应旧配置。若使用 CDN 或转发代理，请确认此 IP 是可信的真实客户端地址，避免误封代理节点。'),
+        current.whitelist_mode?h('p','当前规则启用了白名单；黑名单优先于白名单。'):null
+      ]),
+      positiveText:removing?'确认解除':'确认封禁',negativeText:'取消',
+      onPositiveClick:async()=>{
+        if(blacklistBusy.value)return false
+        blacklistBusy.value=true
+        try{
+          const result=await api.accessBlacklist({...input,rule_id:current.rule_id,action:removing?'unblock':'block'})
+          if(!disposed)message.success(result.changed?(removing?(result.covered?'已移除单地址，仍受网段限制':'已移除当前规则单地址黑名单'):'已加入当前规则黑名单'):'黑名单状态已更新，无需重复修改')
+          return true
+        }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'黑名单更新失败');return false}
+        finally{blacklistBusy.value=false}
+      }
+    })
+  }catch(e){if(!disposed)message.warning(e instanceof Error?e.message:'无法确认对应反代规则')}
+  finally{blacklistBusy.value=false}
 }
 
 </script>

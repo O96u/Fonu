@@ -164,6 +164,8 @@ export const api = {
     request<ProxyRule>('/api/proxies', { method: 'POST', body: JSON.stringify(payload) }),
   updateProxy: (id: number, payload: Partial<ProxySavePayload>) =>
     request<ProxyRule>(`/api/proxies/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  accessBlacklist: (payload: {host:string;port:number;ip:string;action:'inspect'|'block'|'unblock';rule_id?:number}) =>
+    request<{rule_id:number;rule_name:string;ip:string;exact:boolean;covered:boolean;changed:boolean;whitelist_mode:boolean}>('/api/proxies/access-blacklist',{method:'POST',body:JSON.stringify(payload)}),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
   reorderProxies: (ids: number[]) =>
     request<void>('/api/proxies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),

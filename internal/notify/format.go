@@ -76,7 +76,7 @@ func eventGuidance(event string) (status, action string) {
 	case EventCertRenewFailure:
 		return "需要处理", "前往证书管理查看失败原因，检查 DNS 凭证及验证记录。"
 	case EventScan, EventCC, EventIPFrequentAccess:
-		return "疑似异常", "核对访问日志与正常业务流量，确认后再调整访问控制或限流。"
+		return "疑似异常", "前往日志中心的访问日志，按入口及来源 IP 核对流量；确认异常后可通过记录的黑名单操作限制当前规则。分布式高频访问建议结合限流与 CDN 防护。"
 	case EventLoginFailure:
 		return "登录异常", "核查登录日志；如非本人操作，请检查账号安全。"
 	case EventNginxReloadFailure:

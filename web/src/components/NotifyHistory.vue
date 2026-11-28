@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
-import {NButton,NTag,NPagination,NSelect} from 'naive-ui'
+import {NButton,NTag,NPagination} from 'naive-ui'
 import FonuCard from './FonuCard.vue'
 import {api} from '../api/client'
 const rows=ref<Awaited<ReturnType<typeof api.getNotifyHistory>>>([])
@@ -32,7 +32,7 @@ onUnmounted(()=>{active=false;controller?.abort();clearTimeout(timer)})
 <template>
   <FonuCard title="通知发送记录" subtitle="记录事件通知与手动测试的发送结果 · 重启或覆盖升级后保留">
     <template #header><n-button size="small" :loading="busy" @click="refresh">刷新</n-button></template>
-    <div class="history-tools"><small>已保留 {{rows.length}} 条记录</small><n-select v-model:value="filter" :options="filterOptions" size="small" aria-label="筛选通知状态"/></div>
+    <div class="history-tools"><small>已保留 {{rows.length}} 条记录</small><div class="history-filters" role="group" aria-label="筛选通知状态"><n-button v-for="option in filterOptions" :key="option.value" size="tiny" :type="filter===option.value?'primary':'default'" :secondary="filter===option.value" :aria-pressed="filter===option.value" @click="filter=option.value">{{option.label}}</n-button></div></div>
     <p v-if="error" class="history-muted">{{error}}</p>
     <p v-else-if="!rows.length && !busy" class="history-muted">暂无发送记录。启用并保存通知事件后，或手动发送测试通知后，记录将在此显示。升级前仅存在内存中的记录不会自动恢复，可尝试在系统日志中查找。</p>
     <p v-else-if="!filtered.length && !busy" class="history-muted">没有符合当前状态的记录。</p>
@@ -45,6 +45,6 @@ onUnmounted(()=>{active=false;controller?.abort();clearTimeout(timer)})
   </FonuCard>
 </template>
 <style scoped>
-.history-tools,.history-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.history-tools small{font-size:12px;color:var(--fonu-text-secondary)}.history-tools :deep(.n-select){width:140px}.history-pagination{justify-content:flex-end;padding-top:10px}.history-row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--fonu-border);font-size:12px}.history-row div{min-width:0}.history-row small{display:block;color:var(--fonu-text-secondary);overflow-wrap:anywhere;margin-top:4px}.history-right{text-align:right;flex-shrink:0}.history-muted{font-size:12px;color:var(--fonu-text-secondary);line-height:1.6}
+.history-tools,.history-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.history-tools small{font-size:12px;color:var(--fonu-text-secondary)}.history-filters{display:flex;gap:4px;flex-wrap:wrap}.history-pagination{justify-content:flex-end;padding-top:10px}.history-row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--fonu-border);font-size:12px}.history-row div{min-width:0}.history-row small{display:block;color:var(--fonu-text-secondary);overflow-wrap:anywhere;margin-top:4px}.history-right{text-align:right;flex-shrink:0}.history-muted{font-size:12px;color:var(--fonu-text-secondary);line-height:1.6}
 @media(max-width:480px){.history-row{flex-wrap:wrap}.history-right{text-align:left;display:flex;align-items:center;gap:8px}}
 </style>
