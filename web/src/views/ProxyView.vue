@@ -368,9 +368,8 @@ import { renderTableRowActions } from '../utils/tableActions'
 const router=useRouter()
 const message = useMessage()
 type ProxyPresentation = 'service' | 'port'
-function readPresentation(): ProxyPresentation { try { return localStorage.getItem('fonu.proxy.presentation')==='port' ? 'port' : 'service' } catch { return 'service' } }
-const presentation=ref<ProxyPresentation>(readPresentation())
-watch(presentation,value=>{try{localStorage.setItem('fonu.proxy.presentation',value)}catch{/* storage unavailable */}})
+// Always start in the V2 service workspace; port groups are an explicit session choice.
+const presentation=ref<ProxyPresentation>('service')
 const editorCertificates=ref<CertificateRecord[]>([])
 const editorCertificatesLoading=ref(false)
 const editorCertificatesError=ref(false)
