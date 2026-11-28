@@ -2,6 +2,7 @@
   <header class="service-page-header">
     <div class="service-page-title"><h1>反向代理</h1></div>
     <div class="service-page-actions">
+      <n-button @click="showListenerManager=true">端口分组 / 监听入口</n-button>
       <n-button @click="openDiscoveryModal()"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="router.push({name:'settings',query:{tab:'advanced'}})">全局设置</n-button>
       <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
@@ -257,7 +258,7 @@
         <n-tab v-for="tab in editorTabs" :key="tab.key" :name="tab.key" role="tab" :aria-selected="formTab===tab.key" :tabindex="saving||nginxSaving?-1:0" :disabled="saving||nginxSaving" @keydown.enter.prevent="switchFormTab(tab.key)" @keydown.space.prevent="switchFormTab(tab.key)">{{tab.label}}<span v-if="tab.key==='nginx'&&nginxDirty" class="editor-dirty-dot" aria-hidden="true"/></n-tab>
       </n-tabs>
     </template>
-    <ProxyBasicEditor v-show="formTab==='basic'" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
+    <ProxyBasicEditor v-show="formTab==='basic'" :certificates="editorCertificates" :certificates-loading="editorCertificatesLoading" :certificates-error="editorCertificatesError" :form="form" :business-group="draftBusinessGroup" :business-options="editorBusinessOptions" :copy-source="copySource" :ddns-hosts-loading="ddnsHostsLoading" :host-select-options="hostSelectOptions" :filter-ddns-host-option="filterDdnsHostOption" @patch="patchBasicDraft" @business="draftBusinessGroup=$event" @load-hosts="loadDdnsHostOptions"/>
     <ProxySecurityEditor v-if="formTab==='security'" :key="editorSession" :form="form" :active-security-features="activeSecurityFeatures" v-model:security-expanded="securityExpanded" :has-password="!!editing?.security?.basic_auth?.has_password" @patch="Object.assign(form,$event)" @preset="applySecurityPreset" @settings="openTrustSettings" :custom-nginx="editing?.nginx_mode==='custom'"/>
     <ProxyNginxEditor v-if="formTab==='nginx'" :editing="!!editing" :nginx-edit-mode="nginxEditMode" :nginx-server-mode="nginxServerMode" :nginx-draft="nginxDraft" :nginx-dirty="nginxDirty" :nginx-saving="nginxSaving" :nginx-loading="nginxLoading" :nginx-backups="nginxBackups" :rule-dirty="ruleDraftDirty" @basic="switchFormTab('basic')" @mode="setNginxEditMode" @save="saveRuleNginx" @rollback="rollbackRuleNginx()" @reset="resetRuleNginxAuto" @update:nginx-draft="nginxDraft=$event;onNginxDraftInput()"/>
     <n-alert v-if="saveError" type="error" :bordered="false" class="editor-save-error">{{saveError}}</n-alert>
@@ -344,7 +345,7 @@ import {
 import { api, asList } from '../api/client'
 import { createProxyPoll } from '../composables/proxy/useProxyPoll'
 import { useProxyLogStream } from '../composables/proxy/useProxyLogStream'
-import type { DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic, ProxyTrafficSnapshot, ProxyBusinessState, ProxyBusinessChange } from '../api/types'
+import type { CertificateRecord, DiscoveredService, ProxyClientConn, ProxyEntry, ProxyRule, ProxySavePayload, ProxyTraffic, ProxyTrafficSnapshot, ProxyBusinessState, ProxyBusinessChange } from '../api/types'
 import {
   applyEntryListen,
   buildProxyEntryGroups,
@@ -393,6 +394,19 @@ import { renderTableRowActions } from '../utils/tableActions'
 const router=useRouter()
 const message = useMessage()
 const showListenerManager=ref(false)
+const editorCertificates=ref<CertificateRecord[]>([])
+const editorCertificatesLoading=ref(false)
+const editorCertificatesError=ref(false)
+let editorCertificateGeneration=0
+async function loadEditorCertificates(){
+  const generation=++editorCertificateGeneration
+  editorCertificatesLoading.value=true
+  editorCertificatesError.value=false
+  editorCertificates.value=[]
+  try{const records=await api.listCertificates();if(generation===editorCertificateGeneration)editorCertificates.value=asList(records)}
+  catch{if(generation===editorCertificateGeneration)editorCertificatesError.value=true}
+  finally{if(generation===editorCertificateGeneration)editorCertificatesLoading.value=false}
+}
 const business=ref<ProxyBusinessState>({groups:[],members:[]})
 const businessError=ref('')
 const businessBusy=ref(false)
@@ -2208,8 +2222,11 @@ watch([showListenerManager,canReorder, canReorderGlobally, canReorderInGroups, c
 
 watch(showModal, (open) => {
   if (open) {
+    void loadEditorCertificates()
     void loadDdnsHostOptions()
   } else {
+    ++editorCertificateGeneration
+    editorCertificatesLoading.value=false
     editing.value = null
     formEntryId.value = null
   }

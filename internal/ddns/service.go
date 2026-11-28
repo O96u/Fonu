@@ -492,7 +492,7 @@ func (s *Service) enrichDomainRecords(ctx context.Context, cfg *Config) {
 			records[i].Message = err.Error()
 			continue
 		}
-		records[i].Domain = FormatDomainLine(zone, record)
+		records[i].Domain = joinDomainLine(zone, record)
 
 		if cfg.IPv4Enabled {
 			ip, err := provider.GetRecordIP(ctx, cred, zone, record, "A")
@@ -622,7 +622,7 @@ func (s *Service) runUpdate(ctx context.Context, cfg Config) (runErr error) {
 			errCount++
 			continue
 		}
-		fqdn = FormatDomainLine(zone, record)
+		fqdn = joinDomainLine(zone, record)
 		dr := DomainRecord{Domain: fqdn}
 
 		if cfg.IPv4Enabled && detectedIPv4 != "" {
@@ -786,7 +786,11 @@ func (s *Service) resolveZone(ctx context.Context, provider Provider, cred Crede
 		}
 	}
 	zone, host, err = ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
-		return provider.HasZone(ctx, cred, candidate)
+		ok, err := provider.HasZone(ctx, cred, candidate)
+		if err != nil {
+			return false, fmt.Errorf("查询 DNS Zone %s（域名 %s，服务商 %s）：%w", candidate, fqdn, provider.Name(), err)
+		}
+		return ok, nil
 	}, fqdn)
 	if cache != nil {
 		cache[fqdn] = zoneHost{zone: zone, host: host, err: err}

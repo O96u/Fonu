@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 func ValidateDomainFormat(domain string) error {
@@ -76,7 +78,7 @@ func ParseDomainLines(lines []string) (rootDomain string, recordNames []string, 
 		if root == "" {
 			continue
 		}
-		fqdn := FormatDomainLine(root, record)
+		fqdn := joinDomainLine(root, record)
 		if _, ok := seen[fqdn]; ok {
 			return "", nil, fmt.Errorf("域名 %s 重复", fqdn)
 		}
@@ -125,11 +127,17 @@ func parseDomainLine(line string) (rootDomain, recordName string, err error) {
 	if len(parts) < 2 {
 		return "", "", fmt.Errorf("域名格式无效: %s", line)
 	}
-	rootDomain = parts[len(parts)-2] + "." + parts[len(parts)-1]
-	if len(parts) == 2 {
+	// This is the registrable domain, not necessarily the provider-managed zone.
+	rootDomain, err = publicsuffix.EffectiveTLDPlusOne(line)
+	if err != nil {
+		// Keep legacy/private names readable; the provider still resolves the real zone.
+		rootDomain = parts[len(parts)-2] + "." + parts[len(parts)-1]
+		err = nil
+	}
+	if line == rootDomain {
 		return rootDomain, "@", nil
 	}
-	recordName = strings.Join(parts[:len(parts)-2], ".")
+	recordName = strings.TrimSuffix(line, "."+rootDomain)
 	return rootDomain, recordName, nil
 }
 
@@ -290,6 +298,11 @@ func (c Config) ManagedDNSZones() []string {
 	add := func(zone string) {
 		zone = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(zone, "*.")))
 		if zone == "" || zone == "@" || seen[zone] {
+			return
+		}
+		// A legacy task may have stored a public suffix (e.g. eu.org) as its root.
+		// It must not make this credential appear to cover unrelated tenants.
+		if suffix, _ := publicsuffix.PublicSuffix(zone); suffix == zone {
 			return
 		}
 		seen[zone] = true

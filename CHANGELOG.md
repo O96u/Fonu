@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 修复 DDNS 多级公共后缀解析及相对 DNS 记录拼接，保留实际服务商 Zone 匹配和旧任务兼容；完善 DNSPod 域名列表错误提示（#45）。
+- 阿里云 ACME TXT TTL 调整为 600 秒，新增实际请求参数回归测试（#44）。
+- 恢复反代端口分组与监听入口管理入口，HTTPS 编辑时预览候选证书及缺失提示（#43）。
+
 - 统一主题配色：证书域名标签、申请步骤、反代流量与链接、FRP 功能图标、DNSHE 选中状态、备份入口及通用组件跟随主题色；保留正常、警告、错误与第三方品牌色。新增主题切换浏览器回归检查。
 
 ## [v2.0.0] - 2026-11-26

@@ -10,7 +10,7 @@ import (
 
 // alidnsACMETTL is the TTL used for ACME DNS-01 TXT records.
 // Aliyun DNS rejects TTLs below 600 ("TTL 必须在 600-86400 之间"), so the
-// ACME challenge record must not use the low TTL that DNSPod accepts.
+// ACME challenge record uses the same minimum as ordinary AliDNS DDNS records.
 const alidnsACMETTL = "600"
 
 // UpsertTXTRecord creates or updates a TXT record for ACME DNS-01.

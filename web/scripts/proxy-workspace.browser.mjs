@@ -40,6 +40,7 @@ try{
   else if(url.pathname==='/api/nginx/apply-status')data={state:'confirmed',confirmed_revision:'aabbccddeeff',history:[]}
   else if(url.pathname==='/api/proxies'&&method==='GET')data=rules
   else if(url.pathname==='/api/proxy-entries')data=entries
+  else if(url.pathname==='/api/certificates')data=[{id:1,domain:'example.com',name:'测试证书',domains:['*.example.com'],cert_path:'/test/cert.pem',key_path:'/test/key.pem',expires_at:new Date(Date.now()+86400000*60).toISOString(),status:'valid'}]
   else if(url.pathname==='/api/proxies/traffic')data=traffic
   else if(url.pathname==='/api/proxies/traffic/snapshot')data={rules:traffic,total:{rule_id:0,connections:2,upload_rate:65536,download_rate:1048576,upload_total:1073741824,download_total:5368709120},sampled_at:new Date().toISOString(),active_window_seconds:65,rate_window_seconds:5}
   else if(/^\/api\/proxies\/\d+\/diagnostics$/.test(url.pathname))data=method==='POST'?{id:1,upstream:'http://192.168.1.10:5666',checked_at:new Date().toISOString(),state:'reachable',duration_ms:10,http_status:200,detail:'上游已响应 HTTP'}:[]
@@ -69,6 +70,12 @@ try{
  await page.goto(base+'/proxies')
  await page.locator('.summary-identity').first().waitFor()
  assert.equal(await page.locator('.service-block').count(),4)
+ await page.getByRole('button',{name:'端口分组 / 监听入口'}).click()
+ const listenerManager=page.locator('.listener-manager')
+ await listenerManager.waitFor()
+ assert.equal(await listenerManager.locator('.proxy-entry-card').count(),2)
+ await listenerManager.getByRole('button',{name:'关闭',exact:true}).click()
+ await listenerManager.waitFor({state:'hidden'})
  await page.locator('.summary-identity').first().click()
  assert.equal(await page.locator('.service-row--child').count(),3)
  assert.match(await page.locator('.summary-identity').first().innerText(),/3 条独立规则/)
@@ -78,6 +85,7 @@ try{
  const authRow=page.locator('.service-row--child').filter({hasText:'s.muxui.com'})
  await authRow.getByRole('button',{name:'编辑规则'}).click()
  const edit=page.locator('.editor-frame').filter({has:page.getByRole('heading',{name:'编辑代理',exact:true})})
+ await edit.getByText('证书列表中没有未过期的匹配证书',{exact:true}).waitFor()
  await edit.getByRole('tab',{name:'安全设置'}).click()
  assert.equal(await edit.getByRole('textbox',{name:'代理认证用户名'}).inputValue(),'test')
  await edit.getByRole('button',{name:'取消',exact:true}).click()
