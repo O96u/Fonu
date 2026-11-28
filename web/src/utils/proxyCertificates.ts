@@ -14,7 +14,8 @@ export function previewProxyCertificates(inputs:string[], certificates:Certifica
         if(name===host)return true
         if(host.startsWith('*.')||!name.startsWith('*.'))return false
         const suffix=name.slice(1)
-        return host.endsWith(suffix)&&!host.slice(0,-suffix.length).includes('.')
+        const label=host.slice(0,-suffix.length)
+        return host.endsWith(suffix)&&label.length>0&&!label.includes('.')
       })
     }).sort((a,b)=>Date.parse(b.expires_at??'')-Date.parse(a.expires_at??''))
     return {host,cert:candidates[0]}

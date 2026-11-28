@@ -197,7 +197,7 @@ func FormatDomainLines(rootDomain string, recordNames []string) []string {
 			continue
 		}
 		root, record := ResolveDomainTarget(rootDomain, name)
-		out = append(out, FormatDomainLine(root, record))
+		out = append(out, joinDomainLine(root, record))
 	}
 	return out
 }
@@ -239,14 +239,14 @@ func normalizeRecordName(raw string) string {
 	if strings.HasPrefix(name, "*.") {
 		root := strings.TrimPrefix(name, "*.")
 		if root != "" {
-			return FormatDomainLine(root, "*")
+			return joinDomainLine(root, "*")
 		}
 		return "*"
 	}
 	if strings.Contains(name, ".") {
 		root, record, err := parseDomainLine(name)
 		if err == nil {
-			return FormatDomainLine(root, record)
+			return joinDomainLine(root, record)
 		}
 	}
 	return name
@@ -315,7 +315,7 @@ func (c Config) ManagedDNSZones() []string {
 		root, record := ResolveDomainTarget(c.RootDomain, name)
 		add(root)
 		if record != "@" && record != "*" {
-			add(FormatDomainLine(root, record))
+			add(joinDomainLine(root, record))
 		}
 	}
 	return zones

@@ -13,12 +13,17 @@ func TestDDNSPublicSuffixAndLegacyFQDN(t *testing.T) {
 		{"nas.example.co.uk", "example.co.uk"},
 		{"nas.example.com.cn", "example.com.cn"},
 		{"api.nas.example.com", "example.com"},
+		{"a.b.c.example.com", "example.com"},
 		{"*.mydomain.eu.org", "mydomain.eu.org"},
 	} {
 		root, names, err := ParseDomainLines([]string{tc.domain})
 		if err != nil || root != tc.root || len(names) != 1 || names[0] != tc.domain {
 			t.Fatalf("%s: root=%q names=%v err=%v", tc.domain, root, names, err)
 		}
+	}
+	names, err := ParseRecordNames([]string{"a.b.c.example.com"}, "")
+	if err != nil || len(names) != 1 || names[0] != "a.b.c.example.com" {
+		t.Fatalf("legacy parse lost deep host: %v, %v", names, err)
 	}
 	legacy := Config{RootDomain: "eu.org", RecordNames: []string{"h.mydomain.eu.org", "other.example.co.uk"}}
 	if got := legacy.DomainLines(); len(got) != 2 || got[0] != "h.mydomain.eu.org" || got[1] != "other.example.co.uk" {

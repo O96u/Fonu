@@ -199,6 +199,7 @@ try{
  await page.locator('.service-row').filter({hasText:'nas.example.com'}).getByRole('button',{name:'复制规则'}).click()
  const copy=page.locator('.editor-frame').filter({has:page.getByRole('heading',{name:'复制代理规则'})})
  await copy.getByText('复制来源：飞牛 NAS').waitFor()
+ await copy.getByText(/候选证书：测试证书/).waitFor()
  assert.equal(await copy.getByPlaceholder('http://192.168.1.100:8005').inputValue(),'http://192.168.1.10:5666')
  assert.equal(batches.length,0)
  await page.screenshot({path:'ui-screenshots/editor-copy.png',fullPage:true})

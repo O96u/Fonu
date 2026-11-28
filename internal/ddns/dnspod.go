@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -57,7 +56,7 @@ func (d *DNSPod) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, 
 		return "", err
 	}
 	subDomain := subDomainForRecord(recordName)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +75,7 @@ func (d *DNSPod) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 		return err
 	}
 	subDomain := subDomainForRecord(recordName)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return err
 	}
@@ -97,7 +96,7 @@ func (d *DNSPod) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 		Name:  subDomain,
 		Value: ip,
 		Line:  "默认",
-		TTL:   strconv.Itoa(120),
+		// Let DNSPod select the valid default TTL for this plan.
 	})
 	return err
 }
@@ -110,7 +109,7 @@ func (d *DNSPod) removeTXTRecords(ctx context.Context, cred Credentials, zone, h
 		return err
 	}
 	subDomain := subDomainForRecord(host)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return err
 	}
@@ -151,6 +150,19 @@ func (d *DNSPod) domainID(client *dnspod.Client, rootDomain string) (string, err
 		}
 	}
 	return "", fmt.Errorf("未找到域名 %s 对应的 DNSPod 域名", rootDomain)
+}
+
+// The SDK gives Domain.List and Record.List the same error prefix.
+// Only the exact empty-record response to Record.List is a normal absence.
+func dnsPodListRecords(client *dnspod.Client, domainID, host string) ([]dnspod.Record, error) {
+	records, _, err := client.Records.List(domainID, host)
+	if err != nil {
+		if strings.TrimSpace(err.Error()) == "could not get domains: 记录列表为空" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("DNSPod 查询解析记录 %s 失败：%w", host, err)
+	}
+	return records, nil
 }
 
 // Domain.List errors concern the account as a whole, not a candidate zone.
