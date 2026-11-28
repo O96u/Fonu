@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+// alidnsACMETTL is the TTL used for ACME DNS-01 TXT records.
+// Aliyun DNS rejects TTLs below 600 ("TTL 必须在 600-86400 之间"), so the
+// ACME challenge record uses the same minimum as ordinary AliDNS DDNS records.
+const alidnsACMETTL = "600"
+
 // UpsertTXTRecord creates or updates a TXT record for ACME DNS-01.
 func (a *AliDNS) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, value string) error {
 	zone, host, err := ResolveZoneForFQDN(ctx, func(candidate string) (bool, error) {
@@ -34,7 +39,7 @@ func (a *AliDNS) UpsertTXTRecord(ctx context.Context, cred Credentials, fqdn, va
 		"RR":         subDomain,
 		"Type":       "TXT",
 		"Value":      strings.TrimSpace(value),
-		"TTL":        "120",
+		"TTL":        alidnsACMETTL,
 	})
 	return err
 }

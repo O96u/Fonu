@@ -26,7 +26,7 @@ func (d *DNSPod) ensureTXTRecord(ctx context.Context, cred Credentials, zone, ho
 		return err
 	}
 	subDomain := subDomainForRecord(host)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return err
 	}

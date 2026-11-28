@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,13 +22,31 @@ func (d *DNSPod) Name() string { return "dnspod" }
 
 func (d *DNSPod) Verify(ctx context.Context, cred Credentials) error {
 	client := d.apiClient(cred)
-	_, _, err := client.Domains.List()
-	return err
+	domains, _, err := client.Domains.List()
+	if err != nil {
+		return dnsPodDomainListError(err)
+	}
+	if len(domains) == 0 {
+		return fmt.Errorf("DNSPod 域名列表为空，请确认凭证所属账号已托管域名")
+	}
+	return nil
 }
 
 func (d *DNSPod) HasZone(ctx context.Context, cred Credentials, zone string) (bool, error) {
-	_, err := d.domainID(d.apiClient(cred), zone)
-	return zoneLookupOK(err)
+	// Only an explicit successful list without this zone means the candidate is absent.
+	domains, _, err := d.apiClient(cred).Domains.List()
+	if err != nil {
+		return false, dnsPodDomainListError(err)
+	}
+	if len(domains) == 0 {
+		return false, fmt.Errorf("DNSPod 域名列表为空，请确认凭证所属账号已托管域名")
+	}
+	for _, domain := range domains {
+		if strings.EqualFold(domain.Name, zone) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (d *DNSPod) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, recordName, recordType string) (string, error) {
@@ -39,7 +56,7 @@ func (d *DNSPod) GetRecordIP(ctx context.Context, cred Credentials, rootDomain, 
 		return "", err
 	}
 	subDomain := subDomainForRecord(recordName)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +75,7 @@ func (d *DNSPod) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 		return err
 	}
 	subDomain := subDomainForRecord(recordName)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return err
 	}
@@ -79,7 +96,7 @@ func (d *DNSPod) UpdateRecord(ctx context.Context, cred Credentials, rootDomain,
 		Name:  subDomain,
 		Value: ip,
 		Line:  "默认",
-		TTL:   strconv.Itoa(120),
+		// Let DNSPod select the valid default TTL for this plan.
 	})
 	return err
 }
@@ -92,7 +109,7 @@ func (d *DNSPod) removeTXTRecords(ctx context.Context, cred Credentials, zone, h
 		return err
 	}
 	subDomain := subDomainForRecord(host)
-	records, _, err := client.Records.List(domainID, subDomain)
+	records, err := dnsPodListRecords(client, domainID, subDomain)
 	if err != nil {
 		return err
 	}
@@ -122,7 +139,10 @@ func dnspodTXTValue(raw string) string {
 func (d *DNSPod) domainID(client *dnspod.Client, rootDomain string) (string, error) {
 	domains, _, err := client.Domains.List()
 	if err != nil {
-		return "", err
+		return "", dnsPodDomainListError(err)
+	}
+	if len(domains) == 0 {
+		return "", fmt.Errorf("DNSPod 域名列表为空，请确认凭证所属账号已托管域名")
 	}
 	for _, domain := range domains {
 		if strings.EqualFold(domain.Name, rootDomain) {
@@ -130,6 +150,28 @@ func (d *DNSPod) domainID(client *dnspod.Client, rootDomain string) (string, err
 		}
 	}
 	return "", fmt.Errorf("未找到域名 %s 对应的 DNSPod 域名", rootDomain)
+}
+
+// The SDK gives Domain.List and Record.List the same error prefix.
+// Only the exact empty-record response to Record.List is a normal absence.
+func dnsPodListRecords(client *dnspod.Client, domainID, host string) ([]dnspod.Record, error) {
+	records, _, err := client.Records.List(domainID, host)
+	if err != nil {
+		if strings.TrimSpace(err.Error()) == "could not get domains: 记录列表为空" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("DNSPod 查询解析记录 %s 失败：%w", host, err)
+	}
+	return records, nil
+}
+
+// Domain.List errors concern the account as a whole, not a candidate zone.
+// Keep permission/transport failures fatal; an empty account cannot be fixed by trying a parent zone.
+func dnsPodDomainListError(err error) error {
+	if strings.Contains(err.Error(), "记录列表为空") || strings.Contains(err.Error(), "域名列表为空") {
+		return fmt.Errorf("DNSPod 域名列表为空，请确认使用 DNSPod API Token、账号权限及域名托管情况：%w", err)
+	}
+	return fmt.Errorf("DNSPod 获取账号域名列表失败：%w", err)
 }
 
 func (d *DNSPod) apiClient(cred Credentials) *dnspod.Client {

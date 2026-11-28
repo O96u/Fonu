@@ -45,17 +45,6 @@
           </router-link>
         </div>
 
-        <a
-          class="sider-footer__github"
-          :href="GITHUB_REPO_URL"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span class="sider-footer__icon">
-            <n-icon :component="LogoGithub" />
-          </span>
-          <span>{{ GITHUB_REPO }}</span>
-        </a>
       </div>
     </n-layout-sider>
 
@@ -243,7 +232,7 @@ import {
 } from "@vicons/ionicons5";
 import { api, asList } from "../api/client";
 import { routeAuthStatus, invalidateRouteAuth } from "../router";
-import { GITHUB_REPO, GITHUB_REPO_URL } from "../constants/app";
+import { GITHUB_REPO_URL } from "../constants/app";
 import { useTheme, themePresets, previewTheme } from "../composables/useTheme";
 import { fetchLatestRelease, isNewerVersion } from "../utils/version";
 import logoImg from "../assets/brand/logo.png";
@@ -644,8 +633,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.sider-footer__status,
-.sider-footer__github {
+.sider-footer__status {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -671,20 +659,6 @@ onUnmounted(() => {
 .sider-footer__status-icon {
   font-size: 8px;
   color: var(--fonu-success);
-}
-
-.sider-footer__github {
-  color: var(--fonu-text-secondary);
-  text-decoration: none;
-  transition: color 0.15s;
-}
-
-.sider-footer__github:hover {
-  color: var(--fonu-text);
-}
-
-.sider-footer__github :deep(.n-icon) {
-  font-size: 14px;
 }
 
 .app-main {

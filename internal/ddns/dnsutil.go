@@ -7,13 +7,9 @@ func fqdnForRecord(rootDomain, recordName string) string {
 	if recordName == "" || recordName == "@" {
 		return rootDomain
 	}
-	if strings.Contains(recordName, ".") {
-		return recordName
-	}
-	if recordName == "*" {
-		return "*." + rootDomain
-	}
-	return recordName + "." + rootDomain
+	// Provider calls receive a relative host from ResolveZoneForFQDN.
+	// Dots in that host do not make it an absolute DNS name.
+	return joinDomainLine(rootDomain, recordName)
 }
 
 func subDomainForRecord(recordName string) string {

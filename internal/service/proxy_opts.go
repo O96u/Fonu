@@ -38,6 +38,11 @@ func (s *ProxyService) loadGenerateOptions(ctx context.Context) nginx.GenerateOp
 func (s *ProxyService) SaveSettingsWithPublication(ctx context.Context, values map[string]string) error {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	return s.saveSettingsWithPublicationLocked(ctx, values)
+}
+
+// Caller holds applyMu; read-modify-write actions must share this lock.
+func (s *ProxyService) saveSettingsWithPublicationLocked(ctx context.Context, values map[string]string) error {
 	var trusted *nginx.TrustedProxyConfig
 	if raw,ok:=values[settings.KeyTrustedProxy];ok {
 		var cfg nginx.TrustedProxyConfig

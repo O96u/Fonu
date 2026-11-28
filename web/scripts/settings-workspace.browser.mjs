@@ -33,6 +33,7 @@ try {
    }
    data=saved
   }
+  else if(url.pathname==='/api/settings/notify/history')data=Array.from({length:12},(_,i)=>({at:new Date(Date.UTC(2026,10,28,0,i)).toISOString(),event:i===1?'ddns_failure':'test',channel:i===1?'wecom_app':'telegram',state:i===1?'failed':'sent',detail:i===1?'通道未确认接收':'测试消息已获通道确认'}))
   else if(url.pathname==='/api/settings/china-cidr')data={entry_count_v4:0,entry_count_v6:0}
   else if(url.pathname==='/api/settings/nginx/global')data={mode:'auto',content:'',generated_framework:'http {}',generated_snippet:'# auto',backups:[]}
   return route.fulfill({json:data})
@@ -91,6 +92,15 @@ try {
  await page.getByTestId('settings-tab-backup').click()
  assert.equal(await page.getByTestId('settings-save-bar').count(),0)
  await page.getByTestId('settings-tab-notify').click()
+ await page.getByText('已保留 12 条记录',{exact:true}).waitFor()
+ assert.equal(await page.locator('.history-row').count(),10)
+ await page.getByRole('group',{name:'筛选通知状态'}).getByRole('button',{name:'发送失败',exact:true}).click()
+ await page.waitForFunction(()=>document.querySelectorAll('.history-row').length===1)
+ assert.match(await page.locator('.history-row').innerText(),/企业微信应用/)
+ assert.match(await page.locator('.history-row').innerText(),/发送失败/)
+ await page.getByRole('group',{name:'筛选通知状态'}).getByRole('button',{name:'全部状态',exact:true}).click()
+ await page.waitForFunction(()=>document.querySelectorAll('.history-row').length===10)
+ await page.screenshot({path:'ui-screenshots/settings-notify-history.png',fullPage:true})
  assert.equal(await page.locator('.notify-channel-choice').count(),9)
  assert.equal(await page.getByTestId('notify-channel-telegram').getAttribute('aria-pressed'),'true')
  assert.equal(await page.getByPlaceholder('-1001234567890').inputValue(),'123')

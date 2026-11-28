@@ -58,7 +58,7 @@ func FQDNFromRecord(cfg Config, name string) string {
 	if strings.Contains(name, ".") || strings.HasPrefix(name, "*.") {
 		root, record, err := parseDomainLine(name)
 		if err == nil {
-			return FormatDomainLine(root, record)
+			return joinDomainLine(root, record)
 		}
 		return strings.TrimSuffix(name, ".")
 	}

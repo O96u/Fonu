@@ -42,7 +42,7 @@
       <div v-if="loading && !activeRows.length" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
       <template v-if="activeRows.length">
         <n-data-table v-if="tab==='system'" class="log-table" :columns="systemColumns" :data="systemLogs" :loading="loading" :bordered="false" :scroll-x="650" :row-class-name="systemRowClassName" :row-props="row => detailRowProps('system',row)"/>
-        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1120:920" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
+        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1280:1080" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
         <n-data-table v-else-if="tab==='nginx'" class="log-table" :columns="errorColumns" :data="errorLogs" :loading="loading" :bordered="false" :scroll-x="600" :row-class-name="errorRowClassName" :row-props="row => detailRowProps('nginx',row)"/>
         <n-data-table v-else class="log-table" :columns="frpColumns" :data="frpLogs" :loading="loading" :bordered="false" :scroll-x="720" :row-class-name="frpRowClassName" :row-props="row => detailRowProps('frp',row)"/>
       </template>
@@ -58,7 +58,7 @@
       <template v-if="detail">
         <div class="detail-fields" data-testid="log-detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
         <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
-        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button></div>
+        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.client_ip" @click="manageBlacklist(detail.access)">{{blacklistLabel(detail.access, true)}}</n-button></div>
       </template>
     </n-drawer-content>
   </n-drawer>
@@ -79,6 +79,7 @@ import {
   NSelect,
   NTag,
   useMessage,
+  useDialog,
   type DataTableColumns,
 } from 'naive-ui'
 import { api } from '../api/client'
@@ -116,7 +117,8 @@ type LogTab = 'system'|'access'|'nginx'|'frp'
 type LogFilter = {keyword:string;service:string;ip:string;kind:string|null;status:number|null;level:string|null;range:string;custom:[number,number]|null}
 const makeFilter=():LogFilter=>({keyword:'',service:'',ip:'',kind:null,status:null,level:null,range:'all',custom:null})
 const filters=reactive<Record<LogTab,LogFilter>>({system:makeFilter(),access:makeFilter(),nginx:makeFilter(),frp:makeFilter()})
-const route=useRoute(),router=useRouter(),message=useMessage(),logTimeZone=useAppTimezone()
+const route=useRoute(),router=useRouter(),message=useMessage(),dialog=useDialog(),logTimeZone=useAppTimezone()
+const blacklistBusy=ref(false)
 function resolveTab(value:unknown):LogTab{
  if(value==='error')return 'nginx'
  if(value==='stream')return 'access'
@@ -137,6 +139,47 @@ const summary=ref<Record<string,{count:number;error?:string}>>({}),summaryAt=ref
 const loading=ref(false),error=ref(''),exporting=ref(false),autoRefresh=ref(true)
 const offset=ref(0),pageSize=ref(20),hasMore=ref(false)
 const accessLogs=ref<AccessLogEntry[]>([]),systemLogs=ref<SystemLogEntry[]>([]),errorLogs=ref<ParsedNginxError[]>([]),frpLogs=ref<ParsedFrpLog[]>([])
+type LogBlacklistStatus = Awaited<ReturnType<typeof api.logBlacklistStatus>>[number]
+const blacklistStatuses=ref<Record<string,LogBlacklistStatus>>({})
+let blacklistStatusController:AbortController|undefined,blacklistStatusGeneration=0
+function blacklistInput(row:AccessLogEntry){return {host:row.domain||'',port:row.server_port||0,ip:row.client_ip||''}}
+function blacklistKey(row:AccessLogEntry){return JSON.stringify(blacklistInput(row))}
+function blacklistStatus(row:AccessLogEntry){return blacklistStatuses.value[blacklistKey(row)]}
+function blacklistLabel(row:AccessLogEntry,detail=false){
+ const s=blacklistStatus(row)
+ if(!s||s.error)return detail?'管理 IP 黑名单':'黑名单'
+ if(s.exact)return s.scope==='global'?'全局已加入':'规则已加入'
+ if(s.covered)return '网段已覆盖'
+ return detail?'加入黑名单':'加入黑名单'
+}
+function blacklistButtonType(row:AccessLogEntry){const s=blacklistStatus(row);return s?.exact||s?.covered?'error':'warning'}
+async function loadBlacklistStatuses(){
+ const id=++blacklistStatusGeneration
+ blacklistStatusController?.abort()
+ if(disposed||tab.value!=='access'){blacklistStatuses.value={};return}
+ const unique=new Map(accessLogs.value.map(row=>[blacklistKey(row),blacklistInput(row)]))
+ const keys=[...unique.keys()]
+ if(!keys.length){blacklistStatuses.value={};return}
+ const ctl=new AbortController();blacklistStatusController=ctl
+ try{
+  const rows=await api.logBlacklistStatus([...unique.values()],ctl.signal)
+  if(disposed||id!==blacklistStatusGeneration)return
+  if(!Array.isArray(rows)||rows.length!==keys.length)throw Error('invalid blacklist status response')
+  blacklistStatuses.value=Object.fromEntries(keys.map((key,i)=>[key,rows[i]]))
+ }catch{if(!disposed&&id===blacklistStatusGeneration)blacklistStatuses.value={}}
+}
+function updateBlacklistStatuses(row:AccessLogEntry,result:Awaited<ReturnType<typeof api.logBlacklist>>){
+ const next={...blacklistStatuses.value}
+ const clicked=blacklistKey(row)
+ for(const [key,s] of Object.entries(next)){
+  if(s.ip!==result.ip)continue
+  if(result.scope==='global')next[key]={...s,global_exact:result.exact,global_covered:result.covered,...(s.scope==='global'?{exact:result.exact,covered:result.covered}:{})}
+  else if(s.scope==='rule'&&s.rule_id===result.rule_id)next[key]={...s,exact:result.exact,covered:result.covered}
+ }
+ const previous=next[clicked]
+ next[clicked]={...previous,scope:result.scope,rule_id:result.rule_id,ip:result.ip,exact:result.exact,covered:result.covered,global_exact:result.scope==='global'?result.exact:previous?.global_exact??false,global_covered:result.scope==='global'?result.covered:previous?.global_covered??false,error:undefined}
+ blacklistStatuses.value=next
+}
 const activeRows=computed(()=>({access:accessLogs.value,system:systemLogs.value,nginx:errorLogs.value,frp:frpLogs.value})[tab.value])
 const proxyBindingIndex=ref(buildProxyBindingIndex([]))
 const showAccessBlockReason=computed(()=>Boolean(current.value.kind)||accessLogs.value.some(row=>Boolean(row.block_reason)))
@@ -155,7 +198,7 @@ let disposed=false,generation=0,historyController:AbortController|undefined,summ
 let debounce:ReturnType<typeof setTimeout>|undefined,timer:ReturnType<typeof setInterval>|undefined
 let nextSummaryAt=0
 let pageSnapshot=''
-function clearRows(){accessLogs.value=[];systemLogs.value=[];errorLogs.value=[];frpLogs.value=[];hasMore.value=false}
+function clearRows(){blacklistStatusGeneration++;blacklistStatusController?.abort();blacklistStatuses.value={};accessLogs.value=[];systemLogs.value=[];errorLogs.value=[];frpLogs.value=[];hasMore.value=false}
 async function loadSummary(force=false){
  if(disposed||summaryLoading.value)return
  summaryLoading.value=true;summaryError.value=''
@@ -176,7 +219,7 @@ async function loadHistory(){
  try{
   const r=await api.getLogHistory({...queryParams(),offset:offset.value,limit:pageSize.value,snapshot:pageSnapshot},ctl.signal)
   if(disposed||id!==generation)return
-  if(source==='access')accessLogs.value=r.rows as AccessLogEntry[]
+  if(source==='access'){accessLogs.value=r.rows as AccessLogEntry[];void loadBlacklistStatuses()}
   else if(source==='system')systemLogs.value=r.rows as SystemLogEntry[]
   else if(source==='nginx')errorLogs.value=(r.rows as string[]).map(parseNginxErrorLine)
   else frpLogs.value=(r.rows as string[]).map(parseFrpLogLine)
@@ -234,7 +277,7 @@ onMounted(()=>{
   if(autoRefresh.value&&offset.value===0&&!loading.value&&!awaitingCustomRange.value)void loadHistory()
  },10000)
 })
-onUnmounted(()=>{disposed=true;generation++;historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
+onUnmounted(()=>{disposed=true;generation++;blacklistStatusController?.abort();historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
 const methodTagType = (method: string) => {
   const map: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
     GET: 'success',
@@ -348,6 +391,13 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     },
   },
   )
+  cols.push({title:'操作',key:'access_actions',width:160,render:row=>{
+    const s=blacklistStatus(row)
+    return h('div',{class:'log-blacklist-action'},[
+      h(NButton,{size:'tiny',quaternary:!(s?.exact||s?.covered),secondary:Boolean(s?.exact||s?.covered),type:blacklistButtonType(row),disabled:!row.client_ip||row.client_ip==='-'||blacklistBusy.value,title:s?.error||'当前黑名单配置状态，点击管理；不代表历史请求被拦截',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>blacklistLabel(row)),
+      s?.scope==='rule'&&(s.global_exact||s.global_covered)?h('small',{class:'log-blacklist-global',title:'该 IP 同时受全局黑名单限制'},'全局已限制'):null
+    ])
+  }})
   return cols
 })
 
@@ -435,7 +485,7 @@ const systemColumns: DataTableColumns<SystemLogEntry> = [
 
 
 const showDetail = ref(false)
-const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string } | null>(null)
+const detail = ref<{ fields: {label:string;value:string}[]; raw:string; rawLabel:string; ip?:string; access?:AccessLogEntry } | null>(null)
 function detailRowProps(kind: LogTab, row: unknown) {
   const open = () => openDetail(kind, row)
   return { tabindex:0, style:'cursor:pointer', onClick:open, onKeydown:(event:KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault();open() } } }
@@ -454,7 +504,7 @@ function openDetail(kind: LogTab, row: unknown) {
     const r = row as ParsedNginxError | ParsedFrpLog
     add('时间',r.time ? formatLogTime(r.time,{timeZone:logTimeZone.value}) : '');add('级别',r.level);if ('source' in r) add('来源',r.source);add('消息',r.message);raw=r.raw;rawLabel='原始日志'
   }
-  detail.value={fields,raw,rawLabel,ip};showDetail.value=true
+  detail.value={fields,raw,rawLabel,ip,access:kind==='access'?row as AccessLogEntry:undefined};showDetail.value=true
 }
 async function copyDetail() {
   if (!detail.value) return
@@ -468,8 +518,50 @@ function filterDetailIP() {
   void router.replace({name:'logs',query:{tab:'access',ip:detail.value.ip}})
 }
 
+async function manageBlacklist(row:AccessLogEntry){
+  if(blacklistBusy.value||!row.client_ip)return
+  const input={host:row.domain||'',port:row.server_port||0,ip:row.client_ip}
+  blacklistBusy.value=true
+  try{
+    const current=await api.logBlacklist({...input,action:'inspect'})
+    if(disposed)return
+    const global=current.scope==='global'
+    const scopeLabel=global?'全局黑名单':'当前规则黑名单'
+    if(current.covered&&!current.exact){
+      dialog.info({title:'该 IP 已被'+scopeLabel+'中的网段覆盖',content:'IP：'+current.ip+'。请在'+(global?'系统设置 → 反代安全':'当前反代规则的安全设置')+'中管理对应 CIDR，快捷操作不会删除整个网段。',positiveText:'知道了'})
+      return
+    }
+    const removing=current.exact
+    dialog.warning({
+      title:(removing?'确认解除':'确认加入')+scopeLabel,
+      content:()=>h('div',{class:'blacklist-confirm'},[
+        h('p','来源 IP：'+current.ip),
+        h('p','日志入口：'+(row.domain||'未识别入口')+(row.server_port?'（端口 '+row.server_port+'）':'')),
+        h('p',global?'未匹配当前启用的反代规则。作用范围：全局反代 IP 策略。':'当前规则：'+(current.rule_name||('#'+current.rule_id))+'。作用范围：该规则下的所有域名，不影响其他独立规则。'),
+        h('p',removing?'仅移除该范围内的单地址条目；其他黑名单、网段限制或安全策略仍可能拒绝访问。':global?'加入后可能无法访问所有自动生成配置的反代服务，直到手动解除。':'加入后该 IP 将受到当前规则的黑名单限制，直到手动解除。'),
+        h('p','请确认此 IP 是真实客户端地址，而非路由器、CDN、转发代理或共享出口。'),
+        current.custom_config?h('p','存在手动 Nginx 配置，可能覆盖全局访问策略，需另行核验。'):null,
+        current.whitelist_mode?h('p','当前规则启用了白名单；黑名单优先于白名单。'):null
+      ]),
+      positiveText:removing?'确认解除':'确认加入',negativeText:'取消',
+      onPositiveClick:async()=>{
+        if(blacklistBusy.value||disposed)return false
+        blacklistBusy.value=true
+        try{
+          const result=await api.logBlacklist({...input,ip:current.ip,scope:current.scope,rule_id:current.rule_id,action:removing?'unblock':'block',confirmed:true})
+          if(!disposed){updateBlacklistStatuses(row,result);void loadBlacklistStatuses();message.success(result.changed?(removing?(result.covered?'已移除单地址，仍受网段限制':'已移除'+scopeLabel+'中的单地址'):'已加入'+scopeLabel):'黑名单状态已更新，无需重复修改')}
+          return true
+        }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'黑名单更新失败');return false}
+        finally{blacklistBusy.value=false}
+      }
+    })
+  }catch(e){if(!disposed)message.warning(e instanceof Error?e.message:'无法确认黑名单作用范围')}
+  finally{blacklistBusy.value=false}
+}
+
 </script>
 <style scoped>
+.log-blacklist-action{display:flex;align-items:flex-start;flex-direction:column;gap:2px}.log-blacklist-global{font-size:11px;color:var(--fonu-error)}
 .logs-card :deep(.n-tabs-nav) {
   padding: var(--fonu-space-4) var(--fonu-space-5) 0;
 }

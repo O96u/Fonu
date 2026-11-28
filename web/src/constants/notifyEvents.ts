@@ -23,6 +23,7 @@ export const NOTIFY_EVENT_GROUPS: NotifyEventGroup[] = [
       {
         key: 'on_ddns_failure',
         label: '更新失败',
+        hint: 'DDNS 全部或部分记录同步失败时提醒',
       },
     ],
   },
@@ -41,6 +42,7 @@ export const NOTIFY_EVENT_GROUPS: NotifyEventGroup[] = [
       {
         key: 'on_cert_renew_failure',
         label: '续签失败',
+        hint: '自动或手动续签失败时提醒，便于及时检查 DNS 凭证与证书状态',
       },
     ],
   },
@@ -50,7 +52,7 @@ export const NOTIFY_EVENT_GROUPS: NotifyEventGroup[] = [
       {
         key: 'on_ip_frequent_access',
         label: 'IP 频繁访问',
-        hint: '同一 IP 在统计窗口内超过阈值',
+        hint: '同一 IP 在统计窗口内达到阈值，仅提醒，不自动封禁',
         hasThreshold: true,
         thresholdKey: 'ip_frequent',
       },
@@ -66,7 +68,7 @@ export const NOTIFY_EVENT_GROUPS: NotifyEventGroup[] = [
       },
       {
         key: 'on_login_failure',
-        label: '登录异常',
+        label: '多次登录失败',
         hint: '同一 IP 在窗口内多次登录失败',
         hasThreshold: true,
         thresholdKey: 'login_failure',

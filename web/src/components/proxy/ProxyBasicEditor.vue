@@ -18,7 +18,7 @@
         <div class="option-row"><div><strong>启用 HTTPS</strong><small>使用匹配前端域名的有效证书。</small></div><n-switch :value="form.https_enabled" @update:value="emit('patch',{https_enabled:$event})"/></div>
         <div class="option-row"><div><strong>HTTP 跳转 HTTPS</strong><small>将 HTTP 请求跳转至 HTTPS。</small></div><n-switch :value="form.http_redirect" :disabled="!form.https_enabled" @update:value="emit('patch',{http_redirect:$event})"/></div>
       <div class="option-row"><div><strong>启用规则</strong><small>保存后应用该独立代理规则。</small></div><n-switch :value="form.enabled" @update:value="emit('patch',{enabled:$event})"/></div>
-      <div v-if="form.https_enabled" class="section-tip"><n-icon :component="LockClosedOutline"/><span>证书根据域名自动匹配。缺少有效证书时，后端拒绝发布无效配置；请先在证书管理中申请或导入。</span></div>
+      <div v-if="form.https_enabled" class="section-tip"><n-icon :component="LockClosedOutline"/><div class="field-stack"><span>证书根据域名自动匹配。以下为证书列表预览，最终以服务器实际证书校验为准。</span><small v-if="certificatesLoading">正在读取证书…</small><small v-else-if="certificatesError">暂时无法读取证书列表，请稍后重试。</small><template v-else><small v-if="!certificatePreview.length">填写前端域名后查看匹配状态。</small><div v-for="item in certificatePreview" :key="item.host"><strong>{{item.host}}</strong><small v-if="item.cert">候选证书：{{item.cert.name || item.cert.domain}} · 到期 {{item.cert.expires_at?.slice(0,10)}}</small><small v-else>证书列表中没有未过期的匹配证书</small></div></template><router-link :to="{name:'certificates'}" target="_blank" rel="noopener noreferrer">打开证书管理（申请或导入）</router-link></div></div>
     </section>
   </n-form>
 </template>
@@ -27,12 +27,14 @@ import {computed} from 'vue'
 import ProxyDraftInput from './ProxyDraftInput.vue'
 import {NForm,NFormItem,NInputNumber,NSelect,NCheckbox,NSwitch,NButton,NIcon,type SelectGroupOption} from 'naive-ui'
 import {CopyOutline,LockClosedOutline} from '@vicons/ionicons5'
-import type {ProxyRule} from '../../api/types'
+import type {CertificateRecord,ProxyRule} from '../../api/types'
 import type {DdnsHostSelectOption} from '../../utils/ddnsHosts'
+import {previewProxyCertificates} from '../../utils/proxyCertificates'
 interface BasicDraft {name:string;hostsSelected:string[];listen_port:number;listen_ipv4:boolean;listen_ipv6:boolean;https_enabled:boolean;http_redirect:boolean;tls_min_13_only:boolean;upstream:string;enabled:boolean}
-const props=defineProps<{form:BasicDraft;businessGroup:number;businessOptions:{label:string;value:number}[];copySource:ProxyRule|null;ddnsHostsLoading:boolean;hostSelectOptions:SelectGroupOption[];filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean}>()
+const props=defineProps<{certificates:CertificateRecord[];certificatesLoading:boolean;certificatesError:boolean;form:BasicDraft;businessGroup:number;businessOptions:{label:string;value:number}[];copySource:ProxyRule|null;ddnsHostsLoading:boolean;hostSelectOptions:SelectGroupOption[];filterDdnsHostOption:(pattern:string,option:DdnsHostSelectOption)=>boolean}>()
 const emit=defineEmits<{patch:[value:Partial<BasicDraft>];loadHosts:[];business:[value:number]}>()
 function appendHost(value:string|null){if(!value)return;const hosts=props.form.hostsSelected.filter(h=>h.trim());if(!hosts.some(h=>h.trim().toLowerCase()===value.toLowerCase()))emit('patch',{hostsSelected:[...hosts,value]})}
+const certificatePreview=computed(()=>previewProxyCertificates(props.form.hostsSelected,props.certificates))
 const validTarget=computed(()=>{try{const u=new URL(props.form.upstream);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password}catch{return false}})
 function openTarget(){if(validTarget.value)window.open(props.form.upstream,'_blank','noopener,noreferrer')}
 </script>

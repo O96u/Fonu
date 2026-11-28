@@ -5,7 +5,7 @@
     <n-select :value="httpsFilter" @update:value="emit('update:httpsFilter',typeof $event==='string'?$event:null)" size="small" :options="httpsOptions" clearable placeholder="全部协议" class="proxy-toolbar__filter" />
     <n-button v-if="search || statusFilter || httpsFilter" size="small" quaternary @click="emit('clear')">清除</n-button>
     <div class="proxy-toolbar__actions">
-      <div class="view-switch" role="group" aria-label="规则视图">
+      <div v-if="!hideViewSwitch" class="view-switch" role="group" aria-label="规则视图">
         <button type="button" :aria-pressed="viewMode==='grouped'" @click="emit('update:viewMode','grouped')"><n-icon :component="LayersOutline"/>入口</button>
         <button type="button" :aria-pressed="viewMode==='flat'" @click="emit('update:viewMode','flat')"><n-icon :component="ListOutline"/>列表</button>
       </div>
@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import {NButton,NIcon,NInput,NSelect,type SelectOption} from 'naive-ui'
 import {RefreshOutline,SearchOutline,LayersOutline,ListOutline} from '@vicons/ionicons5'
-defineProps<{search:string;statusFilter:string|null;httpsFilter:string|null;statusOptions:SelectOption[];httpsOptions:SelectOption[];loading:boolean;viewMode:'grouped'|'flat';grouped:boolean;canExpand:boolean;allExpanded:boolean}>()
+defineProps<{search:string;statusFilter:string|null;httpsFilter:string|null;statusOptions:SelectOption[];httpsOptions:SelectOption[];loading:boolean;hideViewSwitch?:boolean;viewMode:'grouped'|'flat';grouped:boolean;canExpand:boolean;allExpanded:boolean}>()
 const emit=defineEmits<{'update:search':[value:string];'update:statusFilter':[value:string|null];'update:httpsFilter':[value:string|null];'update:viewMode':[value:'grouped'|'flat'];refresh:[];toggleAll:[];clear:[]}>()
 </script>
 <style scoped>

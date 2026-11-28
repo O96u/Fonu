@@ -1,6 +1,13 @@
 <template>
   <section ref="workspaceRef" class="workspace" :class="{'is-sorting':dragging.length>0}">
-    <div class="workspace-heading"><div><h2>代理服务</h2><small>{{ blocks.length }} 个服务 · {{ rules.length }} 条独立规则</small></div><div class="view-switch" role="group" aria-label="展示方式"><button :aria-pressed="mode==='list'" @click="mode='list'"><n-icon :component="ListOutline"/> 列表</button><button :aria-pressed="mode==='card'" @click="mode='card'"><n-icon :component="GridOutline"/> 卡片</button></div></div>
+    <div class="workspace-heading">
+      <div><h2>{{presentation==='service'?'代理服务':'端口分组'}}</h2><small v-if="presentation==='service'">{{ blocks.length }} 个服务 · {{ rules.length }} 条独立规则</small><small v-else>{{entryCount}} 个监听入口 · {{rules.length}} 条独立规则</small></div>
+      <div class="workspace-heading__actions">
+        <div class="view-switch" role="group" aria-label="管理视图"><button type="button" :aria-pressed="presentation==='service'" @click="emit('update:presentation','service')">服务视图</button><button type="button" :aria-pressed="presentation==='port'" @click="emit('update:presentation','port')">端口分组</button></div>
+        <div v-if="presentation==='service'" class="view-switch" role="group" aria-label="展示方式"><button :aria-pressed="mode==='list'" @click="mode='list'"><n-icon :component="ListOutline"/> 列表</button><button :aria-pressed="mode==='card'" @click="mode='card'"><n-icon :component="GridOutline"/> 卡片</button></div>
+      </div>
+    </div>
+    <template v-if="presentation==='service'">
     <div class="workspace-tools">
       <div class="group-tabs" role="group" aria-label="业务分组">
         <button :aria-pressed="groupId===-1" @click="selectGroup(-1)">全部 <span>{{rules.length}}</span></button>
@@ -58,6 +65,8 @@
     </div>
     <div class="workspace-footer"><small>共 {{filtered.length}} 个服务 · {{filteredRuleCount}} 条规则</small><small v-if="reordering">正在保存排序…</small></div>
     <n-modal v-model:show="showGroups"><div class="group-modal"><div class="group-modal-head"><h3>业务分组管理</h3><n-button quaternary @click="showGroups=false">关闭</n-button></div><small>分组仅用于界面管理，删除分组不会删除任何代理规则。</small><div class="group-create"><n-input v-model:value="newName" maxlength="60" placeholder="新分组名称" @keydown.enter.prevent="createGroup"/><n-button type="primary" :loading="groupBusy" :disabled="!newName.trim()" @click="createGroup">新增</n-button></div><div v-for="(g,i) in business.groups" :key="g.id" class="group-manage-row"><span>{{g.name}} <small>({{counts.get(g.id)??0}})</small></span><n-button size="tiny" :disabled="groupBusy||i===0" @click="moveGroup(i,-1)">↑</n-button><n-button size="tiny" :disabled="groupBusy||i===business.groups.length-1" @click="moveGroup(i,1)">↓</n-button><n-button size="tiny" quaternary :disabled="groupBusy" @click="rename(g.id,g.name)">重命名</n-button><n-button size="tiny" quaternary type="error" :disabled="groupBusy" @click="remove(g.id,g.name)">删除</n-button></div></div></n-modal>
+    </template>
+    <slot v-else name="port-content"/>
   </section>
 </template>
 <script setup lang="ts">
@@ -69,8 +78,8 @@ import {buildServiceBlocks,sumServiceTraffic,moveServiceRules} from '../../utils
 import {formatBytes,formatRate} from '../../utils/format'
 import ServiceFavicon from '../ServiceFavicon.vue'
 import ProxyServiceRow from './ProxyServiceRow.vue'
-const props=defineProps<{rules:ProxyRule[];entries:ProxyEntry[];traffic:Record<number,ProxyTraffic>;business:ProxyBusinessState;loading:boolean;groupBusy:boolean;reordering:boolean;togglingId:number|null;ruleName:(r:ProxyRule)=>string;ruleHosts:(r:ProxyRule)=>string[];securityTags:(r:ProxyRule)=>string[];accessUrl:(r:ProxyRule,h:string)=>string;changeBusiness:(change:ProxyBusinessChange)=>Promise<boolean>}>()
-const emit=defineEmits<{refresh:[];create:[];detail:[r:ProxyRule];edit:[r:ProxyRule];duplicate:[r:ProxyRule];delete:[r:ProxyRule];toggle:[r:ProxyRule,v:boolean]; 'select-group':[id:number];'copy-link':[url:string];reorder:[rules:ProxyRule[]]}>()
+const props=defineProps<{presentation:'service'|'port';entryCount:number;rules:ProxyRule[];entries:ProxyEntry[];traffic:Record<number,ProxyTraffic>;business:ProxyBusinessState;loading:boolean;groupBusy:boolean;reordering:boolean;togglingId:number|null;ruleName:(r:ProxyRule)=>string;ruleHosts:(r:ProxyRule)=>string[];securityTags:(r:ProxyRule)=>string[];accessUrl:(r:ProxyRule,h:string)=>string;changeBusiness:(change:ProxyBusinessChange)=>Promise<boolean>}>()
+const emit=defineEmits<{'update:presentation':[value:'service'|'port'];refresh:[];create:[];detail:[r:ProxyRule];edit:[r:ProxyRule];duplicate:[r:ProxyRule];delete:[r:ProxyRule];toggle:[r:ProxyRule,v:boolean]; 'select-group':[id:number];'copy-link':[url:string];reorder:[rules:ProxyRule[]]}>()
 const dialog=useDialog()
 function readMode(){try{return localStorage.getItem('fonu.proxy.services.view')==='card'?'card':'list'}catch{return 'list'}}
 const mode=ref<'list'|'card'>(readMode());watch(mode,v=>{try{localStorage.setItem('fonu.proxy.services.view',v)}catch{/* unavailable */}})
@@ -146,9 +155,11 @@ function dropBlock(ids:number[]){if(canDrag.value&&dragging.value.length){const 
 <style scoped>
 .workspace{container:proxy-workspace / inline-size;min-width:0;width:100%;display:grid;gap:12px}
 .workspace-heading,.workspace-tools,.workspace-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.workspace-heading__actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-width:0}
 .workspace-heading h2{font-size:19px;margin:0;color:var(--fonu-text)}.workspace-heading small,.workspace-footer small{font-size:12px;color:var(--fonu-text-secondary)}
 .view-switch,.group-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.view-switch{background:var(--fonu-bg-muted);border:1px solid var(--fonu-border);padding:3px;border-radius:8px}
 .view-switch button,.group-tabs button{border:0;border-radius:5px;cursor:pointer;font:inherit;font-size:12px;padding:6px 10px;background:transparent;color:var(--fonu-text-secondary);display:flex;align-items:center;gap:5px;max-width:100%;overflow-wrap:anywhere}
+.view-switch button:focus-visible{outline:2px solid var(--fonu-brand);outline-offset:1px}
 .view-switch button[aria-pressed=true],.group-tabs button[aria-pressed=true]{background:var(--fonu-brand-soft);color:var(--fonu-brand-text);font-weight:600}.group-tabs button{background:var(--fonu-bg-muted)}.group-tabs button span{font-variant-numeric:tabular-nums;font-size:11px}
 .filters{display:flex;align-items:center;gap:7px;flex:1 1 330px;min-width:0;justify-content:flex-end}.filters :deep(.n-input){flex:1;min-width:100px}.status-filter{width:106px;flex-shrink:0}.extra-filters{display:grid;gap:7px;min-width:190px}
 .service-blocks{display:grid;gap:9px;min-width:0}.service-blocks--cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:stretch}

@@ -1,14 +1,18 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
-	"net"
-	"strconv"
-	"time"
 	"fmt"
+	"mime"
+	"mime/quotedprintable"
+	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
 )
 
 func SendEmail(cfg RuntimeConfig, title, message string) error {
@@ -36,6 +40,12 @@ func sendEmailContext(ctx context.Context, cfg RuntimeConfig, title, message str
 		return fmt.Errorf("发件人未配置")
 	}
 
+	// Reject control characters in envelope addresses before opening a connection.
+	for _, address := range append([]string{from}, cfg.Email.To...) {
+		if strings.IndexFunc(address, unicode.IsControl) >= 0 {
+			return fmt.Errorf("SMTP 邮件地址包含非法控制字符")
+		}
+	}
 	body := buildMailBody(from, cfg.Email.To, title, message)
 	host := strings.Trim(cfg.Email.Host, "[]")
 	if cfg.Email.Port < 1 || cfg.Email.Port > 65535 {
@@ -49,19 +59,66 @@ func sendEmailContext(ctx context.Context, cfg RuntimeConfig, title, message str
 	return sendSMTPContext(ctx, addr, host, auth, from, cfg.Email.To, body, cfg.Email.Port == 465, cfg.Email.TLS)
 }
 
+// sanitizeMailHeader keeps untrusted title text on a single logical header.
+// Encoded-word folding below is the only place a subject can introduce CRLF.
+func sanitizeMailHeader(value string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, value))
+}
+
+func mailSubjectHeader(title string) string {
+	title = sanitizeMailHeader(title)
+	encoded := mime.BEncoding.Encode("UTF-8", title)
+	if encoded == title {
+		return "Subject: " + title
+	}
+	// Go's MIME encoder splits long UTF-8 subjects into RFC 2047 encoded
+	// words of at most 75 characters. Fold only at encoded-word boundaries.
+	var b strings.Builder
+	b.WriteString("Subject:")
+	lineLen := len("Subject:")
+	for _, word := range strings.Fields(encoded) {
+		if lineLen+1+len(word) > 78 {
+			b.WriteString("\r\n ")
+			lineLen = 1
+		} else {
+			b.WriteByte(' ')
+			lineLen++
+		}
+		b.WriteString(word)
+		lineLen += len(word)
+	}
+	return b.String()
+}
+
 func buildMailBody(from string, to []string, title, message string) []byte {
+	recipients := make([]string, len(to))
+	for i, address := range to {
+		recipients[i] = sanitizeMailHeader(address)
+	}
 	headers := []string{
-		"From: " + from,
-		"To: " + strings.Join(to, ", "),
-		"Subject: " + title,
+		"From: " + sanitizeMailHeader(from),
+		"To: " + strings.Join(recipients, ", "),
+		mailSubjectHeader(title),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding: quoted-printable",
 	}
 	bodyText := strings.TrimSpace(message)
 	if bodyText == "" {
-		bodyText = title
+		bodyText = sanitizeMailHeader(title)
 	}
-	return []byte(strings.Join(headers, "\r\n") + "\r\n\r\n" + bodyText + "\r\n")
+	var body bytes.Buffer
+	body.WriteString(strings.Join(headers, "\r\n") + "\r\n\r\n")
+	// A bytes.Buffer cannot return write errors.
+	writer := quotedprintable.NewWriter(&body)
+	_, _ = writer.Write([]byte(bodyText + "\r\n"))
+	_ = writer.Close()
+	return body.Bytes()
 }
 
 func sendSMTPContext(ctx context.Context, addr, host string, auth smtp.Auth, from string, to []string, body []byte, implicitTLS, requireTLS bool) error {
