@@ -247,7 +247,7 @@ func (s *Service) SendTest(ctx context.Context, in TestInput) error {
 	if runtime.Type == "" {
 		return fmt.Errorf("请先选择通知方式")
 	}
-	if err := s.send(ctx, runtime, "test", "测试通知", 这是一条手动发送的测试消息。收到此消息说明当前通知通道已成功接收本次请求；正式事件仍以已保存的通知设置为准。"); err != nil {
+	if err := s.send(ctx, runtime, "test", "测试通知", "这是一条手动发送的测试消息。收到此消息说明当前通知通道已成功接收本次请求；正式事件仍以已保存的通知设置为准。"); err != nil {
  s.record("test",deliveryChannel(runtime),"failed","测试消息未获通道确认，请检查当前表单配置")
 		s.logger.Warn("notify test send failed", "error", err.Error())
 		return err
