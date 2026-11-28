@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 反向代理主页面支持服务视图 / 端口分组切换，默认保留 V2 服务视图并记忆选择；端口入口管理不再使用弹窗，保留独立规则及操作确认。
+
 - 修复 DDNS 多级公共后缀解析及相对 DNS 记录拼接，保留实际服务商 Zone 匹配和旧任务兼容；区分 DNSPod 账户列表错误与空解析记录，允许首次创建记录（#45）。
 - 阿里云 ACME TXT TTL 调整为 600 秒，新增实际请求参数回归测试（#44）。
 - 恢复反代端口分组与监听入口管理入口，HTTPS 编辑时预览候选证书及缺失提示（#43）。

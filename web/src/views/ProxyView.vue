@@ -2,7 +2,6 @@
   <header class="service-page-header">
     <div class="service-page-title"><h1>反向代理</h1></div>
     <div class="service-page-actions">
-      <n-button @click="showListenerManager=true">端口分组 / 监听入口</n-button>
       <n-button @click="openDiscoveryModal()"><template #icon><n-icon :component="GlobeOutline"/></template>发现服务</n-button>
       <n-button @click="router.push({name:'settings',query:{tab:'advanced'}})">全局设置</n-button>
       <n-button type="primary" @click="openQuickCreate"><template #icon><n-icon :component="AddOutline" /></template>新增代理</n-button>
@@ -15,15 +14,14 @@
   <template v-else>
     <ProxyStats :total-count="rules.length" :enabled-count="enabledCount" :disabled-count="disabledCount" :traffic-totals="trafficTotals" :sampled-at="trafficSampledAt" :error="trafficError" />
 
-    <n-alert v-if="businessError" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
-    <ProxyServiceWorkspace :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled"  :change-business="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder"/>
-  </template>
-  <n-modal v-model:show="showListenerManager" transform-origin="center">
-    <div class="listener-manager">
-      <div class="listener-manager__header"><div><h3>监听入口管理</h3><p>监听端口和协议独立于业务分组。删除入口会删除其关联规则。</p></div><n-button type="primary" size="small" @click="openEntryCreate">新建入口</n-button><n-button quaternary @click="showListenerManager=false">关闭</n-button></div>
-    <div ref="layoutRef" class="proxy-layout">
-      <FonuCard flush class="proxy-panel" title="代理规则">
-        <template #header><span class="proxy-result-count">{{ filteredRules.length }} / {{ rules.length }} 条规则 · {{ entryGroups.length }} 个入口</span></template>
+    <n-alert v-if="businessError && presentation==='service'" type="warning" class="business-error">{{businessError}} <n-button size="tiny" @click="loadBusiness">重试分组</n-button></n-alert>
+    <ProxyServiceWorkspace v-model:presentation="presentation" :entry-count="entryGroups.length" :rules="rules" :entries="entries" :traffic="trafficByRule" :business="business" :loading="loading" :group-busy="businessBusy || !!businessError" :reordering="reordering" :toggling-id="togglingRuleId" :rule-name="ruleName" :rule-hosts="ruleHosts" :security-tags="securityTags" :access-url="hostAccessUrl" @refresh="refreshAll" @create="openQuickCreate" @detail="openDetail" @edit="openEdit" @duplicate="openDuplicate" @delete="confirmDelete" @toggle="toggleRuleEnabled"  :change-business="changeBusiness" @select-group="activeBusinessGroup=$event" @copy-link="copyAccessUrl" @reorder="persistRuleOrder">
+      <template #port-actions><n-button size="small" type="primary" @click="openEntryCreate"><template #icon><n-icon :component="AddOutline"/></template>新建入口</n-button></template>
+      <template #port-content>
+        <div ref="layoutRef" class="proxy-layout port-workspace">
+          <div class="port-workspace__note"><span>按监听端口及协议分组 · 入口独立于业务分组</span><span>删除入口会删除其关联规则</span></div>
+          <FonuCard flush class="proxy-panel" title="监听入口">
+            <template #header><span class="proxy-result-count">{{ filteredRules.length }} / {{ rules.length }} 条规则 · {{ visibleEntryGroups.length }} / {{ entryGroups.length }} 个入口</span></template>
         <ProxyToolbar
           v-model:search="search"
           v-model:status-filter="statusFilter"
@@ -44,7 +42,7 @@
           <n-spin size="medium" />
         </div>
 
-        <template v-else-if="showEntryGroups && visibleEntryGroups.length > 0">
+        <template v-else-if="visibleEntryGroups.length > 0">
           <div
             ref="entryStackRef"
             class="proxy-entry-stack"
@@ -86,44 +84,11 @@
           </div>
         </template>
 
-        <template v-else-if="!showEntryGroups && tableRules.length > 0">
-          <div ref="tableWrapRef" class="proxy-table-wrap">
-            <ProxyRuleTable
-              
-              :sortable="canReorderGlobally"
-              :columns="columns"
-              :data="tableRules"
-              :compact="compactTable"
-              :row-props="rowProps"
-            />
-          </div>
-        </template>
-
-        <EmptyState
-          v-else-if="!showEntryGroups && rules.length === 0 && entries.length > 0 && !hasFilters"
-          title="还没有规则"
-          description="入口已经创建，可以直接添加规则，或切换入口视图进行管理。"
-        ><template #action><n-button @click="viewMode='grouped'">查看入口</n-button><n-button type="primary" @click="viewMode='grouped';toggleAllEntries()">展开入口</n-button></template></EmptyState>
-
-        <EmptyState
-          v-else-if="rules.length === 0 && entries.length === 0"
-          title="还没有反向代理规则"
-          description="先新建监听入口，或直接新增规则。一个入口可以管理多个内网服务。"
-        >
-          <template #action>
-            <n-button type="primary" @click="openEntryCreate">新建入口</n-button>
-          </template>
-        </EmptyState>
-
-        <EmptyState
-          v-else
-          title="没有匹配的规则"
-          description="试试调整搜索关键词或筛选条件。"
-        ><template #action><n-button @click="clearFilters">清除筛选</n-button></template></EmptyState>
-      </FonuCard>
-    </div>
-    </div>
-  </n-modal>
+          </FonuCard>
+        </div>
+      </template>
+    </ProxyServiceWorkspace>
+  </template>
 
   <n-drawer :show="showDetailPanel" width="min(740px, 100vw)" placement="right" :mask-closable="true" @update:show="value=>{if(!value)closeDetail()}">
     <div v-if="selectedRule" class="proxy-detail-modal">
@@ -393,7 +358,10 @@ import { renderTableRowActions } from '../utils/tableActions'
 
 const router=useRouter()
 const message = useMessage()
-const showListenerManager=ref(false)
+type ProxyPresentation = 'service' | 'port'
+function readPresentation(): ProxyPresentation { try { return localStorage.getItem('fonu.proxy.presentation')==='port' ? 'port' : 'service' } catch { return 'service' } }
+const presentation=ref<ProxyPresentation>(readPresentation())
+watch(presentation,value=>{try{localStorage.setItem('fonu.proxy.presentation',value)}catch{/* storage unavailable */}})
 const editorCertificates=ref<CertificateRecord[]>([])
 const editorCertificatesLoading=ref(false)
 const editorCertificatesError=ref(false)
@@ -554,10 +522,6 @@ const editing = ref<ProxyRule | null>(null)
 const search = ref('')
 const statusFilter = ref<string | null>(null)
 const httpsFilter = ref<string | null>(null)
-type ViewMode = 'grouped' | 'flat'
-function readViewMode(): ViewMode { try { return localStorage.getItem('fonu.proxy.view') === 'flat' ? 'flat' : 'grouped' } catch { return 'grouped' } }
-const viewMode = ref<ViewMode>(readViewMode())
-watch(viewMode, value => { try { localStorage.setItem('fonu.proxy.view',value) } catch { /* storage unavailable */ } })
 const layoutRef = ref<HTMLElement | null>(null)
 const compactTable = ref(false)
 let layoutObserver: ResizeObserver | undefined
@@ -639,7 +603,6 @@ const form = reactive({
   ...defaultSecurityForm(),
 })
 
-const tableWrapRef = ref<HTMLElement | null>(null)
 const entryStackRef = ref<HTMLElement | null>(null)
 const expandedEntryKeys = ref<Set<string>>(new Set())
 const formEntryId = ref<number | null>(null)
@@ -668,12 +631,10 @@ const trafficTotals = computed(() => {
  return {upload:t?.upload_total??0,download:t?.download_total??0,uploadRate:t?.upload_rate??0,downloadRate:t?.download_rate??0,connections:t?.connections??0}
 })
 
-const showEntryGroups = computed(() => viewMode.value === 'grouped')
 const hasFilters = computed(() => !!(search.value.trim() || statusFilter.value || httpsFilter.value))
-const canReorder = computed(() => !hasFilters.value && !reordering.value && rules.value.length > 1)
-const canReorderGlobally = computed(() => canReorder.value && !showEntryGroups.value)
-const canReorderInGroups = computed(() => canReorder.value && showEntryGroups.value)
-const canReorderEntries = computed(() => !hasFilters.value && !reordering.value && showEntryGroups.value &&
+const canReorder = computed(() => presentation.value==='port' && !hasFilters.value && !reordering.value && rules.value.length > 1)
+const canReorderInGroups = computed(() => canReorder.value)
+const canReorderEntries = computed(() => presentation.value==='port' && !hasFilters.value && !reordering.value &&
   entries.value.length > 1 && entryGroups.value.length === entries.value.length &&
   entryGroups.value.every(group => group.entryId != null))
 
@@ -743,7 +704,6 @@ function entryGroupTraffic(group: ProxyEntryGroup) {
   return { upload, download, uploadRate, downloadRate, connections }
 }
 
-const tableRules = computed(() => (canReorderGlobally.value ? rules.value : filteredRules.value))
 
 const activeSecurityFeatures = computed(() => {
   const tags: string[] = []
@@ -827,7 +787,7 @@ const trafficChart = computed(() => {
 
 function openCreateWithEntry(listen: ProxyEntryListen, entryId?: number) {
   copySource.value=null
-  draftBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
+  draftBusinessGroup.value=presentation.value==='service'?Math.max(0,activeBusinessGroup.value):0
   editingEntryId.value = null
   editing.value = null
   formTab.value = 'basic'
@@ -1005,7 +965,7 @@ function buildDiscoveryRows(items: DiscoveredService[]): DiscoveryRow[] {
 }
 
 function openDiscoveryModal(group?: ProxyEntryGroup) {
-  discoveryBusinessGroup.value=Math.max(0,activeBusinessGroup.value)
+  discoveryBusinessGroup.value=presentation.value==='service'?Math.max(0,activeBusinessGroup.value):0
   discoveryHttpsEnabled.value = group?.listen.https_enabled ?? true
   discoveryListenPort.value = group?.listen.listen_port ?? nginxHttpsPort.value
   discoveryHost.value = '127.0.0.1'
@@ -1695,7 +1655,6 @@ function makeColumns(nested:boolean, sortable:boolean):DataTableColumns<ProxyRul
   )
   return cols
 }
-const columns=computed(()=>makeColumns(false,canReorderGlobally.value))
 function entryGroupColumnsFor(group:ProxyEntryGroup):DataTableColumns<ProxyRule>{
   return makeColumns(true,canReorderInGroups.value && group.rules.length>1)
 }
@@ -2181,19 +2140,6 @@ async function setupRowSortable() {
   await nextTick()
   if(generation!==sortableGeneration)return
 
-  if (canReorderGlobally.value) {
-    const tbody = tableWrapRef.value?.querySelector('.n-data-table-tbody') as HTMLElement | null
-    if (!tbody) return
-    attachSortable(tbody, (orderedIds) => {
-      if (orderedIds.length !== rules.value.length) return
-      const byId = new Map(rules.value.map((rule) => [rule.id, rule]))
-      const next = orderedIds.map((id) => byId.get(id)).filter((rule): rule is ProxyRule => rule != null)
-      if (next.length !== rules.value.length) return
-      void persistRuleOrder(next)
-    })
-    return
-  }
-
   if (!canReorderInGroups.value) { await setupEntryStackSortable(generation); return }
 
   for (const group of entryGroups.value) {
@@ -2216,7 +2162,7 @@ async function setupRowSortable() {
   await setupEntryStackSortable(generation)
 }
 
-watch([showListenerManager,canReorder, canReorderGlobally, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable], () => {
+watch([presentation,canReorder, canReorderInGroups, canReorderEntries, () => rules.value.length, entryGroups, expandedEntryKeys, compactTable,entryStackRef], () => {
   void setupRowSortable()
 })
 
@@ -3584,8 +3530,9 @@ onUnmounted(() => {
 @media(max-width:760px){.proxy-entry-stack{padding:8px;gap:8px}}
 
 .business-error{margin-bottom:12px}
-.listener-manager{width:min(1180px,96vw);max-height:88vh;overflow:auto;background:var(--fonu-surface);border:1px solid var(--fonu-border);border-radius:var(--fonu-radius);padding:14px;box-sizing:border-box}
-.listener-manager__header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}.listener-manager__header>div{flex:1 1 200px}.listener-manager__header h3{margin:0}.listener-manager__header p{font-size:12px;color:var(--fonu-text-secondary);margin:5px 0 0}
+.port-workspace{display:grid;gap:10px;min-width:0}
+.port-workspace__note{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;font-size:12px;color:var(--fonu-text-secondary)}
+.port-workspace .proxy-panel{min-width:0}
 
 .service-page-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--fonu-border)}
 .service-page-title,.service-page-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
