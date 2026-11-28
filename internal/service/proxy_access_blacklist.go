@@ -109,6 +109,10 @@ func (s *ProxyService) AccessBlacklist(ctx context.Context, req AccessBlacklistR
 	if err != nil { return AccessBlacklistResult{}, err }
 	rule, err := accessBlacklistRule(rules, req.Host, req.Port)
 	if err != nil { return AccessBlacklistResult{}, err }
+	return s.accessBlacklistLocked(ctx, req, rule, ip)
+}
+
+func (s *ProxyService) accessBlacklistLocked(ctx context.Context, req AccessBlacklistRequest, rule proxy.Rule, ip netip.Addr) (AccessBlacklistResult,error) {
 	result := blacklistResult(rule, ip)
 	if req.Action == "inspect" { return result, nil }
 	if req.RuleID != rule.ID { return AccessBlacklistResult{}, fmt.Errorf("对应规则已变化，请重新检查日志并确认") }

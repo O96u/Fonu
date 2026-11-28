@@ -15,8 +15,8 @@ try {
  page=await browser.newPage({viewport:{width:1440,height:980}})
  const errors=[]
  page.on('pageerror',err=>errors.push(err.message))
- let blocked=false;const changes=[]
- const rows=[{time:'2026-11-26T14:09:31+08:00',domain:'203.0.113.10',method:'GET',path:'/login',status:403,response_time:0.002,client_ip:'192.0.2.1',upstream:'-',geo:'海外'},{time:'2026-11-26T14:09:32+08:00',domain:'media.example.com',method:'GET',path:'/',status:200,response_time:0.01,client_ip:'192.0.2.2',upstream:'127.0.0.1:80'}]
+ const blocked={global:false,rule:false};const changes=[]
+ const rows=[{time:'2026-11-26T14:09:31+08:00',domain:'203.0.113.10',method:'GET',path:'/login',status:403,response_time:0.002,client_ip:'192.0.2.1',upstream:'-',geo:'海外'},{time:'2026-11-26T14:09:32+08:00',domain:'media.example.com',server_port:443,method:'GET',path:'/',status:200,response_time:0.01,client_ip:'192.0.2.2',upstream:'127.0.0.1:80'}]
  rows.push(...Array.from({length:24},(_,i)=>({...rows[1],path:'/history/'+i})))
  await page.route('**/*',async route=>{
  const url=new URL(route.request().url())
@@ -26,9 +26,9 @@ try {
  if(url.pathname==='/api/auth/status')data={initialized:true,authenticated:true,username:'admin'}
  else if(url.pathname==='/api/version')data={version:'2.0.0-beta.35',nginx_http_port:80,nginx_https_port:443}
  else if(url.pathname==='/api/settings')data={}
- else if(url.pathname==='/api/proxies/global-blacklist'){
-  const req=route.request().postDataJSON();assert.equal(req.ip,'192.0.2.1');if(req.action!=='inspect'){assert.equal(req.confirmed,true);changes.push(req.action);blocked=req.action==='block'}
-  data={ip:req.ip,exact:blocked,covered:false,changed:req.action!=='inspect',custom_config:false}
+ else if(url.pathname==='/api/proxies/log-blacklist'){
+  const req=route.request().postDataJSON();const scope=req.host==='media.example.com'?'rule':'global';assert.equal(req.ip,scope==='rule'?'192.0.2.2':'192.0.2.1');if(req.action!=='inspect'){assert.equal(req.confirmed,true);assert.equal(req.scope,scope);if(scope==='rule')assert.equal(req.rule_id,7);changes.push(scope+':'+req.action);blocked[scope]=req.action==='block'}
+  data={scope,rule_id:scope==='rule'?7:undefined,rule_name:scope==='rule'?'Media':undefined,ip:req.ip,exact:blocked[scope],covered:false,changed:req.action!=='inspect',custom_config:false,whitelist_mode:false}
  }
  else if(url.pathname==='/api/logs/summary')data={sources:{system:{count:42},access:{count:1286},nginx:{count:12},frp:{count:86}},updated_at:rows[0].time}
  else if(url.pathname==='/api/logs/history'){
@@ -53,22 +53,27 @@ try {
  await page.locator('.log-table tbody tr').filter({hasText:'/history/23'}).waitFor()
  await page.getByRole('button',{name:'上一页',exact:true}).click()
  await row.waitFor()
- await row.getByRole('button',{name:'全局黑名单',exact:true}).click()
+ await row.getByRole('button',{name:'黑名单',exact:true}).click()
  await page.getByText('确认加入全局黑名单',{exact:true}).waitFor()
  assert.equal(changes.length,0)
  await page.getByRole('button',{name:'取消',exact:true}).click()
  assert.equal(changes.length,0)
- await row.getByRole('button',{name:'全局黑名单',exact:true}).click()
+ await row.getByRole('button',{name:'黑名单',exact:true}).click()
  await page.getByText('确认加入全局黑名单',{exact:true}).waitFor()
  await page.getByRole('button',{name:'确认加入',exact:true}).click()
  await page.waitForFunction(()=>document.body.textContent.includes('已加入全局黑名单'))
- assert.deepEqual(changes,['block'])
+ assert.deepEqual(changes,['global:block'])
+ await page.locator('.log-table tbody tr').filter({hasText:'192.0.2.2'}).first().getByRole('button',{name:'黑名单',exact:true}).click()
+ await page.getByText('确认加入当前规则黑名单',{exact:true}).waitFor()
+ await page.getByRole('button',{name:'确认加入',exact:true}).click()
+ await page.waitForFunction(()=>document.body.textContent.includes('已加入当前规则黑名单'))
+ assert.deepEqual(changes,['global:block','rule:block'])
  await row.click()
  await page.getByTestId('log-detail-fields').waitFor()
- await page.getByRole('button',{name:'全局黑名单',exact:true}).click()
+ await page.locator('.detail-actions').getByRole('button',{name:'管理 IP 黑名单',exact:true}).click()
  await page.getByRole('button',{name:'确认解除',exact:true}).click()
  await page.waitForFunction(()=>document.body.textContent.includes('已移除全局黑名单中的单地址'))
- assert.deepEqual(changes,['block','unblock'])
+ assert.deepEqual(changes,['global:block','rule:block','global:unblock'])
  assert.match(await page.getByTestId('log-detail-fields').innerText(),/192\.0\.2\.1/)
  await page.screenshot({path:'ui-screenshots/log-detail.png',fullPage:true})
  await page.getByRole('button',{name:'筛选此 IP',exact:true}).click()

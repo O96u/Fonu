@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/fonu/fonu/internal/settings"
@@ -33,6 +34,11 @@ func (s *ProxyService) GlobalBlacklist(ctx context.Context, req GlobalBlacklistR
 	if req.Action!="inspect"&&!req.Confirmed{return GlobalBlacklistResult{},fmt.Errorf("请先确认全局黑名单操作")}
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	return s.globalBlacklistLocked(ctx, req, ip)
+}
+
+func (s *ProxyService) globalBlacklistLocked(ctx context.Context, req GlobalBlacklistRequest, ip netip.Addr) (GlobalBlacklistResult,error) {
+	var err error
 	if s.settings==nil{return GlobalBlacklistResult{},fmt.Errorf("全局安全设置不可用")}
 	if err:=s.recoverPendingLocked(ctx);err!=nil{return GlobalBlacklistResult{},err}
 	raw,err:=s.settings.Get(ctx,settings.KeyGlobalIPBlacklist)
