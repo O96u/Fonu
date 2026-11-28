@@ -209,6 +209,7 @@ try{
  assert.equal(batches.length,0)
  await page.screenshot({path:'ui-screenshots/editor-copy.png',fullPage:true})
  await copy.getByRole('button',{name:'取消',exact:true}).click()
+ await page.getByRole('button',{name:'放弃更改',exact:true}).click()
  await copy.waitFor({state:'hidden'})
  // Discovery failure does not drop selected service or edited domain.
  await page.getByRole('button',{name:'发现服务',exact:true}).click()
