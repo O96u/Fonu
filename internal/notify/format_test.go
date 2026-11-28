@@ -34,6 +34,10 @@ func TestFormatAlert(t *testing.T) {
 	if !strings.Contains(content.HTMLBody, "<b>") || !strings.Contains(content.HTMLBody, "<pre>") {
 		t.Fatalf("unexpected html: %s", content.HTMLBody)
 	}
+	if !strings.Contains(content.PlainBody, "类型：DDNS · 已同步") || !strings.Contains(content.PlainBody, "建议：") || !strings.Contains(content.barkMessage(), "建议：") {
+		t.Fatalf("missing notification guidance: %s", content.PlainBody)
+	}
+	if content.webhookPayload()["message"] != content.Detail {t.Fatal("webhook raw message contract changed")}
 	if content.webhookPayload()["category"] != "DDNS" {
 		t.Fatalf("unexpected webhook category: %v", content.webhookPayload())
 	}

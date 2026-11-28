@@ -30,11 +30,13 @@ func (h *NotifyHandler) Test(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, http.StatusBadRequest, err.Error(), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "测试通知已发送"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "测试消息已获通知通道确认"})
 }
 
 func(h *NotifyHandler) History(w http.ResponseWriter,r *http.Request){
  if h.notify==nil{writeError(r,w,http.StatusServiceUnavailable,"通知服务未初始化");return}
  w.Header().Set("Cache-Control","no-store")
- writeJSON(w,http.StatusOK,h.notify.History())
+ rows,err:=h.notify.HistoryContext(r.Context())
+ if err!=nil{writeError(r,w,http.StatusInternalServerError,"读取通知历史失败",err);return}
+ writeJSON(w,http.StatusOK,rows)
 }

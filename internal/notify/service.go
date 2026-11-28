@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,17 +32,18 @@ type Service struct {
  alertSlots chan struct{}
  historyMu sync.Mutex
  history []Delivery
+ historyDB *sql.DB
 
 	loginMu      sync.Mutex
 	loginHits    map[string][]time.Time
 	loginAlerted map[string]time.Time
 }
 
-func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logger) *Service {
+func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logger, historyDB ...*sql.DB) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{
+	svc := &Service{
 		settings:      settingsStore,
 		store:         NewStore(settingsStore, secretBox),
 		logger:        logger,
@@ -52,6 +54,8 @@ func New(settingsStore *settings.Store, secretBox *secret.Box, logger *slog.Logg
 		loginAlerted:  map[string]time.Time{},
  alertSlots:make(chan struct{},4),
 	}
+	if len(historyDB)>0 {svc.historyDB=historyDB[0]}
+	return svc
 }
 
 // Delivery records contain only event metadata, never message text or credentials.
@@ -62,19 +66,58 @@ type Delivery struct{
  State string `json:"state"`
  Detail string `json:"detail"`
 }
-func(s *Service) record(event,channel,state,detail string){
- row:=Delivery{At:time.Now().UTC().Format(time.RFC3339),Event:event,Channel:channel,State:state,Detail:detail}
- s.historyMu.Lock()
- if len(s.history)>=100{copy(s.history,s.history[1:]);s.history=s.history[:99]}
- s.history=append(s.history,row);s.historyMu.Unlock()
- s.logger.Info("notification delivery","event",event,"channel",channel,"state",state,"detail",detail)
+func (s *Service) record(event, channel, state, detail string) {
+	row := Delivery{At: time.Now().UTC().Format(time.RFC3339Nano), Event: event, Channel: channel, State: state, Detail: detail}
+	s.logger.Info("notification delivery", "event", event, "channel", channel, "state", state, "detail", detail)
+	if s.historyDB != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := insertDelivery(ctx, s.historyDB, row); err != nil {
+			// Do not retry a delivered message just because the audit write failed.
+			s.logger.Warn("notification history write failed", "error", err.Error())
+		}
+		return
+	}
+	// In-memory fallback for standalone services without a database.
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	if len(s.history) >= 100 {
+		copy(s.history, s.history[1:])
+		s.history = s.history[:99]
+	}
+	s.history = append(s.history, row)
 }
-func(s *Service) History()[]Delivery{
- s.historyMu.Lock();defer s.historyMu.Unlock()
- out:=make([]Delivery,len(s.history))
- for i:=range s.history{out[i]=s.history[len(s.history)-1-i]}
- return out
+
+func (s *Service) HistoryContext(ctx context.Context) ([]Delivery, error) {
+	if s.historyDB != nil {
+		return listDeliveries(ctx, s.historyDB)
+	}
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	out := make([]Delivery, len(s.history))
+	for i := range s.history {
+		out[i] = s.history[len(s.history)-1-i]
+	}
+	return out, nil
 }
+
+func (s *Service) History() []Delivery {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	rows, err := s.HistoryContext(ctx)
+	if err != nil {
+		s.logger.Warn("notification history read failed", "error", err.Error())
+	}
+	return rows
+}
+
+func deliveryChannel(cfg RuntimeConfig) string {
+	if cfg.Type == NotifyTypeWebhook {
+		return string(cfg.Webhook.Provider)
+	}
+	return string(cfg.Type)
+}
+
 func(s *Service) InvalidateConfig(){
  s.accessConfigMu.Lock();s.accessConfigUntil=time.Time{};s.accessConfigMu.Unlock()
  // A new threshold or event toggle must not inherit old cooldown/count state.
@@ -88,13 +131,12 @@ func(s *Service) Alert(ctx context.Context,event,title,message string){
  // an independent bounded delivery attempt.
  sendCtx,cancel:=context.WithTimeout(context.WithoutCancel(ctx),20*time.Second);defer cancel()
  cfg,err:=s.store.LoadRuntime(sendCtx)
- if err!=nil{s.record(event,"","failed","读取通知配置或解密凭证失败");return}
- channel:=string(cfg.Type)
- if cfg.Type==NotifyTypeWebhook{channel=string(cfg.Webhook.Provider)}
- if cfg.Type==""{s.record(event,channel,"skipped","通知未启用");return}
- if !s.enabledFor(cfg,event){s.record(event,channel,"skipped","事件未勾选或未识别");return}
- if err:=s.send(sendCtx,cfg,event,title,message);err!=nil{s.record(event,channel,"failed","发送失败，请检查通道凭证、网络及服务端响应");s.logger.Warn("notify send failed","event",event,"type",channel,"error",err.Error());return}
- s.record(event,channel,"sent","通道已确认接收")
+ if err!=nil{s.record(event,"","failed","无法读取通知配置或解密凭证，请检查已保存的设置");return}
+ channel:=deliveryChannel(cfg)
+ if cfg.Type==""{s.record(event,channel,"skipped","通知通道未启用，本次未发送");return}
+ if !s.enabledFor(cfg,event){s.record(event,channel,"skipped","该事件未启用或无法识别，本次未发送");return}
+ if err:=s.send(sendCtx,cfg,event,title,message);err!=nil{s.record(event,channel,"failed","通道未确认接收，请检查凭证、网络及通知服务状态");s.logger.Warn("notify send failed","event",event,"type",channel,"error",err.Error());return}
+ s.record(event,channel,"sent","通知通道已确认接收")
 }
 
 func (s *Service) RecordAccessHit(ctx context.Context, ip string) {
@@ -197,17 +239,20 @@ func (s *Service) recordThresholdHit(
 func (s *Service) SendTest(ctx context.Context, in TestInput) error {
 	runtime, err := s.resolveTestRuntime(ctx, in)
 	if err != nil {
+		channel := string(in.Type)
+		if in.Type == NotifyTypeWebhook {channel=string(in.Webhook.Provider)}
+		s.record("test",channel,"failed","测试配置校验失败，请检查通道参数及凭证")
 		return err
 	}
 	if runtime.Type == "" {
 		return fmt.Errorf("请先选择通知方式")
 	}
-	if err := s.send(ctx, runtime, "test", "测试通知", "配置验证通过，当前通知通道可正常使用。"); err != nil {
- s.record("test",string(runtime.Type),"failed","测试通道发送失败")
+	if err := s.send(ctx, runtime, "test", "测试通知", 这是一条手动发送的测试消息。收到此消息说明当前通知通道已成功接收本次请求；正式事件仍以已保存的通知设置为准。"); err != nil {
+ s.record("test",deliveryChannel(runtime),"failed","测试消息未获通道确认，请检查当前表单配置")
 		s.logger.Warn("notify test send failed", "error", err.Error())
 		return err
 	}
- s.record("test",string(runtime.Type),"sent","测试通道已确认接收")
+ s.record("test",deliveryChannel(runtime),"sent","测试消息已获通道确认")
 	return nil
 }
 

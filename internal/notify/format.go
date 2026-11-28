@@ -43,17 +43,11 @@ func FormatAlertAt(event, title, message string, at time.Time) AlertContent {
 		detail = "暂无更多详情"
 	}
 
-	plain := strings.Join([]string{
-		pushTitle,
-		strings.Repeat("─", 28),
-		"",
-		detail,
-		"",
-		strings.Repeat("─", 28),
-		footer,
-	}, "\n")
-
-	html := formatTelegramHTML(pushTitle, detail, at)
+	status, action := eventGuidance(event)
+	body := "类型：" + meta.category + " · " + status + "\n\n" + detail
+	if action != "" {body += "\n\n建议：" + action}
+	plain := strings.Join([]string{pushTitle, "", body, "", footer}, "\n")
+	html := formatTelegramHTML(pushTitle, body, at)
 
 	return AlertContent{
 		Event:     event,
@@ -65,6 +59,32 @@ func FormatAlertAt(event, title, message string, at time.Time) AlertContent {
 		Icon:      meta.icon,
 		Detail:    detail,
 		Timestamp: at,
+	}
+}
+
+// Guidance describes the event, not the delivery outcome.
+func eventGuidance(event string) (status, action string) {
+	switch event {
+	case EventDDNSIPChange:
+		return "已同步", "通常无需操作；如服务仍不可访问，请检查 DNS 解析及入口连通性。"
+	case EventDDNSFailure:
+		return "需要检查", "前往 DDNS 查看任务状态、失败域名及服务商凭证。"
+	case EventCertExpiry:
+		return "到期提醒", "前往证书管理检查到期时间、自动续签及 DNS 凭证。"
+	case EventCertRenewSuccess:
+		return "续签成功", "确认需要部署的服务已使用新证书。"
+	case EventCertRenewFailure:
+		return "需要处理", "前往证书管理查看失败原因，检查 DNS 凭证及验证记录。"
+	case EventScan, EventCC, EventIPFrequentAccess:
+		return "疑似异常", "核对访问日志与正常业务流量，确认后再调整访问控制或限流。"
+	case EventLoginFailure:
+		return "登录异常", "核查登录日志；如非本人操作，请检查账号安全。"
+	case EventNginxReloadFailure:
+		return "需要处理", "查看反向代理发布状态及 Nginx 日志，确认实际运行配置。"
+	case "test":
+		return "手动测试", ""
+	default:
+		return "事件提醒", ""
 	}
 }
 
@@ -128,5 +148,8 @@ func (c AlertContent) webhookPayload() map[string]string {
 }
 
 func (c AlertContent) barkMessage() string {
-	return strings.Join([]string{c.Detail, "", "────────", formatFooter(c.Timestamp)}, "\n")
+	status, action := eventGuidance(c.Event)
+	body := []string{"类型：" + c.Category + " · " + status, "", c.Detail}
+	if action != "" {body = append(body, "", "建议：" + action)}
+	return strings.Join(append(body, "", formatFooter(c.Timestamp)), "\n")
 }

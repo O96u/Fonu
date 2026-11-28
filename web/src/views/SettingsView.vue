@@ -348,7 +348,7 @@
             </div>
           </div>
 
-          <div class="notify-test-row"><n-button :loading="notifyTesting" :disabled="!notifyEnabled" @click="testNotify">测试通知</n-button><p class="field-hint">使用当前表单配置发送测试消息，无需先保存</p></div>
+          <div class="notify-test-row"><n-button :loading="notifyTesting" :disabled="!notifyEnabled" @click="testNotify">测试通知</n-button><p class="field-hint">使用当前表单发送测试消息，无需保存；正式事件仍按已保存的设置发送</p></div>
           </div></div><div class="notify-events" :class="{'notify-events-disabled':!notifyEnabled}">
             <div class="notify-events__title">告警事件</div>
             <div v-for="group in NOTIFY_EVENT_GROUPS" :key="group.title" class="notify-event-group">

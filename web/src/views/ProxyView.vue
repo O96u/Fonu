@@ -292,7 +292,6 @@ import {
   NIcon,
   NInput,
   NSelect,
-  NModal,
   NPopover,
   NSpace,
   NSpin,
