@@ -29,8 +29,9 @@
           :status-options="statusOptions"
           :https-options="httpsOptions"
           :loading="loading"
-          v-model:view-mode="viewMode"
-          :grouped="showEntryGroups"
+          view-mode="grouped"
+          grouped
+          hide-view-switch
           :can-expand="visibleEntryGroups.length > 0"
           :all-expanded="allEntriesExpanded"
           @toggle-all="toggleAllEntries"
@@ -83,7 +84,16 @@
             </ProxyEntryGroupCard>
           </div>
         </template>
-
+        <EmptyState
+          v-else-if="rules.length === 0 && entries.length === 0"
+          title="还没有反向代理规则"
+          description="先新建监听入口，或直接新增规则。一个入口可以管理多个内网服务。"
+        ><template #action><n-button type="primary" @click="openEntryCreate">新建入口</n-button></template></EmptyState>
+        <EmptyState
+          v-else
+          title="没有匹配的规则"
+          description="试试调整搜索关键词或筛选条件。"
+        ><template #action><n-button @click="clearFilters">清除筛选</n-button></template></EmptyState>
           </FonuCard>
         </div>
       </template>
