@@ -58,7 +58,7 @@
       <template v-if="detail">
         <div class="detail-fields" data-testid="log-detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
         <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
-        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.server_port" @click="manageBlacklist(detail.access)">管理 IP 黑名单</n-button></div>
+        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.client_ip" @click="manageBlacklist(detail.access)">全局黑名单</n-button></div>
       </template>
     </n-drawer-content>
   </n-drawer>
@@ -350,7 +350,7 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     },
   },
   )
-  cols.push({title:'操作',key:'access_actions',width:110,render:row=>h(NButton,{size:'tiny',quaternary:true,type:'warning',disabled:!row.server_port||!row.domain||!row.client_ip||blacklistBusy.value,title:'管理当前规则的 IP 黑名单',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>'黑名单')})
+  cols.push({title:'操作',key:'access_actions',width:110,render:row=>h(NButton,{size:'tiny',quaternary:true,type:'warning',disabled:!row.client_ip||row.client_ip==='-'||blacklistBusy.value,title:'管理全局 IP 黑名单',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>'全局黑名单')})
   return cols
 })
 
@@ -472,39 +472,40 @@ function filterDetailIP() {
 }
 
 async function manageBlacklist(row:AccessLogEntry){
-  if(blacklistBusy.value||!row.server_port)return
-  const input={host:row.domain,port:row.server_port,ip:row.client_ip}
+  if(blacklistBusy.value||!row.client_ip)return
+  const ip=row.client_ip
   blacklistBusy.value=true
   try{
-    const current=await api.accessBlacklist({...input,action:'inspect'})
+    const current=await api.globalBlacklist({ip,action:'inspect'})
     if(disposed)return
     if(current.covered&&!current.exact){
-      dialog.info({title:'该 IP 已被规则网段黑名单覆盖',content:'当前规则：'+current.rule_name+'。请在反代安全设置中管理对应 CIDR 网段，快捷操作不会删除整个网段。',positiveText:'知道了'})
+      dialog.info({title:'该 IP 已被全局网段黑名单覆盖',content:'IP：'+current.ip+'。请在系统设置的反代安全中管理对应 CIDR 网段，快捷操作不会删除整个网段。',positiveText:'知道了'})
       return
     }
     const removing=current.exact
     dialog.warning({
-      title:removing?'解除 IP 黑名单':'确认加入 IP 黑名单',
+      title:removing?'确认解除全局黑名单':'确认加入全局黑名单',
       content:()=>h('div',{class:'blacklist-confirm'},[
-        h('p','IP：'+current.ip),
-        h('p','当前规则：'+current.rule_name+'（'+input.host+':'+input.port+'）'),
-        h('p',removing?'仅移除该 IP 的单地址条目；其他网段、全局限制或白名单仍可能拒绝访问。':'此操作将持续拒绝该 IP 对当前规则所有域名的访问，直到手动解除，不影响其他独立规则。'),
-        h('p','历史日志可能对应旧配置。若使用 CDN 或转发代理，请确认此 IP 是可信的真实客户端地址，避免误封代理节点。'),
-        current.whitelist_mode?h('p','当前规则启用了白名单；黑名单优先于白名单。'):null
+        h('p','来源 IP：'+current.ip),
+        h('p','日志入口：'+(row.domain||'未识别入口')+(row.server_port?'（端口 '+row.server_port+'）':'')),
+        h('p','作用范围：全局反代 IP 策略，不限当前服务。'),
+        h('p',removing?'仅移除该 IP 的全局单地址条目；规则级黑名单、网段限制或其他安全策略仍可能拒绝访问。':'加入后，该 IP 将受到全局反代黑名单限制，可能无法访问所有自动生成配置的反代服务，直到手动解除。'),
+        h('p','请确认此 IP 是真实客户端地址，而非路由器、CDN、转发代理或共享出口，否则可能影响正常用户。'),
+        current.custom_config?h('p','存在手动 Nginx 配置，可能覆盖全局访问策略，需另行核验。'):null
       ]),
-      positiveText:removing?'确认解除':'确认封禁',negativeText:'取消',
+      positiveText:removing?'确认解除':'确认加入',negativeText:'取消',
       onPositiveClick:async()=>{
-        if(blacklistBusy.value)return false
+        if(blacklistBusy.value||disposed)return false
         blacklistBusy.value=true
         try{
-          const result=await api.accessBlacklist({...input,rule_id:current.rule_id,action:removing?'unblock':'block'})
-          if(!disposed)message.success(result.changed?(removing?(result.covered?'已移除单地址，仍受网段限制':'已移除当前规则单地址黑名单'):'已加入当前规则黑名单'):'黑名单状态已更新，无需重复修改')
+          const result=await api.globalBlacklist({ip:current.ip,action:removing?'unblock':'block',confirmed:true})
+          if(!disposed)message.success(result.changed?(removing?(result.covered?'已移除全局单地址，仍受网段限制':'已移除全局黑名单中的单地址'):'已加入全局黑名单'):'全局黑名单状态已更新，无需重复修改')
           return true
-        }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'黑名单更新失败');return false}
+        }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'全局黑名单更新失败');return false}
         finally{blacklistBusy.value=false}
       }
     })
-  }catch(e){if(!disposed)message.warning(e instanceof Error?e.message:'无法确认对应反代规则')}
+  }catch(e){if(!disposed)message.warning(e instanceof Error?e.message:'无法读取全局黑名单')}
   finally{blacklistBusy.value=false}
 }
 
