@@ -65,6 +65,8 @@ func TestAccessBlacklistMutationPreservesOtherRules(t *testing.T) {
 	lr,err=svc.LogBlacklist(ctx,logReq);if err!=nil||lr.Scope!="global"||lr.Exact{t.Fatalf("unmatched inspect: %+v %v",lr,err)}
 	logReq.Action="block";logReq.Scope="global"
 	lr,err=svc.LogBlacklist(ctx,logReq);if err!=nil||!lr.Changed||!lr.Exact{t.Fatalf("global block: %+v %v",lr,err)}
+	statuses,err:=svc.LogBlacklistStatuses(ctx,[]LogBlacklistStatusInput{{Host:"a.example.com",Port:8080,IP:"192.0.2.1"},{Host:"b.example.com",Port:8080,IP:"192.0.2.1"},{Host:"203.0.113.10",Port:8080,IP:"192.0.2.1"}})
+	if err!=nil||len(statuses)!=3||!statuses[0].Exact||!statuses[0].GlobalExact||statuses[1].Exact||!statuses[1].GlobalExact||statuses[2].Scope!="global"||!statuses[2].Exact{t.Fatalf("page statuses: %+v %v",statuses,err)}
 	logReq.Action="unblock"
 	lr,err=svc.LogBlacklist(ctx,logReq);if err!=nil||!lr.Changed||lr.Exact{t.Fatalf("global unblock: %+v %v",lr,err)}
 	a,err=store.Get(ctx,a.ID);if err!=nil||len(a.Security.IPBlacklist)!=2{t.Fatal("global unblock modified local list")}

@@ -42,7 +42,7 @@
       <div v-if="loading && !activeRows.length" class="log-loading"><n-spin size="small" /> 正在读取日志…</div>
       <template v-if="activeRows.length">
         <n-data-table v-if="tab==='system'" class="log-table" :columns="systemColumns" :data="systemLogs" :loading="loading" :bordered="false" :scroll-x="650" :row-class-name="systemRowClassName" :row-props="row => detailRowProps('system',row)"/>
-        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1230:1030" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
+        <n-data-table v-else-if="tab==='access'" class="log-table" :columns="accessColumns" :data="accessLogs" :loading="loading" :bordered="false" :scroll-x="showAccessBlockReason?1280:1080" :row-class-name="accessRowClassName" :row-props="row => detailRowProps('access',row)"/>
         <n-data-table v-else-if="tab==='nginx'" class="log-table" :columns="errorColumns" :data="errorLogs" :loading="loading" :bordered="false" :scroll-x="600" :row-class-name="errorRowClassName" :row-props="row => detailRowProps('nginx',row)"/>
         <n-data-table v-else class="log-table" :columns="frpColumns" :data="frpLogs" :loading="loading" :bordered="false" :scroll-x="720" :row-class-name="frpRowClassName" :row-props="row => detailRowProps('frp',row)"/>
       </template>
@@ -58,7 +58,7 @@
       <template v-if="detail">
         <div class="detail-fields" data-testid="log-detail-fields"><div v-for="field in detail.fields" :key="field.label"><span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong></div></div>
         <h4>{{ detail.rawLabel }}</h4><pre class="fonu-log-console detail-console">{{ detail.raw }}</pre>
-        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.client_ip" @click="manageBlacklist(detail.access)">管理 IP 黑名单</n-button></div>
+        <div class="detail-actions"><n-button size="small" @click="copyDetail">复制记录</n-button><n-button v-if="detail.ip" size="small" type="primary" secondary @click="filterDetailIP">筛选此 IP</n-button><n-button v-if="detail.access" size="small" type="warning" secondary :loading="blacklistBusy" :disabled="!detail.access.client_ip" @click="manageBlacklist(detail.access)">{{blacklistLabel(detail.access, true)}}</n-button></div>
       </template>
     </n-drawer-content>
   </n-drawer>
@@ -139,6 +139,47 @@ const summary=ref<Record<string,{count:number;error?:string}>>({}),summaryAt=ref
 const loading=ref(false),error=ref(''),exporting=ref(false),autoRefresh=ref(true)
 const offset=ref(0),pageSize=ref(20),hasMore=ref(false)
 const accessLogs=ref<AccessLogEntry[]>([]),systemLogs=ref<SystemLogEntry[]>([]),errorLogs=ref<ParsedNginxError[]>([]),frpLogs=ref<ParsedFrpLog[]>([])
+type LogBlacklistStatus = Awaited<ReturnType<typeof api.logBlacklistStatus>>[number]
+const blacklistStatuses=ref<Record<string,LogBlacklistStatus>>({})
+let blacklistStatusController:AbortController|undefined,blacklistStatusGeneration=0
+function blacklistInput(row:AccessLogEntry){return {host:row.domain||'',port:row.server_port||0,ip:row.client_ip||''}}
+function blacklistKey(row:AccessLogEntry){return JSON.stringify(blacklistInput(row))}
+function blacklistStatus(row:AccessLogEntry){return blacklistStatuses.value[blacklistKey(row)]}
+function blacklistLabel(row:AccessLogEntry,detail=false){
+ const s=blacklistStatus(row)
+ if(!s||s.error)return detail?'管理 IP 黑名单':'黑名单'
+ if(s.exact)return s.scope==='global'?'全局已加入':'规则已加入'
+ if(s.covered)return '网段已覆盖'
+ return detail?'加入黑名单':'加入黑名单'
+}
+function blacklistButtonType(row:AccessLogEntry){const s=blacklistStatus(row);return s?.exact||s?.covered?'error':'warning'}
+async function loadBlacklistStatuses(){
+ const id=++blacklistStatusGeneration
+ blacklistStatusController?.abort()
+ if(disposed||tab.value!=='access'){blacklistStatuses.value={};return}
+ const unique=new Map(accessLogs.value.map(row=>[blacklistKey(row),blacklistInput(row)]))
+ const keys=[...unique.keys()]
+ if(!keys.length){blacklistStatuses.value={};return}
+ const ctl=new AbortController();blacklistStatusController=ctl
+ try{
+  const rows=await api.logBlacklistStatus([...unique.values()],ctl.signal)
+  if(disposed||id!==blacklistStatusGeneration)return
+  if(!Array.isArray(rows)||rows.length!==keys.length)throw Error('invalid blacklist status response')
+  blacklistStatuses.value=Object.fromEntries(keys.map((key,i)=>[key,rows[i]]))
+ }catch{if(!disposed&&id===blacklistStatusGeneration)blacklistStatuses.value={}}
+}
+function updateBlacklistStatuses(row:AccessLogEntry,result:Awaited<ReturnType<typeof api.logBlacklist>>){
+ const next={...blacklistStatuses.value}
+ const clicked=blacklistKey(row)
+ for(const [key,s] of Object.entries(next)){
+  if(s.ip!==result.ip)continue
+  if(result.scope==='global')next[key]={...s,global_exact:result.exact,global_covered:result.covered,...(s.scope==='global'?{exact:result.exact,covered:result.covered}:{})}
+  else if(s.scope==='rule'&&s.rule_id===result.rule_id)next[key]={...s,exact:result.exact,covered:result.covered}
+ }
+ const previous=next[clicked]
+ next[clicked]={...previous,scope:result.scope,rule_id:result.rule_id,ip:result.ip,exact:result.exact,covered:result.covered,global_exact:result.scope==='global'?result.exact:previous?.global_exact??false,global_covered:result.scope==='global'?result.covered:previous?.global_covered??false,error:undefined}
+ blacklistStatuses.value=next
+}
 const activeRows=computed(()=>({access:accessLogs.value,system:systemLogs.value,nginx:errorLogs.value,frp:frpLogs.value})[tab.value])
 const proxyBindingIndex=ref(buildProxyBindingIndex([]))
 const showAccessBlockReason=computed(()=>Boolean(current.value.kind)||accessLogs.value.some(row=>Boolean(row.block_reason)))
@@ -157,7 +198,7 @@ let disposed=false,generation=0,historyController:AbortController|undefined,summ
 let debounce:ReturnType<typeof setTimeout>|undefined,timer:ReturnType<typeof setInterval>|undefined
 let nextSummaryAt=0
 let pageSnapshot=''
-function clearRows(){accessLogs.value=[];systemLogs.value=[];errorLogs.value=[];frpLogs.value=[];hasMore.value=false}
+function clearRows(){blacklistStatusGeneration++;blacklistStatusController?.abort();blacklistStatuses.value={};accessLogs.value=[];systemLogs.value=[];errorLogs.value=[];frpLogs.value=[];hasMore.value=false}
 async function loadSummary(force=false){
  if(disposed||summaryLoading.value)return
  summaryLoading.value=true;summaryError.value=''
@@ -178,7 +219,7 @@ async function loadHistory(){
  try{
   const r=await api.getLogHistory({...queryParams(),offset:offset.value,limit:pageSize.value,snapshot:pageSnapshot},ctl.signal)
   if(disposed||id!==generation)return
-  if(source==='access')accessLogs.value=r.rows as AccessLogEntry[]
+  if(source==='access'){accessLogs.value=r.rows as AccessLogEntry[];void loadBlacklistStatuses()}
   else if(source==='system')systemLogs.value=r.rows as SystemLogEntry[]
   else if(source==='nginx')errorLogs.value=(r.rows as string[]).map(parseNginxErrorLine)
   else frpLogs.value=(r.rows as string[]).map(parseFrpLogLine)
@@ -236,7 +277,7 @@ onMounted(()=>{
   if(autoRefresh.value&&offset.value===0&&!loading.value&&!awaitingCustomRange.value)void loadHistory()
  },10000)
 })
-onUnmounted(()=>{disposed=true;generation++;historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
+onUnmounted(()=>{disposed=true;generation++;blacklistStatusController?.abort();historyController?.abort();summaryController?.abort();exportController?.abort();clearTimeout(debounce);if(timer)clearInterval(timer)})
 const methodTagType = (method: string) => {
   const map: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
     GET: 'success',
@@ -350,7 +391,13 @@ const accessColumns = computed<DataTableColumns<AccessLogEntry>>(() => {
     },
   },
   )
-  cols.push({title:'操作',key:'access_actions',width:110,render:row=>h(NButton,{size:'tiny',quaternary:true,type:'warning',disabled:!row.client_ip||row.client_ip==='-'||blacklistBusy.value,title:'按日志匹配结果管理 IP 黑名单',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>'黑名单')})
+  cols.push({title:'操作',key:'access_actions',width:160,render:row=>{
+    const s=blacklistStatus(row)
+    return h('div',{class:'log-blacklist-action'},[
+      h(NButton,{size:'tiny',quaternary:!(s?.exact||s?.covered),secondary:Boolean(s?.exact||s?.covered),type:blacklistButtonType(row),disabled:!row.client_ip||row.client_ip==='-'||blacklistBusy.value,title:s?.error||'当前黑名单配置状态，点击管理；不代表历史请求被拦截',onClick:(e:MouseEvent)=>{e.stopPropagation();void manageBlacklist(row)},onKeydown:(e:KeyboardEvent)=>e.stopPropagation()},()=>blacklistLabel(row)),
+      s?.scope==='rule'&&(s.global_exact||s.global_covered)?h('small',{class:'log-blacklist-global',title:'该 IP 同时受全局黑名单限制'},'全局已限制'):null
+    ])
+  }})
   return cols
 })
 
@@ -502,7 +549,7 @@ async function manageBlacklist(row:AccessLogEntry){
         blacklistBusy.value=true
         try{
           const result=await api.logBlacklist({...input,ip:current.ip,scope:current.scope,rule_id:current.rule_id,action:removing?'unblock':'block',confirmed:true})
-          if(!disposed)message.success(result.changed?(removing?(result.covered?'已移除单地址，仍受网段限制':'已移除'+scopeLabel+'中的单地址'):'已加入'+scopeLabel):'黑名单状态已更新，无需重复修改')
+          if(!disposed){updateBlacklistStatuses(row,result);void loadBlacklistStatuses();message.success(result.changed?(removing?(result.covered?'已移除单地址，仍受网段限制':'已移除'+scopeLabel+'中的单地址'):'已加入'+scopeLabel):'黑名单状态已更新，无需重复修改')}
           return true
         }catch(e){if(!disposed)message.error(e instanceof Error?e.message:'黑名单更新失败');return false}
         finally{blacklistBusy.value=false}
@@ -514,6 +561,7 @@ async function manageBlacklist(row:AccessLogEntry){
 
 </script>
 <style scoped>
+.log-blacklist-action{display:flex;align-items:flex-start;flex-direction:column;gap:2px}.log-blacklist-global{font-size:11px;color:var(--fonu-error)}
 .logs-card :deep(.n-tabs-nav) {
   padding: var(--fonu-space-4) var(--fonu-space-5) 0;
 }

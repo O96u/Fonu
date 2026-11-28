@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 访问日志批量读取当前规则及全局黑名单成员状态，加入/解除后同步更新同一 IP 对应记录，刷新和翻页后恢复真实配置状态；历史 HTTP 状态不随配置修改。
+
 - 修复 SMTP 中文和 Emoji 主题未按 RFC 2047 编码导致的邮件客户端乱码；使用 UTF-8 Base64 encoded-word 并折行，正文使用 quoted-printable 传输编码，防止邮件头控制字符注入；新增 MIME 解码回归测试。
 
 - 访问日志快捷操作自动选择黑名单范围：唯一匹配当前规则时仅操作该规则；没有匹配服务时提供全局黑名单，加入及解除均需明确确认；范围变化时必须重新确认。保留 CIDR 网段并提示代理节点误封风险。

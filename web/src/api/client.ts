@@ -170,6 +170,8 @@ export const api = {
     request<{ip:string;exact:boolean;covered:boolean;changed:boolean;custom_config:boolean}>('/api/proxies/global-blacklist',{method:'POST',body:JSON.stringify(payload)}),
   logBlacklist: (payload: {host:string;port:number;ip:string;action:'inspect'|'block'|'unblock';scope?:'rule'|'global';rule_id?:number;confirmed?:boolean}) =>
     request<{scope:'rule'|'global';rule_id?:number;rule_name?:string;ip:string;exact:boolean;covered:boolean;changed:boolean;custom_config:boolean;whitelist_mode:boolean}>('/api/proxies/log-blacklist',{method:'POST',body:JSON.stringify(payload)}),
+  logBlacklistStatus: (rows: {host:string;port:number;ip:string}[],signal?:AbortSignal) =>
+    request<{scope?:'rule'|'global';rule_id?:number;ip?:string;exact:boolean;covered:boolean;global_exact:boolean;global_covered:boolean;error?:string}[]>('/api/proxies/log-blacklist-status',{method:'POST',body:JSON.stringify({rows}),signal}),
   deleteProxy: (id: number) => request<void>(`/api/proxies/${id}`, { method: 'DELETE' }),
   reorderProxies: (ids: number[]) =>
     request<void>('/api/proxies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),

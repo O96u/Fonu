@@ -26,6 +26,9 @@ try {
  if(url.pathname==='/api/auth/status')data={initialized:true,authenticated:true,username:'admin'}
  else if(url.pathname==='/api/version')data={version:'2.0.0-beta.35',nginx_http_port:80,nginx_https_port:443}
  else if(url.pathname==='/api/settings')data={}
+ else if(url.pathname==='/api/proxies/log-blacklist-status'){
+  const req=route.request().postDataJSON();data=req.rows.map(row=>{const scope=row.host==='media.example.com'?'rule':'global';return {scope,rule_id:scope==='rule'?7:undefined,ip:row.ip,exact:blocked[scope],covered:false,global_exact:row.ip==='192.0.2.1'&&blocked.global,global_covered:false}})
+ }
  else if(url.pathname==='/api/proxies/log-blacklist'){
   const req=route.request().postDataJSON();const scope=req.host==='media.example.com'?'rule':'global';assert.equal(req.ip,scope==='rule'?'192.0.2.2':'192.0.2.1');if(req.action!=='inspect'){assert.equal(req.confirmed,true);assert.equal(req.scope,scope);if(scope==='rule')assert.equal(req.rule_id,7);changes.push(scope+':'+req.action);blocked[scope]=req.action==='block'}
   data={scope,rule_id:scope==='rule'?7:undefined,rule_name:scope==='rule'?'Media':undefined,ip:req.ip,exact:blocked[scope],covered:false,changed:req.action!=='inspect',custom_config:false,whitelist_mode:false}
@@ -53,27 +56,33 @@ try {
  await page.locator('.log-table tbody tr').filter({hasText:'/history/23'}).waitFor()
  await page.getByRole('button',{name:'上一页',exact:true}).click()
  await row.waitFor()
- await row.getByRole('button',{name:'黑名单',exact:true}).click()
+ await row.getByRole('button',{name:'加入黑名单',exact:true}).click()
  await page.getByText('确认加入全局黑名单',{exact:true}).waitFor()
  assert.equal(changes.length,0)
  await page.getByRole('button',{name:'取消',exact:true}).click()
  assert.equal(changes.length,0)
- await row.getByRole('button',{name:'黑名单',exact:true}).click()
+ await row.getByRole('button',{name:'加入黑名单',exact:true}).click()
  await page.getByText('确认加入全局黑名单',{exact:true}).waitFor()
  await page.getByRole('button',{name:'确认加入',exact:true}).click()
  await page.waitForFunction(()=>document.body.textContent.includes('已加入全局黑名单'))
  assert.deepEqual(changes,['global:block'])
- await page.locator('.log-table tbody tr').filter({hasText:'192.0.2.2'}).first().getByRole('button',{name:'黑名单',exact:true}).click()
+ await row.getByRole('button',{name:'全局已加入',exact:true}).waitFor()
+ await page.locator('.log-table tbody tr').filter({hasText:'192.0.2.2'}).first().getByRole('button',{name:'加入黑名单',exact:true}).click()
  await page.getByText('确认加入当前规则黑名单',{exact:true}).waitFor()
  await page.getByRole('button',{name:'确认加入',exact:true}).click()
  await page.waitForFunction(()=>document.body.textContent.includes('已加入当前规则黑名单'))
  assert.deepEqual(changes,['global:block','rule:block'])
+ await page.waitForFunction(()=>[...document.querySelectorAll('.log-table tbody tr')].filter(row=>row.textContent.includes('192.0.2.2')).every(row=>row.textContent.includes('规则已加入')))
+ await page.reload()
+ await row.getByRole('button',{name:'全局已加入',exact:true}).waitFor()
+ await page.locator('.log-table tbody tr').filter({hasText:'192.0.2.2'}).first().getByRole('button',{name:'规则已加入',exact:true}).waitFor()
  await row.click()
  await page.getByTestId('log-detail-fields').waitFor()
- await page.locator('.detail-actions').getByRole('button',{name:'管理 IP 黑名单',exact:true}).click()
+ await page.locator('.detail-actions').getByRole('button',{name:'全局已加入',exact:true}).click()
  await page.getByRole('button',{name:'确认解除',exact:true}).click()
  await page.waitForFunction(()=>document.body.textContent.includes('已移除全局黑名单中的单地址'))
  assert.deepEqual(changes,['global:block','rule:block','global:unblock'])
+ await row.getByRole('button',{name:'加入黑名单',exact:true}).waitFor()
  assert.match(await page.getByTestId('log-detail-fields').innerText(),/192\.0\.2\.1/)
  await page.screenshot({path:'ui-screenshots/log-detail.png',fullPage:true})
  await page.getByRole('button',{name:'筛选此 IP',exact:true}).click()

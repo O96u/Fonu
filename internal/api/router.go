@@ -74,6 +74,7 @@ func NewRouter(deps Deps) http.Handler {
 	protect("POST /api/proxies/access-blacklist", r.proxyHandler.AccessBlacklist)
 	protect("POST /api/proxies/global-blacklist", r.proxyHandler.GlobalBlacklist)
 	protect("POST /api/proxies/log-blacklist", r.proxyHandler.LogBlacklist)
+	protect("POST /api/proxies/log-blacklist-status", r.proxyHandler.LogBlacklistStatus)
 	protect("PUT /api/proxies/reorder", r.proxyHandler.Reorder)
 	protect("PUT /api/proxies/{id}", r.proxyHandler.Update)
 	protect("DELETE /api/proxies/{id}", r.proxyHandler.Delete)
